@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Spec Drive"
+  short_description: "Single-command spec workflow driver"
+  default_prompt: "Use $spec-drive-skill to drive the target markdown spec lifecycle, update document status, and progress stages automatically."
