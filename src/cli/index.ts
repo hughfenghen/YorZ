@@ -2,11 +2,18 @@ import { homedir } from 'node:os'
 import { Command } from 'commander'
 import { install } from './install.js'
 import { uninstall } from './uninstall.js'
+import { runServe } from './serve.js'
 import type { AgentName, InstallScope } from './adapters/types.js'
 
 interface CliOpts {
   agent: string
   scope: string
+}
+
+interface ServeOpts {
+  port?: string
+  open?: boolean
+  cwd?: string
 }
 
 function parseAgent(value: string): AgentName {
@@ -46,6 +53,20 @@ program
     const result = await uninstall({ agent, scope, home: homedir(), cwd: process.cwd() })
     if (result.removed) console.log(`removed: ${result.path}`)
     else console.log(`not installed at ${result.path}`)
+  })
+
+program
+  .command('serve')
+  .description('Start the YorZ Service (HTTP + SSE + static GUI).')
+  .option('-p, --port <port>', 'port to listen on', '7423')
+  .option('--open', 'open the GUI in the default browser', false)
+  .option('--cwd <path>', 'project root containing .yorz/', process.cwd())
+  .action(async (opts: ServeOpts) => {
+    const port = opts.port === undefined ? undefined : Number.parseInt(opts.port, 10)
+    if (port !== undefined && (!Number.isFinite(port) || port < 0)) {
+      throw new Error(`Invalid --port: ${opts.port}`)
+    }
+    await runServe({ port, open: opts.open, cwd: opts.cwd })
   })
 
 program.parseAsync(process.argv).catch((err: Error) => {

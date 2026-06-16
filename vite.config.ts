@@ -22,6 +22,11 @@ export default defineConfig({
         ...builtinModules,
         ...builtinModules.map((m) => `node:${m}`),
         'commander',
+        'hono',
+        /^hono\//,
+        '@hono/node-server',
+        'chokidar',
+        'gray-matter',
       ],
       output: {
         banner: SHEBANG,

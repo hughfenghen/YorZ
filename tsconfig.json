@@ -3,7 +3,9 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -13,5 +15,11 @@
     "noEmit": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "vite.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "tests/**/*.ts",
+    "vite.config.ts",
+    "vite.gui.config.ts"
+  ]
 }
