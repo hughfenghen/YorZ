@@ -1,3 +1,5 @@
+export type SpecType = 'feat' | 'refct' | 'fix'
+
 export interface SpecListItem {
   id: string
   title: string
@@ -20,10 +22,16 @@ export interface SpecDetail {
 }
 
 export interface CreateSpecBody {
-  title: string
-  type: 'feat' | 'refct' | 'fix'
-  summary: string
+  type: SpecType
+  title?: string
+  summary?: string
   requirement?: string
+}
+
+export interface AnnotationBody {
+  sectionPath: string
+  quote: string
+  note: string
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -50,11 +58,23 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     }),
-  appendNote: (id: string, content: string) =>
+  appendAnnotation: (id: string, body: AnnotationBody) =>
     request<{ ok: true }>(`/api/specs/${encodeURIComponent(id)}/inputs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ kind: 'append-note', content }),
+      body: JSON.stringify({ kind: 'annotate', ...body }),
+    }),
+  runAgent: (id: string) =>
+    request<{ runId: string }>(`/api/specs/${encodeURIComponent(id)}/run`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    }),
+  explain: (id: string, text: string) =>
+    request<{ runId: string }>(`/api/specs/${encodeURIComponent(id)}/explain`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
     }),
   getProject: () => request<{ cwd: string; name: string }>('/api/projects/current'),
 }

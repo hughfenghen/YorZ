@@ -34,8 +34,8 @@ export const Home: Component = () => {
                       <span class={`badge stage-${spec.stage}`}>{spec.stage}</span>
                       <time>{spec.updated_at}</time>
                     </div>
-                    <h2>{spec.title}</h2>
-                    <p class="summary">{spec.summary}</p>
+                    <h2>{spec.title || '（待 Agent 补全）'}</h2>
+                    <p class="summary">{spec.summary || '（待 Agent 补全）'}</p>
                     <code class="id">{spec.id}</code>
                   </A>
                 </li>

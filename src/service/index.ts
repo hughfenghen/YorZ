@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server'
 import type { AddressInfo } from 'node:net'
 import { SpecStore } from './spec-store.js'
 import { SpecWatcher } from './watcher.js'
+import { AgentRunner } from './agent.js'
 import { createApp } from './server.js'
 
 export interface ServeOptions {
@@ -27,10 +28,11 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
     cwd,
     onWrite: (path, mtime) => watcher.markSelfWrite(path, mtime),
   })
+  const runner = new AgentRunner({ cwd })
   await store.ensureRoot()
   await watcher.start()
 
-  const app = createApp({ store, watcher, cwd, guiRoot: opts.guiRoot })
+  const app = createApp({ store, watcher, runner, cwd, guiRoot: opts.guiRoot })
 
   const port = await listen(app.fetch, opts.port ?? DEFAULT_PORT)
   const url = `http://localhost:${port.port}/`

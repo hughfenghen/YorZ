@@ -48,9 +48,7 @@ describe('install', () => {
 
   it('writes to opencode user dir', async () => {
     const res = await install({ agent: 'opencode', scope: 'user', home, cwd })
-    expect(res.path).toBe(
-      join(home, '.config', 'opencode', 'skills', SKILL_DIR_NAME, 'SKILL.md'),
-    )
+    expect(res.path).toBe(join(home, '.config', 'opencode', 'skills', SKILL_DIR_NAME, 'SKILL.md'))
   })
 })
 

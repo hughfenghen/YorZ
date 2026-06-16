@@ -81,7 +81,7 @@ Agent 与 Service 之间**不存在长连接、不存在阻塞调用**。两者�
 | **Service** | 常驻进程（CLI 启动） | HTTP/SSE + 文件监听 + Agent Relauncher + 存储；GUI 与 md 之间的桥梁 |
 | **Skill** | md 文件（带 frontmatter） | 描述工作流步骤；引导 Agent 读写约定路径的 md，遇到交互节点优雅退出 |
 | **GUI** | Solid.js SPA（Service 内置托管） | 需求编辑、决策审阅、执行 Review；图形化表达 |
-| **Agent** | 外部进程（claude / opencode） | 按 skill 指令读写 md，**短跑即退**，不长驻 |
+| **Agent** | 外部进程（claude / opencode） | 按 skill 指令读写 md，**持续推进、遇阻即退**（待用户确认时退出，由 CLI 续拉），不长驻 |
 
 ---
 
@@ -431,7 +431,7 @@ updatedAt: 2026-06-11T10:30:00Z
 |--------|------|---------|
 | Agent ↔ Service 通信 | **md 文件 + 无状态接力**（参考 HTTP）；MCP 仅作为可选优化通道 | 强容错、强可审计、强 Agent 解耦；无需处理长连接 / 阻塞 / 超时 |
 | 数据形态 | md 为主，前期不规范化 | 人类可读、AI 友好、git 友好；过早规范化阻碍迭代 |
-| 进程模型 | Service 单例 + Agent 子进程按 spec 短跑 | 多 spec 可并行；Agent 进程死掉不影响 Service |
+| 进程模型 | Service 单例 + Agent 子进程按 spec 持续推进、遇阻即退（待用户确认/决策/Review 时退出，由 CLI 续拉） | 多 spec 可并行；Agent 进程死掉不影响 Service；阻塞点天然落在 md 上，可审计可恢复 |
 | Agent 抽象 | Adapter 模式（claude/opencode） | MVP 仅 2 个目标，接口收敛在 `Adapter` interface |
 | 持久化分层 | 项目级 md + 全局 SQLite（仅索引） | md 真相、SQLite 加速；可随时丢弃 SQLite 重建 |
 | GUI 框架 | Solid.js + Vite | 用户指定；细粒度响应、包体小、利于移动端 |

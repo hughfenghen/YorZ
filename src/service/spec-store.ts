@@ -29,10 +29,16 @@ export interface SpecDetail {
 }
 
 export interface CreateSpecInput {
-  title: string
   type: SpecType
-  summary: string
+  title?: string
+  summary?: string
   requirement?: string
+}
+
+export interface AnnotationInput {
+  sectionPath: string
+  quote: string
+  note: string
 }
 
 export interface SpecStoreOptions {
@@ -112,32 +118,42 @@ export class SpecStore {
   }
 
   async create(input: CreateSpecInput): Promise<{ id: string; path: string }> {
-    if (!input.title.trim()) throw new Error('title required')
-    if (!input.summary.trim()) throw new Error('summary required')
     await this.ensureRoot()
-    const id = await this.allocateId(input.type, input.summary || input.title)
+    const requirement = input.requirement?.trim() ?? ''
+    const title = (input.title?.trim() || placeholderTitle(requirement)).slice(0, 80)
+    const summary = (input.summary?.trim() || placeholderSummary(requirement)).slice(0, 200)
+    const slugSource = requirement || title
+    const id = await this.allocateId(input.type, slugSource)
     const dir = join(this.root, id)
     await mkdir(dir, { recursive: true })
     const filePath = join(dir, 'spec.md')
-    const content = renderInitialSpec(input, this.today())
+    const content = renderInitialSpec(
+      { type: input.type, title, summary, requirement: input.requirement },
+      this.today(),
+    )
     await this.write(filePath, content)
     return { id, path: filePath }
   }
 
-  async appendNote(id: string, content: string): Promise<void> {
+  async appendAnnotation(id: string, input: AnnotationInput): Promise<void> {
     const filePath = this.specPath(id)
     if (!existsSync(filePath)) throw new Error(`spec not found: ${id}`)
+    const sectionPath = input.sectionPath.trim() || '(无章节)'
+    const quote = input.quote.trim().slice(0, 200)
+    const note = input.note.trim()
+    if (!quote) throw new Error('quote required')
+    if (!note) throw new Error('note required')
     const raw = await readFile(filePath, 'utf8')
     const parsed = matter(raw)
     const existing = normalizeFrontmatter(parsed.data)
     const fm: SpecFrontmatter = {
-      stage: existing.stage,
-      last_action: '追加用户批注',
+      stage: 'plan',
+      last_action: '用户新增批注 ！！！',
       updated_at: this.today(),
       summary: existing.summary,
     }
-    const note = `\n\n> 用户批注（${this.today()}）：${content.trim()}\n`
-    const next = serializeSpec(fm, parsed.content.replace(/\n+$/, '') + note)
+    const block = `\n\n> ${sectionPath} 中 "${quote}"\n>\n> ！！！${note}\n`
+    const next = serializeSpec(fm, parsed.content.replace(/\n+$/, '') + block)
     await this.write(filePath, next)
   }
 
@@ -232,12 +248,15 @@ function serializeSpec(fm: SpecFrontmatter, body: string): string {
   return `${head}${body.startsWith('\n') ? '' : '\n'}${body}${body.endsWith('\n') ? '' : '\n'}`
 }
 
-function renderInitialSpec(input: CreateSpecInput, today: string): string {
+function renderInitialSpec(
+  input: { type: SpecType; title: string; summary: string; requirement?: string },
+  today: string,
+): string {
   const fm: SpecFrontmatter = {
     stage: 'plan',
     last_action: '新建 spec',
     updated_at: today,
-    summary: input.summary.trim(),
+    summary: input.summary,
   }
   const sections = SECTIONS.map((heading) => {
     if (heading === '## 背景' && input.requirement?.trim()) {
@@ -245,6 +264,24 @@ function renderInitialSpec(input: CreateSpecInput, today: string): string {
     }
     return `${heading}\n\n`
   }).join('\n')
-  const body = `# ${input.title.trim()}\n\n${sections}`
+  const body = `# ${input.title}\n\n${sections}`
   return serializeSpec(fm, body)
+}
+
+function placeholderTitle(requirement: string): string {
+  if (!requirement) return '（待 Agent 补全）'
+  const firstLine = requirement.split(/\r?\n/)[0]?.trim() ?? ''
+  if (!firstLine) return '（待 Agent 补全）'
+  return firstLine.length > 30 ? `${firstLine.slice(0, 30)}…` : firstLine
+}
+
+function placeholderSummary(requirement: string): string {
+  if (!requirement) return '（待 Agent 补全）'
+  const firstParagraph =
+    requirement
+      .split(/\n{2,}/)[0]
+      ?.replace(/\s+/g, ' ')
+      .trim() ?? ''
+  if (!firstParagraph) return '（待 Agent 补全）'
+  return firstParagraph.length > 200 ? `${firstParagraph.slice(0, 199)}…` : firstParagraph
 }

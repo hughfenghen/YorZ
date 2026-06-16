@@ -379,3 +379,213 @@ button:disabled {
   color: var(--text);
   resize: vertical;
 }
+
+/* Selection menu + annotate popover + explain drawer + run log */
+
+.selection-menu {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  gap: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  user-select: none;
+}
+
+.selection-menu button {
+  font: inherit;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+}
+
+.selection-menu button + button {
+  border-left: 1px solid var(--border);
+}
+
+.selection-menu button:hover {
+  background: var(--bg);
+}
+
+.annotate-popover {
+  position: fixed;
+  z-index: 60;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.annotate-popover header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.annotate-popover .quote {
+  background: var(--bg);
+  border-left: 3px solid var(--border);
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9em;
+  color: var(--muted);
+}
+
+.annotate-popover textarea {
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+  min-height: 64px;
+}
+
+.annotate-popover .actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.annotate-popover .actions button {
+  font: inherit;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+}
+
+.annotate-popover .actions button.primary-action {
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+  border-color: transparent;
+}
+
+.explain-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 70;
+}
+
+.explain-drawer {
+  position: fixed;
+  z-index: 80;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 360px;
+  max-width: 100vw;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.18);
+}
+
+@media (max-width: 720px) {
+  .explain-drawer {
+    top: auto;
+    left: 0;
+    right: 0;
+    height: 40vh;
+    width: auto;
+    border-top: 1px solid var(--border);
+  }
+}
+
+.explain-drawer header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.explain-drawer header .status {
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.explain-drawer header .close {
+  margin-left: auto;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.explain-drawer .output {
+  flex: 1;
+  margin: 0;
+  padding: 0.9rem 1rem;
+  background: var(--bg);
+  color: var(--text);
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.explain-drawer footer {
+  padding: 0.5rem 1rem 0.7rem;
+  font-size: 0.8em;
+  border-top: 1px solid var(--border);
+}
+
+.run-btn {
+  margin-left: 0.5rem;
+}
+
+.run-running {
+  opacity: 0.85;
+}
+
+.run-failed {
+  background: #c0392b;
+}
+
+.run-log {
+  margin: 0.8rem 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.run-log-toggle {
+  align-self: flex-start;
+  font: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.7rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.run-log-body {
+  margin: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.9rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+}

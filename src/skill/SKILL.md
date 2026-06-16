@@ -5,13 +5,15 @@ description: Drive YorZ spec docs through plan / tasks / execute stages with det
 
 # YorZ Spec Drive Skill
 
-将单个 YorZ spec 文档作为状态机执行，围绕 `plan`、`tasks`、`execute` 三阶段推进，并把状态持续写回文档。Agent 短跑即退，每次工作完整地读 md → 做事 → 写 md → 退出；md 是单一真相。
+将单个 YorZ spec 文档作为状态机执行，围绕 `plan`、`tasks`、`execute` 三阶段推进，并把状态持续写回文档。Agent 持续推进直至阻塞才退出：每完成一段工作就把状态写回 md，随后判断是否仍可继续——能继续则接着做下一段，遇到阻塞（如需用户确认 `待确认问题`、决策、Review）才退出，由 CLI 在条件满足后重新拉起 Agent。md 是单一真相。
 
 ## 输入约定
 
 - `spec_path`：**可选**，目标 spec 文档路径。
   - 显式给出时：典型位置 `docs/specs/*.md` 或 `.yorz/specs/<id>/spec.md`，直接更新该 spec。
-  - 缺省时：进入「新建 spec」流程（见同名章节）。
+  - 缺省时按以下顺序解析：
+    1. **从 session 上下文恢复**：扫描当前会话历史中已出现/已读写过的 spec 文档路径（匹配 `.yorz/specs/<id>/spec.md` 或 `docs/specs/*.md`）；存在多个时，优先选取最近一次被读写的；若仍有歧义，向用户确认后再继续。
+    2. **从当前 prompt 创建**：若上下文中没有任何 spec 文档，则把当前用户 prompt 视为新需求，按「新建 spec」流程生成路径与骨架。
 - `mode`：可选，`plan|tasks|execute|auto`，默认 `auto`。
 - 批注前缀：`！！！`
 
@@ -51,7 +53,7 @@ summary: 一句话概要，供列表/索引视图展示
 
 ## 自动模式判定顺序（严格按顺序）
 
-1. 若 `spec_path` 缺省，进入「新建 spec」流程并以 `plan` 起步。
+1. 若 `spec_path` 缺省：先按「输入约定」从 session 上下文恢复 spec 路径；恢复成功则把该路径作为 `spec_path` 进入后续判定；恢复失败才进入「新建 spec」流程并以 `plan` 起步。
 2. 否则，若识别到新增/扩展需求或新增 bug，进入 `plan`（重开流程）。
 3. 否则，若文档存在任意 `！！！` 批注，进入 `tasks`。
 4. 否则，若 `## 待确认问题` 下存在有效条目（非 `- 暂无`），停止推进并等待人工批注。
@@ -135,12 +137,19 @@ summary: 一句话概要，供列表/索引视图展示
 - 每次写回 spec md 后，**应在仓库支持的条件下运行 Markdown formatter**（优先使用项目根的 `prettier`，例如 `npx prettier --write <spec_path>`）；若仓库未配置 prettier，则跳过并在执行记录中说明。
 - formatter 必须保留 YAML frontmatter 不变。
 - 任务清单仅使用单层 `- [ ]` / `- [x]`，避免缩进与嵌套以利 formatter 稳定。
+- 二、三级标题必须带层级编号，便于外部（如 GUI 批注）按章节号定位原文：
+  - 每次写回 spec 前，按 body 中 `## ` / `### ` 出现顺序重新编号。
+  - 二级标题写作 `## N. 标题`（N 从 1 起，按 body 内出现顺序）。
+  - 三级标题写作 `### N.M 标题`（M 在所属二级下从 1 起；遇到新的二级，M 复位）。
+  - 已含编号的标题按当前位置重排，保证位置变动后编号自洽。
+  - 编号与原标题文本之间使用单个空格分隔。
+  - 该规则不影响 frontmatter 与一级标题（`# `）。
 
 ## 与 YorZ 工作流的关联
 
 - 本 skill 不依赖 YorZ Service / GUI 也能独立工作：Agent 直接读写 `spec_path` 即可。
-- 当 YorZ Service 在线时，Agent 写回 md 会被 Service 的 FS Watcher 感知并推送给 GUI；Agent 仍然以"短跑即退"为原则。
-- 如需用户介入（待确认问题、决策、Review），Agent 把信息写回文档对应章节后立即退出，由用户人工补齐 `！！！` 批注或由 Service 拉起下一次执行。
+- 当 YorZ Service 在线时，Agent 写回 md 会被 Service 的 FS Watcher 感知并推送给 GUI；Agent 仍然以"持续推进、遇阻即退"为原则。
+- 如需用户介入（待确认问题、决策、Review），Agent 把信息写回文档对应章节后立即退出，由用户人工补齐 `！！！` 批注，再由 CLI / Service 重新拉起 Agent 继续执行。
 
 ## 输出优先级
 

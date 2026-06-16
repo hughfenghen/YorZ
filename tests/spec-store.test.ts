@@ -19,14 +19,14 @@ describe('SpecStore.create', () => {
       type: 'feat',
       summary: 'Hello World Feature',
     })
-    expect(id).toBe('260614.feat.hello-world-feature')
+    expect(id).toBe('260614.feat.hello-world')
   })
 
   it('appends -2/-3 on id conflict', async () => {
     const { store } = await makeStore()
-    const a = await store.create({ title: 'T', type: 'feat', summary: 'same name' })
-    const b = await store.create({ title: 'T', type: 'feat', summary: 'same name' })
-    const c = await store.create({ title: 'T', type: 'feat', summary: 'same name' })
+    const a = await store.create({ title: 'same name', type: 'feat', summary: 'same name' })
+    const b = await store.create({ title: 'same name', type: 'feat', summary: 'same name' })
+    const c = await store.create({ title: 'same name', type: 'feat', summary: 'same name' })
     expect(a.id).toBe('260614.feat.same-name')
     expect(b.id).toBe('260614.feat.same-name-2')
     expect(c.id).toBe('260614.feat.same-name-3')
@@ -58,13 +58,33 @@ describe('SpecStore.create', () => {
     expect(raw).toContain('## 任务清单')
     expect(raw).toContain('## 执行记录')
   })
+
+  it('uses placeholder title/summary when caller omits them', async () => {
+    const { store } = await makeStore()
+    const { id, path } = await store.create({
+      type: 'feat',
+      requirement: '让登录支持手机号\n\n详细描述继续',
+    })
+    expect(id).toMatch(/^260614\.feat\./)
+    const raw = await readFile(path, 'utf8')
+    expect(raw).toContain('# 让登录支持手机号')
+    expect(raw).toMatch(/summary: 让登录支持手机号/)
+    expect(raw).toContain('详细描述继续')
+  })
+
+  it('falls back to "（待 Agent 补全）" when no fields are provided', async () => {
+    const { store } = await makeStore()
+    const { path } = await store.create({ type: 'feat' })
+    const raw = await readFile(path, 'utf8')
+    expect(raw).toContain('# （待 Agent 补全）')
+    expect(raw).toMatch(/summary: （待 Agent 补全）/)
+  })
 })
 
-describe('SpecStore.list / read / appendNote', () => {
+describe('SpecStore.list / read / appendAnnotation', () => {
   it('list returns most recently updated first', async () => {
     const { store, cwd } = await makeStore()
     await store.create({ title: 'A', type: 'feat', summary: 'a' })
-    // second spec is one day later
     const later = new Date('2026-06-15T10:00:00Z')
     const store2 = new SpecStore({ cwd, now: () => later })
     await store2.create({ title: 'B', type: 'feat', summary: 'b' })
@@ -73,21 +93,46 @@ describe('SpecStore.list / read / appendNote', () => {
     expect(items[1].id.startsWith('260614')).toBe(true)
   })
 
-  it('appendNote preserves frontmatter order and adds a note line', async () => {
-    const { store } = await makeStore()
+  it('appendAnnotation writes quote + ！！！ note and resets stage to plan', async () => {
+    const dateA = new Date('2026-06-14T10:00:00Z')
+    const dateB = new Date('2026-06-16T10:00:00Z')
+    const { store, cwd } = await makeStore(dateA)
     const { id, path } = await store.create({
       title: 'X',
       type: 'feat',
       summary: 'x summary',
     })
-    await store.appendNote(id, '请优先实现登录')
+    // simulate Agent advanced the doc to tasks stage
+    const initial = await readFile(path, 'utf8')
+    const advanced = initial.replace('stage: plan', 'stage: tasks')
+    const { writeFile } = await import('node:fs/promises')
+    await writeFile(path, advanced, 'utf8')
+
+    const store2 = new SpecStore({ cwd, now: () => dateB })
+    await store2.appendAnnotation(id, {
+      sectionPath: '2.1 GUI 现状',
+      quote: '底部存在追加批注表单',
+      note: '改为顶部按钮',
+    })
     const raw = await readFile(path, 'utf8')
     const headerLines = raw.split('---')[1].trim().split('\n')
     expect(headerLines[0]).toBe('stage: plan')
-    expect(headerLines[1]).toBe('last_action: 追加用户批注')
-    expect(headerLines[2]).toBe('updated_at: 2026-06-14')
+    expect(headerLines[1]).toBe('last_action: 用户新增批注 ！！！')
+    expect(headerLines[2]).toBe('updated_at: 2026-06-16')
     expect(headerLines[3]).toBe('summary: x summary')
-    expect(raw).toMatch(/> 用户批注（2026-06-14）：请优先实现登录/)
+    expect(raw).toContain('> 2.1 GUI 现状 中 "底部存在追加批注表单"')
+    expect(raw).toContain('> ！！！改为顶部按钮')
+  })
+
+  it('appendAnnotation rejects empty quote/note', async () => {
+    const { store } = await makeStore()
+    const { id } = await store.create({ title: 'X', type: 'feat', summary: 'x' })
+    await expect(
+      store.appendAnnotation(id, { sectionPath: 's', quote: '   ', note: 'n' }),
+    ).rejects.toThrow(/quote/)
+    await expect(
+      store.appendAnnotation(id, { sectionPath: 's', quote: 'q', note: '   ' }),
+    ).rejects.toThrow(/note/)
   })
 
   it('list ignores directories without spec.md', async () => {

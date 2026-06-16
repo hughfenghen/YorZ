@@ -10,9 +10,7 @@ const TYPES: { value: CreateSpecBody['type']; label: string; hint: string }[] = 
 
 export const NewSpec: Component = () => {
   const navigate = useNavigate()
-  const [title, setTitle] = createSignal('')
-  const [summary, setSummary] = createSignal('')
-  const [requirement, setRequirement] = createSignal('')
+  const [content, setContent] = createSignal('')
   const [type, setType] = createSignal<CreateSpecBody['type']>('feat')
   const [error, setError] = createSignal<string | null>(null)
   const [busy, setBusy] = createSignal(false)
@@ -20,18 +18,20 @@ export const NewSpec: Component = () => {
   async function submit(e: Event) {
     e.preventDefault()
     setError(null)
-    if (!title().trim() || !summary().trim()) {
-      setError('标题与一句话概要必填')
+    const text = content().trim()
+    if (text.length < 5) {
+      setError('请至少输入 5 个字符的需求描述')
       return
     }
     setBusy(true)
     try {
-      const created = await api.createSpec({
-        title: title().trim(),
-        type: type(),
-        summary: summary().trim(),
-        requirement: requirement().trim() || undefined,
-      })
+      const created = await api.createSpec({ type: type(), requirement: text })
+      try {
+        await api.runAgent(created.id)
+      } catch (err) {
+        // surface but still navigate so user sees the new spec
+        console.warn('runAgent after create failed:', err)
+      }
       navigate(`/specs/${encodeURIComponent(created.id)}`)
     } catch (err) {
       setError((err as Error).message)
@@ -44,18 +44,9 @@ export const NewSpec: Component = () => {
     <section class="page">
       <header class="page-head">
         <h1>新建 spec</h1>
+        <p class="muted">只需选择类型与录入需求内容；标题、概要将由 Agent 在 plan 阶段自动补全。</p>
       </header>
       <form class="form" onSubmit={submit}>
-        <label>
-          <span>标题</span>
-          <input
-            type="text"
-            value={title()}
-            onInput={(e) => setTitle(e.currentTarget.value)}
-            placeholder="例如：登录支持手机号"
-            required
-          />
-        </label>
         <fieldset class="type-group">
           <legend>类型</legend>
           {TYPES.map((t) => (
@@ -73,28 +64,19 @@ export const NewSpec: Component = () => {
           ))}
         </fieldset>
         <label>
-          <span>一句话概要（summary，≤200 字符）</span>
-          <input
-            type="text"
-            value={summary()}
-            maxlength={200}
-            onInput={(e) => setSummary(e.currentTarget.value)}
-            placeholder="供列表展示，简短描述目标"
-            required
-          />
-        </label>
-        <label>
-          <span>需求描述（可选，写入 `## 背景`）</span>
+          <span>需求内容</span>
           <textarea
-            rows={6}
-            value={requirement()}
-            onInput={(e) => setRequirement(e.currentTarget.value)}
-            placeholder="原始诉求 / 痛点 / 期望效果"
+            rows={10}
+            value={content()}
+            onInput={(e) => setContent(e.currentTarget.value)}
+            placeholder="原始诉求、痛点、期望效果、关联文档/模块（可使用 @ 引用）"
+            required
+            autofocus
           />
         </label>
         {error() && <p class="error">{error()}</p>}
         <button type="submit" class="primary-action" disabled={busy()}>
-          {busy() ? '创建中…' : '创建 spec'}
+          {busy() ? '创建并启动 Agent…' : '创建并启动 Agent'}
         </button>
       </form>
     </section>
