@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { TextDecoder } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
-import { start, type ServeHandle } from '../src/service/index.js'
+import { start, type ServeHandle } from '../index.js'
 
 const FAKE_CLAUDE = fileURLToPath(new URL('./fixtures/fake-claude.js', import.meta.url))
 

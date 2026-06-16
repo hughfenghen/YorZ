@@ -2,7 +2,7 @@ import { mkdtemp, readFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { SpecStore } from '../src/service/spec-store.js'
+import { SpecStore } from '../spec-store.js'
 
 async function makeStore(date = new Date('2026-06-14T10:00:00Z')) {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-store-'))

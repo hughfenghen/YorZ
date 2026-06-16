@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { join } from 'node:path'
-import { getAdapter } from '../src/cli/adapters/index.js'
+import { getAdapter } from '../index.js'
 
 const HOME = '/tmp/test-home'
 const CWD = '/tmp/test-cwd'

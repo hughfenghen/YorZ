@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { resolveAgentCmd } from '../src/service/agent-config.js'
+import { resolveAgentCmd } from '../agent-config.js'
 
 async function tempCwd() {
   return mkdtemp(join(tmpdir(), 'yorz-agent-cfg-'))

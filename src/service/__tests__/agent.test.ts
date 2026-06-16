@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { join, dirname } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { AgentRunner } from '../src/service/agent.js'
+import { AgentRunner } from '../agent.js'
 
 const FAKE_CLAUDE = fileURLToPath(new URL('./fixtures/fake-claude.js', import.meta.url))
 

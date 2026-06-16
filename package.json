@@ -17,7 +17,7 @@
     "dev": "vite build --watch",
     "dev:gui": "vite --config vite.gui.config.ts",
     "test": "vitest run",
-    "format": "prettier --write \"src/**/*.{ts,tsx,md,css}\" \"tests/**/*.ts\""
+    "format": "prettier --write \"src/**/*.{ts,tsx,md,css}\""
   },
   "dependencies": {
     "@hono/node-server": "^2.0.4",

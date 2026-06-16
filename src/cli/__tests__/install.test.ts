@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdtemp, readFile, rm, stat, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { install, SKILL_DIR_NAME } from '../src/cli/install.js'
-import { uninstall } from '../src/cli/uninstall.js'
-import skillContent from '../src/skill/SKILL.md?raw'
+import { install, SKILL_DIR_NAME } from '../install.js'
+import { uninstall } from '../uninstall.js'
+import skillContent from '../../skill/SKILL.md?raw'
 
 let home: string
 let cwd: string
