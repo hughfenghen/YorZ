@@ -43,7 +43,7 @@ export const SpecDetail: Component = () => {
   const [explainText, setExplainText] = createSignal('')
   const [explainRunId, setExplainRunId] = createSignal<string | null>(null)
 
-  let articleRef: HTMLElement | undefined
+  const [articleEl, setArticleEl] = createSignal<HTMLElement | null>(null)
 
   createEffect(() => {
     const id = params.id
@@ -79,7 +79,7 @@ export const SpecDetail: Component = () => {
   })
 
   createEffect(() => {
-    const el = articleRef
+    const el = articleEl()
     if (!el) return
     const unsub = observeSelection(el, setSnap)
     onCleanup(unsub)
@@ -174,7 +174,7 @@ export const SpecDetail: Component = () => {
                 </section>
               </Show>
 
-              <article class="markdown" ref={articleRef} innerHTML={renderMarkdown(s().body)} />
+              <article class="markdown" ref={setArticleEl} innerHTML={renderMarkdown(s().body)} />
 
               <SelectionMenu
                 snap={popoverOpen() ? null : snap()}

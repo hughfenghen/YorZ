@@ -1,19 +1,19 @@
 ---
 stage: execute
-last_action: 全部任务执行完毕，pnpm test 40/40 通过、build 通过、端到端冒烟通过
+last_action: Bug 1 进入 execute：先落 Playwright e2e 脚手架与失败用例，再修代码
 updated_at: 2026-06-16
 summary: 改进 GUI：文本选择浮动菜单、批注落盘到 spec、解释通过 Service 中转 Agent、页面触发 Agent 续跑、简化新建表单与移除底部追加批注
 ---
 
 # 改进 GUI 交互体验
 
-## 背景
+## 1. 背景
 
 - 产品设计与技术设计文档 @docs/Prod-Design.md @docs/Architecture.md
 - 已实现需求 ../260614.feat.minimal-service-gui/
   - html 页面已渲染 spec 内容，功能与样式有待优化
 
-## 需求
+## 2. 需求
 
 - 选择文本弹出浮动菜单，包含批注、解释两个菜单项
 - 页面需要可交互的批注功能
@@ -30,9 +30,9 @@ summary: 改进 GUI：文本选择浮动菜单、批注落盘到 spec、解释�
   - 只需要选择类型、输出内容，标题、总结总结应该由 Agent 自动补全
   - 新建之后应该直接调用 Agent 按 skill 执行
 
-## 现状分析
+## 3. 现状分析
 
-### GUI 现状
+### 3.1 GUI 现状
 
 - `src/gui/src/pages/SpecDetail.tsx`
   - 仅渲染 markdown（`renderMarkdown` → `innerHTML`），无文本选择/批注交互
@@ -44,7 +44,7 @@ summary: 改进 GUI：文本选择浮动菜单、批注落盘到 spec、解释�
 - `src/gui/src/lib/api.ts` 当前接口：`listSpecs` / `getSpec` / `createSpec` / `appendNote` / `getProject`，无「触发 Agent」与「请求解释」接口
 - `src/gui/src/lib/sse.ts` 仅订阅单个 spec 的文件变更事件
 
-### Service 现状
+### 3.2 Service 现状
 
 - `src/service/spec-store.ts`
   - `create()` 校验 `title.trim()` 与 `summary.trim()` 必填，否则抛错
@@ -56,20 +56,35 @@ summary: 改进 GUI：文本选择浮动菜单、批注落盘到 spec、解释�
 - 不存在「触发 Agent」「Agent 解释」等接口，**Architecture 4.2 中 Agent Relauncher 模块尚未落地**
 - `src/service/server.ts` / `index.ts` 没有引用任何 child_process / spawn 调用
 
-### 与 skill 的契合点
+### 3.3 与 skill 的契合点
 
 - `yorz-spec` skill 自动模式判定第 3 条：「文档存在任意 `！！！` 批注 → 进入 tasks」
 - skill 阶段二 tasks 行为：消费所有 `！！！` 批注，合并意图到方案与任务清单，处理后删除批注文本
 - 这意味着：**只要批注以 `！！！` 开头并写回到 spec md**，Agent 续跑就会自动按 skill 工作流推进；GUI 端不需要再为「触发 Agent」编造额外的提示词，只要 spawn 一次"驱动 yorz-spec skill"的 Agent 进程即可
 
-### 既有约束
+### 3.4 既有约束
 
 - 项目根 `claude` 命令存在（别名 `claude --dangerously-skip-permissions`），`opencode` 命令也已安装
 - 项目尚无 Agent 选择的运行时配置；CLI 的 `adapters/*` 仅用于解决 skills 安装目录，不涉及 spawn
 
-## 技术实现方案
+### 3.5 Bug 1 现状（2026-06-16 新增）
 
-### 总览
+**现象**：在 SpecDetail 页面用鼠标拖选正文文本，浮动菜单不弹出。
+
+**根因**（已在源码定位）：
+
+- `src/gui/src/pages/SpecDetail.tsx:46` 使用 `let articleRef: HTMLElement | undefined` 声明普通变量
+- `src/gui/src/pages/SpecDetail.tsx:177` 在 `<Show when={spec()}>` 内对该元素挂 `ref={articleRef}`
+- `src/gui/src/pages/SpecDetail.tsx:81-86` 的 `createEffect` 内只读取 `articleRef`，**未读任何 Solid 响应式信号**
+- 首次挂载链路：Resource 还在 loading → `Suspense` 渲染 fallback → `Show` 还未渲染 article → effect 首次运行时 `articleRef === undefined` → 提前 return；之后 spec 加载完成、article 才挂载并对变量赋值，但 effect 不会重跑，`observeSelection` 永远没机会绑定 `selectionchange`
+
+**佐证**：`src/gui/src/lib/selection.ts` 实现本身正确（节流、Range 包含判定、sectionPath 回溯均有覆盖），切换到响应式 ref 后即可生效。
+
+**影响面**：所有进入 SpecDetail 的批注 / 解释入口失效；NewSpec 跳转到详情后同样无法用文本选择交互。
+
+## 4. 技术实现方案
+
+### 4.1 总览
 
 本期把 GUI 从「只读 + 追加批注」升级为「围绕文本选择展开的批注 / 解释 + 主动驱动 Agent」。新增能力切分到四条独立通道，并对现有创建表单做减法：
 
@@ -80,7 +95,7 @@ summary: 改进 GUI：文本选择浮动菜单、批注落盘到 spec、解释�
 5. **NewSpec 简化 + 自动续跑**：表单只保留 `type` + 「需求内容」textarea；Service 端放宽 `title` / `summary` 必填约束；创建成功后前端立即触发一次 Agent skill-run。
 6. **skill 自身扩展（小幅）**：在 `.claude/skills/yorz-spec/SKILL.md` 增加约定——写回 spec 时必须给二、三级标题加层级编号（`## 1. 背景` / `### 2.1 GUI 现状`），便于批注引用回查。
 
-### Service 改造
+### 4.2 Service 改造
 
 #### Agent Relauncher（新增）
 
@@ -200,7 +215,7 @@ export class AgentRunner {
 - explain 文本可能含敏感片段，**仅传给本地 Agent CLI，不外发**
 - 同一 spec 的 skill-run 复用已有进程，避免并发改写 md 引发损坏
 
-### GUI 改造
+### 4.3 GUI 改造
 
 #### 选择浮动菜单
 
@@ -262,7 +277,7 @@ subscribeSpec(id, {
 - 「执行日志」面板：等宽字体，单色背景，可滚动
 - 「解释结果」面板：桌面端右侧抽屉（宽 360px），移动端底部抽屉（占视口 40%）
 
-### skill 改造
+### 4.4 skill 改造
 
 修改 `.claude/skills/yorz-spec/SKILL.md`：
 
@@ -275,7 +290,7 @@ subscribeSpec(id, {
 - 影响范围：仅 skill 文档约束，Agent 在 plan/tasks/execute 任何写回 spec 时都需先做该归一化
 - 注：本 spec 当前各级标题尚未编号；本期任务的 plan/tasks 写回也只在 skill 文档完成后由 Agent 后续运行时自动补齐，**当前 spec 不强制本轮就重排标题**
 
-### 测试策略
+### 4.5 测试策略
 
 - **单元**：
   - `tests/spec-store.test.ts` 追加：`appendAnnotation` 写入格式（含 `！！！` 前缀与 sectionPath）、frontmatter `stage` 切回 plan、`updated_at` 更新；`create` 在缺省 title/summary 时使用占位值；旧 `appendNote` 测试用例移除
@@ -294,15 +309,53 @@ subscribeSpec(id, {
   5. 顶部「运行 Agent」按钮：点击 → 状态变更；执行日志面板可展开看 stdout
 - **回归**：原 22 个用例去除 append-note 相关 2~3 个后维持通过；新增用例不破坏构建
 
-### 阶段切分（已细化为 tasks）
+### 4.6 阶段切分（已细化为 tasks）
 
 下方任务清单按依赖顺序排列，可独立验证。
 
-## 待确认问题
+### 4.7 Bug 1 修复方案
+
+#### 4.7.1 代码修复
+
+`src/gui/src/pages/SpecDetail.tsx`：
+
+- 把 `let articleRef: HTMLElement | undefined` 改为 `const [articleEl, setArticleEl] = createSignal<HTMLElement | null>(null)`
+- JSX `<article ... ref={articleRef}>` 改为 `ref={setArticleEl}`（Solid 的 ref 可接受 setter 形式）
+- `createEffect` 内读取 `articleEl()` 而非 `articleRef`，使 effect 在元素挂载（signal 被设值）后自动重跑并调用 `observeSelection`
+- 维持 `onCleanup(unsub)` 在 effect 内，元素卸载或 effect 重跑时旧监听会被解绑
+
+不改动 `src/gui/src/lib/selection.ts` 与 `src/gui/src/components/SelectionMenu.tsx`，它们职责正确。
+
+#### 4.7.2 Playwright e2e
+
+新增 e2e 测试工程，覆盖「拖选 → 浮动菜单出现」这条主路径。
+
+- **依赖**：`pnpm add -D @playwright/test`，并执行 `pnpm exec playwright install chromium` 准备浏览器
+- **测试位置**：`src/gui/src/__e2e__/selection-menu.spec.ts`（与单元测试目录约定一致，均位于源码同级 `__tests__` / `__e2e__`）
+- **配置**：根目录 `playwright.config.ts`，仅启用 chromium；`testDir` 指向 `src/gui/src/__e2e__`；通过 `webServer` 字段在测试启动前 spawn `node dist/cli/index.js serve --port 17430 --cwd <tempCwd>`，超时 30s；`baseURL` 为 `http://localhost:17430/`
+- **测试夹具准备**：`src/gui/src/__e2e__/fixtures/setup.ts`（globalSetup）在系统临时目录下创建 `<tmp>/.yorz/specs/260616.feat.e2e-seed/spec.md`（提前写好 stage=plan + 段落正文），并把 `<tmp>` 路径通过环境变量 `YORZ_E2E_CWD` 暴露给 webServer；globalTeardown 删除该临时目录
+- **测试用例**（单文件 `selection-menu.spec.ts`）：
+  1. `page.goto('/specs/260616.feat.e2e-seed')`
+  2. `await expect(page.locator('article.markdown')).toBeVisible()` 等正文渲染
+  3. 通过 `page.evaluate` 在 article 内构造 `Range` 选中正文中的一小段文字，调用 `window.getSelection().addRange(range)` 并 dispatch `selectionchange` 事件
+  4. `await expect(page.locator('.selection-menu')).toBeVisible()` —— **修复前应失败，修复后通过**
+  5. `await expect(page.locator('.selection-menu button', { hasText: '批注' })).toBeVisible()`
+  6. `await expect(page.locator('.selection-menu button', { hasText: '解释' })).toBeVisible()`
+- **脚本入口**：`package.json` 追加 `"test:e2e": "pnpm run build && playwright test"`；CI 范围之外，本地可手动执行
+- **.gitignore**：追加 `playwright-report/`、`test-results/`（Playwright 默认输出目录）
+
+#### 4.7.3 验证顺序
+
+1. 先把 Playwright 框架与用例落到 main 分支（用例预期失败，证明能复现）
+2. 应用代码修复
+3. 重新跑 e2e，用例转绿
+4. 跑既有 `pnpm test`，确保单测无回归
+
+## 5. 待确认问题
 
 - 暂无
 
-## 任务清单
+## 6. 任务清单
 
 - [x] 修改 `.claude/skills/yorz-spec/SKILL.md`：在「Markdown 格式化约定」追加二、三级标题层级编号规则（`## N. 标题` / `### N.M 标题`），验收点：手工读 skill 文档可见新规则且与既有条目格式一致
 - [x] 在 `src/service/agent-config.ts` 新增 `resolveAgentCmd({ cwd })`：读取 `<cwd>/.yorz/config.json` 的 `agent` 字段（默认 `claude`），返回 `{ cmd, args: (prompt) => string[] }`；当前仅实现 claude（`['-p', prompt]`）与 opencode（同 `['-p', prompt]` 占位），验收点：新建 `tests/agent-config.test.ts` 覆盖缺省、显式 claude、显式 opencode、非法值兜底 claude 共 4 个用例通过
@@ -322,8 +375,13 @@ subscribeSpec(id, {
 - [x] 修改 `src/gui/src/pages/Home.tsx`（如需）与样式 `src/gui/src/styles.css`：列表项 summary/标题为空时显示「（待 Agent 补全）」占位；新增浮动菜单/popover/抽屉/运行按钮/执行日志相关 CSS（暗色模式兼容）；验收点：手测各组件视觉无破坏、暗色模式可读
 - [x] 运行 `pnpm test` 全部通过；运行 `pnpm build` 产出 `dist/cli/index.js` + `dist/gui/index.html` + `dist/gui/assets/*` + `dist/skill/SKILL.md`；启动 `node dist/cli/index.js serve --port 17424`，手动验证「测试策略 GUI 手测清单」全部 5 项通过
 - [x] 运行 `npx prettier --write` 对所有改动文件做格式化，确认无未提交格式差异
+- [ ] Bug 1 / 任务 19：修复 `src/gui/src/pages/SpecDetail.tsx` 中 `articleRef` 非响应式导致 `observeSelection` 永不挂载的缺陷：将 `let articleRef` 改为 `const [articleEl, setArticleEl] = createSignal<HTMLElement | null>(null)`；JSX 的 `ref={articleRef}` 改为 `ref={setArticleEl}`；`createEffect` 中读取 `articleEl()` 触发响应式依赖；验收点：`pnpm build:gui` 通过；启动服务后在 SpecDetail 拖选文本能看到浮动菜单
+- [ ] Bug 1 / 任务 20：新增 Playwright 工程脚手架——`pnpm add -D @playwright/test`；根目录新增 `playwright.config.ts`（仅 chromium、`testDir: src/gui/src/__e2e__`、`webServer` 用 `node dist/cli/index.js serve --port 17430 --cwd <YORZ_E2E_CWD>`、baseURL `http://localhost:17430/`、globalSetup/globalTeardown 指向 `src/gui/src/__e2e__/fixtures/setup.ts`）；setup 在系统 tmp 下生成 `.yorz/specs/260616.feat.e2e-seed/spec.md` 种子（plan stage、首段含可选文本）并通过环境变量 `YORZ_E2E_CWD` 透传；验收点：`pnpm exec playwright --version` 可用、`playwright.config.ts` 加载无错
+- [ ] Bug 1 / 任务 21：新增 `src/gui/src/__e2e__/selection-menu.spec.ts`：测试 `page.goto('/specs/260616.feat.e2e-seed')` → 等 article 渲染 → `page.evaluate` 构造 Range 选中首段子串 → `addRange` 并 dispatch `selectionchange` → 断言 `.selection-menu` 可见且含「批注」「解释」按钮；验收点：在仅有修复时通过；如手动还原 SpecDetail 的 `articleRef` 为 `let`，该用例应失败（人工验证一次即可，不入仓）
+- [ ] Bug 1 / 任务 22：`package.json` 追加 `"test:e2e": "pnpm run build && playwright test"`；`.gitignore` 追加 `playwright-report/` 与 `test-results/`；README 或 docs 不强制更新（首次落地无需文档化）；验收点：`pnpm run build && pnpm exec playwright install chromium && pnpm test:e2e` 全绿
+- [ ] Bug 1 / 任务 23：`pnpm test` 单测维持全绿；执行 `npx prettier --write` 覆盖新增/修改文件；更新 7 执行记录与 8 bugs 状态
 
-## 执行记录
+## 7. 执行记录
 
 - 2026-06-16 任务 1：在 `src/skill/SKILL.md` 与 `.claude/skills/yorz-spec/SKILL.md` 的「Markdown 格式化约定」一节追加二、三级标题层级编号规则（`## N. 标题` / `### N.M 标题`，含已编号重排、复位、不影响 frontmatter/一级标题）；prettier 格式化通过；两份文件 diff 为空
 - 2026-06-16 任务 2：新增 `src/service/agent-config.ts`（`resolveAgentCmd` 读取 `.yorz/config.json` 的 `agent` 字段，默认/未知值兜底 claude；额外暴露 `YORZ_AGENT_CMD` 环境变量钩子供测试切换二进制路径）；`tests/agent-config.test.ts` 5 个用例（默认 / claude / opencode / 非法值兜底 / env override）全部通过
@@ -343,3 +401,9 @@ subscribeSpec(id, {
 - 2026-06-16 任务 16：`src/gui/src/pages/Home.tsx` 列表项 title/summary 空时回退「（待 Agent 补全）」；`src/gui/src/styles.css` 追加 selection-menu / annotate-popover / explain-drawer / run-btn / run-log 五组样式，含移动端 max-width 720px 媒体查询切换抽屉布局；暗色模式沿用现有 CSS 变量
 - 2026-06-16 任务 17：`pnpm test` 6 个测试文件 40 个用例 0 失败；`pnpm build` 产出 `dist/cli/index.js`（40.29 kB） + `dist/gui/index.html` + `dist/gui/assets/index-*.js`（155.08 kB）/ `index-*.css`（8.14 kB） + `dist/skill/SKILL.md`；启动 `node dist/cli/index.js serve --port 17424`：`curl /` 返回 GUI HTML、`POST /api/specs {type,requirement}` 占位字段创建成功、`POST /api/specs/:id/inputs annotate` 写入 `> 1. 背景 中 "..."\n>\n> ！！！...` 并切回 plan、`GET /api/specs/:id` frontmatter `last_action: 用户新增批注 ！！！` 正确
 - 2026-06-16 任务 18：`npx prettier --write` 覆盖 `src/**/*.{ts,tsx,md,css}` + `tests/**/*.ts`，14 文件被规整为统一缩进/换行；spec md 自身已按 frontmatter 规范保留
+
+## 8. bugs
+
+- [x] Bug 1（2026-06-16）：选中文本不弹出浮动菜单
+  - 原始要求：分析原因并修复；添加 Playwright e2e 测试用例，放到源码目录 `__e2e__` 目录下
+  - RCA 与修复方案见 3.5 / 4.7；任务挂在 6 任务清单尾部

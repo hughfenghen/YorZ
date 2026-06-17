@@ -17,6 +17,7 @@
     "dev": "vite build --watch",
     "dev:gui": "vite --config vite.gui.config.ts",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "format": "prettier --write \"src/**/*.{ts,tsx,md,css}\""
   },
   "dependencies": {
@@ -27,6 +28,7 @@
     "hono": "^4.12.25"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.0",
     "@solidjs/router": "^0.16.1",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.10.0",

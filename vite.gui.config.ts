@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 
 export default defineConfig({
   root: resolve(__dirname, 'src/gui'),
-  base: './',
+  base: '/',
   plugins: [solid()],
   build: {
     outDir: resolve(__dirname, 'dist/gui'),
