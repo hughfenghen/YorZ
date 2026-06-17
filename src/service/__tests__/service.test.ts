@@ -54,19 +54,64 @@ describe('YorZ Service HTTP', () => {
     expect(detail.body).toContain('requirement body')
   })
 
-  it('accepts create with only type + requirement (placeholders filled)', async () => {
-    const { url } = await startInTmp()
+  it('POST /api/specs with only type + requirement returns a draft runId (Agent-created)', async () => {
+    const { url } = await startInTmp({ fakeAgent: true })
     const res = await fetch(`${url}api/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ type: 'feat', requirement: '加上手机号登录支持' }),
     })
-    expect(res.status).toBe(201)
-    const { id } = (await res.json()) as { id: string }
-    const detail = await (await fetch(`${url}api/specs/${id}`)).json()
-    expect((detail as { frontmatter: { summary: string } }).frontmatter.summary).toBe(
-      '加上手机号登录支持',
+    expect(res.status).toBe(202)
+    const body = (await res.json()) as { runId?: string; draft?: boolean }
+    expect(body.draft).toBe(true)
+    expect(body.runId).toBeTruthy()
+  })
+
+  it('GET /api/runs/:runId/events streams stdout for a draft run', async () => {
+    const { url } = await startInTmp({ fakeAgent: true })
+    const created = await fetch(`${url}api/specs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'feat', requirement: '加上手机号登录支持' }),
+    })
+    expect(created.status).toBe(202)
+    const { runId } = (await created.json()) as { runId: string }
+
+    const sseRes = await fetch(`${url}api/runs/${runId}/events`, {
+      headers: { accept: 'text/event-stream' },
+    })
+    expect(sseRes.body).not.toBeNull()
+    const reader = sseRes.body!.getReader()
+    const decoder = new TextDecoder()
+    const stdout = await readUntil(reader, decoder, (t) => t.includes('event: agent-stdout'), 4000)
+    expect(stdout).toContain('received prompt')
+    await reader.cancel()
+  })
+
+  it('GET /api/events/specs emits list-updated when a new spec lands externally', async () => {
+    const { url, cwd } = await startInTmp()
+    const sseRes = await fetch(`${url}api/events/specs`, {
+      headers: { accept: 'text/event-stream' },
+    })
+    const reader = sseRes.body!.getReader()
+    const decoder = new TextDecoder()
+    await readUntil(reader, decoder, (t) => t.includes('event: ready'))
+
+    // Self-writes via the SpecStore are suppressed by the watcher's echo guard;
+    // simulate the real flow (Agent writes the file directly) by using fs.
+    await new Promise((r) => setTimeout(r, 200))
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    const dir = join(cwd, '.yorz', 'specs', '260614.feat.external')
+    await mkdir(dir, { recursive: true })
+    await writeFile(
+      join(dir, 'spec.md'),
+      ['---', 'stage: plan', 'last_action: ext', 'updated_at: 2026-06-14', 'summary: ext', '---', '', '# Ext', ''].join('\n'),
+      'utf8',
     )
+
+    const evt = await readUntil(reader, decoder, (t) => t.includes('event: list-updated'), 4000)
+    expect(evt).toContain('list-updated')
+    await reader.cancel()
   })
 
   it('POST /api/specs/:id/inputs annotate writes ！！！ block and resets stage', async () => {

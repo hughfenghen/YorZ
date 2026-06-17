@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { Hono } from 'hono'
 import { SpecStore, type SpecType } from '../spec-store.js'
 import type { AgentRunner } from '../agent.js'
@@ -24,6 +25,16 @@ export function createSpecsRoutes(deps: Deps): Hono {
     }
     const input = parseCreateBody(body)
     if ('error' in input) return c.json({ error: input.error }, 400)
+    // Draft mode: caller only supplies type + requirement -> delegate creation
+    // (filename / summary / skeleton) to the Agent via yorz-spec skill so the
+    // id is derived from a real understanding of the requirement instead of a
+    // dumb kebab() of CJK text.
+    if (!input.title && input.requirement) {
+      const prompt = buildDraftPrompt(input.type, input.requirement)
+      const draftSpecId = `__draft__-${cryptoRandomId()}`
+      const handle = deps.runner.run({ specId: draftSpecId, mode: 'skill-run', prompt })
+      return c.json({ runId: handle.id, draft: true }, 202)
+    }
     try {
       const { id, path } = await deps.store.create(input)
       return c.json({ id, path }, 201)
@@ -93,6 +104,27 @@ export function createSpecsRoutes(deps: Deps): Hono {
   })
 
   return app
+}
+
+function buildDraftPrompt(type: SpecType, requirement: string): string {
+  return [
+    '请按 yorz-spec skill 的「新建 spec」流程，根据下方信息创建新的 spec 文档，并立即按 plan 阶段继续推进直至阻塞。',
+    '',
+    `类型：${type}（已由调用方指定，不要再询问）`,
+    '需求：',
+    '"""',
+    requirement.trim(),
+    '"""',
+    '',
+    '硬性要求：',
+    `- 生成 kebab-case summary-name 时只使用对需求有语义代表性的英文/数字字符；如难以从中文中提炼出可读 slug，请直接使用 \`untitled-\` + 3 位日期内自增编号占位，禁止把中文挤压为零散英文片段（例如禁止出现 \`spec-agent-spec-agent\` 之类的拼接）。`,
+    '- frontmatter.summary 必须是对需求的真实概述（≤200 字符），不要原样照搬整段需求。',
+    '- 完成 spec 文件初始化后立即进入 plan 阶段，按 SKILL 规则补齐 `现状分析` / `技术实现方案` / `待确认问题`，再视需要进入 tasks/execute。',
+  ].join('\n')
+}
+
+function cryptoRandomId(): string {
+  return randomUUID().slice(0, 8)
 }
 
 type CreateInput = {

@@ -52,11 +52,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   listSpecs: () => request<SpecListItem[]>('/api/specs'),
   getSpec: (id: string) => request<SpecDetail>(`/api/specs/${encodeURIComponent(id)}`),
-  createSpec: (body: CreateSpecBody) =>
-    request<{ id: string; path: string }>('/api/specs', {
+  createSpec: (
+    body: CreateSpecBody,
+  ): Promise<
+    { id: string; path: string; draft?: false } | { runId: string; draft: true }
+  > =>
+    fetch('/api/specs', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
+    }).then(async (res) => {
+      if (!res.ok) {
+        let detail = ''
+        try {
+          const j = (await res.json()) as { error?: string }
+          detail = j.error ?? ''
+        } catch {
+          detail = await res.text()
+        }
+        throw new Error(`${res.status} ${detail || res.statusText}`)
+      }
+      return res.json()
     }),
   appendAnnotation: (id: string, body: AnnotationBody) =>
     request<{ ok: true }>(`/api/specs/${encodeURIComponent(id)}/inputs`, {

@@ -19,7 +19,11 @@ export interface ResolveAgentCmdOptions {
 const BUILTIN: Record<AgentName, AgentCmd> = {
   claude: {
     cmd: 'claude',
-    args: (prompt) => ['-p', prompt],
+    // `--permission-mode bypassPermissions`：service 拉起 Agent 是后台无人值守
+    // 场景，需要它自由完成读写/执行验证命令；-p 非交互模式默认权限会阻塞写
+    // 文件与跑命令（典型表现："权限模式阻止了新建目录与文件"）。Agent 工作目
+    // 录始终被锁定在项目根，落点也始终在 .yorz/specs/。
+    args: (prompt) => ['--permission-mode', 'bypassPermissions', '-p', prompt],
   },
   opencode: {
     cmd: 'opencode',

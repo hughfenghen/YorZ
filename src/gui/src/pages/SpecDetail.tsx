@@ -7,10 +7,10 @@ import {
   onCleanup,
   type Component,
 } from 'solid-js'
-import { useParams } from '@solidjs/router'
+import { useParams, useSearchParams } from '@solidjs/router'
 import { api } from '../lib/api.js'
 import { renderMarkdown } from '../lib/markdown.js'
-import { subscribeSpec } from '../lib/sse.js'
+import { subscribeSpec, subscribeRun } from '../lib/sse.js'
 import { observeSelection, type SelectionSnapshot } from '../lib/selection.js'
 import { SelectionMenu } from '../components/SelectionMenu.jsx'
 import { AnnotatePopover } from '../components/AnnotatePopover.jsx'
@@ -20,6 +20,7 @@ type RunStatus = 'idle' | 'running' | 'done' | 'failed'
 
 export const SpecDetail: Component = () => {
   const params = useParams<{ id: string }>()
+  const [search] = useSearchParams<{ runId?: string }>()
   const [refreshTick, setRefreshTick] = createSignal(0)
   const [spec, { refetch }] = createResource(
     () => [params.id, refreshTick()] as const,
@@ -73,6 +74,31 @@ export const SpecDetail: Component = () => {
         } else if (e.mode === 'explain' && e.runId === explainRunId()) {
           setExplainStatus('failed')
         }
+      },
+    })
+    onCleanup(unsub)
+  })
+
+  // If we arrived from NewSpec, the draft run that just authored this spec is
+  // streaming via /runs/<runId>/events. Attach to it so the user sees Agent
+  // output continue (per-spec stream uses a different specId for draft runs).
+  createEffect(() => {
+    const rid = search.runId
+    if (!rid) return
+    setRunId((current) => current ?? rid)
+    setRunStatus('running')
+    setLogOpen(true)
+    const unsub = subscribeRun(rid, {
+      onAgentStdout: (e) => {
+        setLog((s) => s + e.chunk)
+        setRunStatus('running')
+      },
+      onAgentExit: (e) => {
+        setRunStatus(e.code === 0 ? 'done' : 'failed')
+      },
+      onAgentError: (e) => {
+        setRunError(e.message)
+        setRunStatus('failed')
       },
     })
     onCleanup(unsub)

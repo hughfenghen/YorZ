@@ -202,11 +202,20 @@ function formatDate(d: Date): string {
 }
 
 function kebab(text: string): string {
-  const slug = text
-    .toLowerCase()
+  const lower = text.toLowerCase()
+  // Defensive: when the source is mostly non-ASCII (e.g. a Chinese requirement),
+  // skip kebab-fication. Otherwise we get garbage like "spec-agent-spec-agent-ag"
+  // assembled from English tokens that happened to appear inside the CJK prose.
+  const noSpace = lower.replace(/\s+/g, '')
+  const asciiAlphaNum = (noSpace.match(/[a-z0-9]/g) ?? []).length
+  const ratio = noSpace.length ? asciiAlphaNum / noSpace.length : 0
+  if (ratio < 0.5) return 'untitled'
+
+  const slug = lower
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
+    .replace(/-+$/, '')
   if (!slug || /^[0-9]/.test(slug)) return `spec-${slug || Date.now()}`
   return slug
 }

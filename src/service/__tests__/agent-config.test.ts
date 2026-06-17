@@ -18,7 +18,7 @@ describe('resolveAgentCmd', () => {
     const cwd = await tempCwd()
     const result = resolveAgentCmd({ cwd, env: {} })
     expect(result.cmd).toBe('claude')
-    expect(result.args('hello')).toEqual(['-p', 'hello'])
+    expect(result.args('hello')).toEqual(['--permission-mode', 'bypassPermissions', '-p', 'hello'])
   })
 
   it('picks claude when config sets agent=claude', async () => {
