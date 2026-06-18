@@ -7,6 +7,7 @@ const REPO_ROOT = resolve(__dirname, '..', '..', '..', '..', '..')
 
 export const E2E_CWD = join(REPO_ROOT, '.tmp-e2e')
 export const SPEC_ID = '260616.feat.e2e-seed'
+export const QUESTIONS_SPEC_ID = '260618.feat.e2e-questions'
 
 const SEED_SPEC = `---
 stage: plan
@@ -28,11 +29,36 @@ summary: Playwright e2e 用于验证选择浮动菜单
 选择菜单浮窗在选区附近弹出，应包含批注与解释两个按钮。
 `
 
+const QUESTIONS_SPEC = `---
+stage: plan
+last_action: e2e 种子 spec
+updated_at: 2026-06-18
+summary: Playwright e2e 用于验证待确认问题确认面板
+---
+
+# E2E 待确认问题
+
+## 1. 背景
+
+用于 Playwright e2e 测试的待确认问题确认面板种子文档。
+
+## 2. 待确认问题
+
+- 候选答案的展现形式应采用哪种？
+  - 嵌套子列表
+  - 表格 (推荐)
+  - 自定义 YAML 块
+`
+
 function seed(): void {
-  const dir = join(E2E_CWD, '.yorz', 'specs', SPEC_ID)
   rmSync(E2E_CWD, { recursive: true, force: true })
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'spec.md'), SEED_SPEC, 'utf8')
+  const baseDir = join(E2E_CWD, '.yorz', 'specs', SPEC_ID)
+  mkdirSync(baseDir, { recursive: true })
+  writeFileSync(join(baseDir, 'spec.md'), SEED_SPEC, 'utf8')
+
+  const qDir = join(E2E_CWD, '.yorz', 'specs', QUESTIONS_SPEC_ID)
+  mkdirSync(qDir, { recursive: true })
+  writeFileSync(join(qDir, 'spec.md'), QUESTIONS_SPEC, 'utf8')
 }
 
 export default async function globalSetup(): Promise<void> {

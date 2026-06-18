@@ -2,19 +2,22 @@ import {
   Show,
   Suspense,
   createEffect,
+  createMemo,
   createResource,
   createSignal,
   onCleanup,
   type Component,
 } from 'solid-js'
 import { useParams, useSearchParams } from '@solidjs/router'
-import { api } from '../lib/api.js'
+import { api, type QuestionAnswersBody } from '../lib/api.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { subscribeSpec } from '../lib/sse.js'
 import { agentTasks } from '../lib/agent-tasks.js'
 import { observeSelection, type SelectionSnapshot } from '../lib/selection.js'
+import { parseConfirmQuestions } from '../lib/question-parse.js'
 import { SelectionMenu } from '../components/SelectionMenu.jsx'
 import { AnnotatePopover } from '../components/AnnotatePopover.jsx'
+import { QuestionConfirmPanel, type FreeformDraft } from '../components/QuestionConfirmPanel.jsx'
 
 export const SpecDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -30,6 +33,20 @@ export const SpecDetail: Component = () => {
   const [popoverSnap, setPopoverSnap] = createSignal<SelectionSnapshot | null>(null)
   const [runError, setRunError] = createSignal<string | null>(null)
   const [articleEl, setArticleEl] = createSignal<HTMLElement | null>(null)
+  const [freeforms, setFreeforms] = createSignal<FreeformDraft[]>([])
+
+  const questions = createMemo(() => {
+    const s = spec()
+    if (!s) return []
+    return parseConfirmQuestions(s.body)
+  })
+
+  const showPanel = createMemo(() => {
+    const s = spec()
+    if (!s) return false
+    if (s.frontmatter.stage !== 'plan') return false
+    return questions().length > 0 || freeforms().length > 0
+  })
 
   createEffect(() => {
     const id = params.id
@@ -88,11 +105,34 @@ export const SpecDetail: Component = () => {
   async function submitAnnotate(note: string) {
     const s = popoverSnap()
     if (!s) return
+    const stage = spec()?.frontmatter.stage
+    if (stage === 'plan') {
+      setFreeforms((prev) => [
+        ...prev,
+        {
+          id: `f-${Date.now()}-${prev.length}`,
+          sectionPath: s.sectionPath,
+          quote: s.text,
+          note,
+        },
+      ])
+      return
+    }
     await api.appendAnnotation(params.id, {
       sectionPath: s.sectionPath,
       quote: s.text,
       note,
     })
+  }
+
+  function removeFreeform(id: string) {
+    setFreeforms((prev) => prev.filter((f) => f.id !== id))
+  }
+
+  async function submitAnswers(payload: QuestionAnswersBody) {
+    await api.submitQuestionAnswers(params.id, payload)
+    setFreeforms([])
+    await runAgent()
   }
 
   async function openExplain(s: SelectionSnapshot) {
@@ -157,6 +197,14 @@ export const SpecDetail: Component = () => {
                   onCancel={() => setPopoverOpen(false)}
                   onSubmit={submitAnnotate}
                 />
+                <Show when={showPanel()}>
+                  <QuestionConfirmPanel
+                    questions={questions()}
+                    freeforms={freeforms()}
+                    onRemoveFreeform={removeFreeform}
+                    onSubmit={submitAnswers}
+                  />
+                </Show>
               </>
             )
           }}

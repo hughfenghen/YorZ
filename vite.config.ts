@@ -9,7 +9,7 @@ export default defineConfig({
   build: {
     target: 'node20',
     outDir: 'dist',
-    emptyOutDir: true,
+    emptyOutDir: false,
     minify: false,
     sourcemap: false,
     lib: {
@@ -41,10 +41,7 @@ export default defineConfig({
         await chmod(outFile, 0o755)
         const skillDir = resolve(__dirname, 'dist/skill')
         await mkdir(skillDir, { recursive: true })
-        await copyFile(
-          resolve(__dirname, 'src/skill/SKILL.md'),
-          resolve(skillDir, 'SKILL.md'),
-        )
+        await copyFile(resolve(__dirname, 'src/skill/SKILL.md'), resolve(skillDir, 'SKILL.md'))
       },
     },
   ],

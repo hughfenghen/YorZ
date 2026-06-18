@@ -66,6 +66,25 @@ export function createSpecsRoutes(deps: Deps): Hono {
     }
   })
 
+  app.post('/specs/:id/questions/answers', async (c) => {
+    let body: unknown
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400)
+    }
+    const parsed = parseQuestionAnswersBody(body)
+    if ('error' in parsed) return c.json({ error: parsed.error }, 400)
+    try {
+      await deps.store.applyQuestionAnswers(c.req.param('id'), parsed)
+      return c.json({ ok: true })
+    } catch (err) {
+      const msg = (err as Error).message
+      const status = /spec not found/.test(msg) ? 404 : 400
+      return c.json({ error: msg }, status)
+    }
+  })
+
   app.post('/specs/:id/run', async (c) => {
     const specId = c.req.param('id')
     const detail = await deps.store.read(specId)
@@ -154,6 +173,70 @@ interface AnnotateInput {
   sectionPath: string
   quote: string
   note: string
+}
+
+interface QuestionAnswersInput {
+  answers: Array<{
+    questionId?: string
+    questionText: string
+    selectedOptionLabel?: string
+    note?: string
+  }>
+  freeformAnnotations: Array<{ sectionPath: string; quote: string; note: string }>
+}
+
+function parseQuestionAnswersBody(body: unknown): QuestionAnswersInput | { error: string } {
+  if (!body || typeof body !== 'object') return { error: 'body must be an object' }
+  const obj = body as Record<string, unknown>
+  const rawAnswers = obj.answers
+  const rawFreeforms = obj.freeformAnnotations
+  if (rawAnswers !== undefined && !Array.isArray(rawAnswers)) {
+    return { error: 'answers must be an array' }
+  }
+  if (rawFreeforms !== undefined && !Array.isArray(rawFreeforms)) {
+    return { error: 'freeformAnnotations must be an array' }
+  }
+  const answers: QuestionAnswersInput['answers'] = []
+  for (const a of (rawAnswers ?? []) as unknown[]) {
+    if (!a || typeof a !== 'object') return { error: 'answer must be an object' }
+    const ao = a as Record<string, unknown>
+    if (typeof ao.questionText !== 'string' || !ao.questionText.trim()) {
+      return { error: 'answer.questionText required' }
+    }
+    const item: QuestionAnswersInput['answers'][number] = { questionText: ao.questionText }
+    if (typeof ao.questionId === 'string') item.questionId = ao.questionId
+    if (typeof ao.selectedOptionLabel === 'string' && ao.selectedOptionLabel.trim()) {
+      item.selectedOptionLabel = ao.selectedOptionLabel
+    }
+    if (typeof ao.note === 'string' && ao.note.trim()) item.note = ao.note
+    if (!item.selectedOptionLabel && !item.note) {
+      return { error: 'answer requires selectedOptionLabel or note' }
+    }
+    answers.push(item)
+  }
+  const freeformAnnotations: QuestionAnswersInput['freeformAnnotations'] = []
+  for (const f of (rawFreeforms ?? []) as unknown[]) {
+    if (!f || typeof f !== 'object') return { error: 'freeformAnnotation must be an object' }
+    const fo = f as Record<string, unknown>
+    if (typeof fo.sectionPath !== 'string' || !fo.sectionPath.trim()) {
+      return { error: 'freeformAnnotation.sectionPath required' }
+    }
+    if (typeof fo.quote !== 'string' || !fo.quote.trim()) {
+      return { error: 'freeformAnnotation.quote required' }
+    }
+    if (typeof fo.note !== 'string' || !fo.note.trim()) {
+      return { error: 'freeformAnnotation.note required' }
+    }
+    freeformAnnotations.push({
+      sectionPath: fo.sectionPath,
+      quote: fo.quote,
+      note: fo.note,
+    })
+  }
+  if (answers.length === 0 && freeformAnnotations.length === 0) {
+    return { error: 'answers or freeformAnnotations required' }
+  }
+  return { answers, freeformAnnotations }
 }
 
 function parseAnnotateBody(body: unknown): AnnotateInput | { error: string } {

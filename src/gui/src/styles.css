@@ -516,12 +516,175 @@ button:disabled {
   white-space: pre-wrap;
 }
 
+/* === Question confirm panel (right-side floating cards) === */
+
+.question-confirm-panel {
+  position: fixed;
+  top: 5rem;
+  right: 1rem;
+  width: min(360px, calc(100vw - 2rem));
+  max-height: calc(100vh - 7rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  z-index: 40;
+  overflow: hidden;
+}
+
+.qcp-head {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.qcp-head > strong {
+  font-weight: 600;
+}
+
+.qcp-count {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.qcp-head-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.qcp-head-actions button {
+  min-height: 36px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.85rem;
+  flex: 1;
+}
+
+.qcp-error {
+  margin: 0.4rem 0.75rem 0;
+}
+
+.qcp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow: auto;
+}
+
+.qcp-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 0.55rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.qcp-card-freeform {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+}
+
+.qcp-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.qcp-question {
+  margin: 0;
+  font-weight: 500;
+  font-size: 0.95em;
+}
+
+.qcp-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.qcp-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  cursor: pointer;
+  font-size: 0.92em;
+  padding: 0.2rem 0.3rem;
+  border-radius: 6px;
+}
+
+.qcp-option:hover {
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+
+.qcp-recommended {
+  color: var(--accent);
+  font-style: normal;
+  font-size: 0.85em;
+}
+
+.qcp-note {
+  font: inherit;
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+  font-size: 0.9em;
+  min-height: 40px;
+}
+
+.qcp-quote {
+  margin: 0;
+  background: var(--surface);
+  border-left: 3px solid var(--border);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.qcp-freeform-note {
+  margin: 0;
+  font-size: 0.9em;
+  white-space: pre-wrap;
+}
+
+.qcp-remove {
+  font: inherit;
+  min-height: auto;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  padding: 0 0.4rem;
+  cursor: pointer;
+  font-size: 1.1em;
+}
+
+.qcp-remove:hover {
+  color: var(--error);
+}
+
 /* === Agent task dock (right-bottom floating panel) === */
 .agent-dock {
   position: fixed;
   right: 1rem;
   bottom: 1rem;
-  width: min(420px, calc(100vw - 2rem));
+  width: min(max(50vw, 600px), calc(100vw - 2rem));
   max-height: calc(100vh - 2rem);
   display: flex;
   flex-direction: column;
@@ -609,6 +772,8 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  max-height: 100vh;
+  overflow: hidden;
 }
 
 .agent-task-streaming {
@@ -717,9 +882,11 @@ button:disabled {
   padding: 0.5rem 0.6rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.8em;
-  max-height: 220px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 .agent-task-error {

@@ -34,6 +34,18 @@ export interface AnnotationBody {
   note: string
 }
 
+export interface QuestionAnswerBody {
+  questionId?: string
+  questionText: string
+  selectedOptionLabel?: string
+  note?: string
+}
+
+export interface QuestionAnswersBody {
+  answers: QuestionAnswerBody[]
+  freeformAnnotations: AnnotationBody[]
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init)
   if (!res.ok) {
@@ -54,9 +66,7 @@ export const api = {
   getSpec: (id: string) => request<SpecDetail>(`/api/specs/${encodeURIComponent(id)}`),
   createSpec: (
     body: CreateSpecBody,
-  ): Promise<
-    { id: string; path: string; draft?: false } | { runId: string; draft: true }
-  > =>
+  ): Promise<{ id: string; path: string; draft?: false } | { runId: string; draft: true }> =>
     fetch('/api/specs', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -79,6 +89,12 @@ export const api = {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ kind: 'annotate', ...body }),
+    }),
+  submitQuestionAnswers: (id: string, body: QuestionAnswersBody) =>
+    request<{ ok: true }>(`/api/specs/${encodeURIComponent(id)}/questions/answers`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
     }),
   runAgent: (id: string) =>
     request<{ runId: string }>(`/api/specs/${encodeURIComponent(id)}/run`, {

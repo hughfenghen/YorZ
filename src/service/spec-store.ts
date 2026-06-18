@@ -41,6 +41,18 @@ export interface AnnotationInput {
   note: string
 }
 
+export interface QuestionAnswerInput {
+  questionId?: string
+  questionText: string
+  selectedOptionLabel?: string
+  note?: string
+}
+
+export interface QuestionAnswersPayload {
+  answers: QuestionAnswerInput[]
+  freeformAnnotations: AnnotationInput[]
+}
+
 export interface SpecStoreOptions {
   cwd: string
   /** Hook for echo suppression on writes. */
@@ -133,6 +145,48 @@ export class SpecStore {
     )
     await this.write(filePath, content)
     return { id, path: filePath }
+  }
+
+  async applyQuestionAnswers(id: string, payload: QuestionAnswersPayload): Promise<void> {
+    const filePath = this.specPath(id)
+    if (!existsSync(filePath)) throw new Error(`spec not found: ${id}`)
+    const answers = payload.answers ?? []
+    const freeforms = payload.freeformAnnotations ?? []
+    if (answers.length === 0 && freeforms.length === 0) {
+      throw new Error('answers or freeformAnnotations required')
+    }
+    const blocks: string[] = []
+    for (const a of answers) {
+      const text = a.questionText?.trim()
+      if (!text) throw new Error('questionText required')
+      const choice = a.selectedOptionLabel?.trim() ?? ''
+      const note = a.note?.trim() ?? ''
+      if (!choice && !note) throw new Error('selectedOptionLabel or note required')
+      const reply = [choice ? `选择：${choice}` : '', note ? `备注：${note}` : '']
+        .filter(Boolean)
+        .join('；')
+      blocks.push(`> 待确认问题："${text}"\n>\n> ！！！${reply}`)
+    }
+    for (const f of freeforms) {
+      const sectionPath = f.sectionPath.trim() || '(无章节)'
+      const quote = f.quote.trim().slice(0, 200)
+      const note = f.note.trim()
+      if (!quote) throw new Error('quote required')
+      if (!note) throw new Error('note required')
+      blocks.push(`> ${sectionPath} 中 "${quote}"\n>\n> ！！！${note}`)
+    }
+    const raw = await readFile(filePath, 'utf8')
+    const parsed = matter(raw)
+    const existing = normalizeFrontmatter(parsed.data)
+    const fm: SpecFrontmatter = {
+      stage: 'plan',
+      last_action: '用户批量答复待确认问题',
+      updated_at: this.today(),
+      summary: existing.summary,
+    }
+    const merged = mergeUserAnnotations(parsed.content, blocks)
+    const next = serializeSpec(fm, merged)
+    await this.write(filePath, next)
   }
 
   async appendAnnotation(id: string, input: AnnotationInput): Promise<void> {
@@ -242,6 +296,26 @@ function dateString(value: unknown): string {
   if (value instanceof Date) return formatDate(value)
   if (typeof value === 'string') return value
   return ''
+}
+
+const USER_ANNOTATION_HEADING_RE = /^##\s+(?:\d+(?:\.\d+)*\s+)?用户批注\s*$/m
+
+function mergeUserAnnotations(content: string, blocks: string[]): string {
+  const body = content.replace(/^\n+/, '').replace(/\n+$/, '')
+  const heading = '## 用户批注'
+  const joined = blocks.join('\n\n')
+  const match = USER_ANNOTATION_HEADING_RE.exec(body)
+  if (!match) {
+    return `${body}\n\n${heading}\n\n${joined}\n`
+  }
+  const headingStart = match.index
+  // find next H2 after this heading
+  const after = body.slice(headingStart + match[0].length)
+  const nextH2 = /\n##\s+/.exec(after)
+  const sectionEnd = nextH2 ? headingStart + match[0].length + nextH2.index : body.length
+  const before = body.slice(0, sectionEnd).replace(/\n+$/, '')
+  const tail = body.slice(sectionEnd)
+  return `${before}\n\n${joined}${tail ? `\n${tail}` : '\n'}`
 }
 
 function serializeSpec(fm: SpecFrontmatter, body: string): string {
