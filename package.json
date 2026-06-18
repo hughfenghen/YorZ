@@ -14,7 +14,9 @@
     "build": "pnpm run build:cli && pnpm run build:gui",
     "build:cli": "vite build",
     "build:gui": "vite build --config vite.gui.config.ts",
-    "dev": "vite build --watch",
+    "dev": "pnpm run build && concurrently -k -n cli,gui,serve \"vite build --watch\" \"vite build --config vite.gui.config.ts --watch\" \"node dist/cli/index.js serve\"",
+    "dev:cli": "vite build --watch",
+    "dev:gui-build": "vite build --config vite.gui.config.ts --watch",
     "dev:gui": "vite --config vite.gui.config.ts",
     "test": "vitest run",
     "test:e2e": "playwright test",
@@ -30,6 +32,7 @@
   "devDependencies": {
     "@playwright/test": "^1.61.0",
     "@solidjs/router": "^0.16.1",
+    "concurrently": "^9.1.0",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.10.0",
     "markdown-it": "^14.2.0",

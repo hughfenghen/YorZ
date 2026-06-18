@@ -10,19 +10,17 @@ import {
 import { useParams, useSearchParams } from '@solidjs/router'
 import { api } from '../lib/api.js'
 import { renderMarkdown } from '../lib/markdown.js'
-import { subscribeSpec, subscribeRun } from '../lib/sse.js'
+import { subscribeSpec } from '../lib/sse.js'
+import { agentTasks } from '../lib/agent-tasks.js'
 import { observeSelection, type SelectionSnapshot } from '../lib/selection.js'
 import { SelectionMenu } from '../components/SelectionMenu.jsx'
 import { AnnotatePopover } from '../components/AnnotatePopover.jsx'
-import { ExplainDrawer } from '../components/ExplainDrawer.jsx'
-
-type RunStatus = 'idle' | 'running' | 'done' | 'failed'
 
 export const SpecDetail: Component = () => {
   const params = useParams<{ id: string }>()
-  const [search] = useSearchParams<{ runId?: string }>()
+  const [search, setSearch] = useSearchParams<{ runId?: string }>()
   const [refreshTick, setRefreshTick] = createSignal(0)
-  const [spec, { refetch }] = createResource(
+  const [spec] = createResource(
     () => [params.id, refreshTick()] as const,
     async ([id]) => api.getSpec(id),
   )
@@ -30,20 +28,7 @@ export const SpecDetail: Component = () => {
   const [snap, setSnap] = createSignal<SelectionSnapshot | null>(null)
   const [popoverOpen, setPopoverOpen] = createSignal(false)
   const [popoverSnap, setPopoverSnap] = createSignal<SelectionSnapshot | null>(null)
-
-  const [runStatus, setRunStatus] = createSignal<RunStatus>('idle')
   const [runError, setRunError] = createSignal<string | null>(null)
-  const [runId, setRunId] = createSignal<string | null>(null)
-  const [logOpen, setLogOpen] = createSignal(false)
-  const [log, setLog] = createSignal('')
-
-  const [explainOpen, setExplainOpen] = createSignal(false)
-  const [explainStatus, setExplainStatus] = createSignal<
-    'pending' | 'streaming' | 'done' | 'failed'
-  >('pending')
-  const [explainText, setExplainText] = createSignal('')
-  const [explainRunId, setExplainRunId] = createSignal<string | null>(null)
-
   const [articleEl, setArticleEl] = createSignal<HTMLElement | null>(null)
 
   createEffect(() => {
@@ -51,57 +36,25 @@ export const SpecDetail: Component = () => {
     if (!id) return
     const unsub = subscribeSpec(id, {
       onUpdated: () => setRefreshTick((t) => t + 1),
-      onAgentStdout: (e) => {
-        if (e.mode === 'skill-run' && e.runId === runId()) {
-          setLog((s) => s + e.chunk)
-          setRunStatus('running')
-        } else if (e.mode === 'explain' && e.runId === explainRunId()) {
-          setExplainStatus('streaming')
-          setExplainText((s) => s + e.chunk)
-        }
-      },
-      onAgentExit: (e) => {
-        if (e.mode === 'skill-run' && e.runId === runId()) {
-          setRunStatus(e.code === 0 ? 'done' : 'failed')
-        } else if (e.mode === 'explain' && e.runId === explainRunId()) {
-          setExplainStatus(e.code === 0 ? 'done' : 'failed')
-        }
-      },
-      onAgentError: (e) => {
-        if (e.mode === 'skill-run' && e.runId === runId()) {
-          setRunError(e.message)
-          setRunStatus('failed')
-        } else if (e.mode === 'explain' && e.runId === explainRunId()) {
-          setExplainStatus('failed')
-        }
-      },
     })
     onCleanup(unsub)
   })
 
   // If we arrived from NewSpec, the draft run that just authored this spec is
-  // streaming via /runs/<runId>/events. Attach to it so the user sees Agent
-  // output continue (per-spec stream uses a different specId for draft runs).
+  // streaming via /runs/<runId>/events. Re-register it with the global store
+  // under the real specId so the dock keeps showing the output.
   createEffect(() => {
     const rid = search.runId
     if (!rid) return
-    setRunId((current) => current ?? rid)
-    setRunStatus('running')
-    setLogOpen(true)
-    const unsub = subscribeRun(rid, {
-      onAgentStdout: (e) => {
-        setLog((s) => s + e.chunk)
-        setRunStatus('running')
-      },
-      onAgentExit: (e) => {
-        setRunStatus(e.code === 0 ? 'done' : 'failed')
-      },
-      onAgentError: (e) => {
-        setRunError(e.message)
-        setRunStatus('failed')
-      },
+    const title = spec()?.frontmatter.summary
+    agentTasks.start({
+      runId: rid,
+      mode: 'skill-run',
+      specId: params.id,
+      specTitle: title,
+      source: 'draft',
     })
-    onCleanup(unsub)
+    setSearch({ runId: undefined }, { replace: true })
   })
 
   createEffect(() => {
@@ -113,15 +66,17 @@ export const SpecDetail: Component = () => {
 
   async function runAgent() {
     setRunError(null)
-    setLog('')
-    setRunStatus('running')
-    setLogOpen(true)
     try {
-      const { runId: id } = await api.runAgent(params.id)
-      setRunId(id)
+      const { runId } = await api.runAgent(params.id)
+      agentTasks.start({
+        runId,
+        mode: 'skill-run',
+        specId: params.id,
+        specTitle: spec()?.frontmatter.summary,
+        source: 'run',
+      })
     } catch (err) {
       setRunError((err as Error).message)
-      setRunStatus('failed')
     }
   }
 
@@ -141,15 +96,17 @@ export const SpecDetail: Component = () => {
   }
 
   async function openExplain(s: SelectionSnapshot) {
-    setExplainText('')
-    setExplainStatus('pending')
-    setExplainOpen(true)
     try {
-      const { runId: id } = await api.explain(params.id, s.text)
-      setExplainRunId(id)
+      const { runId } = await api.explain(params.id, s.text)
+      agentTasks.start({
+        runId,
+        mode: 'explain',
+        specId: params.id,
+        specTitle: spec()?.frontmatter.summary,
+        source: 'explain',
+      })
     } catch (err) {
-      setExplainStatus('failed')
-      setExplainText((err as Error).message)
+      setRunError((err as Error).message)
     }
   }
 
@@ -157,70 +114,52 @@ export const SpecDetail: Component = () => {
     <section class="page">
       <Suspense fallback={<p class="muted">加载中…</p>}>
         <Show when={spec()} fallback={<p class="muted">spec 不存在或已删除</p>}>
-          {(s) => (
-            <>
-              <header class="page-head detail-head">
-                <div>
-                  <code class="id">{s().id}</code>
-                  <h1>{titleFromBody(s().body) ?? '（待 Agent 补全）'}</h1>
-                  <p class="summary">{s().frontmatter.summary || '（待 Agent 补全）'}</p>
-                </div>
-                <div class="meta">
-                  <span class={`badge stage-${s().frontmatter.stage}`}>
-                    {s().frontmatter.stage}
-                  </span>
-                  <time>{s().frontmatter.updated_at}</time>
-                  <button
-                    type="button"
-                    class={`primary-action run-btn run-${runStatus()}`}
-                    onClick={runAgent}
-                    disabled={runStatus() === 'running'}
-                  >
-                    {runStatus() === 'idle' && '运行 Agent'}
-                    {runStatus() === 'running' && '运行中…'}
-                    {runStatus() === 'done' && '已完成（再次运行）'}
-                    {runStatus() === 'failed' && '失败（重试）'}
-                  </button>
-                </div>
-              </header>
+          {(s) => {
+            const running = () => agentTasks.hasRunningSkillRun(params.id)
+            return (
+              <>
+                <header class="page-head detail-head">
+                  <div>
+                    <code class="id">{s().id}</code>
+                    <h1>{titleFromBody(s().body) ?? '（待 Agent 补全）'}</h1>
+                    <p class="summary">{s().frontmatter.summary || '（待 Agent 补全）'}</p>
+                  </div>
+                  <div class="meta">
+                    <span class={`badge stage-${s().frontmatter.stage}`}>
+                      {s().frontmatter.stage}
+                    </span>
+                    <time>{s().frontmatter.updated_at}</time>
+                    <button
+                      type="button"
+                      class={`primary-action run-btn ${running() ? 'run-running' : 'run-idle'}`}
+                      onClick={runAgent}
+                      disabled={running()}
+                    >
+                      {running() ? '运行中…' : '运行 Agent'}
+                    </button>
+                  </div>
+                </header>
 
-              <Show when={runStatus() !== 'idle'}>
-                <section class="run-log">
-                  <button
-                    type="button"
-                    class="run-log-toggle"
-                    onClick={() => setLogOpen((v) => !v)}
-                  >
-                    {logOpen() ? '收起' : '展开'} 执行日志
-                  </button>
-                  <Show when={logOpen()}>
-                    <pre class="run-log-body">{log() || '（等待输出…）'}</pre>
-                    {runError() && <p class="error">{runError()}</p>}
-                  </Show>
-                </section>
-              </Show>
+                <Show when={runError()}>
+                  <p class="error">{runError()}</p>
+                </Show>
 
-              <article class="markdown" ref={setArticleEl} innerHTML={renderMarkdown(s().body)} />
+                <article class="markdown" ref={setArticleEl} innerHTML={renderMarkdown(s().body)} />
 
-              <SelectionMenu
-                snap={popoverOpen() ? null : snap()}
-                onAnnotate={openAnnotate}
-                onExplain={openExplain}
-              />
-              <AnnotatePopover
-                open={popoverOpen()}
-                snap={popoverSnap()}
-                onCancel={() => setPopoverOpen(false)}
-                onSubmit={submitAnnotate}
-              />
-              <ExplainDrawer
-                open={explainOpen()}
-                status={explainStatus()}
-                text={explainText()}
-                onClose={() => setExplainOpen(false)}
-              />
-            </>
-          )}
+                <SelectionMenu
+                  snap={popoverOpen() ? null : snap()}
+                  onAnnotate={openAnnotate}
+                  onExplain={openExplain}
+                />
+                <AnnotatePopover
+                  open={popoverOpen()}
+                  snap={popoverSnap()}
+                  onCancel={() => setPopoverOpen(false)}
+                  onSubmit={submitAnnotate}
+                />
+              </>
+            )
+          }}
         </Show>
       </Suspense>
     </section>

@@ -105,7 +105,17 @@ describe('YorZ Service HTTP', () => {
     await mkdir(dir, { recursive: true })
     await writeFile(
       join(dir, 'spec.md'),
-      ['---', 'stage: plan', 'last_action: ext', 'updated_at: 2026-06-14', 'summary: ext', '---', '', '# Ext', ''].join('\n'),
+      [
+        '---',
+        'stage: plan',
+        'last_action: ext',
+        'updated_at: 2026-06-14',
+        'summary: ext',
+        '---',
+        '',
+        '# Ext',
+        '',
+      ].join('\n'),
       'utf8',
     )
 
@@ -223,6 +233,68 @@ describe('YorZ Service HTTP', () => {
     const evt = await readUntil(reader, decoder, (t) => t.includes('event: agent-stdout'), 4000)
     expect(evt).toContain('"mode":"explain"')
     await reader.cancel()
+  })
+
+  it('GET /api/runs lists active agent runs and is empty when none active', async () => {
+    const { url } = await startInTmp({ fakeAgent: true })
+    const empty = await fetch(`${url}api/runs`)
+    expect(empty.status).toBe(200)
+    expect(await empty.json()).toEqual([])
+
+    const create = await fetch(`${url}api/specs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'L', type: 'feat', summary: 'l' }),
+    })
+    const { id } = (await create.json()) as { id: string }
+    const runRes = await fetch(`${url}api/specs/${id}/run`, { method: 'POST' })
+    const { runId } = (await runRes.json()) as { runId: string }
+
+    const listed = await fetch(`${url}api/runs`)
+    expect(listed.status).toBe(200)
+    const items = (await listed.json()) as Array<{
+      runId: string
+      mode: string
+      specId: string
+      startedAt: number
+    }>
+    const match = items.find((r) => r.runId === runId)
+    expect(match).toBeTruthy()
+    expect(match!.specId).toBe(id)
+    expect(match!.mode).toBe('skill-run')
+    expect(typeof match!.startedAt).toBe('number')
+  })
+
+  it('POST /api/runs/:runId/cancel returns 200 for active run and 404 otherwise', async () => {
+    const { url } = await startInTmp({ fakeAgent: true })
+    const notFound = await fetch(`${url}api/runs/no-such-run/cancel`, { method: 'POST' })
+    expect(notFound.status).toBe(404)
+    expect(await notFound.json()).toEqual({ ok: false })
+
+    const create = await fetch(`${url}api/specs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'C', type: 'feat', summary: 'c' }),
+    })
+    const { id } = (await create.json()) as { id: string }
+    const runRes = await fetch(`${url}api/specs/${id}/run`, { method: 'POST' })
+    const { runId } = (await runRes.json()) as { runId: string }
+
+    const cancelRes = await fetch(`${url}api/runs/${runId}/cancel`, { method: 'POST' })
+    expect(cancelRes.status).toBe(200)
+    expect(await cancelRes.json()).toEqual({ ok: true })
+
+    // The handle should be cleared after exit; subsequent cancel → 404.
+    // Give the child process a moment to actually exit.
+    for (let i = 0; i < 50; i++) {
+      const again = await fetch(`${url}api/runs/${runId}/cancel`, { method: 'POST' })
+      if (again.status === 404) {
+        expect(await again.json()).toEqual({ ok: false })
+        return
+      }
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    throw new Error('run did not exit within 2.5s after cancel')
   })
 
   it('returns 404 for unknown spec', async () => {

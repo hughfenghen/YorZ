@@ -1,7 +1,8 @@
 import { createSignal, onCleanup, Show, type Component } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
 import { api, type CreateSpecBody } from '../lib/api.js'
-import { subscribeRun, subscribeSpecsList } from '../lib/sse.js'
+import { subscribeSpecsList } from '../lib/sse.js'
+import { agentTasks } from '../lib/agent-tasks.js'
 
 const TYPES: { value: CreateSpecBody['type']; label: string; hint: string }[] = [
   { value: 'feat', label: 'feat', hint: '新功能' },
@@ -17,25 +18,15 @@ export const NewSpec: Component = () => {
   const [type, setType] = createSignal<CreateSpecBody['type']>('feat')
   const [error, setError] = createSignal<string | null>(null)
   const [phase, setPhase] = createSignal<Phase>('idle')
-  const [log, setLog] = createSignal('')
 
-  let cleanupRun: (() => void) | null = null
   let cleanupList: (() => void) | null = null
   let baselineIds: Set<string> = new Set()
   let activeRunId: string | null = null
   let navigated = false
 
   onCleanup(() => {
-    cleanupRun?.()
     cleanupList?.()
   })
-
-  function detachStreams() {
-    cleanupRun?.()
-    cleanupList?.()
-    cleanupRun = null
-    cleanupList = null
-  }
 
   async function pollForNewSpec() {
     if (navigated) return
@@ -45,7 +36,8 @@ export const NewSpec: Component = () => {
       if (fresh) {
         navigated = true
         const runId = activeRunId
-        detachStreams()
+        cleanupList?.()
+        cleanupList = null
         const target =
           `/specs/${encodeURIComponent(fresh.id)}` +
           (runId ? `?runId=${encodeURIComponent(runId)}` : '')
@@ -65,28 +57,25 @@ export const NewSpec: Component = () => {
       return
     }
     setPhase('creating')
-    setLog('')
     navigated = false
     try {
-      // Snapshot existing spec ids so we can detect the one the Agent will create.
       const before = await api.listSpecs()
       baselineIds = new Set(before.map((s) => s.id))
 
       const resp = await api.createSpec({ type: type(), requirement: text })
       if ('draft' in resp && resp.draft) {
         activeRunId = resp.runId
-        cleanupRun = subscribeRun(resp.runId, {
-          onAgentStdout: (ev) => setLog((s) => s + ev.chunk),
-          onAgentError: (ev) => setLog((s) => s + `\n[error] ${ev.message}\n`),
-          onAgentExit: () => {
-            // If exit comes before the spec was detected, do one last poll.
-            void pollForNewSpec()
-          },
+        // Register with the global Agent dock; the panel persists across navigation.
+        agentTasks.start({
+          runId: resp.runId,
+          mode: 'skill-run',
+          specId: `__draft__-${resp.runId}`,
+          specTitle: '（新建 spec 中）',
+          source: 'draft',
         })
         cleanupList = subscribeSpecsList(() => {
           void pollForNewSpec()
         })
-        // Trigger an immediate poll in case the spec already landed.
         void pollForNewSpec()
       } else if ('id' in resp) {
         // Legacy synchronous path (title provided).
@@ -103,7 +92,8 @@ export const NewSpec: Component = () => {
       <header class="page-head">
         <h1>新建 spec</h1>
         <p class="muted">
-          只需选择类型与录入需求内容；文件名、概要、初始骨架由 Agent 根据需求生成，Agent 创建完文档后会自动进入 plan 阶段。
+          只需选择类型与录入需求内容；文件名、概要、初始骨架由 Agent 根据需求生成，Agent
+          创建完文档后会自动进入 plan 阶段。
         </p>
       </header>
       <Show when={phase() === 'idle' || phase() === 'failed'}>
@@ -143,8 +133,9 @@ export const NewSpec: Component = () => {
       </Show>
       <Show when={phase() === 'creating'}>
         <section class="run-log">
-          <p class="muted">Agent 正在创建 spec 文档…一旦写入完成将自动跳转。</p>
-          <pre class="run-log-body">{log() || '（等待 Agent 输出…）'}</pre>
+          <p class="muted">
+            Agent 正在创建 spec 文档…可在右下角 Agent 面板查看流式输出，文档落地后将自动跳转。
+          </p>
         </section>
       </Show>
     </section>

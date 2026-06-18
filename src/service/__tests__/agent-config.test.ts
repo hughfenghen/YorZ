@@ -18,7 +18,16 @@ describe('resolveAgentCmd', () => {
     const cwd = await tempCwd()
     const result = resolveAgentCmd({ cwd, env: {} })
     expect(result.cmd).toBe('claude')
-    expect(result.args('hello')).toEqual(['--permission-mode', 'bypassPermissions', '-p', 'hello'])
+    expect(result.args('hello')).toEqual([
+      '--permission-mode',
+      'bypassPermissions',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '-p',
+      'hello',
+    ])
+    expect(result.streamFormat).toBe('json')
   })
 
   it('picks claude when config sets agent=claude', async () => {
@@ -34,6 +43,7 @@ describe('resolveAgentCmd', () => {
     const result = resolveAgentCmd({ cwd, env: {} })
     expect(result.cmd).toBe('opencode')
     expect(result.args('x')).toEqual(['-p', 'x'])
+    expect(result.streamFormat).toBe('text')
   })
 
   it('falls back to claude when config has an unknown agent value', async () => {
@@ -48,5 +58,6 @@ describe('resolveAgentCmd', () => {
     await writeConfig(cwd, 'opencode')
     const result = resolveAgentCmd({ cwd, env: { YORZ_AGENT_CMD: '/tmp/fake-agent.js' } })
     expect(result.cmd).toBe('/tmp/fake-agent.js')
+    expect(result.streamFormat).toBe('text')
   })
 })

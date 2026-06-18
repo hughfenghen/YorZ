@@ -163,6 +163,15 @@ export function createEventsRoutes(deps: Deps): Hono {
     })
   })
 
+  app.get('/runs', (c) => {
+    return c.json(deps.runner.listActive())
+  })
+
+  app.post('/runs/:runId/cancel', (c) => {
+    const ok = deps.runner.cancel(c.req.param('runId'))
+    return c.json({ ok }, ok ? 200 : 404)
+  })
+
   app.get('/runs/:runId/events', (c) => {
     const runId = c.req.param('runId')
     return streamSSE(c, async (stream) => {

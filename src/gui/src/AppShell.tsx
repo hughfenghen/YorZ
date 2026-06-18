@@ -1,7 +1,13 @@
 import { A } from '@solidjs/router'
-import type { JSX, ParentComponent } from 'solid-js'
+import { onMount, type JSX, type ParentComponent } from 'solid-js'
+import { AgentPanelDock } from './components/AgentPanelDock.jsx'
+import { agentTasks } from './lib/agent-tasks.js'
 
 export const AppShell: ParentComponent = (props): JSX.Element => {
+  onMount(() => {
+    void agentTasks.hydrateFromActiveRuns()
+  })
+
   return (
     <div class="app">
       <header class="topbar">
@@ -13,6 +19,7 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
         </A>
       </header>
       <main class="content">{props.children}</main>
+      <AgentPanelDock />
     </div>
   )
 }

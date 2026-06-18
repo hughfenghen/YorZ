@@ -111,6 +111,31 @@ export function subscribeRun(runId: string, handlers: RunSubscribeHandlers): () 
   }
 }
 
+export interface ActiveRunInfo {
+  runId: string
+  mode: AgentMode
+  specId: string
+  startedAt: number
+}
+
+export async function fetchActiveRuns(): Promise<ActiveRunInfo[]> {
+  const res = await fetch('/api/runs')
+  if (!res.ok) return []
+  try {
+    return (await res.json()) as ActiveRunInfo[]
+  } catch {
+    return []
+  }
+}
+
+export async function cancelRun(runId: string): Promise<void> {
+  try {
+    await fetch(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
+  } catch {
+    // network errors / 404 (run already ended) are non-fatal
+  }
+}
+
 export function subscribeSpecsList(onChange: () => void): () => void {
   const source = new EventSource('/api/events/specs')
   const handler = () => onChange()
