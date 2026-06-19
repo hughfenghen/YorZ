@@ -1,7 +1,8 @@
+import { EventEmitter } from 'node:events'
 import { fileURLToPath } from 'node:url'
 import { join, dirname } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { AgentRunner, formatStreamEvent } from '../agent.js'
+import { AgentRunner, emitTouchedFromEvent, formatStreamEvent } from '../agent.js'
 
 const FAKE_CLAUDE = fileURLToPath(new URL('./fixtures/fake-claude.js', import.meta.url))
 const FAKE_CLAUDE_JSONL = fileURLToPath(new URL('./fixtures/fake-claude-jsonl.js', import.meta.url))
@@ -129,6 +130,46 @@ describe('AgentRunner', () => {
   it('cancel(runId) returns false for unknown id', () => {
     const runner = new AgentRunner({ cwd: process.cwd(), resolveAgentCmd: fakeResolver() })
     expect(runner.cancel('no-such-id')).toBe(false)
+  })
+
+  it('emitTouchedFromEvent emits relative POSIX path for Write / Edit tool_use', () => {
+    const emitter = new EventEmitter()
+    const seen: string[] = []
+    emitter.on('file_touched', (p: string) => seen.push(p))
+    const cwd = '/Users/x/proj'
+    emitTouchedFromEvent(
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'tool_use', name: 'Write', input: { file_path: '/Users/x/proj/src/a.ts' } },
+            { type: 'tool_use', name: 'Edit', input: { file_path: 'src/b.ts' } },
+            { type: 'tool_use', name: 'Bash', input: { command: 'ls' } },
+            { type: 'text', text: 'ignored' },
+          ],
+        },
+      },
+      emitter,
+      cwd,
+    )
+    expect(seen).toEqual(['src/a.ts', 'src/b.ts'])
+  })
+
+  it('emitTouchedFromEvent ignores non-assistant or malformed events', () => {
+    const emitter = new EventEmitter()
+    const seen: string[] = []
+    emitter.on('file_touched', (p: string) => seen.push(p))
+    emitTouchedFromEvent({ type: 'user', message: {} }, emitter, '/tmp')
+    emitTouchedFromEvent({ type: 'assistant' }, emitter, '/tmp')
+    emitTouchedFromEvent(
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', name: 'Write', input: {} }] },
+      },
+      emitter,
+      '/tmp',
+    )
+    expect(seen).toEqual([])
   })
 
   it('formatStreamEvent maps default event types to readable text', () => {

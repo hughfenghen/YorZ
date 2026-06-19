@@ -1,6 +1,6 @@
 ---
 stage: execute
-last_action: 完成 popover 锚定 / ESC 关闭 / e2e 用例，阻塞于浏览器手测
+last_action: 提交 git
 updated_at: 2026-06-19
 summary: 修复 SpecDetail「追加任务」按钮点击无响应，AppendTaskDialog 改为锚定按钮的 popover 弹窗
 ---
@@ -270,3 +270,7 @@ backdrop 透明全屏，仅承担"点击外部关闭"事件捕获（不再渲染
 ## 8. 用户批注
 
 （暂无）
+
+## 执行记录
+
+- 2026-06-19 提交 b0a09c2：fix(260619.fix.append-task-btn-no-response): 修复 SpecDetail「追加任务」按钮点击无响应，AppendTaskDialog 改为锚定按钮的 popover 弹窗（5 个文件）

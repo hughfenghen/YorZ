@@ -46,6 +46,29 @@ export interface QuestionAnswersBody {
   freeformAnnotations: AnnotationBody[]
 }
 
+export type AppendItemKind = 'feat' | 'refct' | 'fix'
+
+export interface AppendItemBody {
+  kind: AppendItemKind
+  description: string
+  sectionPath?: string
+  quote?: string
+  autoRun?: boolean
+}
+
+export interface GitChange {
+  path: string
+  index: string
+  worktree: string
+  status: string
+  renamedFrom?: string
+}
+
+export interface CommitBody {
+  message: string
+  paths?: string[]
+}
+
 async function extractErrorDetail(res: Response): Promise<string> {
   const text = await res.text()
   if (!text) return ''
@@ -101,11 +124,25 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: '{}',
     }),
+  appendItem: (id: string, body: AppendItemBody) =>
+    request<{ ok: true; runId?: string }>(`/api/specs/${encodeURIComponent(id)}/appends`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
   explain: (id: string, text: string) =>
     request<{ runId: string }>(`/api/specs/${encodeURIComponent(id)}/explain`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text }),
+    }),
+  listSpecChanges: (id: string) =>
+    request<{ changes: GitChange[] }>(`/api/specs/${encodeURIComponent(id)}/changes`),
+  commitSpecChanges: (id: string, body: CommitBody) =>
+    request<{ ok: true; commit: string }>(`/api/specs/${encodeURIComponent(id)}/commit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
     }),
   getProject: () => request<{ cwd: string; name: string }>('/api/projects/current'),
 }

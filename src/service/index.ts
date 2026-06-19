@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net'
 import { SpecStore } from './spec-store.js'
 import { SpecWatcher } from './watcher.js'
 import { AgentRunner } from './agent.js'
+import { TouchedFilesStore } from './touched-files.js'
 import { createApp } from './server.js'
 
 export interface ServeOptions {
@@ -28,11 +29,12 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
     cwd,
     onWrite: (path, mtime) => watcher.markSelfWrite(path, mtime),
   })
-  const runner = new AgentRunner({ cwd })
+  const touched = new TouchedFilesStore({ cwd })
+  const runner = new AgentRunner({ cwd, touched })
   await store.ensureRoot()
   await watcher.start()
 
-  const app = createApp({ store, watcher, runner, cwd, guiRoot: opts.guiRoot })
+  const app = createApp({ store, watcher, runner, touched, cwd, guiRoot: opts.guiRoot })
 
   const port = await listen(app.fetch, opts.port ?? DEFAULT_PORT)
   const url = `http://localhost:${port.port}/`

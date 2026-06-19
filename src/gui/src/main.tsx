@@ -4,6 +4,7 @@ import { Router, Route } from '@solidjs/router'
 import { Home } from './pages/Home.jsx'
 import { NewSpec } from './pages/NewSpec.jsx'
 import { SpecDetail } from './pages/SpecDetail.jsx'
+import { SpecReview } from './pages/SpecReview.jsx'
 import { AppShell } from './AppShell.jsx'
 
 const root = document.getElementById('app')
@@ -15,6 +16,7 @@ render(
       <Route path="/" component={Home} />
       <Route path="/specs/new" component={NewSpec} />
       <Route path="/specs/:id" component={SpecDetail} />
+      <Route path="/specs/:id/review" component={SpecReview} />
     </Router>
   ),
   root,

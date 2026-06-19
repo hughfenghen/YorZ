@@ -37,7 +37,10 @@ export const AgentPanelDock: Component = () => {
 
   return (
     <Show when={visibleTasks().length > 0}>
-      <aside class="agent-dock" aria-label="Agent 任务面板">
+      <aside
+        class={`agent-dock${collapsed() ? ' agent-dock--collapsed' : ''}`}
+        aria-label="Agent 任务面板"
+      >
         <header class="agent-dock-head">
           <button
             type="button"

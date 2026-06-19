@@ -1,10 +1,29 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TextDecoder } from 'node:util'
 import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
 import { start, type ServeHandle } from '../index.js'
+
+const execFileP = promisify(execFile)
+
+async function gitInTmp(cwd: string, args: string[]): Promise<string> {
+  const { stdout } = await execFileP('git', args, { cwd })
+  return stdout
+}
+
+async function initGitRepoIn(cwd: string): Promise<void> {
+  await gitInTmp(cwd, ['init', '-q', '-b', 'main'])
+  await gitInTmp(cwd, ['config', 'user.email', 'test@example.com'])
+  await gitInTmp(cwd, ['config', 'user.name', 'Test'])
+  await gitInTmp(cwd, ['config', 'commit.gpgsign', 'false'])
+  await writeFile(join(cwd, '.gitkeep'), '', 'utf8')
+  await gitInTmp(cwd, ['add', '.'])
+  await gitInTmp(cwd, ['commit', '-q', '-m', 'init'])
+}
 
 const FAKE_CLAUDE = fileURLToPath(new URL('./fixtures/fake-claude.js', import.meta.url))
 
@@ -311,6 +330,159 @@ describe('YorZ Service HTTP', () => {
       body: JSON.stringify({ type: 'bogus' }),
     })
     expect(res.status).toBe(400)
+  })
+
+  it('GET /api/specs/:id/changes returns intersection of touched and git status', async () => {
+    const { cwd, url } = await startInTmp()
+    await initGitRepoIn(cwd)
+    const create = await fetch(`${url}api/specs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Ch', type: 'feat', summary: 'ch' }),
+    })
+    const { id } = (await create.json()) as { id: string }
+
+    // Seed touched + worktree changes.
+    await writeFile(join(cwd, 'a.txt'), 'A\n', 'utf8')
+    await writeFile(join(cwd, 'b.txt'), 'B\n', 'utf8')
+    await mkdir(join(cwd, '.yorz', 'specs', id), { recursive: true })
+    await writeFile(
+      join(cwd, '.yorz', 'specs', id, 'touched-files.json'),
+      JSON.stringify({ paths: ['a.txt'] }),
+      'utf8',
+    )
+
+    const res = await fetch(`${url}api/specs/${id}/changes`)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { changes: Array<{ path: string; status: string }> }
+    expect(body.changes.map((c) => c.path)).toEqual(['a.txt'])
+    expect(body.changes[0].status).toBe('??')
+  })
+
+  it('GET /api/specs/:id/changes returns empty when touched is empty', async () => {
+    const { cwd, url } = await startInTmp()
+    await initGitRepoIn(cwd)
+    const create = await fetch(`${url}api/specs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'E', type: 'feat', summary: 'e' }),
+    })
+    const { id } = (await create.json()) as { id: string }
+
+    const res = await fetch(`${url}api/specs/${id}/changes`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ changes: [] })
+  })
+
+  it('GET /api/specs/:id/changes returns 404 for unknown spec', async () => {
+    const { cwd, url } = await startInTmp()
+    await initGitRepoIn(cwd)
+    const res = await fetch(`${url}api/specs/does-not-exist/changes`)
+    expect(res.status).toBe(404)
+  })
+
+  it('POST /api/specs/:id/commit commits touched files, appends exec log, appends spec anchor', async () => {
+    const { cwd, url } = await startInTmp()
+    await initGitRepoIn(cwd)
+    const create = await fetch(`${url}api/specs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'CC', type: 'feat', summary: 'cc' }),
+    })
+    const { id } = (await create.json()) as { id: string }
+
+    // After spec create, the .yorz/specs/<id>/spec.md is already on disk but
+    // initial state is committed via test setup; mark it as touched intent.
+    // Use a fresh file to avoid prior commits.
+    await writeFile(join(cwd, 'changed.txt'), 'X\n', 'utf8')
+    await mkdir(join(cwd, '.yorz', 'specs', id), { recursive: true })
+    await writeFile(
+      join(cwd, '.yorz', 'specs', id, 'touched-files.json'),
+      JSON.stringify({ paths: ['changed.txt'] }),
+      'utf8',
+    )
+
+    const res = await fetch(`${url}api/specs/${id}/commit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'feat: add changed' }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { ok: boolean; commit: string }
+    expect(body.ok).toBe(true)
+    expect(body.commit).toMatch(/^[0-9a-f]{40}$/)
+
+    const logged = await gitInTmp(cwd, ['log', '-1', '--name-only', '--pretty=%B'])
+    expect(logged).toContain('feat: add changed')
+    expect(logged).toContain(`[spec:${id}]`)
+    expect(logged).toContain('changed.txt')
+
+    // touched-files.json should now be gone (set emptied).
+    const tfPath = join(cwd, '.yorz', 'specs', id, 'touched-files.json')
+    const tfExists = await readFile(tfPath, 'utf8').then(
+      () => true,
+      () => false,
+    )
+    expect(tfExists).toBe(false)
+
+    // Exec log line written back.
+    const md = await readFile(join(cwd, '.yorz', 'specs', id, 'spec.md'), 'utf8')
+    expect(md).toMatch(/提交 [0-9a-f]{7}：feat: add changed/)
+  })
+
+  it('POST /api/specs/:id/commit returns 400 when message missing', async () => {
+    const { cwd, url } = await startInTmp()
+    await initGitRepoIn(cwd)
+    const create = await fetch(`${url}api/specs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'M', type: 'feat', summary: 'm' }),
+    })
+    const { id } = (await create.json()) as { id: string }
+    const res = await fetch(`${url}api/specs/${id}/commit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /api/specs/:id/commit returns 400 when paths outside touched set', async () => {
+    const { cwd, url } = await startInTmp()
+    await initGitRepoIn(cwd)
+    const create = await fetch(`${url}api/specs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'P', type: 'feat', summary: 'p' }),
+    })
+    const { id } = (await create.json()) as { id: string }
+
+    await writeFile(join(cwd, 'allowed.txt'), 'A\n', 'utf8')
+    await writeFile(join(cwd, 'sneaky.txt'), 'S\n', 'utf8')
+    await mkdir(join(cwd, '.yorz', 'specs', id), { recursive: true })
+    await writeFile(
+      join(cwd, '.yorz', 'specs', id, 'touched-files.json'),
+      JSON.stringify({ paths: ['allowed.txt'] }),
+      'utf8',
+    )
+
+    const res = await fetch(`${url}api/specs/${id}/commit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'x', paths: ['sneaky.txt'] }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /api/specs/:id/commit returns 404 for unknown spec', async () => {
+    const { cwd, url } = await startInTmp()
+    await initGitRepoIn(cwd)
+    const res = await fetch(`${url}api/specs/does-not-exist/commit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'x' }),
+    })
+    expect(res.status).toBe(404)
   })
 
   it('400 when annotate body is missing required fields', async () => {

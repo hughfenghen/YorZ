@@ -1,7 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
+import { isAbsolute, relative, sep as pathSep } from 'node:path'
 import { resolveAgentCmd, type AgentCmd } from './agent-config.js'
+import type { TouchedFilesStore } from './touched-files.js'
+
+const WRITE_TOOL_NAMES = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
 
 export type AgentMode = 'skill-run' | 'explain'
 
@@ -19,6 +23,7 @@ export interface AgentRunHandle {
   onStdout(cb: (chunk: string) => void): () => void
   onExit(cb: (code: number | null) => void): () => void
   onError(cb: (msg: string) => void): () => void
+  onFileTouched(cb: (path: string) => void): () => void
   buffer(): string
   kill(): void
   /** Resolves with the final exit code once the process terminates. */
@@ -36,6 +41,8 @@ export interface AgentRunnerOptions {
   cwd: string
   /** Override the agent command resolution (used by tests). */
   resolveAgentCmd?: () => AgentCmd
+  /** Optional sink for file paths the agent writes/edits during a run. */
+  touched?: TouchedFilesStore
 }
 
 const BUFFER_MAX = 64 * 1024
@@ -45,6 +52,7 @@ const TOOL_RESULT_TRUNCATE = 400
 export class AgentRunner {
   private readonly cwd: string
   private readonly resolveCmd: () => AgentCmd
+  private readonly touched?: TouchedFilesStore
   private readonly skillRunBySpec = new Map<string, AgentRunHandle>()
   private readonly handlesById = new Map<string, AgentRunHandle>()
   private readonly listenersBySpec = new Map<string, Set<(h: AgentRunHandle) => void>>()
@@ -52,6 +60,7 @@ export class AgentRunner {
   constructor(opts: AgentRunnerOptions) {
     this.cwd = opts.cwd
     this.resolveCmd = opts.resolveAgentCmd ?? (() => resolveAgentCmd({ cwd: opts.cwd }))
+    this.touched = opts.touched
   }
 
   run(input: RunAgentInput): AgentRunHandle {
@@ -164,9 +173,15 @@ export class AgentRunner {
     }
 
     if (cmd.streamFormat === 'json') {
-      attachJsonlStream(child, emitter, pushStdout)
+      attachJsonlStream(child, emitter, pushStdout, this.cwd)
     } else {
       child.stdout?.on('data', (data: Buffer) => pushStdout(data.toString('utf8')))
+    }
+    if (this.touched) {
+      const touched = this.touched
+      emitter.on('file_touched', (relPath: string) => {
+        void touched.add(input.specId, [relPath]).catch(() => {})
+      })
     }
     child.stderr?.on('data', (data: Buffer) => pushStdout(data.toString('utf8')))
     let exited = false
@@ -199,6 +214,7 @@ function attachJsonlStream(
   child: ChildProcess,
   emitter: EventEmitter,
   pushStdout: (text: string) => void,
+  cwd: string,
 ): void {
   let pending = ''
   child.stdout?.on('data', (data: Buffer) => {
@@ -208,16 +224,21 @@ function attachJsonlStream(
       const line = pending.slice(0, idx).trimEnd()
       pending = pending.slice(idx + 1)
       if (!line) continue
-      handleLine(line, emitter, pushStdout)
+      handleLine(line, emitter, pushStdout, cwd)
     }
   })
   child.stdout?.on('end', () => {
-    if (pending.trim()) handleLine(pending.trim(), emitter, pushStdout)
+    if (pending.trim()) handleLine(pending.trim(), emitter, pushStdout, cwd)
     pending = ''
   })
 }
 
-function handleLine(line: string, emitter: EventEmitter, pushStdout: (text: string) => void): void {
+function handleLine(
+  line: string,
+  emitter: EventEmitter,
+  pushStdout: (text: string) => void,
+  cwd: string,
+): void {
   let ev: unknown
   try {
     ev = JSON.parse(line)
@@ -226,7 +247,45 @@ function handleLine(line: string, emitter: EventEmitter, pushStdout: (text: stri
     pushStdout(`${line}\n`)
     return
   }
+  emitTouchedFromEvent(ev, emitter, cwd)
   pushStdout(formatStreamEvent(ev))
+}
+
+/**
+ * Inspect a parsed stream-json event for `tool_use` items that mutate files
+ * and emit `file_touched` (path normalized to POSIX, relative to cwd). Exported
+ * for tests.
+ */
+export function emitTouchedFromEvent(ev: unknown, emitter: EventEmitter, cwd: string): void {
+  if (!ev || typeof ev !== 'object') return
+  const obj = ev as Record<string, unknown>
+  const type = String(obj.type ?? '')
+  if (type !== 'assistant') return
+  const msg = obj.message as Record<string, unknown> | undefined
+  const content = msg?.content
+  if (!Array.isArray(content)) return
+  for (const part of content) {
+    if (!part || typeof part !== 'object') continue
+    const p = part as Record<string, unknown>
+    if (String(p.type ?? '') !== 'tool_use') continue
+    const name = String(p.name ?? '')
+    if (!WRITE_TOOL_NAMES.has(name)) continue
+    const input = p.input as Record<string, unknown> | undefined
+    const filePath = input?.file_path
+    if (typeof filePath !== 'string' || !filePath) continue
+    const rel = normalizeRel(filePath, cwd)
+    if (!rel) continue
+    emitter.emit('file_touched', rel)
+  }
+}
+
+function normalizeRel(filePath: string, cwd: string): string | null {
+  let rel = filePath
+  if (isAbsolute(rel)) {
+    rel = relative(cwd, rel)
+  }
+  if (!rel || rel.startsWith('..') || rel === '.') return null
+  return rel.split(pathSep).join('/')
 }
 
 /**
@@ -378,6 +437,10 @@ function makeHandle(
     onError(cb) {
       emitter.on('error', cb)
       return () => emitter.off('error', cb)
+    },
+    onFileTouched(cb) {
+      emitter.on('file_touched', cb)
+      return () => emitter.off('file_touched', cb)
     },
   }
 }

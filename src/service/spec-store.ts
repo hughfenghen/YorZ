@@ -68,8 +68,18 @@ const SECTIONS = [
   '## 技术实现方案',
   '## 待确认问题',
   '## 任务清单',
+  '## 追加任务',
   '## 执行记录',
 ]
+
+export type AppendKind = 'feat' | 'refct' | 'fix'
+
+export interface AppendItemInput {
+  kind: AppendKind
+  description: string
+  sectionPath?: string
+  quote?: string
+}
 
 export class SpecStore {
   private readonly root: string
@@ -189,6 +199,59 @@ export class SpecStore {
     await this.write(filePath, next)
   }
 
+  async appendItem(id: string, input: AppendItemInput): Promise<void> {
+    const filePath = this.specPath(id)
+    if (!existsSync(filePath)) throw new Error(`spec not found: ${id}`)
+    const kind = input.kind
+    if (kind !== 'feat' && kind !== 'refct' && kind !== 'fix') {
+      throw new Error('kind must be feat | refct | fix')
+    }
+    const description = (input.description ?? '').trim()
+    if (!description) throw new Error('description required')
+    if (description.length > 4000) throw new Error('description too long (max 4000)')
+    const sectionPath = input.sectionPath?.trim() ?? ''
+    const quote = input.quote?.trim() ?? ''
+    if (quote.length > 500) throw new Error('quote too long (max 500)')
+    const raw = await readFile(filePath, 'utf8')
+    const parsed = matter(raw)
+    const existing = normalizeFrontmatter(parsed.data)
+    const fm: SpecFrontmatter = {
+      stage: 'plan',
+      last_action: `追加任务（${kind}）`,
+      updated_at: this.today(),
+      summary: existing.summary,
+    }
+    const firstLine = description.split(/\r?\n/)[0]!.slice(0, 80)
+    const stamp = this.timestamp()
+    const lines = [`- [open] [${kind}] ${stamp} | ${firstLine}`]
+    lines.push(`  - 描述：${description}`)
+    if (sectionPath) lines.push(`  - 引用：${sectionPath}`)
+    if (quote) lines.push(`  - 引用原文：> ${quote}`)
+    const entry = lines.join('\n')
+    const merged = mergeAppendTasksEntry(parsed.content, entry)
+    const next = serializeSpec(fm, merged)
+    await this.write(filePath, next)
+  }
+
+  async appendExecutionLog(id: string, line: string): Promise<void> {
+    const filePath = this.specPath(id)
+    if (!existsSync(filePath)) throw new Error(`spec not found: ${id}`)
+    const trimmed = line.trim()
+    if (!trimmed) throw new Error('line required')
+    const raw = await readFile(filePath, 'utf8')
+    const parsed = matter(raw)
+    const existing = normalizeFrontmatter(parsed.data)
+    const fm: SpecFrontmatter = {
+      stage: existing.stage,
+      last_action: '提交 git',
+      updated_at: this.today(),
+      summary: existing.summary,
+    }
+    const merged = appendExecutionLogToBody(parsed.content, `- ${trimmed}`)
+    const next = serializeSpec(fm, merged)
+    await this.write(filePath, next)
+  }
+
   async appendAnnotation(id: string, input: AnnotationInput): Promise<void> {
     const filePath = this.specPath(id)
     if (!existsSync(filePath)) throw new Error(`spec not found: ${id}`)
@@ -239,6 +302,10 @@ export class SpecStore {
     return formatDate(this.now())
   }
 
+  private timestamp(): string {
+    return formatDateTime(this.now())
+  }
+
   private todayCompact(): string {
     const d = this.now()
     const y = String(d.getFullYear()).slice(-2)
@@ -253,6 +320,13 @@ function formatDate(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+function formatDateTime(d: Date): string {
+  const date = formatDate(d)
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${date} ${hh}:${mm}`
 }
 
 function kebab(text: string): string {
@@ -299,6 +373,48 @@ function dateString(value: unknown): string {
 }
 
 const USER_ANNOTATION_HEADING_RE = /^##\s+(?:\d+(?:\.\d+)*\s+)?用户批注\s*$/m
+const APPEND_TASKS_HEADING_RE = /^##\s+(?:\d+(?:\.\d+)*\s+)?追加任务\s*$/m
+const EXEC_RECORD_HEADING_RE = /^##\s+(?:\d+(?:\.\d+)*\s+)?执行记录\s*$/m
+
+function mergeAppendTasksEntry(content: string, entry: string): string {
+  const body = content.replace(/^\n+/, '').replace(/\n+$/, '')
+  const heading = '## 追加任务'
+  const existing = APPEND_TASKS_HEADING_RE.exec(body)
+  if (existing) {
+    const headingStart = existing.index
+    const after = body.slice(headingStart + existing[0].length)
+    const nextH2 = /\n##\s+/.exec(after)
+    const sectionEnd = nextH2 ? headingStart + existing[0].length + nextH2.index : body.length
+    const before = body.slice(0, sectionEnd).replace(/\n+$/, '')
+    const tail = body.slice(sectionEnd)
+    return `${before}\n${entry}${tail ? `\n${tail}` : '\n'}`
+  }
+  // Section missing: insert before `## 执行记录` if it exists, otherwise append at end.
+  const block = `${heading}\n\n${entry}\n`
+  const exec = EXEC_RECORD_HEADING_RE.exec(body)
+  if (exec) {
+    const before = body.slice(0, exec.index).replace(/\n+$/, '')
+    const tail = body.slice(exec.index)
+    return `${before}\n\n${block}\n${tail}`
+  }
+  return `${body}\n\n${block}`
+}
+
+function appendExecutionLogToBody(content: string, entry: string): string {
+  const body = content.replace(/^\n+/, '').replace(/\n+$/, '')
+  const heading = '## 执行记录'
+  const existing = EXEC_RECORD_HEADING_RE.exec(body)
+  if (existing) {
+    const headingStart = existing.index
+    const after = body.slice(headingStart + existing[0].length)
+    const nextH2 = /\n##\s+/.exec(after)
+    const sectionEnd = nextH2 ? headingStart + existing[0].length + nextH2.index : body.length
+    const before = body.slice(0, sectionEnd).replace(/\n+$/, '')
+    const tail = body.slice(sectionEnd)
+    return `${before}\n${entry}${tail ? `\n${tail}` : '\n'}`
+  }
+  return `${body}\n\n${heading}\n\n${entry}\n`
+}
 
 function mergeUserAnnotations(content: string, blocks: string[]): string {
   const body = content.replace(/^\n+/, '').replace(/\n+$/, '')
