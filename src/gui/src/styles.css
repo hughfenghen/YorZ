@@ -516,13 +516,16 @@ button:disabled {
   white-space: pre-wrap;
 }
 
-/* === Question confirm panel (right-side floating cards) === */
+/* === Question confirm panel (left-of-content floating cards) === */
 
 .question-confirm-panel {
   position: fixed;
   top: 5rem;
-  right: 1rem;
-  width: min(360px, calc(100vw - 2rem));
+  /* 右缘锚到 .content (width: 960px) 左外侧再让出 0.5rem；
+     宽度取 min(600px, 左侧可用空间 - 1rem 边距) 自适应。
+     960px 与 .content 宽度耦合，若 .content 宽度变更需同步。*/
+  right: calc((100vw + 960px) / 2 + 0.5rem);
+  width: min(600px, calc((100vw - 960px) / 2 - 1rem));
   max-height: calc(100vh - 7rem);
   display: flex;
   flex-direction: column;
@@ -530,8 +533,20 @@ button:disabled {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
-  z-index: 40;
+  z-index: 45;
   overflow: hidden;
+}
+
+/* 窄屏：左侧可用空间 < ~320px 时降级为顶部抽屉，避免与 .content 重叠。
+   阈值 ((100vw - 960) / 2 - 1rem) < 320 → 100vw < 1602 → 取整为 1600。*/
+@media (max-width: 1600px) {
+  .question-confirm-panel {
+    right: 1rem;
+    left: 1rem;
+    width: auto;
+    max-width: calc(100vw - 2rem);
+    max-height: 50vh;
+  }
 }
 
 .qcp-head {

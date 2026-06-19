@@ -14,6 +14,7 @@ export interface ConfirmQuestion {
 const HEADING_RE = /^##\s+(?:\d+(?:\.\d+)*\.?\s+)?待确认问题\s*$/
 const NEXT_H2_RE = /^##\s+/
 const RECOMMEND_SUFFIX_RE = /\s*\(推荐\)\s*$/
+const FREEFORM_SUFFIX_RE = /\s*（自由文本）\s*$/
 
 /**
  * Parse `## 待确认问题` section into structured questions.
@@ -45,7 +46,10 @@ export function parseConfirmQuestions(body: string): ConfirmQuestion[] {
       i += 1
       continue
     }
+    const freeformSuffix = FREEFORM_SUFFIX_RE.test(top)
+    const text = freeformSuffix ? top.replace(FREEFORM_SUFFIX_RE, '').trim() : top
     const options: ConfirmQuestionOption[] = []
+    let originalRecommendedCount = 0
     i += 1
     while (i < lines.length) {
       const sub = matchSubBullet(lines[i]!)
@@ -53,19 +57,26 @@ export function parseConfirmQuestions(body: string): ConfirmQuestion[] {
       const recommended = RECOMMEND_SUFFIX_RE.test(sub)
       const label = recommended ? sub.replace(RECOMMEND_SUFFIX_RE, '').trim() : sub.trim()
       if (label) {
+        if (recommended) originalRecommendedCount += 1
         options.push({
           id: optionId(questions.length, options.length, label),
           label,
-          recommended,
+          // 多 (推荐) 时仅首个保留，其余降级为普通选项
+          recommended: recommended && originalRecommendedCount === 1,
         })
       }
       i += 1
     }
+    if (originalRecommendedCount >= 2) {
+      console.warn(
+        `[question-parse] 问题 "${text}" 含 ${originalRecommendedCount} 个 (推荐)，已保留首个，其余降级`,
+      )
+    }
     questions.push({
-      id: questionId(questions.length, top),
-      text: top,
+      id: questionId(questions.length, text),
+      text,
       options,
-      isFreeform: options.length === 0,
+      isFreeform: freeformSuffix || options.length === 0,
     })
   }
   return questions

@@ -46,16 +46,21 @@ export interface QuestionAnswersBody {
   freeformAnnotations: AnnotationBody[]
 }
 
+async function extractErrorDetail(res: Response): Promise<string> {
+  const text = await res.text()
+  if (!text) return ''
+  try {
+    const body = JSON.parse(text) as { error?: string }
+    return body.error ?? text
+  } catch {
+    return text
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init)
   if (!res.ok) {
-    let detail = ''
-    try {
-      const body = (await res.json()) as { error?: string }
-      detail = body.error ?? ''
-    } catch {
-      detail = await res.text()
-    }
+    const detail = await extractErrorDetail(res)
     throw new Error(`${res.status} ${detail || res.statusText}`)
   }
   return res.json() as Promise<T>
@@ -73,13 +78,7 @@ export const api = {
       body: JSON.stringify(body),
     }).then(async (res) => {
       if (!res.ok) {
-        let detail = ''
-        try {
-          const j = (await res.json()) as { error?: string }
-          detail = j.error ?? ''
-        } catch {
-          detail = await res.text()
-        }
+        const detail = await extractErrorDetail(res)
         throw new Error(`${res.status} ${detail || res.statusText}`)
       }
       return res.json()

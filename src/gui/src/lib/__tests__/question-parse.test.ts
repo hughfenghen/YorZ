@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { parseConfirmQuestions } from '../question-parse.js'
 
 describe('parseConfirmQuestions', () => {
@@ -67,5 +67,38 @@ describe('parseConfirmQuestions', () => {
     const out = parseConfirmQuestions(body)
     expect(out).toHaveLength(2)
     expect(out[0].id).not.toBe(out[1].id)
+  })
+
+  it('treats a question with `（自由文本）` suffix as freeform and strips the suffix', () => {
+    const body = `## 待确认问题\n\n- release notes 文案该怎么写？（自由文本）\n  - 这条子项不应阻止 freeform 退化\n`
+    const out = parseConfirmQuestions(body)
+    expect(out).toHaveLength(1)
+    expect(out[0].text).toBe('release notes 文案该怎么写？')
+    expect(out[0].isFreeform).toBe(true)
+  })
+
+  it('keeps only the first `(推荐)` when multiple are declared', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const body = [
+      '## 待确认问题',
+      '',
+      '- 用什么数据库？',
+      '  - SQLite (推荐)',
+      '  - Postgres (推荐)',
+      '  - MySQL',
+      '',
+    ].join('\n')
+    try {
+      const out = parseConfirmQuestions(body)
+      expect(out).toHaveLength(1)
+      expect(out[0].options.map((o) => ({ label: o.label, recommended: o.recommended }))).toEqual([
+        { label: 'SQLite', recommended: true },
+        { label: 'Postgres', recommended: false },
+        { label: 'MySQL', recommended: false },
+      ])
+      expect(warn).toHaveBeenCalledTimes(1)
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
