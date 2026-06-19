@@ -711,6 +711,16 @@ button:disabled {
   overflow: hidden;
 }
 
+.agent-dock--collapsed {
+  width: auto;
+  min-width: 0;
+  max-width: min(320px, calc(100vw - 2rem));
+}
+
+.agent-dock--collapsed .agent-dock-toggle {
+  flex: 0 0 auto;
+}
+
 .agent-dock-head {
   display: flex;
   align-items: stretch;
@@ -908,4 +918,186 @@ button:disabled {
   margin: 0;
   color: var(--error);
   font-size: 0.8em;
+}
+
+.ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--radius);
+}
+
+.review-link {
+  display: inline-flex;
+  align-items: center;
+}
+
+.spec-review .review-changes,
+.spec-review .review-commit {
+  margin-top: 1.2rem;
+}
+
+.spec-review .change-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.spec-review .change-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.spec-review .status-badge {
+  display: inline-block;
+  min-width: 1.6em;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8em;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.spec-review .status-m {
+  color: #b58a00;
+}
+.spec-review .status-a {
+  color: #008b3c;
+}
+.spec-review .status-d {
+  color: #b80000;
+}
+.spec-review .status-r {
+  color: #5252b3;
+}
+.spec-review .status-untracked {
+  color: #8b008b;
+}
+
+.spec-review .path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+
+.spec-review .commit-message {
+  width: 100%;
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+}
+
+.spec-review .commit-actions {
+  margin-top: 0.6rem;
+  display: flex;
+  gap: 0.6rem;
+}
+
+.spec-review .success {
+  color: #008b3c;
+  margin-top: 0.6rem;
+}
+
+.append-btn {
+  border: 1px solid var(--border);
+}
+
+.append-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: transparent;
+}
+
+.append-dialog {
+  position: fixed;
+  top: 4.5rem;
+  right: 1.5rem;
+  width: min(460px, calc(100vw - 3rem));
+  max-height: calc(100vh - 6rem);
+  overflow: auto;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.25);
+  padding: 1rem 1.25rem;
+}
+
+.append-dialog header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.append-dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.append-dialog .kind-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.append-dialog .kind-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.append-dialog .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.append-dialog textarea {
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  resize: vertical;
+}
+
+.append-dialog .reference {
+  font-size: 0.88rem;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.append-dialog .reference .quote {
+  margin: 0;
+  padding: 0.4rem 0.65rem;
+  border-left: 3px solid var(--border);
+  background: var(--bg);
+}
+
+.append-dialog .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.append-dialog .error {
+  color: var(--error);
+  margin: 0;
 }

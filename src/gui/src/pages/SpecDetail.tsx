@@ -8,8 +8,8 @@ import {
   onCleanup,
   type Component,
 } from 'solid-js'
-import { useParams, useSearchParams } from '@solidjs/router'
-import { api, type QuestionAnswersBody } from '../lib/api.js'
+import { A, useParams, useSearchParams } from '@solidjs/router'
+import { api, type AppendItemBody, type QuestionAnswersBody } from '../lib/api.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { subscribeSpec } from '../lib/sse.js'
 import { agentTasks } from '../lib/agent-tasks.js'
@@ -17,6 +17,7 @@ import { observeSelection, type SelectionSnapshot } from '../lib/selection.js'
 import { parseConfirmQuestions } from '../lib/question-parse.js'
 import { SelectionMenu } from '../components/SelectionMenu.jsx'
 import { AnnotatePopover } from '../components/AnnotatePopover.jsx'
+import { AppendTaskDialog } from '../components/AppendTaskDialog.jsx'
 import { QuestionConfirmPanel, type FreeformDraft } from '../components/QuestionConfirmPanel.jsx'
 
 export const SpecDetail: Component = () => {
@@ -34,6 +35,9 @@ export const SpecDetail: Component = () => {
   const [runError, setRunError] = createSignal<string | null>(null)
   const [articleEl, setArticleEl] = createSignal<HTMLElement | null>(null)
   const [freeforms, setFreeforms] = createSignal<FreeformDraft[]>([])
+  const [appendOpen, setAppendOpen] = createSignal(false)
+  const [appendSnap, setAppendSnap] = createSignal<SelectionSnapshot | null>(null)
+  let appendBtnEl: HTMLButtonElement | undefined
 
   const questions = createMemo(() => {
     const s = spec()
@@ -135,6 +139,24 @@ export const SpecDetail: Component = () => {
     await runAgent()
   }
 
+  function openAppend() {
+    setAppendSnap(snap())
+    setAppendOpen(true)
+  }
+
+  async function submitAppend(body: AppendItemBody) {
+    const res = await api.appendItem(params.id, body)
+    if (res.runId) {
+      agentTasks.start({
+        runId: res.runId,
+        mode: 'skill-run',
+        specId: params.id,
+        specTitle: spec()?.frontmatter.summary,
+        source: 'run',
+      })
+    }
+  }
+
   async function openExplain(s: SelectionSnapshot) {
     try {
       const { runId } = await api.explain(params.id, s.text)
@@ -171,6 +193,17 @@ export const SpecDetail: Component = () => {
                     <time>{s().frontmatter.updated_at}</time>
                     <button
                       type="button"
+                      class="append-btn"
+                      ref={appendBtnEl}
+                      onClick={openAppend}
+                    >
+                      追加任务
+                    </button>
+                    <A class="ghost review-link" href={`/specs/${s().id}/review`}>
+                      Review
+                    </A>
+                    <button
+                      type="button"
                       class={`primary-action run-btn ${running() ? 'run-running' : 'run-idle'}`}
                       onClick={runAgent}
                       disabled={running()}
@@ -196,6 +229,14 @@ export const SpecDetail: Component = () => {
                   snap={popoverSnap()}
                   onCancel={() => setPopoverOpen(false)}
                   onSubmit={submitAnnotate}
+                />
+                <AppendTaskDialog
+                  open={appendOpen()}
+                  sectionPath={appendSnap()?.sectionPath}
+                  quote={appendSnap()?.text}
+                  anchorEl={appendBtnEl}
+                  onCancel={() => setAppendOpen(false)}
+                  onSubmit={submitAppend}
                 />
                 <Show when={showPanel()}>
                   <QuestionConfirmPanel
