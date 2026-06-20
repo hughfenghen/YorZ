@@ -30,6 +30,12 @@ export const AgentPanelDock: Component = () => {
     visibleTasks().some((t) => t.status === 'done' || t.status === 'failed'),
   )
 
+  const runningCount = createMemo(
+    () => visibleTasks().filter((t) => t.status === 'pending' || t.status === 'streaming').length,
+  )
+  const doneCount = createMemo(() => visibleTasks().filter((t) => t.status === 'done').length)
+  const failedCount = createMemo(() => visibleTasks().filter((t) => t.status === 'failed').length)
+
   // When list grows large, auto-collapse the dock once on next mount; user can re-expand.
   createMemo(() => {
     if (visibleTasks().length > COLLAPSE_THRESHOLD && !collapsed()) setCollapsed(true)
@@ -49,7 +55,16 @@ export const AgentPanelDock: Component = () => {
             aria-expanded={!collapsed()}
           >
             <span class="agent-dock-title">Agent 任务</span>
-            <span class="agent-dock-badge">{visibleTasks().length}</span>
+            <span
+              class="agent-dock-progress"
+              aria-label={`进行中 ${runningCount()} / 已完成 ${doneCount()} / 失败 ${failedCount()}`}
+            >
+              <span class="agent-dock-progress-running">{runningCount()}</span>
+              <span class="agent-dock-progress-sep">/</span>
+              <span class="agent-dock-progress-done">{doneCount()}</span>
+              <span class="agent-dock-progress-sep">/</span>
+              <span class="agent-dock-progress-failed">{failedCount()}</span>
+            </span>
             <span class="agent-dock-chevron">{collapsed() ? '▲' : '▼'}</span>
           </button>
           <Show when={hasFinished()}>
