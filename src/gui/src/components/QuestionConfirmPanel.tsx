@@ -13,6 +13,7 @@ export interface FreeformDraft {
 interface Props {
   questions: ConfirmQuestion[]
   freeforms: FreeformDraft[]
+  running?: boolean
   onRemoveFreeform: (id: string) => void
   onSubmit: (payload: QuestionAnswersBody) => Promise<void>
 }
@@ -66,20 +67,6 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
     return count
   })
 
-  function useAllRecommended() {
-    setAnswers((prev) => {
-      const next: Record<string, AnswerDraft> = { ...prev }
-      for (const q of props.questions) {
-        if (q.isFreeform) continue
-        const recommended = q.options.find((o) => o.recommended) ?? q.options[0]
-        if (recommended) {
-          next[q.id] = { ...next[q.id], selectedOptionLabel: recommended.label }
-        }
-      }
-      return next
-    })
-  }
-
   async function submit() {
     setBusy(true)
     setError(null)
@@ -121,11 +108,13 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
           未答题 <span class="qcp-count">{unanswered()}</span> / {props.questions.length}
         </span>
         <div class="qcp-head-actions">
-          <button type="button" onClick={useAllRecommended}>
-            全部使用推荐
-          </button>
-          <button type="button" class="primary-action" disabled={busy()} onClick={submit}>
-            {busy() ? '提交中…' : '提交全部'}
+          <button
+            type="button"
+            class="primary-action"
+            disabled={busy() || props.running}
+            onClick={submit}
+          >
+            {busy() ? '提交中…' : props.running ? '运行中…' : '提交全部'}
           </button>
         </div>
       </header>

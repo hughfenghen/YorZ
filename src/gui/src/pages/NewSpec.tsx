@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, Show, type Component } from 'solid-js'
+import { createSignal, onCleanup, type Component } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
 import { api, type CreateSpecBody } from '../lib/api.js'
 import { subscribeSpecsList } from '../lib/sse.js'
@@ -18,6 +18,7 @@ export const NewSpec: Component = () => {
   const [type, setType] = createSignal<CreateSpecBody['type']>('feat')
   const [error, setError] = createSignal<string | null>(null)
   const [phase, setPhase] = createSignal<Phase>('idle')
+  const busy = () => phase() === 'creating'
 
   let cleanupList: (() => void) | null = null
   let baselineIds: Set<string> = new Set()
@@ -50,6 +51,7 @@ export const NewSpec: Component = () => {
 
   async function submit(e: Event) {
     e.preventDefault()
+    if (phase() === 'creating') return
     setError(null)
     const text = content().trim()
     if (text.length < 5) {
@@ -96,48 +98,46 @@ export const NewSpec: Component = () => {
           创建完文档后会自动进入 plan 阶段。
         </p>
       </header>
-      <Show when={phase() === 'idle' || phase() === 'failed'}>
-        <form class="form" onSubmit={submit}>
-          <fieldset class="type-group">
-            <legend>类型</legend>
-            {TYPES.map((t) => (
-              <label class={`type-pill ${type() === t.value ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="type"
-                  value={t.value}
-                  checked={type() === t.value}
-                  onChange={() => setType(t.value)}
-                />
-                <strong>{t.label}</strong>
-                <span class="muted">{t.hint}</span>
-              </label>
-            ))}
-          </fieldset>
-          <label>
-            <span>需求内容</span>
-            <textarea
-              rows={10}
-              value={content()}
-              onInput={(e) => setContent(e.currentTarget.value)}
-              placeholder="原始诉求、痛点、期望效果、关联文档/模块（可使用 @ 引用）"
-              required
-              autofocus
-            />
-          </label>
-          {error() && <p class="error">{error()}</p>}
-          <button type="submit" class="primary-action">
-            创建并启动 Agent
-          </button>
-        </form>
-      </Show>
-      <Show when={phase() === 'creating'}>
-        <section class="run-log">
+      <form class="form" onSubmit={submit}>
+        <fieldset class="type-group" disabled={busy()}>
+          <legend>类型</legend>
+          {TYPES.map((t) => (
+            <label class={`type-pill ${type() === t.value ? 'active' : ''}`}>
+              <input
+                type="radio"
+                name="type"
+                value={t.value}
+                checked={type() === t.value}
+                onChange={() => setType(t.value)}
+                disabled={busy()}
+              />
+              <strong>{t.label}</strong>
+              <span class="muted">{t.hint}</span>
+            </label>
+          ))}
+        </fieldset>
+        <label>
+          <span>需求内容</span>
+          <textarea
+            rows={10}
+            value={content()}
+            onInput={(e) => setContent(e.currentTarget.value)}
+            placeholder="原始诉求、痛点、期望效果、关联文档/模块（可使用 @ 引用）"
+            required
+            autofocus
+            disabled={busy()}
+          />
+        </label>
+        {error() && <p class="error">{error()}</p>}
+        <button type="submit" class="primary-action" disabled={busy()}>
+          {busy() ? 'Agent 创建中…' : '创建并启动 Agent'}
+        </button>
+        {busy() && (
           <p class="muted">
             Agent 正在创建 spec 文档…可在右下角 Agent 面板查看流式输出，文档落地后将自动跳转。
           </p>
-        </section>
-      </Show>
+        )}
+      </form>
     </section>
   )
 }

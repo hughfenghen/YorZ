@@ -8,7 +8,7 @@ interface Props {
   onSubmit: (note: string) => Promise<void>
 }
 
-const POPOVER_WIDTH = 320
+const POPOVER_WIDTH = 500
 
 export const AnnotatePopover: Component<Props> = (props) => {
   const [note, setNote] = createSignal('')
@@ -52,9 +52,6 @@ export const AnnotatePopover: Component<Props> = (props) => {
       >
         <header>
           <strong>批注</strong>
-          <span class="muted">
-            将以 <code>！！！</code> 写入 spec，Agent 续跑会按 skill 自动消费
-          </span>
         </header>
         <blockquote class="quote">
           <em>{props.snap?.sectionPath}</em> 中 “{(props.snap?.text ?? '').slice(0, 200)}”

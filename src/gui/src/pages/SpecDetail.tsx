@@ -242,6 +242,7 @@ export const SpecDetail: Component = () => {
                   <QuestionConfirmPanel
                     questions={questions()}
                     freeforms={freeforms()}
+                    running={running()}
                     onRemoveFreeform={removeFreeform}
                     onSubmit={submitAnswers}
                   />

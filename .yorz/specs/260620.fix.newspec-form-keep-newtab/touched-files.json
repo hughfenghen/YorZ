@@ -1,0 +1,7 @@
+{
+  "paths": [
+    ".yorz/specs/260620.fix.newspec-form-keep-newtab/spec.md",
+    "src/gui/src/AppShell.tsx",
+    "src/gui/src/pages/NewSpec.tsx"
+  ]
+}

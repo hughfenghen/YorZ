@@ -449,6 +449,8 @@ button:disabled {
   color: var(--text);
   resize: vertical;
   min-height: 64px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .annotate-popover .actions {
