@@ -7,3 +7,5 @@ dist
 playwright-report
 test-results
 .tmp-e2e
+tmp/agent-test
+src/skill/yorz-spec/__tests__/reports/*.json

@@ -1,7 +1,7 @@
 ---
-stage: execute
-last_action: 执行任务清单（自动化部分），人工冒烟待用户验证
-updated_at: 2026-06-19
+stage: plan
+last_action: plan：补充 review 偶发关联失败 bug 分析
+updated_at: 2026-06-20
 summary: 在 spec 详情页新增 review 入口，进入后展示该 spec 相关联的变更文件列表，并提供一键提交 git 的按钮，便于 Agent 跑完任务后快速 review 与提交。
 ---
 
@@ -67,6 +67,28 @@ summary: 在 spec 详情页新增 review 入口，进入后展示该 spec 相关
 - 无前端单测基础设施（见 [[260618.fix.agent-streaming-and-cancel]] §4.5），review 页面只能靠 service 单测 + 人工冒烟兜底。
 - prettier 已经在仓库根配置；新增 ts/tsx 文件需要遵守，避免 spec 写回后 formatter 报警。
 - macOS / Linux 为主支持平台，git 调用按 POSIX 路径处理即可。
+
+### 3.7 review 页面偶发关联不出变更文件（追加 bug）
+
+用户反馈：打开某 spec 的 review 页面时，列表为空；对工作区任一文件执行 `git add <file>` 再 `git reset <file>` 后，刷新（或重新打开）review 页面就能看到该 spec 的变更文件了。复现样本：`.yorz/specs/260620.feat.agent-panel-task-progress/touched-files.json` 已记录 3 条路径，但 review 页面无任何条目。
+
+对当前实现的复核结论：
+
+- `touched-files.json` 内容正常（绝对/相对路径已 normalize 为相对 cwd 的 POSIX 形式），样本为：
+  - `.yorz/specs/260620.feat.agent-panel-task-progress/spec.md`
+  - `src/gui/src/components/AgentPanelDock.tsx`
+  - `src/gui/src/styles.css`
+- 在当前 working tree 上手动执行 `git status --porcelain=v1 --untracked-files=all`（即 `src/service/git.ts: listChanges` 的同一命令），这 3 个路径全部能被枚举到（`spec.md` 是 `??`，另两个是 `M`），交集应为 3 条。
+- `GET /api/specs/:id/changes` 的过滤逻辑只剔除该 spec 自己的 `touched-files.json`，不会误删上述任意一条。
+
+也就是说：**按当前 disk 上的代码与状态，bug 不可复现**。这意味着用户观察到的失败发生在一个特定的瞬时条件下，"stage + unstage" 之所以能修复，是因为它顺带触发了某个我们应排查的状态变化。可能的根因（按可能性排序）：
+
+1. **进程态与磁盘代码不一致**：用户当前跑的 `yorz` 服务进程是在 `cb56ef0`（新增 review 与 touched-files 链路）之前启动的旧二进制；旧代码可能没有 `--untracked-files=all` 或者还没有 `touched-files.json` 写入路径。`git add/reset` 既不会修复后端代码，也不会修改 touched-files，但用户在 workaround 期间往往会同时刷新页面，给观察留下"workaround 起效"的错觉。
+2. **`touched-files.json` 写入与 GET 请求竞态**：`TouchedFilesStore.add` 经 per-spec mutex 序列化；Agent 单轮可能触发多次 `file_touched`，写入按 microtask 排队。用户在 Agent 还在跑、或刚跑完未排空时打开 review，看到的是「过时快照」。`git add/reset` 给了用户额外几秒，期间最后一次 `add` 落盘，刷新就看到了。这种情况下 workaround 是错觉，根因是缺少"touched 落盘后通知前端刷新"的回路。
+3. **git index 的 "racy git" 失效**：Agent 用 `fs.writeFile` 短时间内连续写同一文件，若文件 mtime 与 index 中记录的 mtime 同秒，git 会按内容比较；某些场景下 `git status` 会把它当作未改动。`git add` 会强制更新 index 的 stat，使后续 `git status` 重新走比较路径。该情况只对 已跟踪文件 生效，可解释 `M` 类条目缺失，但解释不了 `??` 类条目缺失。
+4. **git status 输出在某些 git 版本/配置下被局部截断**：极小概率；若用户本地有 `core.fsmonitor` 或 `status.showUntrackedFiles=normal` 配置，加上某种边界条件，可能让 `--untracked-files=all` 退化。命令行 flag 通常会覆盖 config，所以排在最后。
+
+`git add <file>` + `git reset <file>` 这套 workaround 在以上 4 个假设中**只有 (3) 与 (4) 能真正改变 git 输出**；(1)/(2) 都属于"用户在 workaround 间隙做了其它操作（刷新 / 等待）"的副作用。我们需要先排除前两条，才能确定是不是真要修 git 调用本身。
 
 ## 4. 技术实现方案
 
@@ -183,9 +205,43 @@ summary: 在 spec 详情页新增 review 入口，进入后展示该 spec 相关
 - Co-Authored-By 等签名（Q5 决议：完全不加，由用户 git 配置决定）。
 - 已提交内容按 `[spec:<id>]` 反向检索（锚点已埋下，UI 留给后续 spec）。
 
+### 4.9 review 偶发关联失败的诊断与修复（追加 bug 处理思路）
+
+整体策略：**先诊断，再决策修复方向**。当前不够确定 §3.7 中哪个假设成立，强行加修复可能掩盖真正的根因。本节列出每个假设对应的最小动作；最终落到任务清单的是哪一组，等用户在 §5 给出确认。
+
+A. 排除"服务进程跑旧代码"（假设 1）
+
+- 在 `GET /api/specs/:id/changes` 响应体增加 `serverInfo: { buildHash | startedAt }` 字段（仅诊断用，commit 接口同理），前端在 review 页页脚以小灰字显示，便于用户一眼看出"你在调的服务是哪份代码"。
+- 上线前先靠用户**重启一次本地 yorz 服务**复测，若 bug 消失即归类到假设 1，无需写诊断字段。
+
+B. 排除"touched 写入与 GET 竞态"（假设 2）
+
+- 在 `TouchedFilesStore` 上暴露一个 `flush(specId): Promise<void>`：等待当前 per-spec 锁链全部完成。`GET /changes` 在读取前 `await touched.flush(specId)`，把"刚触发但还没落盘"的项目纳入。
+- 另一种思路（可叠加）：在 `events.ts` 已有的 SSE 通道里增发一条 `file_touched`，让 SpecReview 页面收到事件后自动触发 refetch。本期内只做 `flush()`，SSE 推送留作后续，避免范围扩张。
+
+C. 验证 / 修复"racy git"（假设 3）
+
+- 在 `listChanges` 之前先跑一次 `git update-index --really-refresh -q --unmerged`（忽略非零返回），强制 git 对所有跟踪文件刷一遍 stat→content 对比。耗时通常 < 50ms，对 review 页面体感无影响。
+- 这个修复只对 `M`/`D`（已跟踪）类条目有效，对未跟踪文件（`??`）无效。
+
+D. 验证 / 修复 "untracked 枚举退化"（假设 4）
+
+- 在 service 启动时打印 `git --version` 与 `git config --get-all status.showUntrackedFiles`，便于排查。
+- 若假设成立，可显式追加 `-c status.showUntrackedFiles=all` 到调用参数，覆盖任何用户配置。
+
+E. 兜底：让 review 页面"宁可多说，不可漏说"（不分假设）
+
+- 当 `touched` 非空但 `touched ∩ git status` 为空时，`GET /changes` 返回的 `changes: []` 之外再带一个 `unmatched: string[]` 字段（touched 中无法在 git status 找到的路径，剔除自身的 touched-files.json）。前端在空态下额外渲染一段提示："touched 集合记录了 N 个路径但 git 工作区未检测到改动；可能已提交、或被 .gitignore 忽略。点此查看清单。"
+- 这个兜底不依赖根因诊断，先做也不会错；但要小心别让它掩盖真正的 bug——所以必须保留 §A/B 的探针，否则我们永远不知道为什么 touched 与 git status 对不上。
+
+最终选哪条路径，看 §5 待确认问题 Q1/Q2 的答复。优先实现 A+B（成本低、最常见根因），再视情况叠加 C/D/E。
+
 ## 5. 待确认问题
 
-- 暂无
+- Q1（针对 §3.7 bug）：你复现时，本地 `yorz` 服务进程是 **bug 复现之后** 重新启动过的吗？若没有，请先 `ctrl+c` 杀掉服务并重启，再用同一个 spec 复现一次。若重启后无法再现，本 bug 归类为"旧进程跑旧代码"，本节可关闭，不需要写代码修复（只需补一条"启动后打印 build 信息"的可选改进）。
+- Q2（针对 §3.7 bug）：你打开 review 页面与 Agent 收尾的时间关系是怎样的？（A）Agent 还在跑就打开了；（B）Agent 刚结束 1–2 秒内打开；（C）Agent 结束很久后打开，中间没有再触发任何 Agent run。若是 A/B，强烈指向假设 2（写入竞态），优先做 §4.9-B 的 `flush()`；若是 C，则跳过假设 2，往假设 3/4 方向走。
+- Q3（针对 §3.7 修复范围）：在 §4.9 A–E 五条里，本期希望落地哪几条？我的建议是 **A（仅前端贴一行 build 信息，无需后端）+ B（flush）+ E（unmatched 兜底）**。C/D 等假设 1/2 排除后再加。若你同意按建议来，本节就到此为止；否则请指明取舍。
+- Q4（针对追加任务的处理范式）：本次完成 §3.7 修复后，是否把 `## 8. 追加任务` 里那条 `[open] [fix]` 改为 `[done]`，还是直接删除条目？目前 skill 没有强约定，倾向 `[done]` 以保留可追溯。
 
 ## 6. 任务清单
 
@@ -213,3 +269,11 @@ summary: 在 spec 详情页新增 review 入口，进入后展示该 spec 相关
 - 2026-06-19 tasks 阶段：消费 6 条 `！！！` 批注；Q1 选项 B 引入「Agent 写入路径捕获」链路，§4 重写为 `touched ∩ git status` 的方案；Q3/Q4 落地为服务端追加 `[spec:<id>]` 尾行 + `appendExecutionLog`；Q5/Q6 维持中立/常显；拆解为 17 项任务，进入 execute。
 - 2026-06-19 execute 阶段：实现后端三个新模块（`git.ts` / `touched-files.ts` / `SpecStore.appendExecutionLog`）；改造 `AgentRunner` 从 stream-json 中识别 `Write`/`Edit`/`MultiEdit`/`NotebookEdit` 工具调用并旁路 `'file_touched'` 事件；在 `routes/specs.ts` 新增 `GET /specs/:id/changes` 与 `POST /specs/:id/commit`（含 `[spec:<id>]` 锚点强制追加、`appendExecutionLog` 回写）；`server.ts` + `index.ts` 注入 `TouchedFilesStore` 与 `cwd`。前端新增 `/specs/:id/review` 路由与 `SpecReview` 页面，`SpecDetail` 头部加 Review 入口，`api.ts` 暴露 `listSpecChanges` / `commitSpecChanges`，并补足最小 CSS。
 - 2026-06-19 execute 验证：`npx tsc --noEmit` 通过；`npx vitest run` 全量 110/110 通过（新增 `git.test.ts` 7 项、`touched-files.test.ts` 6 项、`agent.test.ts` +2 项、`service.test.ts` +6 项）；`npx vite build --config vite.gui.config.ts` 产物 OK；prettier 已格式化全部新增/修改文件。剩余「人工冒烟」需用户在本机跑一次 Agent → 打开 review 页 → 提交，从 `git log -1` 验证 `[spec:<id>]` 尾行。
+- 2026-06-20 plan 重开：用户在 §8 追加 `[open] [fix]`（review 页面偶发关联不出变更文件，workaround 是 `git stage`+`unstage`）。已在 §3.7 写明症状与可能根因（4 条假设），§4.9 给出对应诊断/修复路径 A–E，§5 提 Q1–Q4 待用户答复后再进入 tasks 阶段。
+
+## 8. 追加任务
+
+- [open] [fix] 2026-06-20 21:42 | Review页面有可能关联不出变更文件，比如
+  - 描述：Review页面有可能关联不出变更文件，比如
+    @.yorz/specs/260620.feat.agent-panel-task-progress/touched-files.json
+    我用 git stage 然后unstage 就能在 review 页面看到相关联的变更文件了

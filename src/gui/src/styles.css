@@ -214,6 +214,57 @@ button:disabled {
   font-family: ui-monospace, SFMono-Regular, monospace;
 }
 
+/* Recent specs section */
+.recent-specs {
+  margin-bottom: 1.5rem;
+}
+
+.recent-specs-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+
+.recent-specs-title {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.recent-clear-btn {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.6rem;
+}
+
+.recent-specs-grid {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+
+@media (min-width: 720px) {
+  .recent-specs-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.recent-spec-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius);
+  transition: transform 0.08s ease;
+}
+
+.recent-spec-card:hover {
+  transform: translateY(-1px);
+}
+
 .badge {
   display: inline-block;
   padding: 0.15rem 0.55rem;

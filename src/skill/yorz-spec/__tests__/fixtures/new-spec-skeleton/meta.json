@@ -1,0 +1,5 @@
+{
+  "module": "new-spec",
+  "newSpec": true,
+  "prompt": "请使用 yorz-spec skill 新建 spec：给 GUI 加一个夜间模式开关，挂在 Settings 页面。"
+}

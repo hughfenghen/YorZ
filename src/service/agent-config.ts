@@ -13,10 +13,20 @@ export interface AgentCmd {
 
 export interface ResolveAgentCmdOptions {
   cwd: string
+  /**
+   * Explicit agent name. When set, skips .yorz/config.json lookup and uses the
+   * named builtin. Honored by the test:agent runner so `--agent=opencode` can
+   * force opencode even in a project whose config picks claude.
+   */
+  agent?: AgentName
   /** Test hook: when set, overrides the resolved command path entirely. */
   override?: AgentCmd
   /** Read process.env. Injectable for testing. */
   env?: NodeJS.ProcessEnv
+}
+
+export function resolveAgentByName(name: AgentName): AgentCmd {
+  return BUILTIN[name]
 }
 
 const BUILTIN: Record<AgentName, AgentCmd> = {
@@ -42,7 +52,9 @@ const BUILTIN: Record<AgentName, AgentCmd> = {
   },
   opencode: {
     cmd: 'opencode',
-    args: (prompt) => ['-p', prompt],
+    // opencode CLI 入口非 `-p`：必须走 `opencode run <message>` 子命令；
+    // `--dangerously-skip-permissions` 对齐 claude 的 bypassPermissions，保证无人值守。
+    args: (prompt) => ['run', '--dangerously-skip-permissions', prompt],
     streamFormat: 'text',
   },
 }
@@ -57,6 +69,7 @@ export function resolveAgentCmd(opts: ResolveAgentCmdOptions): AgentCmd {
     const prefix = tokens.slice(1)
     return { cmd, args: (prompt) => [...prefix, '-p', prompt], streamFormat: 'text' }
   }
+  if (opts.agent) return BUILTIN[opts.agent]
   const name = readAgentName(opts.cwd)
   return BUILTIN[name]
 }

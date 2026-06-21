@@ -15,6 +15,7 @@ import { subscribeSpec } from '../lib/sse.js'
 import { agentTasks } from '../lib/agent-tasks.js'
 import { observeSelection, type SelectionSnapshot } from '../lib/selection.js'
 import { parseConfirmQuestions } from '../lib/question-parse.js'
+import { addRecentSpec } from '../lib/recent-specs.js'
 import { SelectionMenu } from '../components/SelectionMenu.jsx'
 import { AnnotatePopover } from '../components/AnnotatePopover.jsx'
 import { AppendTaskDialog } from '../components/AppendTaskDialog.jsx'
@@ -50,6 +51,12 @@ export const SpecDetail: Component = () => {
     if (!s) return false
     if (s.frontmatter.stage !== 'plan') return false
     return questions().length > 0 || freeforms().length > 0
+  })
+
+  createEffect(() => {
+    const id = params.id
+    if (!id) return
+    addRecentSpec(id)
   })
 
   createEffect(() => {

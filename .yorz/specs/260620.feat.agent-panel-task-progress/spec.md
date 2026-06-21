@@ -1,6 +1,6 @@
 ---
 stage: execute
-last_action: 完成 3 段彩色计数实现并通过测试
+last_action: 提交 git
 updated_at: 2026-06-20
 summary: Agent 任务 Dock header 用「进行中 / 已完成 / 失败」三段彩色计数替代原任务总数气泡。
 ---
@@ -89,3 +89,7 @@ summary: Agent 任务 Dock header 用「进行中 / 已完成 / 失败」三段�
 - 2026-06-20 在 `src/gui/src/styles.css` 删除原 `.agent-dock-badge` 规则块（旧 765-776 行），新增 `.agent-dock-progress`、`.agent-dock-progress-running/-done/-failed/-sep` 五条规则，颜色复用 `--plan`/`--execute`/`--error`/`--muted` token；全仓 grep `agent-dock-badge` 仅命中本 spec 文档（历史描述），代码中已无残留。
 - 2026-06-20 `pnpm test` 14 个测试文件、110 条用例全部通过；`npx prettier --write` 对 3 个改动文件检查，均为 unchanged（已合规）。
 - 阻塞项：本环境无法启动 GUI 做人工视觉验证，三色与 layout 仍需用户运行 `pnpm dev` 在浏览器中确认。
+
+## 执行记录
+
+- 2026-06-20 提交 00e21ab：feat(260620.feat.agent-panel-task-progress): Agent 任务 Dock header 用「进行中 / 已完成 / 失败」三段彩色计数替代原任务总数气泡。（3 个文件）

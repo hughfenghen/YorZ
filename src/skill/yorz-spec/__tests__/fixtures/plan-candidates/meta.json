@@ -1,0 +1,4 @@
+{
+  "module": "plan",
+  "prompt": "请使用 yorz-spec skill 处理 spec：.yorz/specs/plan-candidates/spec.md"
+}

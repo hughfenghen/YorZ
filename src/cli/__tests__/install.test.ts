@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdtemp, readFile, rm, stat, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile, mkdir, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { install, SKILL_DIR_NAME } from '../install.js'
 import { uninstall } from '../uninstall.js'
-import skillContent from '../../skill/SKILL.md?raw'
 
 let home: string
 let cwd: string
@@ -19,26 +18,69 @@ afterEach(async () => {
   await rm(cwd, { recursive: true, force: true })
 })
 
+const EXPECTED_SUBDOCS = [
+  'SKILL.md',
+  'conventions.md',
+  'execute.md',
+  'index.json',
+  'new-spec.md',
+  'plan.md',
+  'rewrite-rules.md',
+  'routing.md',
+  'tasks.md',
+]
+
+async function walk(dir: string): Promise<string[]> {
+  const out: string[] = []
+  const stack: string[] = [dir]
+  while (stack.length) {
+    const cur = stack.pop()!
+    const entries = await readdir(cur, { withFileTypes: true })
+    for (const e of entries) {
+      const p = join(cur, e.name)
+      if (e.isDirectory()) stack.push(p)
+      else out.push(p)
+    }
+  }
+  return out
+}
+
 describe('install', () => {
-  it('writes SKILL.md to claude user skills dir with inlined content', async () => {
+  it('writes SKILL.md plus all sub-documents to claude user skills dir', async () => {
     const res = await install({ agent: 'claude', scope: 'user', home, cwd })
-    expect(res.path).toBe(join(home, '.claude', 'skills', SKILL_DIR_NAME, 'SKILL.md'))
+    const skillDir = join(home, '.claude', 'skills', SKILL_DIR_NAME)
+    expect(res.path).toBe(join(skillDir, 'SKILL.md'))
     expect(res.overwritten).toBe(false)
 
-    const content = await readFile(res.path, 'utf8')
-    expect(content).toBe(skillContent)
-    expect(content).toContain('name: yorz-spec')
+    const written = (await walk(skillDir)).map((p) => p.slice(skillDir.length + 1)).sort()
+    for (const expected of EXPECTED_SUBDOCS) {
+      expect(written).toContain(expected)
+    }
+
+    const main = await readFile(res.path, 'utf8')
+    expect(main).toContain('name: yorz-spec')
   })
 
-  it('overwrites an existing SKILL.md on second run', async () => {
+  it('excludes the __tests__/ directory from the installed skill', async () => {
+    await install({ agent: 'claude', scope: 'user', home, cwd })
+    const skillDir = join(home, '.claude', 'skills', SKILL_DIR_NAME)
+    const written = await walk(skillDir)
+    expect(written.every((p) => !p.includes('__tests__'))).toBe(true)
+  })
+
+  it('wipes a previously installed yorz-spec/ before re-writing (no stale files)', async () => {
     const first = await install({ agent: 'claude', scope: 'user', home, cwd })
-    await writeFile(first.path, 'STALE', 'utf8')
+    const skillDir = join(home, '.claude', 'skills', SKILL_DIR_NAME)
+    const stalePath = join(skillDir, 'stale-leftover.md')
+    await writeFile(stalePath, 'STALE', 'utf8')
+    await writeFile(first.path, 'OVERWRITTEN ENTRY', 'utf8')
 
     const second = await install({ agent: 'claude', scope: 'user', home, cwd })
     expect(second.overwritten).toBe(true)
 
-    const content = await readFile(second.path, 'utf8')
-    expect(content).toBe(skillContent)
+    await expect(stat(stalePath)).rejects.toThrow()
+    const main = await readFile(second.path, 'utf8')
+    expect(main).toContain('name: yorz-spec')
   })
 
   it('writes to project .claude/skills when scope=project', async () => {

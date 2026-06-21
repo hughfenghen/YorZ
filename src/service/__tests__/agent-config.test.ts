@@ -42,7 +42,7 @@ describe('resolveAgentCmd', () => {
     await writeConfig(cwd, 'opencode')
     const result = resolveAgentCmd({ cwd, env: {} })
     expect(result.cmd).toBe('opencode')
-    expect(result.args('x')).toEqual(['-p', 'x'])
+    expect(result.args('x')).toEqual(['run', '--dangerously-skip-permissions', 'x'])
     expect(result.streamFormat).toBe('text')
   })
 
@@ -51,6 +51,15 @@ describe('resolveAgentCmd', () => {
     await writeConfig(cwd, 'gemini')
     const result = resolveAgentCmd({ cwd, env: {} })
     expect(result.cmd).toBe('claude')
+  })
+
+  it('honors explicit opts.agent=opencode over .yorz/config.json', async () => {
+    const cwd = await tempCwd()
+    await writeConfig(cwd, 'claude')
+    const result = resolveAgentCmd({ cwd, env: {}, agent: 'opencode' })
+    expect(result.cmd).toBe('opencode')
+    expect(result.streamFormat).toBe('text')
+    expect(result.args('hi')).toEqual(['run', '--dangerously-skip-permissions', 'hi'])
   })
 
   it('honors YORZ_AGENT_CMD env override for tests', async () => {
