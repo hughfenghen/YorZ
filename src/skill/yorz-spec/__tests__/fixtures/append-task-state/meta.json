@@ -1,4 +1,3 @@
 {
-  "module": "execute",
-  "prompt": "请使用 yorz-spec skill 处理 spec：.yorz/specs/append-task-state/spec.md"
+  "module": "execute"
 }

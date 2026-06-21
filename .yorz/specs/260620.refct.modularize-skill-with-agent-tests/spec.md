@@ -1,8 +1,8 @@
 ---
 stage: execute
-last_action: 消费批注「继续执行任务 25-27」，开始跑真实 Agent 回归
-updated_at: 2026-06-20
-summary: 将单体 SKILL.md 按流程节点拆分为多个子文档以提升稳定性，新增 test:agent 脚本调用真实 Agent 校验各模块输出，并修复待确认问题候选项缺失 (推荐) 标记的问题。
+last_action: fixture 绝对路径修复 4 项任务全部完成，dry-run 验证仓库未被污染
+updated_at: 2026-06-21
+summary: 拆分 SKILL.md + test:agent 真实 Agent 回归 + HTML 报告；本轮重开修复 runner prompt 用相对路径导致 opencode/claude 将 fixture spec 写入仓库 .yorz/specs/ 而非 tmp 目录的 bug。
 ---
 
 # 重构 skill：模块化 + 真实 Agent 测试 + 待确认问题格式修复
@@ -84,7 +84,22 @@ SKILL.md 已经写明（节选）：
 - 没有"产出前自检"段（checklist），模型不会主动回查自己生成的章节；
 - 没有任何自动化测试在跑完 Agent 后断言这条规则，相当于无人值守、长期漂移。
 
-### 3.6 Claude Code Skill 体系对多文件的支持现状
+### 3.6 测试 fixture spec 被写入仓库正式目录的 bug（本轮重开触发点）
+
+现象：执行 `pnpm test:agent --agent=opencode` 后，本应只出现在 `tmp/agent-test/<case>-<runId>/.yorz/specs/<case>/spec.md` 的测试输出，实际落到了仓库正式目录 `.yorz/specs/<case>/spec.md`。复核当前仓库可观察到 `plan-candidates/`、`reopen-on-new-requirement/`、`tasks-consume-annotations/` 三个测试 case 名的目录已经被污染（含 Agent 生成的真实内容）。
+
+定位：
+
+- `src/skill/yorz-spec/__tests__/runner.ts:113-138`：`runAgentCase` 把 fixture 拷贝到 `<tmpDir>/<specRelPath>` 没问题，但传给 Agent 的 prompt 来自 `meta.prompt`（如 `请使用 yorz-spec skill 处理 spec：.yorz/specs/plan-candidates/spec.md`），**是相对路径**。
+- spawn 时 `cwd` 已正确设为 `tmpDir`，但 opencode / claude CLI 普遍会在启动后**向上走目录树寻找 `.git/` 作为「项目根」**，再把对话里所有相对路径解析到那里。`tmpDir` 没有 `.git/`，会一路向上命中仓库根 `/Users/fenghen/my-space/YorZ/.git/`，于是相对路径 `.yorz/specs/<case>/spec.md` 落到了仓库的正式 specs 目录。
+- 副作用：
+  - 真实仓库的 `.yorz/specs/` 被污染（三处遗留目录）；
+  - 测试与真实 spec 流互相干扰，FS Watcher 会把测试产物当成新 spec 推给 GUI；
+  - reporter 读 `<tmpDir>/<specRelPath>` 读不到内容，会误判为「Agent 没产出 spec」。
+
+每个 case 的 fixture `meta.json` 都犯了同样的相对路径错误（共 6 处：`plan-candidates / tasks-consume-annotations / execute-checkbox-flip / new-spec-skeleton / reopen-on-new-requirement / append-task-state`），需要统一修。
+
+### 3.7 Claude Code Skill 体系对多文件的支持现状
 
 Claude Code 的 Skill 加载机制以 `SKILL.md` 为入口（参见 `Base directory for this skill` 提示），是否允许在 SKILL.md 中引用同目录下的其它 markdown 让其一并被 Agent 读取，文档里没有明确给出强保证；OpenCode adapter 的行为也未知。**这是本期最关键的不确定点**，需要在「待确认问题」中作为单选并给出推荐方案。
 
@@ -171,7 +186,7 @@ Fixture 至少覆盖：
   - 单 run 输出对照表（每个 case × 每个 agent 的 PASS/FAIL + 命中规则数）；
   - 按模块聚合通过率（依赖 `index.json` 把 case 关联到模块）；
   - 输出 spec 章节齐全度（`## 现状分析` / `## 技术实现方案` / `## 待确认问题` / `## 任务清单` / `## 执行记录` 是否齐全）；
-  - 持久化到 `src/skill/yorz-spec/__tests__/reports/<timestamp>.json`，并 console 输出可读表格。
+  - 持久化为 HTML 报告 `src/skill/yorz-spec/__tests__/reports/<timestamp>-<agent>.html`（包含模块通过率表、章节齐全度、每个 case PASS/FAIL 明细，浏览器可直接打开），并 console 输出可读表格；**不再输出 JSON 报告**。
 
 ### 4.5 候选项格式 bug 修复（plan.md 强化 + 测试断言）
 
@@ -187,6 +202,25 @@ Fixture 至少覆盖：
 
 - input：一个刚进入 plan、`## 现状分析` 已经写好、`## 待确认问题` 还没生成的 spec；
 - expect：解析输出，校验每条问题都符合硬约束；统计违反类型并打分。
+
+### 4.6 修复 fixture spec 写入位置 bug（本轮）
+
+核心思路：**让 runner 默认 prompt 用绝对路径**，从根本上消除「Agent CLI 走 `.git/` 上溯导致 cwd 漂移」的隐患；同时清理被污染的仓库目录。三条决策（已批注）：
+
+- fixture meta 中**全部移除** `prompt` 字段（含路径的 5 个 case），让 runner 用「默认 prompt + 绝对 `specPath`」生成；`new-spec-skeleton` 例外保留（其 prompt 不含路径，且承载了具体测试语义，移除会让 runner 默认 fallback 失去语义）；
+- **不**在 `tmpDir` 下执行 `git init -q`：相信绝对路径修复已经足够，避免给测试环境引入额外副作用；
+- 仓库内 3 个被污染目录在本轮执行任务里直接 `rm -rf` 删除并附验证。
+
+具体修改：
+
+1. `src/skill/yorz-spec/__tests__/runner.ts`
+   - 把缺省 prompt 从 `请使用 yorz-spec skill 处理 spec：${specRelPath}` 改为使用**绝对路径** `${specPath}`（变量已存在）；
+   - 新增「fixture meta.prompt 校验」：若 `meta.prompt` 中检测到 `.yorz/specs/` 字样的相对路径片段，启动前直接抛错并提示改用绝对路径，防止后续 fixture 再次写死相对路径。
+2. `src/skill/yorz-spec/__tests__/fixtures/*/meta.json`
+   - `plan-candidates / tasks-consume-annotations / execute-checkbox-flip / reopen-on-new-requirement / append-task-state` 五个 case 删除 `prompt` 字段，回归 runner 默认绝对路径 prompt；
+   - `new-spec-skeleton` 保留 `prompt`（不含路径，且测试语义比 runner 默认更具体）。
+3. 仓库污染清理：直接 `rm -rf` `.yorz/specs/plan-candidates/`、`.yorz/specs/reopen-on-new-requirement/`、`.yorz/specs/tasks-consume-annotations/`，并以 `git status` 验证已不在追踪列表。
+4. dry-run 验证：`YORZ_AGENT_CMD=/usr/bin/false pnpm test:agent` 跑一次，确认输出 spec 全部落在 `tmp/agent-test/<case>-<runId>/.yorz/specs/<case>/spec.md`，仓库 `.yorz/specs/` 不会再次出现 case 名目录。
 
 ## 5. 待确认问题
 
@@ -218,13 +252,22 @@ Fixture 至少覆盖：
 - [x] 创建 fixture `reopen-on-new-requirement/`：input stage=execute、`## 需求` 中已加新增条目，expect 断言 frontmatter `stage` 回到 `plan` 且 `last_action` 含"重开"字样，验收点：fixture 齐全。
 - [x] 创建 fixture `append-task-state/`：input `## 追加任务` 含 `- [open]` 项，expect 断言 Agent 完成后改为 `- [fixed]` 且原 `[open]` 已不存在，验收点：fixture 齐全。
 - [x] 编写 reporter：在所有用例跑完后，根据 `index.json` 聚合"按模块通过率 + 章节齐全度 + 单 case 对照表"，console 输出表格 + 写入 `src/skill/yorz-spec/__tests__/reports/<YYYYMMDD-HHMMSS>.json`，验收点：人工运行后 reports 目录出现 JSON 文件且内容符合 schema。
+- [x] 改造 `src/skill/yorz-spec/__tests__/runner.ts` 中 `writeReport`：输出格式从 JSON 切换为 HTML（路径形如 `src/skill/yorz-spec/__tests__/reports/<ISO-timestamp>-<agent>.html`），HTML body 至少包含「按模块通过率表」「输出 spec 章节齐全度表」「每个 case PASS/FAIL + 失败原因明细」三部分；移除原 JSON 写入逻辑；console 表格保留。验收点：dry-run 后 reports 目录仅出现 `.html` 文件、无 `.json`、HTML 在浏览器中可正常打开且三部分内容齐全。
+- [x] 更新 `.gitignore`：将 `src/skill/yorz-spec/__tests__/reports/*.json` 规则替换为 `src/skill/yorz-spec/__tests__/reports/*.html`，保留 `.gitkeep`。验收点：`git status` 不再把生成的 HTML 报告视为待跟踪文件、grep 仓库内无残留 `reports/*.json` 规则。
+- [x] 修复 `src/skill/yorz-spec/__tests__/runner.ts`：缺省 prompt 改用绝对路径 `${specPath}`；新增 fixture 校验——若 `meta.prompt` 含 `.yorz/specs/` 字样的相对路径，启动前抛错并提示改用绝对路径，验收点：grep `specRelPath}` 在 runner 默认 prompt 中零命中；针对一个临时写死相对路径的 fixture 跑 dry-run，能在 spawn 之前抛出含 `.yorz/specs/` 的 Error。
+- [x] 修剪 fixture `meta.json`：删除 `plan-candidates / tasks-consume-annotations / execute-checkbox-flip / reopen-on-new-requirement / append-task-state` 五个 case 的 `prompt` 字段；`new-spec-skeleton` 保留（不含路径），验收点：5 个 case 的 meta.json 不再含 `prompt` 键；dry-run 时观察到 runner 用默认绝对路径 prompt。
+- [x] 删除仓库中 3 个被污染的目录 `.yorz/specs/plan-candidates / reopen-on-new-requirement / tasks-consume-annotations`，验收点：`git status` 不再列出这些路径；`ls .yorz/specs/` 仅剩本期与历史正常 spec 目录。
+- [x] dry-run 验证：`YORZ_AGENT_CMD=/usr/bin/false pnpm test:agent` 跑一次，验收点：6 个 case 的 spec 文件都在 `tmp/agent-test/<case>-<runId>/.yorz/specs/<case>/spec.md` 下；仓库根 `.yorz/specs/` 没有新出现 case 名目录。
 - [ ] 跑 `pnpm test:agent --agent=claude`，记录通过率；针对失败 case 迭代对应子文档文本直至全绿，验收点：claude 在所有 fixture 100% PASS（或在执行记录中明确列出无法修复的失败并附原因）。
 - [ ] 跑 `pnpm test:agent --agent=opencode`，记录通过率；针对失败 case 迭代子文档直至与 claude 同等覆盖（同样 100% PASS），验收点：opencode 在所有 fixture 100% PASS（或在执行记录中明确列出无法修复的失败并附原因）。
 - [ ] 最终回归：`pnpm test`（单元）+ `pnpm test:agent --agent=claude`（agent）+ `pnpm test:agent --agent=opencode`（agent）三件套全绿，把结果摘要写入 `## 执行记录`，验收点：三条命令的退出码均为 0。
 
 ## 7. 追加任务
 
-- 暂无
+- [fixed] [fix] 2026-06-21 21:08 | 执行命令时 pnpm test:agent --agent=opencode
+  - 描述：执行命令时 pnpm test:agent --agent=opencode
+    测试 spec 文件被写入正式目录 @.yorz/specs/plan-candidates/spec.md，期望写入 tmp 目录
+  - 修复：runner.ts 缺省 prompt 改用绝对 `${specPath}`；5 个 path-containing fixture 删除 `prompt` 字段（new-spec-skeleton 因 prompt 不含路径而保留）；新增 fixture meta.prompt 含 `.yorz/specs/` 的相对路径片段时启动前抛错的防御性校验；rm -rf 3 个被污染目录；dry-run 后仓库 `.yorz/specs/` 不再出现 case 名目录，`pnpm test` 14 文件 / 112 用例全绿。
 
 ## 8. 执行记录
 
@@ -237,3 +280,13 @@ Fixture 至少覆盖：
 - 2026-06-20 完成任务 24（reporter）：`runner.ts` 暴露 `writeReport(results, agent)`，根据 fixture `meta.json` 的 `module` 字段聚合通过率，同时统计 `## 现状分析 / 技术实现方案 / 待确认问题 / 任务清单 / 执行记录` 的章节齐全度，输出 console.table + 持久化到 `src/skill/yorz-spec/__tests__/reports/<ISO-timestamp>-<agent>.json`，`cases.test.ts` 在 `afterAll` 触发；dry-run 已验证 reports 目录正确生成 JSON。
 - 2026-06-20 配套补丁：`.gitignore` 追加 `tmp/agent-test` 与 `src/skill/yorz-spec/__tests__/reports/*.json`（保留 `.gitkeep`），避免临时产物入库。
 - 2026-06-20 消费用户批注「继续执行任务 25-27」：本地已具备 `claude`（/opt/homebrew/bin/claude）与 `opencode`（/opt/homebrew/bin/opencode）。批注无歧义、不引入新需求，直接进入 execute 阶段顺序执行任务 25 → 26 → 27。
+- 2026-06-21 消费用户批注（指向 4.4 节）「期望输出 HTML 格式的报告，不需要 JSON 格式报告」：tasks 阶段更新 4.4 方案描述与任务清单——保留任务 24（[x]，JSON reporter 基础设施仍可复用），在 task 25 跑 Agent 之前插入两条修正任务（HTML reporter 改造 + .gitignore 同步），批注无歧义、不引入新需求、不与现有结构冲突。
+- 2026-06-21 完成 HTML reporter 改造 + .gitignore 同步：`runner.ts` 新增 `escapeHtml` / `renderHtml`，`writeReport` 改为输出 `reports/<ISO>-<agent>.html`（含「按模块通过率」「章节齐全度」「case 明细」三段表格 + 整体 PASS/FAIL 摘要 + 失败原因 `<ul>`），删除 JSON 写入路径；`.gitignore` 中 `reports/*.json` 替换为 `reports/*.html`，并清理掉历史 dry-run 残留的两个旧 JSON 文件。验证：`YORZ_AGENT_CMD=/usr/bin/false pnpm test:agent` dry-run 成功生成 `2026-06-21T13-03-41-156Z-claude.html`（4586 字节，浏览器可打开，三段内容齐全），`git status reports/` 干净；`pnpm test` 14 文件 / 112 用例全绿，无主线回归。
+- 2026-06-21 在 task 27 之前阻塞：剩余任务 27/28/29 均需 spawn 真实 `claude` / `opencode`（每 case 分钟级，6 case × 2 agent 数十分钟）且失败时需迭代子文档文本，属于「需用户决策是否启动」的阻塞点，先停下来等用户确认再继续 execute。
+- 2026-06-21 变更重开（追加任务 fix）：消费底部「执行 pnpm test:agent --agent=opencode 测试 spec 被写入正式目录」的 [open] 项 ⇒ 切回 plan。复核 runner.ts 与 6 个 fixture meta.json，定位根因为「fixture meta.prompt 使用相对路径 `.yorz/specs/<case>/spec.md`，opencode/claude 在 tmpDir 下找不到 .git/ 时上溯到仓库根」，仓库 `.yorz/specs/` 下已遗留 `plan-candidates / reopen-on-new-requirement / tasks-consume-annotations` 三个污染目录。已在 3.6（新增小节）、4.6 写入分析与修复方案，5 节列出 3 条候选项硬约束待确认问题（fixture prompt 形态 / 是否 git init tmpDir / 污染目录处理）。同时把原未编号的 `## 追加任务` 合并到 `## 7. 追加任务`，消除重复二级标题。退出执行，等待用户批注。
+- 2026-06-21 tasks 阶段消费 3 条用户批注：选项分别为「全部移除 prompt 字段」「不启用 tmpDir git init」「直接 rm -rf 3 个污染目录」。4.6 节锁定为 4 项执行决策（runner 默认 prompt 绝对路径 + fixture 校验、5 个 case 删 prompt、rm -rf 污染目录、dry-run 验证），待确认问题清空为「- 暂无」，`！！！` 批注全部删除（剩 `## 9. 用户批注：暂无` 占位），任务清单在原跑 Agent 任务之前插入 4 条修复任务。无歧义、不引入新需求，自动衔接 execute。
+- 2026-06-21 execute 阶段完成本轮 fixture 绝对路径修复 4 项任务：① `src/skill/yorz-spec/__tests__/runner.ts` 缺省 prompt 由 `${specRelPath}` 改为 `${specPath}`，并在加载 fixture 后立即校验 `meta.prompt` 中不得含 `.yorz/specs/` 字样的相对路径片段，触发即抛错；② plan-candidates / execute-checkbox-flip / tasks-consume-annotations / reopen-on-new-requirement / append-task-state 五个 fixture meta.json 删除 `prompt` 字段（new-spec-skeleton 保留具体场景 prompt）；③ `rm -rf .yorz/specs/{plan-candidates,reopen-on-new-requirement,tasks-consume-annotations}`，`ls .yorz/specs/` 仅剩历史正常 spec 目录；④ `YORZ_AGENT_CMD=/usr/bin/false pnpm test:agent` dry-run 后 `grep` 仓库 `.yorz/specs/` 无 case 名命中、tmp/agent-test/ 下 6 个 case 的 run 目录齐全；`pnpm test` 14 文件 / 112 用例全绿。底部「执行 pnpm test:agent --agent=opencode 测试 spec 被写入正式目录」追加任务由 `[open]` 切换为 `[fixed]`。剩余任务 27/28/29 仍是「需要启动真实 claude/opencode 跑数十分钟」的阻塞点，需用户决策后再执行。
+
+## 9. 用户批注
+
+> 暂无

@@ -125,13 +125,20 @@ export async function runAgentCase(opts: AgentCaseOptions): Promise<AgentCaseRes
 
   const specRelPath = meta.specRelPath ?? `.yorz/specs/${caseName}/spec.md`
   const specPath = join(tmpDir, specRelPath)
+  if (meta.prompt && /\.yorz\/specs\//.test(meta.prompt)) {
+    throw new Error(
+      `fixture ${caseName}: meta.prompt contains relative path ".yorz/specs/" — ` +
+        `the agent CLI may walk up to the repo .git/ and write into the real specs dir. ` +
+        `Remove the prompt field (runner will inject the absolute specPath) or use an absolute path.`,
+    )
+  }
   let prompt: string
   if (meta.newSpec) {
     prompt = meta.prompt ?? '请使用 yorz-spec skill 新建 spec：YorZ 接入示例需求。'
   } else {
     await mkdir(dirname(specPath), { recursive: true })
     await cp(join(opts.caseDir, 'input.spec.md'), specPath)
-    prompt = meta.prompt ?? `请使用 yorz-spec skill 处理 spec：${specRelPath}`
+    prompt = meta.prompt ?? `请使用 yorz-spec skill 处理 spec：${specPath}`
   }
 
   const cmd = resolveAgentCmd({ cwd: tmpDir, agent, env: process.env })
@@ -229,10 +236,103 @@ export interface AggregatedReport {
 
 const REQUIRED_SECTIONS = ['现状分析', '技术实现方案', '待确认问题', '任务清单', '执行记录']
 
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function pct(rate: number): string {
+  return `${(rate * 100).toFixed(1)}%`
+}
+
+function renderHtml(report: AggregatedReport): string {
+  const moduleRows = Object.entries(report.byModule)
+    .map(
+      ([m, s]) =>
+        `<tr><td>${escapeHtml(m)}</td><td>${s.passed}</td><td>${s.total}</td><td class="${s.rate === 1 ? 'ok' : 'bad'}">${pct(s.rate)}</td></tr>`,
+    )
+    .join('')
+  const sectionRows = Object.entries(report.sectionCompleteness)
+    .map(
+      ([sec, rate]) =>
+        `<tr><td>## ${escapeHtml(sec)}</td><td class="${rate === 1 ? 'ok' : 'bad'}">${pct(rate)}</td></tr>`,
+    )
+    .join('')
+  const caseRows = report.cases
+    .map((r) => {
+      const failures = r.failures.length
+        ? `<ul class="failures">${r.failures.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`
+        : '<span class="muted">—</span>'
+      return `<tr class="${r.pass ? 'pass' : 'fail'}">
+        <td>${escapeHtml(r.caseName)}</td>
+        <td>${escapeHtml(r.module ?? '-')}</td>
+        <td><span class="badge ${r.pass ? 'ok' : 'bad'}">${r.pass ? 'PASS' : 'FAIL'}</span></td>
+        <td>${r.hitRules}/${r.totalRules}</td>
+        <td>${r.durationMs} ms</td>
+        <td>${failures}</td>
+      </tr>`
+    })
+    .join('')
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>test:agent report — ${escapeHtml(report.agent)} @ ${escapeHtml(report.generatedAt)}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; margin: 24px; color: #1f2328; }
+  h1 { margin: 0 0 8px; font-size: 20px; }
+  h2 { margin: 24px 0 8px; font-size: 16px; border-bottom: 1px solid #d0d7de; padding-bottom: 4px; }
+  .meta { color: #57606a; font-size: 13px; margin-bottom: 16px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid #d0d7de; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f6f8fa; }
+  td.ok, .badge.ok { color: #1a7f37; }
+  td.bad, .badge.bad { color: #cf222e; }
+  .badge { font-weight: 600; }
+  tr.fail td { background: #fff5f5; }
+  ul.failures { margin: 0; padding-left: 18px; }
+  .muted { color: #8c959f; }
+  .summary { font-size: 14px; font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>test:agent report</h1>
+<div class="meta">
+  agent: <strong>${escapeHtml(report.agent)}</strong> ·
+  generated: ${escapeHtml(report.generatedAt)} ·
+  overall: <span class="badge ${report.pass ? 'ok' : 'bad'}">${report.pass ? 'PASS' : 'FAIL'}</span>
+</div>
+
+<h2>按模块通过率</h2>
+<table>
+  <thead><tr><th>module</th><th>passed</th><th>total</th><th>rate</th></tr></thead>
+  <tbody>${moduleRows || '<tr><td colspan="4" class="muted">no cases</td></tr>'}</tbody>
+</table>
+
+<h2>输出 spec 章节齐全度</h2>
+<table>
+  <thead><tr><th>section</th><th>present rate</th></tr></thead>
+  <tbody>${sectionRows || '<tr><td colspan="2" class="muted">no cases</td></tr>'}</tbody>
+</table>
+
+<h2>case 明细</h2>
+<table>
+  <thead><tr><th>case</th><th>module</th><th>status</th><th>hit</th><th>duration</th><th>failures</th></tr></thead>
+  <tbody>${caseRows || '<tr><td colspan="6" class="muted">no cases</td></tr>'}</tbody>
+</table>
+</body>
+</html>
+`
+}
+
 export async function writeReport(results: AgentCaseResult[], agent: AgentName): Promise<string> {
   await mkdir(reportsDir, { recursive: true })
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-  const path = join(reportsDir, `${stamp}-${agent}.json`)
+  const path = join(reportsDir, `${stamp}-${agent}.html`)
   const byModule: AggregatedReport['byModule'] = {}
   for (const r of results) {
     const key = r.module ?? 'unknown'
@@ -256,8 +356,7 @@ export async function writeReport(results: AgentCaseResult[], agent: AgentName):
     sectionCompleteness,
     pass: results.every((r) => r.pass),
   }
-  await writeFile(path, JSON.stringify(report, null, 2), 'utf8')
-  // Human-readable console table.
+  await writeFile(path, renderHtml(report), 'utf8')
   // eslint-disable-next-line no-console
   console.log(`\n[test:agent] report: ${path}`)
   // eslint-disable-next-line no-console

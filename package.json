@@ -19,7 +19,7 @@
     "dev:gui-build": "vite build --config vite.gui.config.ts --watch",
     "dev:gui": "vite --config vite.gui.config.ts",
     "test": "vitest run",
-    "test:agent": "vitest run --config src/skill/yorz-spec/__tests__/vitest.config.ts",
+    "test:agent": "node scripts/test-agent.mjs",
     "test:e2e": "playwright test",
     "format": "prettier --write \"src/**/*.{ts,tsx,md,css}\""
   },

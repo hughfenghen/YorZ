@@ -1,9 +1,0 @@
-{
-  "paths": [
-    ".yorz/specs/260620.feat.pending-confirm-ui-polish/spec.md",
-    "src/gui/src/components/AnnotatePopover.tsx",
-    "src/gui/src/components/QuestionConfirmPanel.tsx",
-    "src/gui/src/pages/SpecDetail.tsx",
-    "src/gui/src/styles.css"
-  ]
-}

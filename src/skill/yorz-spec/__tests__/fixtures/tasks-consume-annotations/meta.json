@@ -1,4 +1,3 @@
 {
-  "module": "tasks",
-  "prompt": "请使用 yorz-spec skill 处理 spec：.yorz/specs/tasks-consume-annotations/spec.md"
+  "module": "tasks"
 }
