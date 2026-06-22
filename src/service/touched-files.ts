@@ -19,6 +19,10 @@ export class TouchedFilesStore {
   }
 
   async add(specId: string, rawPaths: string[]): Promise<void> {
+    // Draft specs are placeholders that get replaced once the agent picks the
+    // real specId. Persisting under the draft id would leave an orphan
+    // `.yorz/specs/__draft__-xxx/touched-files.json` behind.
+    if (specId.startsWith('__draft__')) return
     const normalized = this.normalize(rawPaths)
     if (normalized.length === 0) return
     await this.withLock(specId, async () => {
