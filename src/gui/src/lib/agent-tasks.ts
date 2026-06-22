@@ -6,10 +6,18 @@ import {
   subscribeRun,
   type ActiveRunInfo,
   type AgentMode,
+  type SseSubscription,
 } from './sse.js'
 
 export type AgentTaskStatus = 'pending' | 'streaming' | 'done' | 'failed'
 export type AgentTaskSource = 'run' | 'explain' | 'draft'
+
+// If an active task receives no SSE traffic (stdout / server-heartbeat / exit /
+// error) for this long AND its EventSource is no longer OPEN, the watchdog
+// marks it failed with reason "Server 失联".
+export const STALE_AFTER_MS = 20_000
+export const WATCHDOG_TICK_MS = 2_000
+const EVENT_SOURCE_OPEN = 1
 
 export interface AgentTask {
   runId: string
@@ -22,6 +30,7 @@ export interface AgentTask {
   error?: string
   startedAt: number
   endedAt?: number
+  lastEventAt: number
   expanded: boolean
   dismissed: boolean
 }
@@ -41,13 +50,72 @@ interface AgentTasksState {
 }
 
 interface Internal {
-  unsubByRun: Map<string, () => void>
+  unsubByRun: Map<string, SseSubscription>
+  watchdogTimer: ReturnType<typeof setInterval> | null
 }
 
-function createAgentTasks() {
+export function createAgentTasks() {
   const [state, setState] = createStore<AgentTasksState>({ tasks: {}, order: [] })
   const internal: Internal = {
     unsubByRun: new Map(),
+    watchdogTimer: null,
+  }
+
+  function touch(runId: string): void {
+    setState(
+      produce((s) => {
+        const t = s.tasks[runId]
+        if (t) t.lastEventAt = Date.now()
+      }),
+    )
+  }
+
+  function hasActiveTasks(): boolean {
+    for (const id of state.order) {
+      const t = state.tasks[id]
+      if (!t) continue
+      if (t.dismissed) continue
+      if (t.status === 'pending' || t.status === 'streaming') return true
+    }
+    return false
+  }
+
+  function tickWatchdog(): void {
+    const now = Date.now()
+    for (const id of state.order) {
+      const t = state.tasks[id]
+      if (!t) continue
+      if (t.status !== 'pending' && t.status !== 'streaming') continue
+      if (now - t.lastEventAt <= STALE_AFTER_MS) continue
+      const sub = internal.unsubByRun.get(id)
+      if (sub && sub.readyState() === EVENT_SOURCE_OPEN) continue
+      setState(
+        produce((s) => {
+          const x = s.tasks[id]
+          if (!x) return
+          x.status = 'failed'
+          x.error = 'Server 失联，任务可能已终止'
+          x.endedAt = Date.now()
+        }),
+      )
+      const u = internal.unsubByRun.get(id)
+      if (u) {
+        u()
+        internal.unsubByRun.delete(id)
+      }
+    }
+    if (!hasActiveTasks()) stopWatchdog()
+  }
+
+  function ensureWatchdog(): void {
+    if (internal.watchdogTimer != null) return
+    internal.watchdogTimer = setInterval(tickWatchdog, WATCHDOG_TICK_MS)
+  }
+
+  function stopWatchdog(): void {
+    if (internal.watchdogTimer == null) return
+    clearInterval(internal.watchdogTimer)
+    internal.watchdogTimer = null
   }
 
   function start(input: AgentTaskInput): void {
@@ -69,6 +137,7 @@ function createAgentTasks() {
       return
     }
 
+    const startedAt = input.startedAt ?? Date.now()
     const task: AgentTask = {
       runId: input.runId,
       mode: input.mode,
@@ -77,7 +146,8 @@ function createAgentTasks() {
       source: input.source,
       status: 'pending',
       output: '',
-      startedAt: input.startedAt ?? Date.now(),
+      startedAt,
+      lastEventAt: Date.now(),
       expanded: true,
       dismissed: false,
     }
@@ -96,9 +166,13 @@ function createAgentTasks() {
             const t = s.tasks[input.runId]
             if (!t) return
             t.output += e.chunk
+            t.lastEventAt = Date.now()
             if (t.status === 'pending') t.status = 'streaming'
           }),
         )
+      },
+      onServerHeartbeat: () => {
+        touch(input.runId)
       },
       onAgentExit: (e) => {
         setState(
@@ -107,6 +181,7 @@ function createAgentTasks() {
             if (!t) return
             t.status = e.code === 0 ? 'done' : 'failed'
             t.endedAt = Date.now()
+            t.lastEventAt = Date.now()
           }),
         )
         const u = internal.unsubByRun.get(input.runId)
@@ -114,6 +189,7 @@ function createAgentTasks() {
           u()
           internal.unsubByRun.delete(input.runId)
         }
+        if (!hasActiveTasks()) stopWatchdog()
       },
       onAgentError: (e) => {
         setState(
@@ -123,6 +199,7 @@ function createAgentTasks() {
             t.error = e.message
             t.status = 'failed'
             t.endedAt = Date.now()
+            t.lastEventAt = Date.now()
           }),
         )
         const u = internal.unsubByRun.get(input.runId)
@@ -130,9 +207,36 @@ function createAgentTasks() {
           u()
           internal.unsubByRun.delete(input.runId)
         }
+        if (!hasActiveTasks()) stopWatchdog()
       },
     })
     internal.unsubByRun.set(input.runId, unsub)
+    ensureWatchdog()
+  }
+
+  function reconcileWithActive(activeIds: Set<string>): void {
+    for (const id of state.order) {
+      const t = state.tasks[id]
+      if (!t) continue
+      if (t.status !== 'pending' && t.status !== 'streaming') continue
+      if (activeIds.has(id)) continue
+      setState(
+        produce((s) => {
+          const x = s.tasks[id]
+          if (!x) return
+          x.status = 'failed'
+          x.error = 'Server 已重启，原任务未恢复'
+          x.endedAt = Date.now()
+          x.lastEventAt = Date.now()
+        }),
+      )
+      const u = internal.unsubByRun.get(id)
+      if (u) {
+        u()
+        internal.unsubByRun.delete(id)
+      }
+    }
+    if (!hasActiveTasks()) stopWatchdog()
   }
 
   function dismiss(runId: string) {
@@ -191,6 +295,7 @@ function createAgentTasks() {
     } catch {
       return
     }
+    reconcileWithActive(new Set(list.map((i) => i.runId)))
     for (const item of list) {
       // Source is unknown when hydrating; pick a sensible default per mode.
       const source: AgentTaskSource = item.mode === 'explain' ? 'explain' : 'run'
@@ -212,6 +317,7 @@ function createAgentTasks() {
     clearFinished,
     hasRunningSkillRun,
     hydrateFromActiveRuns,
+    reconcileWithActive,
   }
 }
 

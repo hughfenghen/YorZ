@@ -18,15 +18,27 @@ export interface AgentErrorEvent {
   specId: string
   message: string
 }
+export interface ServerHeartbeatEvent {
+  ts: number
+}
+
+// The unsubscribe function returned by subscribe*() also carries a `readyState`
+// probe so callers (e.g. the agent-tasks watchdog) can tell whether the
+// underlying EventSource is currently OPEN.
+export interface SseSubscription {
+  (): void
+  readyState: () => number
+}
 
 export interface SpecSubscribeHandlers {
   onUpdated?: () => void
   onAgentStdout?: (e: AgentStdoutEvent) => void
   onAgentExit?: (e: AgentExitEvent) => void
   onAgentError?: (e: AgentErrorEvent) => void
+  onServerHeartbeat?: (e: ServerHeartbeatEvent) => void
 }
 
-export function subscribeSpec(id: string, handlers: SpecSubscribeHandlers): () => void {
+export function subscribeSpec(id: string, handlers: SpecSubscribeHandlers): SseSubscription {
   const source = new EventSource(`/api/specs/${encodeURIComponent(id)}/events`)
   const onUpdated = () => handlers.onUpdated?.()
   const onAgentStdout = (e: MessageEvent) => {
@@ -50,31 +62,43 @@ export function subscribeSpec(id: string, handlers: SpecSubscribeHandlers): () =
       // ignore
     }
   }
+  const onServerHeartbeat = (e: MessageEvent) => {
+    try {
+      handlers.onServerHeartbeat?.(JSON.parse(e.data))
+    } catch {
+      // ignore
+    }
+  }
 
   source.addEventListener('updated', onUpdated)
   source.addEventListener('agent-stdout', onAgentStdout)
   source.addEventListener('agent-exit', onAgentExit)
   source.addEventListener('agent-error', onAgentError)
+  source.addEventListener('server-heartbeat', onServerHeartbeat)
   source.addEventListener('error', () => {
     // EventSource auto-reconnects; no-op
   })
 
-  return () => {
+  const unsubscribe = (() => {
     source.removeEventListener('updated', onUpdated)
     source.removeEventListener('agent-stdout', onAgentStdout)
     source.removeEventListener('agent-exit', onAgentExit)
     source.removeEventListener('agent-error', onAgentError)
+    source.removeEventListener('server-heartbeat', onServerHeartbeat)
     source.close()
-  }
+  }) as SseSubscription
+  unsubscribe.readyState = () => source.readyState
+  return unsubscribe
 }
 
 export interface RunSubscribeHandlers {
   onAgentStdout?: (e: AgentStdoutEvent) => void
   onAgentExit?: (e: AgentExitEvent) => void
   onAgentError?: (e: AgentErrorEvent) => void
+  onServerHeartbeat?: (e: ServerHeartbeatEvent) => void
 }
 
-export function subscribeRun(runId: string, handlers: RunSubscribeHandlers): () => void {
+export function subscribeRun(runId: string, handlers: RunSubscribeHandlers): SseSubscription {
   const source = new EventSource(`/api/runs/${encodeURIComponent(runId)}/events`)
   const onStdout = (e: MessageEvent) => {
     try {
@@ -97,18 +121,29 @@ export function subscribeRun(runId: string, handlers: RunSubscribeHandlers): () 
       // ignore
     }
   }
+  const onServerHeartbeat = (e: MessageEvent) => {
+    try {
+      handlers.onServerHeartbeat?.(JSON.parse(e.data))
+    } catch {
+      // ignore
+    }
+  }
   source.addEventListener('agent-stdout', onStdout)
   source.addEventListener('agent-exit', onExit)
   source.addEventListener('agent-error', onError)
+  source.addEventListener('server-heartbeat', onServerHeartbeat)
   source.addEventListener('error', () => {
     // EventSource auto-reconnects; no-op
   })
-  return () => {
+  const unsubscribe = (() => {
     source.removeEventListener('agent-stdout', onStdout)
     source.removeEventListener('agent-exit', onExit)
     source.removeEventListener('agent-error', onError)
+    source.removeEventListener('server-heartbeat', onServerHeartbeat)
     source.close()
-  }
+  }) as SseSubscription
+  unsubscribe.readyState = () => source.readyState
+  return unsubscribe
 }
 
 export interface ActiveRunInfo {

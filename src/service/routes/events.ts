@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { streamSSE } from 'hono/streaming'
+import { streamSSE, type SSEStreamingApi } from 'hono/streaming'
 import type { SpecWatcher } from '../watcher.js'
 import type { SpecStore } from '../spec-store.js'
 import type { AgentRunner, AgentRunHandle } from '../agent.js'
@@ -15,6 +15,32 @@ interface SseEvent {
   data: string
 }
 
+export const HEARTBEAT_INTERVAL_MS = 5000
+
+// Periodically writes a `: keep-alive` SSE comment (for reverse-proxy idle
+// timeouts) plus a `server-heartbeat` named event (for the GUI watchdog to
+// refresh its lastEventAt). Returns a cleanup function that clears the timer.
+export function attachHeartbeat(
+  stream: SSEStreamingApi,
+  intervalMs: number = HEARTBEAT_INTERVAL_MS,
+): () => void {
+  const timer = setInterval(() => {
+    void (async () => {
+      try {
+        await stream.write(': keep-alive\n\n')
+        await stream.writeSSE({
+          event: 'server-heartbeat',
+          data: JSON.stringify({ ts: Date.now() }),
+        })
+      } catch {
+        // stream may have closed between writes; onAbort cleanup handles it
+      }
+    })()
+  }, intervalMs)
+  timer.unref?.()
+  return () => clearInterval(timer)
+}
+
 export function createEventsRoutes(deps: Deps): Hono {
   const app = new Hono()
 
@@ -23,6 +49,7 @@ export function createEventsRoutes(deps: Deps): Hono {
   app.get('/events/specs', (c) => {
     return streamSSE(c, async (stream) => {
       await stream.writeSSE({ event: 'ready', data: '{}' })
+      const stopHeartbeat = attachHeartbeat(stream)
 
       const queue: SseEvent[] = []
       let resolve: (() => void) | null = null
@@ -39,6 +66,7 @@ export function createEventsRoutes(deps: Deps): Hono {
 
       stream.onAbort(() => {
         closed = true
+        stopHeartbeat()
         unsub()
         nudge()
       })
@@ -71,6 +99,7 @@ export function createEventsRoutes(deps: Deps): Hono {
         event: 'ready',
         data: JSON.stringify({ id, mtime: exists.mtime }),
       })
+      const stopHeartbeat = attachHeartbeat(stream)
 
       const queue: SseEvent[] = []
       let resolve: (() => void) | null = null
@@ -143,6 +172,7 @@ export function createEventsRoutes(deps: Deps): Hono {
 
       stream.onAbort(() => {
         closed = true
+        stopHeartbeat()
         unsubFile()
         unsubAgent()
         for (const u of agentUnsubs) u()
@@ -187,6 +217,7 @@ export function createEventsRoutes(deps: Deps): Hono {
         event: 'ready',
         data: JSON.stringify({ runId, mode: handle.mode, specId: handle.specId }),
       })
+      const stopHeartbeat = attachHeartbeat(stream)
 
       const queue: SseEvent[] = []
       let resolve: (() => void) | null = null
@@ -227,6 +258,7 @@ export function createEventsRoutes(deps: Deps): Hono {
 
       stream.onAbort(() => {
         closed = true
+        stopHeartbeat()
         u1()
         u2()
         u3()

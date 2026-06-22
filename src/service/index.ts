@@ -5,6 +5,7 @@ import { SpecWatcher } from './watcher.js'
 import { AgentRunner } from './agent.js'
 import { TouchedFilesStore } from './touched-files.js'
 import { createApp } from './server.js'
+import { HEARTBEAT_INTERVAL_MS } from './routes/events.js'
 
 export interface ServeOptions {
   port?: number
@@ -39,6 +40,7 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
   const port = await listen(app.fetch, opts.port ?? DEFAULT_PORT)
   const url = `http://localhost:${port.port}/`
   console.log(`YorZ Service ready at ${url}`)
+  console.log(`agent heartbeat enabled (interval=${HEARTBEAT_INTERVAL_MS / 1000}s)`)
 
   if (opts.open) await tryOpenBrowser(url)
 

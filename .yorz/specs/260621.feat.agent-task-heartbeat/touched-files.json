@@ -1,0 +1,11 @@
+{
+  "paths": [
+    ".yorz/specs/260621.feat.agent-task-heartbeat/spec.md",
+    "src/gui/src/lib/__tests__/agent-tasks.test.ts",
+    "src/gui/src/lib/agent-tasks.ts",
+    "src/gui/src/lib/sse.ts",
+    "src/service/__tests__/events-heartbeat.test.ts",
+    "src/service/index.ts",
+    "src/service/routes/events.ts"
+  ]
+}
