@@ -41,7 +41,10 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
   const [error, setError] = createSignal<string | null>(null)
 
   function setChoice(qid: string, label: string) {
-    setAnswers((prev) => ({ ...prev, [qid]: { ...prev[qid], selectedOptionLabel: label } }))
+    setAnswers((prev) => ({
+      ...prev,
+      [qid]: { note: '', ...prev[qid], selectedOptionLabel: label },
+    }))
   }
   function setNote(qid: string, note: string) {
     setAnswers((prev) => ({ ...prev, [qid]: { ...prev[qid], note } }))
@@ -56,10 +59,11 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
         count += 1
         continue
       }
+      const note = draft.note ?? ''
       if (q.isFreeform) {
-        if (!draft.note.trim()) count += 1
+        if (!note.trim()) count += 1
       } else if (draft.selectedOptionLabel === FREEFORM_SENTINEL) {
-        if (!draft.note.trim()) count += 1
+        if (!note.trim()) count += 1
       } else if (!draft.selectedOptionLabel) {
         count += 1
       }

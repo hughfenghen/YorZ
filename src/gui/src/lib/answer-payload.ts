@@ -18,7 +18,7 @@ export function buildAnswerItem(
   question: AnswerableQuestion,
   draft: AnswerDraftLike,
 ): QuestionAnswerBody | null {
-  const trimmedNote = draft.note.trim()
+  const trimmedNote = (draft.note ?? '').trim()
   if (question.isFreeform) {
     if (!trimmedNote) return null
     return { questionId: question.id, questionText: question.text, note: trimmedNote }
