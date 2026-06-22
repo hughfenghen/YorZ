@@ -423,6 +423,8 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  max-height: calc(100vh - 16px);
+  overflow: auto;
 }
 
 .annotate-popover header {

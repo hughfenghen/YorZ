@@ -9,17 +9,33 @@ interface Props {
 }
 
 const POPOVER_WIDTH = 500
+const POPOVER_MARGIN = 8
 
 export const AnnotatePopover: Component<Props> = (props) => {
   const [note, setNote] = createSignal('')
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
+  const [measuredHeight, setMeasuredHeight] = createSignal(0)
 
   const position = () => {
     const snap = props.snap
     if (!snap) return { top: 0, left: 0 }
-    const top = snap.rect.bottom + 8
-    const left = Math.min(Math.max(8, snap.rect.left), window.innerWidth - POPOVER_WIDTH - 8)
+    const height = measuredHeight() || 260
+    const vh = window.innerHeight
+    const below = snap.rect.bottom + POPOVER_MARGIN
+    const above = snap.rect.top - POPOVER_MARGIN - height
+    let top: number
+    if (below + height <= vh - POPOVER_MARGIN) {
+      top = below
+    } else if (above >= POPOVER_MARGIN) {
+      top = above
+    } else {
+      top = Math.max(POPOVER_MARGIN, vh - height - POPOVER_MARGIN)
+    }
+    const left = Math.min(
+      Math.max(POPOVER_MARGIN, snap.rect.left),
+      window.innerWidth - POPOVER_WIDTH - POPOVER_MARGIN,
+    )
     return { top, left }
   }
 
@@ -42,6 +58,13 @@ export const AnnotatePopover: Component<Props> = (props) => {
   return (
     <Show when={props.open && props.snap}>
       <div
+        ref={(el) => {
+          queueMicrotask(() => {
+            if (el.offsetHeight !== measuredHeight()) {
+              setMeasuredHeight(el.offsetHeight)
+            }
+          })
+        }}
         class="annotate-popover"
         style={{
           top: `${position().top}px`,
