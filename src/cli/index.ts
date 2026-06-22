@@ -16,9 +16,12 @@ interface ServeOpts {
   cwd?: string
 }
 
-function parseAgent(value: string): AgentName {
-  if (value === 'claude' || value === 'opencode') return value
-  throw new Error(`Invalid --agent: ${value}. Use 'claude' or 'opencode'.`)
+const ALL_AGENTS: AgentName[] = ['claude', 'opencode']
+
+function parseAgents(value: string): AgentName[] {
+  if (value === 'all') return ALL_AGENTS
+  if (value === 'claude' || value === 'opencode') return [value]
+  throw new Error(`Invalid --agent: ${value}. Use 'claude' | 'opencode' | 'all'.`)
 }
 
 function parseScope(value: string): InstallScope {
@@ -31,28 +34,32 @@ program.name('yorz').description('YorZ CLI — manage the yorz-spec skill.').ver
 
 program
   .command('install')
-  .description('Install the yorz-spec skill into the target agent.')
-  .option('-a, --agent <agent>', 'target agent: claude | opencode', 'claude')
+  .description('Install the yorz-spec skill into the target agent(s).')
+  .option('-a, --agent <agent>', 'target agent: claude | opencode | all', 'all')
   .option('-s, --scope <scope>', 'install scope: user | project', 'user')
   .action(async (opts: CliOpts) => {
-    const agent = parseAgent(opts.agent)
+    const agents = parseAgents(opts.agent)
     const scope = parseScope(opts.scope)
-    const result = await install({ agent, scope, home: homedir(), cwd: process.cwd() })
-    const verb = result.overwritten ? 'overwritten' : 'installed'
-    console.log(`${verb}: ${result.path}`)
+    for (const agent of agents) {
+      const result = await install({ agent, scope, home: homedir(), cwd: process.cwd() })
+      const verb = result.overwritten ? 'overwritten' : 'installed'
+      console.log(`[${agent}] ${verb}: ${result.path}`)
+    }
   })
 
 program
   .command('uninstall')
-  .description('Remove the yorz-spec skill from the target agent.')
-  .option('-a, --agent <agent>', 'target agent: claude | opencode', 'claude')
+  .description('Remove the yorz-spec skill from the target agent(s).')
+  .option('-a, --agent <agent>', 'target agent: claude | opencode | all', 'all')
   .option('-s, --scope <scope>', 'uninstall scope: user | project', 'user')
   .action(async (opts: CliOpts) => {
-    const agent = parseAgent(opts.agent)
+    const agents = parseAgents(opts.agent)
     const scope = parseScope(opts.scope)
-    const result = await uninstall({ agent, scope, home: homedir(), cwd: process.cwd() })
-    if (result.removed) console.log(`removed: ${result.path}`)
-    else console.log(`not installed at ${result.path}`)
+    for (const agent of agents) {
+      const result = await uninstall({ agent, scope, home: homedir(), cwd: process.cwd() })
+      if (result.removed) console.log(`[${agent}] removed: ${result.path}`)
+      else console.log(`[${agent}] not installed at ${result.path}`)
+    }
   })
 
 program
