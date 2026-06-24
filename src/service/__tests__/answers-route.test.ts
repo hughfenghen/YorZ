@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -13,20 +13,24 @@ afterEach(async () => {
 
 async function startInTmp() {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-answers-'))
-  handle = await start({ cwd, port: 0 })
-  return { cwd, url: handle.url }
+  const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-answers-cfg-'))
+  await mkdir(join(cwd, '.yorz'), { recursive: true })
+  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'projects.json') })
+  const list = await handle.registry.list()
+  const projectId = list[0]!.id
+  return { cwd, url: handle.url, apiPrefix: `${handle.url}api/projects/${projectId}` }
 }
 
 describe('POST /api/specs/:id/questions/answers', () => {
   it('200 writes ## 用户批注 section with answers and freeform annotations', async () => {
-    const { cwd, url } = await startInTmp()
-    const create = await fetch(`${url}api/specs`, {
+    const { cwd, apiPrefix } = await startInTmp()
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'A', type: 'feat', summary: 'a' }),
     })
     const { id } = (await create.json()) as { id: string }
-    const res = await fetch(`${url}api/specs/${id}/questions/answers`, {
+    const res = await fetch(`${apiPrefix}/specs/${id}/questions/answers`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -53,14 +57,14 @@ describe('POST /api/specs/:id/questions/answers', () => {
   })
 
   it('400 when body has no answers and no freeforms', async () => {
-    const { url } = await startInTmp()
-    const create = await fetch(`${url}api/specs`, {
+    const { apiPrefix } = await startInTmp()
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'A', type: 'feat', summary: 'a' }),
     })
     const { id } = (await create.json()) as { id: string }
-    const res = await fetch(`${url}api/specs/${id}/questions/answers`, {
+    const res = await fetch(`${apiPrefix}/specs/${id}/questions/answers`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ answers: [], freeformAnnotations: [] }),
@@ -69,14 +73,14 @@ describe('POST /api/specs/:id/questions/answers', () => {
   })
 
   it('400 when answer is missing both selectedOptionLabel and note', async () => {
-    const { url } = await startInTmp()
-    const create = await fetch(`${url}api/specs`, {
+    const { apiPrefix } = await startInTmp()
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'A', type: 'feat', summary: 'a' }),
     })
     const { id } = (await create.json()) as { id: string }
-    const res = await fetch(`${url}api/specs/${id}/questions/answers`, {
+    const res = await fetch(`${apiPrefix}/specs/${id}/questions/answers`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -88,8 +92,8 @@ describe('POST /api/specs/:id/questions/answers', () => {
   })
 
   it('404 when spec does not exist', async () => {
-    const { url } = await startInTmp()
-    const res = await fetch(`${url}api/specs/no-such-spec/questions/answers`, {
+    const { apiPrefix } = await startInTmp()
+    const res = await fetch(`${apiPrefix}/specs/no-such-spec/questions/answers`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -101,14 +105,14 @@ describe('POST /api/specs/:id/questions/answers', () => {
   })
 
   it('400 on invalid JSON', async () => {
-    const { url } = await startInTmp()
-    const create = await fetch(`${url}api/specs`, {
+    const { apiPrefix } = await startInTmp()
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'A', type: 'feat', summary: 'a' }),
     })
     const { id } = (await create.json()) as { id: string }
-    const res = await fetch(`${url}api/specs/${id}/questions/answers`, {
+    const res = await fetch(`${apiPrefix}/specs/${id}/questions/answers`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: 'not json',

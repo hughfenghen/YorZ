@@ -14,6 +14,7 @@ interface ServeOpts {
   port?: string
   open?: boolean
   cwd?: string
+  noRegisterCwd?: boolean
 }
 
 const ALL_AGENTS: AgentName[] = ['claude', 'opencode']
@@ -64,16 +65,25 @@ program
 
 program
   .command('serve')
-  .description('Start the YorZ Service (HTTP + SSE + static GUI).')
+  .description('Start the YorZ Service (HTTP + SSE + static GUI; multi-project).')
   .option('-p, --port <port>', 'port to listen on', '7423')
   .option('--open', 'open the GUI in the default browser', false)
-  .option('--cwd <path>', 'project root containing .yorz/', process.cwd())
+  .option(
+    '--cwd <path>',
+    'directory to auto-register when it contains .yorz/ (default: process.cwd())',
+  )
+  .option('--no-register-cwd', 'do not auto-register the current directory')
   .action(async (opts: ServeOpts) => {
     const port = opts.port === undefined ? undefined : Number.parseInt(opts.port, 10)
     if (port !== undefined && (!Number.isFinite(port) || port < 0)) {
       throw new Error(`Invalid --port: ${opts.port}`)
     }
-    await runServe({ port, open: opts.open, cwd: opts.cwd })
+    await runServe({
+      port,
+      open: opts.open,
+      cwd: opts.cwd,
+      noRegisterCwd: opts.noRegisterCwd === false ? true : false,
+    })
   })
 
 program.parseAsync(process.argv).catch((err: Error) => {

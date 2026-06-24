@@ -1,3 +1,10 @@
+import { currentProjectId } from './project.js'
+
+function projectBase(): string | null {
+  const pid = currentProjectId()
+  return pid ? `/api/projects/${encodeURIComponent(pid)}` : null
+}
+
 export type AgentMode = 'skill-run' | 'explain'
 
 export interface AgentStdoutEvent {
@@ -30,6 +37,14 @@ export interface SseSubscription {
   readyState: () => number
 }
 
+function noopSubscription(): SseSubscription {
+  const unsub = (() => {
+    /* no-op */
+  }) as SseSubscription
+  unsub.readyState = () => 2 // EventSource.CLOSED
+  return unsub
+}
+
 export interface SpecSubscribeHandlers {
   onUpdated?: () => void
   onAgentStdout?: (e: AgentStdoutEvent) => void
@@ -39,7 +54,9 @@ export interface SpecSubscribeHandlers {
 }
 
 export function subscribeSpec(id: string, handlers: SpecSubscribeHandlers): SseSubscription {
-  const source = new EventSource(`/api/specs/${encodeURIComponent(id)}/events`)
+  const base = projectBase()
+  if (!base) return noopSubscription()
+  const source = new EventSource(`${base}/specs/${encodeURIComponent(id)}/events`)
   const onUpdated = () => handlers.onUpdated?.()
   const onAgentStdout = (e: MessageEvent) => {
     try {
@@ -99,7 +116,9 @@ export interface RunSubscribeHandlers {
 }
 
 export function subscribeRun(runId: string, handlers: RunSubscribeHandlers): SseSubscription {
-  const source = new EventSource(`/api/runs/${encodeURIComponent(runId)}/events`)
+  const base = projectBase()
+  if (!base) return noopSubscription()
+  const source = new EventSource(`${base}/runs/${encodeURIComponent(runId)}/events`)
   const onStdout = (e: MessageEvent) => {
     try {
       handlers.onAgentStdout?.(JSON.parse(e.data))
@@ -154,7 +173,9 @@ export interface ActiveRunInfo {
 }
 
 export async function fetchActiveRuns(): Promise<ActiveRunInfo[]> {
-  const res = await fetch('/api/runs')
+  const base = projectBase()
+  if (!base) return []
+  const res = await fetch(`${base}/runs`)
   if (!res.ok) return []
   try {
     return (await res.json()) as ActiveRunInfo[]
@@ -164,15 +185,19 @@ export async function fetchActiveRuns(): Promise<ActiveRunInfo[]> {
 }
 
 export async function cancelRun(runId: string): Promise<void> {
+  const base = projectBase()
+  if (!base) return
   try {
-    await fetch(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
+    await fetch(`${base}/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
   } catch {
     // network errors / 404 (run already ended) are non-fatal
   }
 }
 
 export function subscribeSpecsList(onChange: () => void): () => void {
-  const source = new EventSource('/api/events/specs')
+  const base = projectBase()
+  if (!base) return () => {}
+  const source = new EventSource(`${base}/events/specs`)
   const handler = () => onChange()
   source.addEventListener('list-updated', handler)
   source.addEventListener('error', () => {

@@ -37,17 +37,21 @@ afterEach(async () => {
 
 async function startInTmp(opts?: { fakeAgent?: boolean }) {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-service-'))
+  const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-service-cfg-'))
+  await mkdir(join(cwd, '.yorz'), { recursive: true })
   if (opts?.fakeAgent) {
     process.env.YORZ_AGENT_CMD = `${process.execPath} ${FAKE_CLAUDE}`
   }
-  handle = await start({ cwd, port: 0 })
-  return { cwd, url: handle.url, port: handle.port }
+  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'projects.json') })
+  const list = await handle.registry.list()
+  const projectId = list[0]!.id
+  return { cwd, url: handle.url, port: handle.port, projectId, apiPrefix: `${handle.url}api/projects/${projectId}` }
 }
 
 describe('YorZ Service HTTP', () => {
   it('POST /api/specs creates spec and GET /api/specs lists it', async () => {
-    const { url } = await startInTmp()
-    const createRes = await fetch(`${url}api/specs`, {
+    const { apiPrefix } = await startInTmp()
+    const createRes = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -61,12 +65,12 @@ describe('YorZ Service HTTP', () => {
     const created = (await createRes.json()) as { id: string; path: string }
     expect(created.id).toMatch(/^\d{6}\.feat\./)
 
-    const listRes = await fetch(`${url}api/specs`)
+    const listRes = await fetch(`${apiPrefix}/specs`)
     expect(listRes.status).toBe(200)
     const list = (await listRes.json()) as { id: string; title: string }[]
     expect(list.some((s) => s.id === created.id && s.title === 'Test Spec')).toBe(true)
 
-    const detailRes = await fetch(`${url}api/specs/${created.id}`)
+    const detailRes = await fetch(`${apiPrefix}/specs/${created.id}`)
     expect(detailRes.status).toBe(200)
     const detail = (await detailRes.json()) as { frontmatter: { stage: string }; body: string }
     expect(detail.frontmatter.stage).toBe('plan')
@@ -74,8 +78,8 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('POST /api/specs with only type + requirement returns a draft runId (Agent-created)', async () => {
-    const { url } = await startInTmp({ fakeAgent: true })
-    const res = await fetch(`${url}api/specs`, {
+    const { apiPrefix } = await startInTmp({ fakeAgent: true })
+    const res = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ type: 'feat', requirement: '加上手机号登录支持' }),
@@ -87,8 +91,8 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('GET /api/runs/:runId/events streams stdout for a draft run', async () => {
-    const { url } = await startInTmp({ fakeAgent: true })
-    const created = await fetch(`${url}api/specs`, {
+    const { apiPrefix } = await startInTmp({ fakeAgent: true })
+    const created = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ type: 'feat', requirement: '加上手机号登录支持' }),
@@ -96,7 +100,7 @@ describe('YorZ Service HTTP', () => {
     expect(created.status).toBe(202)
     const { runId } = (await created.json()) as { runId: string }
 
-    const sseRes = await fetch(`${url}api/runs/${runId}/events`, {
+    const sseRes = await fetch(`${apiPrefix}/runs/${runId}/events`, {
       headers: { accept: 'text/event-stream' },
     })
     expect(sseRes.body).not.toBeNull()
@@ -108,8 +112,8 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('GET /api/events/specs emits list-updated when a new spec lands externally', async () => {
-    const { url, cwd } = await startInTmp()
-    const sseRes = await fetch(`${url}api/events/specs`, {
+    const { cwd, apiPrefix } = await startInTmp()
+    const sseRes = await fetch(`${apiPrefix}/events/specs`, {
       headers: { accept: 'text/event-stream' },
     })
     const reader = sseRes.body!.getReader()
@@ -144,14 +148,14 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('POST /api/specs/:id/inputs annotate writes ！！！ block and resets stage', async () => {
-    const { cwd, url } = await startInTmp()
-    const create = await fetch(`${url}api/specs`, {
+    const { cwd, apiPrefix } = await startInTmp()
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'A', type: 'feat', summary: 'a' }),
     })
     const { id } = (await create.json()) as { id: string }
-    const res = await fetch(`${url}api/specs/${id}/inputs`, {
+    const res = await fetch(`${apiPrefix}/specs/${id}/inputs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -169,15 +173,15 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('SSE pushes updated event when underlying file changes', async () => {
-    const { cwd, url } = await startInTmp()
-    const create = await fetch(`${url}api/specs`, {
+    const { cwd, apiPrefix } = await startInTmp()
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'Watch Me', type: 'fix', summary: 'watch summary' }),
     })
     const { id } = (await create.json()) as { id: string }
 
-    const sseRes = await fetch(`${url}api/specs/${id}/events`, {
+    const sseRes = await fetch(`${apiPrefix}/specs/${id}/events`, {
       headers: { accept: 'text/event-stream' },
     })
     expect(sseRes.body).not.toBeNull()
@@ -199,22 +203,22 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('POST /api/specs/:id/run + SSE delivers agent-stdout and agent-exit', async () => {
-    const { url } = await startInTmp({ fakeAgent: true })
-    const create = await fetch(`${url}api/specs`, {
+    const { apiPrefix } = await startInTmp({ fakeAgent: true })
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'R', type: 'feat', summary: 'r' }),
     })
     const { id } = (await create.json()) as { id: string }
 
-    const sseRes = await fetch(`${url}api/specs/${id}/events`, {
+    const sseRes = await fetch(`${apiPrefix}/specs/${id}/events`, {
       headers: { accept: 'text/event-stream' },
     })
     const reader = sseRes.body!.getReader()
     const decoder = new TextDecoder()
     await readUntil(reader, decoder, (t) => t.includes('event: ready'))
 
-    const runRes = await fetch(`${url}api/specs/${id}/run`, { method: 'POST' })
+    const runRes = await fetch(`${apiPrefix}/specs/${id}/run`, { method: 'POST' })
     expect(runRes.status).toBe(200)
     const { runId } = (await runRes.json()) as { runId: string }
     expect(runId).toBeTruthy()
@@ -228,22 +232,22 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('POST /api/specs/:id/explain returns runId and streams stdout', async () => {
-    const { url } = await startInTmp({ fakeAgent: true })
-    const create = await fetch(`${url}api/specs`, {
+    const { apiPrefix } = await startInTmp({ fakeAgent: true })
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'E', type: 'feat', summary: 'e' }),
     })
     const { id } = (await create.json()) as { id: string }
 
-    const sseRes = await fetch(`${url}api/specs/${id}/events`, {
+    const sseRes = await fetch(`${apiPrefix}/specs/${id}/events`, {
       headers: { accept: 'text/event-stream' },
     })
     const reader = sseRes.body!.getReader()
     const decoder = new TextDecoder()
     await readUntil(reader, decoder, (t) => t.includes('event: ready'))
 
-    const res = await fetch(`${url}api/specs/${id}/explain`, {
+    const res = await fetch(`${apiPrefix}/specs/${id}/explain`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text: '解释这一段' }),
@@ -255,21 +259,21 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('GET /api/runs lists active agent runs and is empty when none active', async () => {
-    const { url } = await startInTmp({ fakeAgent: true })
-    const empty = await fetch(`${url}api/runs`)
+    const { apiPrefix } = await startInTmp({ fakeAgent: true })
+    const empty = await fetch(`${apiPrefix}/runs`)
     expect(empty.status).toBe(200)
     expect(await empty.json()).toEqual([])
 
-    const create = await fetch(`${url}api/specs`, {
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'L', type: 'feat', summary: 'l' }),
     })
     const { id } = (await create.json()) as { id: string }
-    const runRes = await fetch(`${url}api/specs/${id}/run`, { method: 'POST' })
+    const runRes = await fetch(`${apiPrefix}/specs/${id}/run`, { method: 'POST' })
     const { runId } = (await runRes.json()) as { runId: string }
 
-    const listed = await fetch(`${url}api/runs`)
+    const listed = await fetch(`${apiPrefix}/runs`)
     expect(listed.status).toBe(200)
     const items = (await listed.json()) as Array<{
       runId: string
@@ -285,28 +289,28 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('POST /api/runs/:runId/cancel returns 200 for active run and 404 otherwise', async () => {
-    const { url } = await startInTmp({ fakeAgent: true })
-    const notFound = await fetch(`${url}api/runs/no-such-run/cancel`, { method: 'POST' })
+    const { apiPrefix } = await startInTmp({ fakeAgent: true })
+    const notFound = await fetch(`${apiPrefix}/runs/no-such-run/cancel`, { method: 'POST' })
     expect(notFound.status).toBe(404)
     expect(await notFound.json()).toEqual({ ok: false })
 
-    const create = await fetch(`${url}api/specs`, {
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'C', type: 'feat', summary: 'c' }),
     })
     const { id } = (await create.json()) as { id: string }
-    const runRes = await fetch(`${url}api/specs/${id}/run`, { method: 'POST' })
+    const runRes = await fetch(`${apiPrefix}/specs/${id}/run`, { method: 'POST' })
     const { runId } = (await runRes.json()) as { runId: string }
 
-    const cancelRes = await fetch(`${url}api/runs/${runId}/cancel`, { method: 'POST' })
+    const cancelRes = await fetch(`${apiPrefix}/runs/${runId}/cancel`, { method: 'POST' })
     expect(cancelRes.status).toBe(200)
     expect(await cancelRes.json()).toEqual({ ok: true })
 
     // The handle should be cleared after exit; subsequent cancel → 404.
     // Give the child process a moment to actually exit.
     for (let i = 0; i < 50; i++) {
-      const again = await fetch(`${url}api/runs/${runId}/cancel`, { method: 'POST' })
+      const again = await fetch(`${apiPrefix}/runs/${runId}/cancel`, { method: 'POST' })
       if (again.status === 404) {
         expect(await again.json()).toEqual({ ok: false })
         return
@@ -317,14 +321,14 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('returns 404 for unknown spec', async () => {
-    const { url } = await startInTmp()
-    const res = await fetch(`${url}api/specs/does-not-exist`)
+    const { apiPrefix } = await startInTmp()
+    const res = await fetch(`${apiPrefix}/specs/does-not-exist`)
     expect(res.status).toBe(404)
   })
 
   it('400 on invalid type when creating spec', async () => {
-    const { url } = await startInTmp()
-    const res = await fetch(`${url}api/specs`, {
+    const { apiPrefix } = await startInTmp()
+    const res = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ type: 'bogus' }),
@@ -333,9 +337,9 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('GET /api/specs/:id/changes returns intersection of touched and git status', async () => {
-    const { cwd, url } = await startInTmp()
+    const { cwd, apiPrefix } = await startInTmp()
     await initGitRepoIn(cwd)
-    const create = await fetch(`${url}api/specs`, {
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'Ch', type: 'feat', summary: 'ch' }),
@@ -352,7 +356,7 @@ describe('YorZ Service HTTP', () => {
       'utf8',
     )
 
-    const res = await fetch(`${url}api/specs/${id}/changes`)
+    const res = await fetch(`${apiPrefix}/specs/${id}/changes`)
     expect(res.status).toBe(200)
     const body = (await res.json()) as { changes: Array<{ path: string; status: string }> }
     expect(body.changes.map((c) => c.path)).toEqual(['a.txt'])
@@ -360,31 +364,31 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('GET /api/specs/:id/changes returns empty when touched is empty', async () => {
-    const { cwd, url } = await startInTmp()
+    const { cwd, apiPrefix } = await startInTmp()
     await initGitRepoIn(cwd)
-    const create = await fetch(`${url}api/specs`, {
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'E', type: 'feat', summary: 'e' }),
     })
     const { id } = (await create.json()) as { id: string }
 
-    const res = await fetch(`${url}api/specs/${id}/changes`)
+    const res = await fetch(`${apiPrefix}/specs/${id}/changes`)
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ changes: [] })
   })
 
   it('GET /api/specs/:id/changes returns 404 for unknown spec', async () => {
-    const { cwd, url } = await startInTmp()
+    const { cwd, apiPrefix } = await startInTmp()
     await initGitRepoIn(cwd)
-    const res = await fetch(`${url}api/specs/does-not-exist/changes`)
+    const res = await fetch(`${apiPrefix}/specs/does-not-exist/changes`)
     expect(res.status).toBe(404)
   })
 
   it('POST /api/specs/:id/commit commits touched files, appends exec log, appends spec anchor', async () => {
-    const { cwd, url } = await startInTmp()
+    const { cwd, apiPrefix } = await startInTmp()
     await initGitRepoIn(cwd)
-    const create = await fetch(`${url}api/specs`, {
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'CC', type: 'feat', summary: 'cc' }),
@@ -402,7 +406,7 @@ describe('YorZ Service HTTP', () => {
       'utf8',
     )
 
-    const res = await fetch(`${url}api/specs/${id}/commit`, {
+    const res = await fetch(`${apiPrefix}/specs/${id}/commit`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ message: 'feat: add changed' }),
@@ -431,15 +435,15 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('POST /api/specs/:id/commit returns 400 when message missing', async () => {
-    const { cwd, url } = await startInTmp()
+    const { cwd, apiPrefix } = await startInTmp()
     await initGitRepoIn(cwd)
-    const create = await fetch(`${url}api/specs`, {
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'M', type: 'feat', summary: 'm' }),
     })
     const { id } = (await create.json()) as { id: string }
-    const res = await fetch(`${url}api/specs/${id}/commit`, {
+    const res = await fetch(`${apiPrefix}/specs/${id}/commit`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({}),
@@ -448,9 +452,9 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('POST /api/specs/:id/commit returns 400 when paths outside touched set', async () => {
-    const { cwd, url } = await startInTmp()
+    const { cwd, apiPrefix } = await startInTmp()
     await initGitRepoIn(cwd)
-    const create = await fetch(`${url}api/specs`, {
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'P', type: 'feat', summary: 'p' }),
@@ -466,7 +470,7 @@ describe('YorZ Service HTTP', () => {
       'utf8',
     )
 
-    const res = await fetch(`${url}api/specs/${id}/commit`, {
+    const res = await fetch(`${apiPrefix}/specs/${id}/commit`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ message: 'x', paths: ['sneaky.txt'] }),
@@ -475,9 +479,9 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('POST /api/specs/:id/commit returns 404 for unknown spec', async () => {
-    const { cwd, url } = await startInTmp()
+    const { cwd, apiPrefix } = await startInTmp()
     await initGitRepoIn(cwd)
-    const res = await fetch(`${url}api/specs/does-not-exist/commit`, {
+    const res = await fetch(`${apiPrefix}/specs/does-not-exist/commit`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ message: 'x' }),
@@ -486,14 +490,14 @@ describe('YorZ Service HTTP', () => {
   })
 
   it('400 when annotate body is missing required fields', async () => {
-    const { url } = await startInTmp()
-    const create = await fetch(`${url}api/specs`, {
+    const { apiPrefix } = await startInTmp()
+    const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'X', type: 'feat', summary: 'x' }),
     })
     const { id } = (await create.json()) as { id: string }
-    const res = await fetch(`${url}api/specs/${id}/inputs`, {
+    const res = await fetch(`${apiPrefix}/specs/${id}/inputs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ kind: 'annotate', sectionPath: 's', quote: '', note: 'n' }),

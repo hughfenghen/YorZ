@@ -1,14 +1,9 @@
 import { Hono } from 'hono'
 import { streamSSE, type SSEStreamingApi } from 'hono/streaming'
-import type { SpecWatcher } from '../watcher.js'
-import type { SpecStore } from '../spec-store.js'
-import type { AgentRunner, AgentRunHandle } from '../agent.js'
+import type { AgentRunHandle } from '../agent.js'
+import type { ProjectInstance, ProjectRegistry } from '../project-registry.js'
 
-interface Deps {
-  store: SpecStore
-  watcher: SpecWatcher
-  runner: AgentRunner
-}
+export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
 interface SseEvent {
   event: string
@@ -41,13 +36,25 @@ export function attachHeartbeat(
   return () => clearInterval(timer)
 }
 
-export function createEventsRoutes(deps: Deps): Hono {
+export function createEventsRoutes(
+  resolveProject: ResolveProject,
+  _registry?: ProjectRegistry,
+): Hono {
   const app = new Hono()
 
   // Use a distinct path (not /specs/events) to avoid colliding with the
   // dynamic /specs/:id/events route in Hono's router.
-  app.get('/events/specs', (c) => {
+  app.get('/projects/:projectId/events/specs', (c) => {
+    const projectId = c.req.param('projectId')
     return streamSSE(c, async (stream) => {
+      const project = await resolveProject(projectId)
+      if (!project) {
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({ error: 'project not found' }),
+        })
+        return
+      }
       await stream.writeSSE({ event: 'ready', data: '{}' })
       const stopHeartbeat = attachHeartbeat(stream)
 
@@ -59,7 +66,7 @@ export function createEventsRoutes(deps: Deps): Hono {
         resolve = null
       }
 
-      const unsub = deps.watcher.subscribeList(() => {
+      const unsub = project.watcher.subscribeList(() => {
         queue.push({ event: 'list-updated', data: '{}' })
         nudge()
       })
@@ -84,10 +91,19 @@ export function createEventsRoutes(deps: Deps): Hono {
     })
   })
 
-  app.get('/specs/:id/events', (c) => {
+  app.get('/projects/:projectId/specs/:id/events', (c) => {
+    const projectId = c.req.param('projectId')
     const id = c.req.param('id')
     return streamSSE(c, async (stream) => {
-      const exists = await deps.store.read(id)
+      const project = await resolveProject(projectId)
+      if (!project) {
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({ error: 'project not found' }),
+        })
+        return
+      }
+      const exists = await project.store.read(id)
       if (!exists) {
         await stream.writeSSE({
           event: 'error',
@@ -109,7 +125,7 @@ export function createEventsRoutes(deps: Deps): Hono {
         resolve = null
       }
 
-      const unsubFile = deps.watcher.subscribe(id, (kind, mtime) => {
+      const unsubFile = project.watcher.subscribe(id, (kind, mtime) => {
         queue.push({ event: 'updated', data: JSON.stringify({ type: kind, mtime }) })
         nudge()
       })
@@ -167,8 +183,8 @@ export function createEventsRoutes(deps: Deps): Hono {
         agentUnsubs.push(u1, u2, u3)
       }
 
-      for (const h of deps.runner.active(id)) attachAgent(h)
-      const unsubAgent = deps.runner.subscribe(id, attachAgent)
+      for (const h of project.runner.active(id)) attachAgent(h)
+      const unsubAgent = project.runner.subscribe(id, attachAgent)
 
       stream.onAbort(() => {
         closed = true
@@ -193,19 +209,32 @@ export function createEventsRoutes(deps: Deps): Hono {
     })
   })
 
-  app.get('/runs', (c) => {
-    return c.json(deps.runner.listActive())
+  app.get('/projects/:projectId/runs', async (c) => {
+    const project = await resolveProject(c.req.param('projectId'))
+    if (!project) return c.json({ error: 'project not found' }, 404)
+    return c.json(project.runner.listActive())
   })
 
-  app.post('/runs/:runId/cancel', (c) => {
-    const ok = deps.runner.cancel(c.req.param('runId'))
+  app.post('/projects/:projectId/runs/:runId/cancel', async (c) => {
+    const project = await resolveProject(c.req.param('projectId'))
+    if (!project) return c.json({ error: 'project not found' }, 404)
+    const ok = project.runner.cancel(c.req.param('runId'))
     return c.json({ ok }, ok ? 200 : 404)
   })
 
-  app.get('/runs/:runId/events', (c) => {
+  app.get('/projects/:projectId/runs/:runId/events', (c) => {
+    const projectId = c.req.param('projectId')
     const runId = c.req.param('runId')
     return streamSSE(c, async (stream) => {
-      const handle = deps.runner.get(runId)
+      const project = await resolveProject(projectId)
+      if (!project) {
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({ error: 'project not found' }),
+        })
+        return
+      }
+      const handle = project.runner.get(runId)
       if (!handle) {
         await stream.writeSSE({
           event: 'error',

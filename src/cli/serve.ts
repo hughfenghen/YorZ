@@ -4,6 +4,7 @@ export interface ServeCommandOptions {
   port?: number
   open?: boolean
   cwd?: string
+  noRegisterCwd?: boolean
 }
 
 export async function runServe(opts: ServeCommandOptions): Promise<ServeHandle> {
@@ -11,6 +12,7 @@ export async function runServe(opts: ServeCommandOptions): Promise<ServeHandle> 
     port: opts.port,
     open: opts.open,
     cwd: opts.cwd ?? process.cwd(),
+    noRegisterCwd: opts.noRegisterCwd,
   })
 
   const shutdown = async () => {

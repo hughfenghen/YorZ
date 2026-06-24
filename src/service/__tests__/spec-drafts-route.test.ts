@@ -11,10 +11,14 @@ afterEach(async () => {
   handle = null
 })
 
-async function startInTmp(): Promise<{ cwd: string; url: string }> {
+async function startInTmp(): Promise<{ cwd: string; url: string; apiPrefix: string }> {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-spec-drafts-'))
-  handle = await start({ cwd, port: 0 })
-  return { cwd, url: handle.url }
+  const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-spec-drafts-cfg-'))
+  await mkdir(join(cwd, '.yorz'), { recursive: true })
+  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'projects.json') })
+  const list = await handle.registry.list()
+  const projectId = list[0]!.id
+  return { cwd, url: handle.url, apiPrefix: `${handle.url}api/projects/${projectId}` }
 }
 
 function makeForm(blob: Blob, filename: string): FormData {
@@ -25,8 +29,8 @@ function makeForm(blob: Blob, filename: string): FormData {
 
 describe('POST /api/spec-drafts', () => {
   it('creates a draft and returns draftId', async () => {
-    const { url } = await startInTmp()
-    const res = await fetch(`${url}api/spec-drafts`, { method: 'POST' })
+    const { apiPrefix } = await startInTmp()
+    const res = await fetch(`${apiPrefix}/spec-drafts`, { method: 'POST' })
     expect(res.status).toBe(201)
     const body = (await res.json()) as { draftId: string }
     expect(body.draftId).toMatch(/^[a-f0-9-]{8,}$/)
@@ -35,12 +39,12 @@ describe('POST /api/spec-drafts', () => {
 
 describe('POST /api/spec-drafts/:draftId/attachments', () => {
   it('accepts an image upload and rewrites placeholder name', async () => {
-    const { cwd, url } = await startInTmp()
-    const draft = await fetch(`${url}api/spec-drafts`, { method: 'POST' })
+    const { cwd, apiPrefix } = await startInTmp()
+    const draft = await fetch(`${apiPrefix}/spec-drafts`, { method: 'POST' })
     const { draftId } = (await draft.json()) as { draftId: string }
 
     const blob = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: 'image/png' })
-    const res = await fetch(`${url}api/spec-drafts/${draftId}/attachments`, {
+    const res = await fetch(`${apiPrefix}/spec-drafts/${draftId}/attachments`, {
       method: 'POST',
       body: makeForm(blob, 'image.png'),
     })
@@ -63,11 +67,11 @@ describe('POST /api/spec-drafts/:draftId/attachments', () => {
   })
 
   it('accepts a PDF upload and keeps original filename', async () => {
-    const { url } = await startInTmp()
-    const draft = await fetch(`${url}api/spec-drafts`, { method: 'POST' })
+    const { apiPrefix } = await startInTmp()
+    const draft = await fetch(`${apiPrefix}/spec-drafts`, { method: 'POST' })
     const { draftId } = (await draft.json()) as { draftId: string }
     const blob = new Blob([new Uint8Array([0x25, 0x50, 0x44, 0x46])], { type: 'application/pdf' })
-    const res = await fetch(`${url}api/spec-drafts/${draftId}/attachments`, {
+    const res = await fetch(`${apiPrefix}/spec-drafts/${draftId}/attachments`, {
       method: 'POST',
       body: makeForm(blob, 'design.pdf'),
     })
@@ -78,11 +82,11 @@ describe('POST /api/spec-drafts/:draftId/attachments', () => {
   })
 
   it('returns 415 when MIME not allowed', async () => {
-    const { url } = await startInTmp()
-    const draft = await fetch(`${url}api/spec-drafts`, { method: 'POST' })
+    const { apiPrefix } = await startInTmp()
+    const draft = await fetch(`${apiPrefix}/spec-drafts`, { method: 'POST' })
     const { draftId } = (await draft.json()) as { draftId: string }
     const blob = new Blob([new Uint8Array([1, 2, 3])], { type: 'application/zip' })
-    const res = await fetch(`${url}api/spec-drafts/${draftId}/attachments`, {
+    const res = await fetch(`${apiPrefix}/spec-drafts/${draftId}/attachments`, {
       method: 'POST',
       body: makeForm(blob, 'evil.zip'),
     })
@@ -90,9 +94,9 @@ describe('POST /api/spec-drafts/:draftId/attachments', () => {
   })
 
   it('returns 404 for unknown draftId', async () => {
-    const { url } = await startInTmp()
+    const { apiPrefix } = await startInTmp()
     const blob = new Blob([new Uint8Array([1])], { type: 'text/plain' })
-    const res = await fetch(`${url}api/spec-drafts/no-such-draft/attachments`, {
+    const res = await fetch(`${apiPrefix}/spec-drafts/no-such-draft/attachments`, {
       method: 'POST',
       body: makeForm(blob, 'a.txt'),
     })
@@ -102,16 +106,16 @@ describe('POST /api/spec-drafts/:draftId/attachments', () => {
 
 describe('PATCH / DELETE / GET attachments', () => {
   it('PATCH renames keeping extension', async () => {
-    const { url } = await startInTmp()
-    const draft = await fetch(`${url}api/spec-drafts`, { method: 'POST' })
+    const { apiPrefix } = await startInTmp()
+    const draft = await fetch(`${apiPrefix}/spec-drafts`, { method: 'POST' })
     const { draftId } = (await draft.json()) as { draftId: string }
     const blob = new Blob([new Uint8Array([0x68])], { type: 'text/plain' })
-    const up = await fetch(`${url}api/spec-drafts/${draftId}/attachments`, {
+    const up = await fetch(`${apiPrefix}/spec-drafts/${draftId}/attachments`, {
       method: 'POST',
       body: makeForm(blob, 'old.txt'),
     })
     const { storedName } = (await up.json()) as { storedName: string }
-    const ren = await fetch(`${url}api/spec-drafts/${draftId}/attachments/${storedName}`, {
+    const ren = await fetch(`${apiPrefix}/spec-drafts/${draftId}/attachments/${storedName}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'fresh' }),
@@ -122,16 +126,16 @@ describe('PATCH / DELETE / GET attachments', () => {
   })
 
   it('PATCH rejects extension change', async () => {
-    const { url } = await startInTmp()
-    const draft = await fetch(`${url}api/spec-drafts`, { method: 'POST' })
+    const { apiPrefix } = await startInTmp()
+    const draft = await fetch(`${apiPrefix}/spec-drafts`, { method: 'POST' })
     const { draftId } = (await draft.json()) as { draftId: string }
     const blob = new Blob([new Uint8Array([0x68])], { type: 'text/plain' })
-    const up = await fetch(`${url}api/spec-drafts/${draftId}/attachments`, {
+    const up = await fetch(`${apiPrefix}/spec-drafts/${draftId}/attachments`, {
       method: 'POST',
       body: makeForm(blob, 'a.txt'),
     })
     const { storedName } = (await up.json()) as { storedName: string }
-    const ren = await fetch(`${url}api/spec-drafts/${draftId}/attachments/${storedName}`, {
+    const ren = await fetch(`${apiPrefix}/spec-drafts/${draftId}/attachments/${storedName}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'a.md' }),
@@ -140,36 +144,36 @@ describe('PATCH / DELETE / GET attachments', () => {
   })
 
   it('DELETE removes attachment then 404 on re-delete', async () => {
-    const { url } = await startInTmp()
-    const draft = await fetch(`${url}api/spec-drafts`, { method: 'POST' })
+    const { apiPrefix } = await startInTmp()
+    const draft = await fetch(`${apiPrefix}/spec-drafts`, { method: 'POST' })
     const { draftId } = (await draft.json()) as { draftId: string }
     const blob = new Blob([new Uint8Array([0x68])], { type: 'text/plain' })
-    const up = await fetch(`${url}api/spec-drafts/${draftId}/attachments`, {
+    const up = await fetch(`${apiPrefix}/spec-drafts/${draftId}/attachments`, {
       method: 'POST',
       body: makeForm(blob, 'a.txt'),
     })
     const { storedName } = (await up.json()) as { storedName: string }
-    const first = await fetch(`${url}api/spec-drafts/${draftId}/attachments/${storedName}`, {
+    const first = await fetch(`${apiPrefix}/spec-drafts/${draftId}/attachments/${storedName}`, {
       method: 'DELETE',
     })
     expect(first.status).toBe(200)
-    const again = await fetch(`${url}api/spec-drafts/${draftId}/attachments/${storedName}`, {
+    const again = await fetch(`${apiPrefix}/spec-drafts/${draftId}/attachments/${storedName}`, {
       method: 'DELETE',
     })
     expect(again.status).toBe(404)
   })
 
   it('GET returns bytes with inline disposition', async () => {
-    const { url } = await startInTmp()
-    const draft = await fetch(`${url}api/spec-drafts`, { method: 'POST' })
+    const { apiPrefix } = await startInTmp()
+    const draft = await fetch(`${apiPrefix}/spec-drafts`, { method: 'POST' })
     const { draftId } = (await draft.json()) as { draftId: string }
     const blob = new Blob([new Uint8Array([0x21, 0x22])], { type: 'image/png' })
-    const up = await fetch(`${url}api/spec-drafts/${draftId}/attachments`, {
+    const up = await fetch(`${apiPrefix}/spec-drafts/${draftId}/attachments`, {
       method: 'POST',
       body: makeForm(blob, 'image.png'),
     })
     const { storedName } = (await up.json()) as { storedName: string }
-    const res = await fetch(`${url}api/spec-drafts/${draftId}/attachments/${storedName}`)
+    const res = await fetch(`${apiPrefix}/spec-drafts/${draftId}/attachments/${storedName}`)
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('image/png')
     expect(res.headers.get('content-disposition')).toBe('inline')
@@ -180,10 +184,10 @@ describe('PATCH / DELETE / GET attachments', () => {
 
 describe('POST /api/specs with draftId', () => {
   it('accepts draftId and returns a draft runId', async () => {
-    const { url } = await startInTmp()
-    const draft = await fetch(`${url}api/spec-drafts`, { method: 'POST' })
+    const { apiPrefix } = await startInTmp()
+    const draft = await fetch(`${apiPrefix}/spec-drafts`, { method: 'POST' })
     const { draftId } = (await draft.json()) as { draftId: string }
-    const res = await fetch(`${url}api/specs`, {
+    const res = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ type: 'feat', requirement: '加上 X 功能', draftId }),
@@ -195,8 +199,8 @@ describe('POST /api/specs with draftId', () => {
   })
 
   it('rejects malformed draftId', async () => {
-    const { url } = await startInTmp()
-    const res = await fetch(`${url}api/specs`, {
+    const { apiPrefix } = await startInTmp()
+    const res = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ type: 'feat', requirement: 'x', draftId: '../escape' }),
@@ -207,7 +211,7 @@ describe('POST /api/specs with draftId', () => {
 
 describe('GET /api/specs/:id/attachments/:name', () => {
   it('serves attachment bytes from spec dir', async () => {
-    const { cwd, url } = await startInTmp()
+    const { cwd, apiPrefix } = await startInTmp()
     // Seed a spec dir + attachment manually.
     const id = '260622.feat.demo'
     const dir = join(cwd, '.yorz', 'specs', id, 'attachments')
@@ -229,14 +233,14 @@ describe('GET /api/specs/:id/attachments/:name', () => {
     )
     await writeFile(join(dir, 'pic.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
 
-    const res = await fetch(`${url}api/specs/${id}/attachments/pic.png`)
+    const res = await fetch(`${apiPrefix}/specs/${id}/attachments/pic.png`)
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('image/png')
     expect(res.headers.get('content-disposition')).toBe('inline')
   })
 
   it('returns 404 for missing attachment', async () => {
-    const { cwd, url } = await startInTmp()
+    const { cwd, apiPrefix } = await startInTmp()
     const id = '260622.feat.empty'
     await mkdir(join(cwd, '.yorz', 'specs', id), { recursive: true })
     await writeFile(
@@ -254,13 +258,13 @@ describe('GET /api/specs/:id/attachments/:name', () => {
       ].join('\n'),
       'utf8',
     )
-    const res = await fetch(`${url}api/specs/${id}/attachments/missing.png`)
+    const res = await fetch(`${apiPrefix}/specs/${id}/attachments/missing.png`)
     expect(res.status).toBe(404)
   })
 
   it('rejects unsafe attachment names', async () => {
-    const { url } = await startInTmp()
-    const res = await fetch(`${url}api/specs/anything/attachments/..escape.png`)
+    const { apiPrefix } = await startInTmp()
+    const res = await fetch(`${apiPrefix}/specs/anything/attachments/..escape.png`)
     // The router decodes %2E etc — directly hitting with literal `..` works via path segment.
     // A leading-dot name should be rejected with 400.
     expect([400, 404]).toContain(res.status)

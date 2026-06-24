@@ -1,24 +1,34 @@
 import { Hono } from 'hono'
-import { AttachmentStore, AttachmentStoreError, classifyMime } from '../attachment-store.js'
+import { AttachmentStoreError, classifyMime } from '../attachment-store.js'
+import type { ProjectInstance } from '../project-registry.js'
 
-export interface SpecDraftsDeps {
-  store: AttachmentStore
-}
+export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
-export function createSpecDraftsRoutes(deps: SpecDraftsDeps): Hono {
+export function createSpecDraftsRoutes(resolveProject: ResolveProject): Hono {
   const app = new Hono()
-  const { store } = deps
 
-  app.post('/spec-drafts', async (c) => {
+  const need = async (c: import('hono').Context): Promise<ProjectInstance | Response> => {
+    const id = c.req.param('projectId') ?? ''
+    if (!id) return c.json({ error: 'projectId required' }, 400)
+    const project = await resolveProject(id)
+    if (!project) return c.json({ error: 'project not found' }, 404)
+    return project
+  }
+
+  app.post('/projects/:projectId/spec-drafts', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
     // Fire-and-forget TTL sweep on every create.
-    void store.cleanupExpired().catch(() => {})
-    const draftId = await store.createDraft()
+    void p.attachments.cleanupExpired().catch(() => {})
+    const draftId = await p.attachments.createDraft()
     return c.json({ draftId }, 201)
   })
 
-  app.post('/spec-drafts/:draftId/attachments', async (c) => {
+  app.post('/projects/:projectId/spec-drafts/:draftId/attachments', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
     const draftId = c.req.param('draftId')
-    if (!(await store.draftExists(draftId))) {
+    if (!(await p.attachments.draftExists(draftId))) {
       return c.json({ error: 'draft not found' }, 404)
     }
     let form: FormData
@@ -39,31 +49,35 @@ export function createSpecDraftsRoutes(deps: SpecDraftsDeps): Hono {
       return c.json({ error: `unsupported MIME: ${mime || '(empty)'}` }, 415)
     }
     try {
-      const meta = await store.addAttachment(draftId, { name, mime, data: buf })
+      const meta = await p.attachments.addAttachment(draftId, { name, mime, data: buf })
       return c.json(meta, 201)
     } catch (err) {
       return errorResponse(c, err)
     }
   })
 
-  app.delete('/spec-drafts/:draftId/attachments/:storedName', async (c) => {
+  app.delete('/projects/:projectId/spec-drafts/:draftId/attachments/:storedName', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
     const draftId = c.req.param('draftId')
     const storedName = c.req.param('storedName')
-    if (!(await store.draftExists(draftId))) {
+    if (!(await p.attachments.draftExists(draftId))) {
       return c.json({ error: 'draft not found' }, 404)
     }
     try {
-      await store.deleteAttachment(draftId, storedName)
+      await p.attachments.deleteAttachment(draftId, storedName)
       return c.json({ ok: true })
     } catch (err) {
       return errorResponse(c, err)
     }
   })
 
-  app.patch('/spec-drafts/:draftId/attachments/:storedName', async (c) => {
+  app.patch('/projects/:projectId/spec-drafts/:draftId/attachments/:storedName', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
     const draftId = c.req.param('draftId')
     const storedName = c.req.param('storedName')
-    if (!(await store.draftExists(draftId))) {
+    if (!(await p.attachments.draftExists(draftId))) {
       return c.json({ error: 'draft not found' }, 404)
     }
     let body: unknown
@@ -77,21 +91,23 @@ export function createSpecDraftsRoutes(deps: SpecDraftsDeps): Hono {
       return c.json({ error: 'name required' }, 400)
     }
     try {
-      const meta = await store.renameAttachment(draftId, storedName, name)
+      const meta = await p.attachments.renameAttachment(draftId, storedName, name)
       return c.json(meta)
     } catch (err) {
       return errorResponse(c, err)
     }
   })
 
-  app.get('/spec-drafts/:draftId/attachments/:storedName', async (c) => {
+  app.get('/projects/:projectId/spec-drafts/:draftId/attachments/:storedName', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
     const draftId = c.req.param('draftId')
     const storedName = c.req.param('storedName')
-    if (!(await store.draftExists(draftId))) {
+    if (!(await p.attachments.draftExists(draftId))) {
       return c.json({ error: 'draft not found' }, 404)
     }
     try {
-      const { data, mime } = await store.readAttachment(draftId, storedName)
+      const { data, mime } = await p.attachments.readAttachment(draftId, storedName)
       c.header('Content-Type', mime)
       c.header('Content-Disposition', 'inline')
       c.header('Cache-Control', 'no-store')

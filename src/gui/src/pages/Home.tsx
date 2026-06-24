@@ -1,9 +1,13 @@
 import { For, Show, Suspense, createResource, type Component } from 'solid-js'
 import { A } from '@solidjs/router'
 import { api, type SpecListItem } from '../lib/api.js'
+import { projectHref, useCurrentProjectId } from '../lib/project.js'
 
 export const Home: Component = () => {
-  const [specs, { refetch }] = createResource<SpecListItem[]>(() => api.listSpecs())
+  const projectId = useCurrentProjectId()
+  const [specs, { refetch }] = createResource<SpecListItem[], string>(projectId, (pid) =>
+    pid ? api.listSpecs() : Promise.resolve([]),
+  )
 
   return (
     <section class="page">
@@ -19,7 +23,7 @@ export const Home: Component = () => {
           fallback={
             <div class="empty">
               <p>还没有 spec。</p>
-              <A href="/specs/new" class="primary-action">
+              <A href={projectHref('specs/new')} class="primary-action">
                 ＋ 新建第一个 spec
               </A>
             </div>
@@ -29,7 +33,7 @@ export const Home: Component = () => {
             <For each={specs() ?? []}>
               {(spec) => (
                 <li class="spec-card">
-                  <A href={`/specs/${encodeURIComponent(spec.id)}`}>
+                  <A href={projectHref(`specs/${encodeURIComponent(spec.id)}`)}>
                     <div class="spec-card-head">
                       <span class={`badge stage-${spec.stage}`}>{spec.stage}</span>
                       <time>{spec.updated_at}</time>

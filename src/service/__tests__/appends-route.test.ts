@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,15 +17,19 @@ afterEach(async () => {
 
 async function startInTmp(opts?: { fakeAgent?: boolean }) {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-appends-route-'))
+  const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-appends-cfg-'))
+  await mkdir(join(cwd, '.yorz'), { recursive: true })
   if (opts?.fakeAgent) {
     process.env.YORZ_AGENT_CMD = `${process.execPath} ${FAKE_CLAUDE}`
   }
-  handle = await start({ cwd, port: 0 })
-  return { cwd, url: handle.url }
+  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'projects.json') })
+  const list = await handle.registry.list()
+  const projectId = list[0]!.id
+  return { cwd, url: handle.url, apiPrefix: `${handle.url}api/projects/${projectId}` }
 }
 
-async function createSpec(url: string): Promise<string> {
-  const res = await fetch(`${url}api/specs`, {
+async function createSpec(apiPrefix: string): Promise<string> {
+  const res = await fetch(`${apiPrefix}/specs`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ title: 'A', type: 'feat', summary: 'a' }),
@@ -36,9 +40,9 @@ async function createSpec(url: string): Promise<string> {
 
 describe('POST /api/specs/:id/appends', () => {
   it('200 writes `## 追加任务` entry and returns runId when autoRun=true (default)', async () => {
-    const { cwd, url } = await startInTmp({ fakeAgent: true })
-    const id = await createSpec(url)
-    const res = await fetch(`${url}api/specs/${id}/appends`, {
+    const { cwd, apiPrefix } = await startInTmp({ fakeAgent: true })
+    const id = await createSpec(apiPrefix)
+    const res = await fetch(`${apiPrefix}/specs/${id}/appends`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ kind: 'fix', description: '登录失败无反馈' }),
@@ -55,9 +59,9 @@ describe('POST /api/specs/:id/appends', () => {
   })
 
   it('200 with autoRun=false does not return runId', async () => {
-    const { url } = await startInTmp()
-    const id = await createSpec(url)
-    const res = await fetch(`${url}api/specs/${id}/appends`, {
+    const { apiPrefix } = await startInTmp()
+    const id = await createSpec(apiPrefix)
+    const res = await fetch(`${apiPrefix}/specs/${id}/appends`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ kind: 'feat', description: 'x', autoRun: false }),
@@ -69,9 +73,9 @@ describe('POST /api/specs/:id/appends', () => {
   })
 
   it('400 when kind is not feat/refct/fix', async () => {
-    const { url } = await startInTmp()
-    const id = await createSpec(url)
-    const res = await fetch(`${url}api/specs/${id}/appends`, {
+    const { apiPrefix } = await startInTmp()
+    const id = await createSpec(apiPrefix)
+    const res = await fetch(`${apiPrefix}/specs/${id}/appends`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ kind: 'bug', description: 'x' }),
@@ -80,9 +84,9 @@ describe('POST /api/specs/:id/appends', () => {
   })
 
   it('400 when description missing', async () => {
-    const { url } = await startInTmp()
-    const id = await createSpec(url)
-    const res = await fetch(`${url}api/specs/${id}/appends`, {
+    const { apiPrefix } = await startInTmp()
+    const id = await createSpec(apiPrefix)
+    const res = await fetch(`${apiPrefix}/specs/${id}/appends`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ kind: 'fix' }),
@@ -91,9 +95,9 @@ describe('POST /api/specs/:id/appends', () => {
   })
 
   it('400 when description exceeds 4000 chars', async () => {
-    const { url } = await startInTmp()
-    const id = await createSpec(url)
-    const res = await fetch(`${url}api/specs/${id}/appends`, {
+    const { apiPrefix } = await startInTmp()
+    const id = await createSpec(apiPrefix)
+    const res = await fetch(`${apiPrefix}/specs/${id}/appends`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ kind: 'fix', description: 'x'.repeat(4001) }),
@@ -102,8 +106,8 @@ describe('POST /api/specs/:id/appends', () => {
   })
 
   it('404 when spec does not exist', async () => {
-    const { url } = await startInTmp()
-    const res = await fetch(`${url}api/specs/does-not-exist/appends`, {
+    const { apiPrefix } = await startInTmp()
+    const res = await fetch(`${apiPrefix}/specs/does-not-exist/appends`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ kind: 'fix', description: 'x' }),
@@ -112,9 +116,9 @@ describe('POST /api/specs/:id/appends', () => {
   })
 
   it('400 on invalid JSON', async () => {
-    const { url } = await startInTmp()
-    const id = await createSpec(url)
-    const res = await fetch(`${url}api/specs/${id}/appends`, {
+    const { apiPrefix } = await startInTmp()
+    const id = await createSpec(apiPrefix)
+    const res = await fetch(`${apiPrefix}/specs/${id}/appends`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: 'not json',

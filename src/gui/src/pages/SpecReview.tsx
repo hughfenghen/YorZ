@@ -9,6 +9,7 @@ import {
 } from 'solid-js'
 import { A, useParams } from '@solidjs/router'
 import { api, type GitChange, type SpecDetail } from '../lib/api.js'
+import { projectHref } from '../lib/project.js'
 
 export const SpecReview: Component = () => {
   const params = useParams<{ id: string }>()
@@ -59,7 +60,7 @@ export const SpecReview: Component = () => {
       <Suspense fallback={<p class="muted">加载中…</p>}>
         <header class="page-head detail-head">
           <div>
-            <A class="ghost" href={`/specs/${params.id}`}>
+            <A class="ghost" href={projectHref(`specs/${params.id}`)}>
               ← 返回 spec
             </A>
             <h1>Review · {params.id}</h1>

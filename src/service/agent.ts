@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { isAbsolute, relative, sep as pathSep } from 'node:path'
 import { resolveAgentCmd, type AgentCmd } from './agent-config.js'
+import { touchProjectActivity } from './global-config.js'
 import type { TouchedFilesStore } from './touched-files.js'
 
 const WRITE_TOOL_NAMES = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
@@ -39,6 +40,10 @@ export interface ActiveRunInfo {
 
 export interface AgentRunnerOptions {
   cwd: string
+  /** Project id used to update lastActivityAt in the global config on each spawn. */
+  projectId?: string
+  /** Override the global config file path (used by tests). */
+  globalConfigPath?: string
   /** Override the agent command resolution (used by tests). */
   resolveAgentCmd?: () => AgentCmd
   /** Optional sink for file paths the agent writes/edits during a run. */
@@ -51,6 +56,8 @@ const TOOL_RESULT_TRUNCATE = 400
 
 export class AgentRunner {
   private readonly cwd: string
+  private readonly projectId?: string
+  private readonly globalConfigPath?: string
   private readonly resolveCmd: () => AgentCmd
   private readonly touched?: TouchedFilesStore
   private readonly skillRunBySpec = new Map<string, AgentRunHandle>()
@@ -59,6 +66,8 @@ export class AgentRunner {
 
   constructor(opts: AgentRunnerOptions) {
     this.cwd = opts.cwd
+    this.projectId = opts.projectId
+    this.globalConfigPath = opts.globalConfigPath
     this.resolveCmd = opts.resolveAgentCmd ?? (() => resolveAgentCmd({ cwd: opts.cwd }))
     this.touched = opts.touched
   }
@@ -176,6 +185,11 @@ export class AgentRunner {
       attachJsonlStream(child, emitter, pushStdout, this.cwd)
     } else {
       child.stdout?.on('data', (data: Buffer) => pushStdout(data.toString('utf8')))
+    }
+    if (this.projectId) {
+      const pid = this.projectId
+      const fp = this.globalConfigPath
+      void touchProjectActivity(pid, new Date().toISOString(), fp).catch(() => {})
     }
     if (this.touched) {
       const touched = this.touched

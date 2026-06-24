@@ -3,19 +3,12 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import { Hono } from 'hono'
-import { SpecStore, type SpecType } from '../spec-store.js'
-import type { AgentRunner } from '../agent.js'
-import type { TouchedFilesStore } from '../touched-files.js'
+import { type SpecType } from '../spec-store.js'
 import { commit as gitCommit, listChanges, GitError } from '../git.js'
-import { classifyMime, mimeForExt, type AttachmentStore } from '../attachment-store.js'
+import { classifyMime, mimeForExt } from '../attachment-store.js'
+import type { ProjectInstance } from '../project-registry.js'
 
-interface Deps {
-  store: SpecStore
-  runner: AgentRunner
-  touched: TouchedFilesStore
-  attachments: AttachmentStore
-  cwd: string
-}
+export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
 const SPEC_ANCHOR_RE = /\[spec:[^\]]+\]/
 
@@ -25,15 +18,27 @@ function ensureSpecAnchor(message: string, specId: string): string {
   return `${trimmed}\n\n[spec:${specId}]\n`
 }
 
-export function createSpecsRoutes(deps: Deps): Hono {
+export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
   const app = new Hono()
 
-  app.get('/specs', async (c) => {
-    const items = await deps.store.list()
+  const need = async (c: import('hono').Context): Promise<ProjectInstance | Response> => {
+    const id = c.req.param('projectId') ?? ''
+    if (!id) return c.json({ error: 'projectId required' }, 400)
+    const project = await resolveProject(id)
+    if (!project) return c.json({ error: 'project not found' }, 404)
+    return project
+  }
+
+  app.get('/projects/:projectId/specs', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    const items = await p.store.list()
     return c.json(items)
   })
 
-  app.post('/specs', async (c) => {
+  app.post('/projects/:projectId/specs', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
     let body: unknown
     try {
       body = await c.req.json()
@@ -42,39 +47,39 @@ export function createSpecsRoutes(deps: Deps): Hono {
     }
     const input = parseCreateBody(body)
     if ('error' in input) return c.json({ error: input.error }, 400)
-    // Draft mode: caller only supplies type + requirement -> delegate creation
-    // (filename / summary / skeleton) to the Agent via yorz-spec skill so the
-    // id is derived from a real understanding of the requirement instead of a
-    // dumb kebab() of CJK text.
     if (!input.title && input.requirement) {
       const prompt = buildDraftPrompt(input.type, input.requirement, input.draftId)
       const draftSpecId = `__draft__-${cryptoRandomId()}`
-      const handle = deps.runner.run({ specId: draftSpecId, mode: 'skill-run', prompt })
+      const handle = p.runner.run({ specId: draftSpecId, mode: 'skill-run', prompt })
       return c.json({ runId: handle.id, draft: true }, 202)
     }
     try {
-      const { id, path } = await deps.store.create(input)
+      const { id, path } = await p.store.create(input)
       return c.json({ id, path }, 201)
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
     }
   })
 
-  app.get('/specs/:id', async (c) => {
-    const detail = await deps.store.read(c.req.param('id'))
+  app.get('/projects/:projectId/specs/:id', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    const detail = await p.store.read(c.req.param('id'))
     if (!detail) return c.json({ error: 'spec not found' }, 404)
     return c.json(detail)
   })
 
-  app.get('/specs/:id/attachments/:name', async (c) => {
+  app.get('/projects/:projectId/specs/:id/attachments/:name', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
     const id = c.req.param('id')
     const name = c.req.param('name')
     if (!isSafeAttachmentName(name)) {
       return c.json({ error: 'invalid attachment name' }, 400)
     }
-    const detail = await deps.store.read(id)
+    const detail = await p.store.read(id)
     if (!detail) return c.json({ error: 'spec not found' }, 404)
-    const file = join(deps.cwd, '.yorz', 'specs', id, 'attachments', name)
+    const file = join(p.path, '.yorz', 'specs', id, 'attachments', name)
     if (!existsSync(file)) return c.json({ error: 'attachment not found' }, 404)
     const ext = extname(name).toLowerCase()
     const mime = mimeForExt(ext)
@@ -89,7 +94,9 @@ export function createSpecsRoutes(deps: Deps): Hono {
     return c.body(new Uint8Array(data))
   })
 
-  app.post('/specs/:id/inputs', async (c) => {
+  app.post('/projects/:projectId/specs/:id/inputs', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
     let body: unknown
     try {
       body = await c.req.json()
@@ -99,14 +106,16 @@ export function createSpecsRoutes(deps: Deps): Hono {
     const parsed = parseAnnotateBody(body)
     if ('error' in parsed) return c.json({ error: parsed.error }, 400)
     try {
-      await deps.store.appendAnnotation(c.req.param('id'), parsed)
+      await p.store.appendAnnotation(c.req.param('id'), parsed)
       return c.json({ ok: true })
     } catch (err) {
       return c.json({ error: (err as Error).message }, 404)
     }
   })
 
-  app.post('/specs/:id/questions/answers', async (c) => {
+  app.post('/projects/:projectId/specs/:id/questions/answers', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
     let body: unknown
     try {
       body = await c.req.json()
@@ -116,7 +125,7 @@ export function createSpecsRoutes(deps: Deps): Hono {
     const parsed = parseQuestionAnswersBody(body)
     if ('error' in parsed) return c.json({ error: parsed.error }, 400)
     try {
-      await deps.store.applyQuestionAnswers(c.req.param('id'), parsed)
+      await p.store.applyQuestionAnswers(c.req.param('id'), parsed)
       return c.json({ ok: true })
     } catch (err) {
       const msg = (err as Error).message
@@ -125,7 +134,9 @@ export function createSpecsRoutes(deps: Deps): Hono {
     }
   })
 
-  app.post('/specs/:id/appends', async (c) => {
+  app.post('/projects/:projectId/specs/:id/appends', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
     const specId = c.req.param('id')
     let body: unknown
     try {
@@ -135,10 +146,10 @@ export function createSpecsRoutes(deps: Deps): Hono {
     }
     const parsed = parseAppendBody(body)
     if ('error' in parsed) return c.json({ error: parsed.error }, 400)
-    const detail = await deps.store.read(specId)
+    const detail = await p.store.read(specId)
     if (!detail) return c.json({ error: 'spec not found' }, 404)
     try {
-      await deps.store.appendItem(specId, {
+      await p.store.appendItem(specId, {
         kind: parsed.kind,
         description: parsed.description,
         sectionPath: parsed.sectionPath,
@@ -148,7 +159,7 @@ export function createSpecsRoutes(deps: Deps): Hono {
       return c.json({ error: (err as Error).message }, 400)
     }
     if (parsed.autoRun) {
-      const handle = deps.runner.run({
+      const handle = p.runner.run({
         specId,
         mode: 'skill-run',
         prompt: `请使用 yorz-spec skill 处理 spec：.yorz/specs/${specId}/spec.md`,
@@ -158,11 +169,13 @@ export function createSpecsRoutes(deps: Deps): Hono {
     return c.json({ ok: true })
   })
 
-  app.post('/specs/:id/run', async (c) => {
+  app.post('/projects/:projectId/specs/:id/run', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
     const specId = c.req.param('id')
-    const detail = await deps.store.read(specId)
+    const detail = await p.store.read(specId)
     if (!detail) return c.json({ error: 'spec not found' }, 404)
-    const handle = deps.runner.run({
+    const handle = p.runner.run({
       specId,
       mode: 'skill-run',
       prompt: `请使用 yorz-spec skill 处理 spec：.yorz/specs/${specId}/spec.md`,
@@ -170,26 +183,27 @@ export function createSpecsRoutes(deps: Deps): Hono {
     return c.json({ runId: handle.id })
   })
 
-  app.get('/specs/:id/changes', async (c) => {
+  app.get('/projects/:projectId/specs/:id/changes', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
     const specId = c.req.param('id')
-    const detail = await deps.store.read(specId)
+    const detail = await p.store.read(specId)
     if (!detail) return c.json({ error: 'spec not found' }, 404)
-    const [touched, allChanges] = await Promise.all([
-      deps.touched.read(specId),
-      listChanges(deps.cwd),
-    ])
+    const [touched, allChanges] = await Promise.all([p.touched.read(specId), listChanges(p.path)])
     if (touched.length === 0) return c.json({ changes: [] })
     const set = new Set(touched)
-    const ignored = deps.touched.relativeFilePath(specId)
+    const ignored = p.touched.relativeFilePath(specId)
     const filtered = allChanges
       .filter((c) => c.path !== ignored && set.has(c.path))
       .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
     return c.json({ changes: filtered })
   })
 
-  app.post('/specs/:id/commit', async (c) => {
+  app.post('/projects/:projectId/specs/:id/commit', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
     const specId = c.req.param('id')
-    const detail = await deps.store.read(specId)
+    const detail = await p.store.read(specId)
     if (!detail) return c.json({ error: 'spec not found' }, 404)
     let body: unknown
     try {
@@ -200,12 +214,12 @@ export function createSpecsRoutes(deps: Deps): Hono {
     const parsed = parseCommitBody(body)
     if ('error' in parsed) return c.json({ error: parsed.error }, 400)
 
-    const touched = await deps.touched.read(specId)
+    const touched = await p.touched.read(specId)
     if (touched.length === 0) {
       return c.json({ error: 'no touched files to commit' }, 409)
     }
-    const allChanges = await listChanges(deps.cwd)
-    const ignored = deps.touched.relativeFilePath(specId)
+    const allChanges = await listChanges(p.path)
+    const ignored = p.touched.relativeFilePath(specId)
     const candidatePaths = new Set(
       allChanges
         .filter((ch) => ch.path !== ignored && touched.includes(ch.path))
@@ -213,9 +227,9 @@ export function createSpecsRoutes(deps: Deps): Hono {
     )
     let pathsToCommit: string[]
     if (parsed.paths) {
-      for (const p of parsed.paths) {
-        if (!candidatePaths.has(p)) {
-          return c.json({ error: `path not in touched changes: ${p}` }, 400)
+      for (const pth of parsed.paths) {
+        if (!candidatePaths.has(pth)) {
+          return c.json({ error: `path not in touched changes: ${pth}` }, 400)
         }
       }
       pathsToCommit = parsed.paths
@@ -228,13 +242,13 @@ export function createSpecsRoutes(deps: Deps): Hono {
 
     const message = ensureSpecAnchor(parsed.message, specId)
     try {
-      const { commit } = await gitCommit(deps.cwd, { message, paths: pathsToCommit })
-      await deps.touched.remove(specId, pathsToCommit)
+      const { commit } = await gitCommit(p.path, { message, paths: pathsToCommit })
+      await p.touched.remove(specId, pathsToCommit)
       const firstLine = parsed.message.split(/\r?\n/)[0]!.trim() || '(no message)'
       const short = commit.slice(0, 7)
       const line = `${today()} 提交 ${short}：${firstLine}（${pathsToCommit.length} 个文件）`
       try {
-        await deps.store.appendExecutionLog(specId, line)
+        await p.store.appendExecutionLog(specId, line)
       } catch {
         // best-effort: commit already happened
       }
@@ -248,7 +262,9 @@ export function createSpecsRoutes(deps: Deps): Hono {
     }
   })
 
-  app.post('/specs/:id/explain', async (c) => {
+  app.post('/projects/:projectId/specs/:id/explain', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
     const specId = c.req.param('id')
     let body: unknown
     try {
@@ -263,13 +279,13 @@ export function createSpecsRoutes(deps: Deps): Hono {
     if (text.length > 4000) {
       return c.json({ error: 'text too long (max 4000)' }, 400)
     }
-    const detail = await deps.store.read(specId)
+    const detail = await p.store.read(specId)
     if (!detail) return c.json({ error: 'spec not found' }, 404)
     const prompt =
       `以下为 spec 文档 .yorz/specs/${specId}/spec.md 中的一段内容。\n` +
       `请用中文简洁解释其含义、背景与可能的实施影响。**不要**修改任何文件，只在终端输出解释文本。\n\n` +
       `引用：\n"""\n${text}\n"""\n`
-    const handle = deps.runner.run({ specId, mode: 'explain', prompt })
+    const handle = p.runner.run({ specId, mode: 'explain', prompt })
     return c.json({ runId: handle.id })
   })
 
@@ -474,9 +490,11 @@ function parseCommitBody(body: unknown): CommitInput | { error: string } {
   if (obj.paths !== undefined) {
     if (!Array.isArray(obj.paths)) return { error: 'paths must be an array' }
     const paths: string[] = []
-    for (const p of obj.paths) {
-      if (typeof p !== 'string' || !p) return { error: 'paths entries must be non-empty strings' }
-      paths.push(p)
+    for (const pth of obj.paths) {
+      if (typeof pth !== 'string' || !pth) {
+        return { error: 'paths entries must be non-empty strings' }
+      }
+      paths.push(pth)
     }
     out.paths = paths
   }

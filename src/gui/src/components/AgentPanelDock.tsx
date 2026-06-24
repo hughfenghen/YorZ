@@ -1,6 +1,7 @@
 import { A } from '@solidjs/router'
 import { For, Show, createMemo, createSignal, onCleanup, type Component } from 'solid-js'
 import { agentTasks, type AgentTask } from '../lib/agent-tasks.js'
+import { projectHref } from '../lib/project.js'
 
 const SOURCE_LABEL: Record<AgentTask['source'], string> = {
   run: '执行 spec',
@@ -129,7 +130,7 @@ const AgentTaskCard: Component<{ task: AgentTask }> = (props) => {
             when={!isDraft()}
             fallback={<em class="muted">{props.task.specTitle ?? '（新建中）'}</em>}
           >
-            <A href={`/specs/${encodeURIComponent(props.task.specId)}`} class="agent-task-link">
+            <A href={projectHref(`specs/${encodeURIComponent(props.task.specId)}`)} class="agent-task-link">
               {props.task.specTitle ?? props.task.specId}
             </A>
           </Show>

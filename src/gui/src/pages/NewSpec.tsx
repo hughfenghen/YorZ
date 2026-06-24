@@ -1,6 +1,7 @@
 import { For, Show, createSignal, onCleanup, type Component } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
 import { api, type AttachmentKind, type AttachmentMeta, type CreateSpecBody } from '../lib/api.js'
+import { projectHref } from '../lib/project.js'
 import { subscribeSpecsList } from '../lib/sse.js'
 import { agentTasks } from '../lib/agent-tasks.js'
 
@@ -242,7 +243,7 @@ export const NewSpec: Component = () => {
         cleanupList?.()
         cleanupList = null
         const target =
-          `/specs/${encodeURIComponent(fresh.id)}` +
+          projectHref(`specs/${encodeURIComponent(fresh.id)}`) +
           (runId ? `?runId=${encodeURIComponent(runId)}` : '')
         navigate(target)
       }
@@ -295,7 +296,7 @@ export const NewSpec: Component = () => {
         })
         void pollForNewSpec()
       } else if ('id' in resp) {
-        navigate(`/specs/${encodeURIComponent(resp.id)}`)
+        navigate(projectHref(`specs/${encodeURIComponent(resp.id)}`))
       }
     } catch (err) {
       setError((err as Error).message)

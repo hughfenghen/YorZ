@@ -5,6 +5,8 @@ import { Home } from './pages/Home.jsx'
 import { NewSpec } from './pages/NewSpec.jsx'
 import { SpecDetail } from './pages/SpecDetail.jsx'
 import { SpecReview } from './pages/SpecReview.jsx'
+import { ProjectIndexRedirect } from './pages/ProjectIndexRedirect.jsx'
+import { WelcomePage } from './pages/Welcome.jsx'
 import { AppShell } from './AppShell.jsx'
 
 const root = document.getElementById('app')
@@ -13,10 +15,12 @@ if (!root) throw new Error('missing #app root')
 render(
   () => (
     <Router root={AppShell}>
-      <Route path="/" component={Home} />
-      <Route path="/specs/new" component={NewSpec} />
-      <Route path="/specs/:id" component={SpecDetail} />
-      <Route path="/specs/:id/review" component={SpecReview} />
+      <Route path="/" component={ProjectIndexRedirect} />
+      <Route path="/:projectId" component={Home} />
+      <Route path="/:projectId/specs/new" component={NewSpec} />
+      <Route path="/:projectId/specs/:id" component={SpecDetail} />
+      <Route path="/:projectId/specs/:id/review" component={SpecReview} />
+      <Route path="*" component={WelcomePage} />
     </Router>
   ),
   root,

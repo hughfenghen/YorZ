@@ -1,0 +1,216 @@
+import { existsSync } from 'node:fs'
+import { mkdir, stat } from 'node:fs/promises'
+import { isAbsolute, resolve } from 'node:path'
+import { SpecStore } from './spec-store.js'
+import { SpecWatcher } from './watcher.js'
+import { AgentRunner } from './agent.js'
+import { TouchedFilesStore } from './touched-files.js'
+import { AttachmentStore } from './attachment-store.js'
+import {
+  addProject,
+  generateProjectId,
+  loadGlobalConfig,
+  removeProject,
+  resolveGlobalConfigPath,
+  type GlobalProjectEntry,
+} from './global-config.js'
+
+export interface ProjectInstance {
+  id: string
+  path: string
+  store: SpecStore
+  watcher: SpecWatcher
+  runner: AgentRunner
+  touched: TouchedFilesStore
+  attachments: AttachmentStore
+  /** Stop watchers + free resources. Idempotent. */
+  close(): Promise<void>
+}
+
+export interface ProjectInstanceInput {
+  id: string
+  path: string
+}
+
+export interface ProjectListItem {
+  id: string
+  name: string
+  path: string
+  lastActivityAt: string | null
+}
+
+export interface ProjectRegistryOptions {
+  globalConfigPath?: string
+}
+
+interface CachedInstance {
+  instance: ProjectInstance
+  startPromise: Promise<void>
+}
+
+export class ProjectRegistry {
+  private readonly globalConfigPath?: string
+  private readonly cache = new Map<string, CachedInstance>()
+
+  constructor(opts: ProjectRegistryOptions = {}) {
+    this.globalConfigPath = opts.globalConfigPath
+  }
+
+  configPath(): string {
+    return this.globalConfigPath ?? resolveGlobalConfigPath()
+  }
+
+  async list(): Promise<ProjectListItem[]> {
+    const config = await loadGlobalConfig(this.globalConfigPath)
+    const items: Array<ProjectListItem & { sortKey: string }> = []
+    for (const p of config.projects) {
+      const name = basename(p.path)
+      const fallback = await maxSpecUpdatedAt(p.path)
+      const sortKey = p.lastActivityAt ?? fallback ?? ''
+      items.push({
+        id: p.id,
+        name,
+        path: p.path,
+        lastActivityAt: p.lastActivityAt,
+        sortKey,
+      })
+    }
+    items.sort((a, b) => (a.sortKey < b.sortKey ? 1 : a.sortKey > b.sortKey ? -1 : 0))
+    return items.map(({ id, name, path, lastActivityAt }) => ({ id, name, path, lastActivityAt }))
+  }
+
+  async findEntry(id: string): Promise<GlobalProjectEntry | null> {
+    const config = await loadGlobalConfig(this.globalConfigPath)
+    return config.projects.find((p) => p.id === id) ?? null
+  }
+
+  /** Lazily construct (and cache) the in-memory instance for a given project. */
+  async getOrCreate(id: string): Promise<ProjectInstance | null> {
+    const cached = this.cache.get(id)
+    if (cached) {
+      await cached.startPromise
+      return cached.instance
+    }
+    const entry = await this.findEntry(id)
+    if (!entry) return null
+    const instance = await this.materialize({ id: entry.id, path: entry.path })
+    return instance
+  }
+
+  async add(absPath: string): Promise<{ entry: GlobalProjectEntry; created: boolean }> {
+    if (!isAbsolute(absPath)) throw new Error(`path must be absolute: ${absPath}`)
+    const normalized = resolve(absPath)
+    await ensureWritableDir(normalized)
+    await mkdir(`${normalized}/.yorz/specs`, { recursive: true })
+    return await addProject(normalized, this.globalConfigPath)
+  }
+
+  async remove(id: string): Promise<boolean> {
+    const cached = this.cache.get(id)
+    if (cached) {
+      try {
+        await cached.instance.close()
+      } catch {
+        // best-effort
+      }
+      this.cache.delete(id)
+    }
+    return await removeProject(id, this.globalConfigPath)
+  }
+
+  async closeAll(): Promise<void> {
+    const tasks: Array<Promise<void>> = []
+    for (const c of this.cache.values()) {
+      tasks.push(
+        c.instance.close().catch(() => {
+          // best-effort
+        }),
+      )
+    }
+    this.cache.clear()
+    await Promise.all(tasks)
+  }
+
+  /** Test helper / explicit registration with a known id. */
+  async registerExistingId(absPath: string): Promise<GlobalProjectEntry> {
+    const id = generateProjectId(absPath)
+    const cached = await this.add(absPath)
+    return cached.entry ?? { id, path: absPath, addedAt: '', lastActivityAt: null }
+  }
+
+  private async materialize(input: ProjectInstanceInput): Promise<ProjectInstance> {
+    const watcher = new SpecWatcher({ cwd: input.path })
+    const store = new SpecStore({
+      cwd: input.path,
+      onWrite: (path, mtime) => watcher.markSelfWrite(path, mtime),
+    })
+    const touched = new TouchedFilesStore({ cwd: input.path })
+    const runner = new AgentRunner({
+      cwd: input.path,
+      projectId: input.id,
+      globalConfigPath: this.globalConfigPath,
+      touched,
+    })
+    const attachments = new AttachmentStore({ cwd: input.path })
+
+    let closed = false
+    const instance: ProjectInstance = {
+      id: input.id,
+      path: input.path,
+      store,
+      watcher,
+      runner,
+      touched,
+      attachments,
+      async close() {
+        if (closed) return
+        closed = true
+        await watcher.close()
+      },
+    }
+
+    const startPromise = (async () => {
+      await store.ensureRoot()
+      await attachments.ensureRoot()
+      void attachments.cleanupExpired().catch(() => {})
+      await watcher.start()
+    })()
+
+    this.cache.set(input.id, { instance, startPromise })
+    await startPromise
+    return instance
+  }
+}
+
+async function ensureWritableDir(absPath: string): Promise<void> {
+  if (!existsSync(absPath)) {
+    throw new Error(`path does not exist: ${absPath}`)
+  }
+  const stats = await stat(absPath)
+  if (!stats.isDirectory()) {
+    throw new Error(`path is not a directory: ${absPath}`)
+  }
+}
+
+function basename(p: string): string {
+  const parts = p.split(/[/\\]/).filter(Boolean)
+  return parts[parts.length - 1] ?? p
+}
+
+async function maxSpecUpdatedAt(projectPath: string): Promise<string | null> {
+  const specsRoot = `${projectPath}/.yorz/specs`
+  if (!existsSync(specsRoot)) return null
+  // Reuse SpecStore.list() semantics: max(updated_at) among specs
+  try {
+    const store = new SpecStore({ cwd: projectPath })
+    const items = await store.list()
+    if (items.length === 0) return null
+    let best: string = ''
+    for (const it of items) {
+      if (it.updated_at && it.updated_at > best) best = it.updated_at
+    }
+    return best || null
+  } catch {
+    return null
+  }
+}

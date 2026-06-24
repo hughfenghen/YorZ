@@ -10,6 +10,7 @@ import {
 } from 'solid-js'
 import { A, useParams, useSearchParams } from '@solidjs/router'
 import { api, type AppendItemBody, type QuestionAnswersBody } from '../lib/api.js'
+import { projectHref } from '../lib/project.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { subscribeSpec } from '../lib/sse.js'
 import { agentTasks } from '../lib/agent-tasks.js'
@@ -194,7 +195,7 @@ export const SpecDetail: Component = () => {
                     <button type="button" class="append-btn" ref={appendBtnEl} onClick={openAppend}>
                       追加任务
                     </button>
-                    <A class="ghost review-link" href={`/specs/${s().id}/review`}>
+                    <A class="ghost review-link" href={projectHref(`specs/${s().id}/review`)}>
                       Review
                     </A>
                     <button
