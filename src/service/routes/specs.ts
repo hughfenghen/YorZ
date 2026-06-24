@@ -1,14 +1,19 @@
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { extname, join } from 'node:path'
 import { Hono } from 'hono'
 import { SpecStore, type SpecType } from '../spec-store.js'
 import type { AgentRunner } from '../agent.js'
 import type { TouchedFilesStore } from '../touched-files.js'
 import { commit as gitCommit, listChanges, GitError } from '../git.js'
+import { classifyMime, mimeForExt, type AttachmentStore } from '../attachment-store.js'
 
 interface Deps {
   store: SpecStore
   runner: AgentRunner
   touched: TouchedFilesStore
+  attachments: AttachmentStore
   cwd: string
 }
 
@@ -42,7 +47,7 @@ export function createSpecsRoutes(deps: Deps): Hono {
     // id is derived from a real understanding of the requirement instead of a
     // dumb kebab() of CJK text.
     if (!input.title && input.requirement) {
-      const prompt = buildDraftPrompt(input.type, input.requirement)
+      const prompt = buildDraftPrompt(input.type, input.requirement, input.draftId)
       const draftSpecId = `__draft__-${cryptoRandomId()}`
       const handle = deps.runner.run({ specId: draftSpecId, mode: 'skill-run', prompt })
       return c.json({ runId: handle.id, draft: true }, 202)
@@ -59,6 +64,29 @@ export function createSpecsRoutes(deps: Deps): Hono {
     const detail = await deps.store.read(c.req.param('id'))
     if (!detail) return c.json({ error: 'spec not found' }, 404)
     return c.json(detail)
+  })
+
+  app.get('/specs/:id/attachments/:name', async (c) => {
+    const id = c.req.param('id')
+    const name = c.req.param('name')
+    if (!isSafeAttachmentName(name)) {
+      return c.json({ error: 'invalid attachment name' }, 400)
+    }
+    const detail = await deps.store.read(id)
+    if (!detail) return c.json({ error: 'spec not found' }, 404)
+    const file = join(deps.cwd, '.yorz', 'specs', id, 'attachments', name)
+    if (!existsSync(file)) return c.json({ error: 'attachment not found' }, 404)
+    const ext = extname(name).toLowerCase()
+    const mime = mimeForExt(ext)
+    const kind = classifyMime(mime)
+    const data = await readFile(file)
+    c.header('Content-Type', mime)
+    c.header(
+      'Content-Disposition',
+      kind === 'image' || kind === 'pdf' || kind === 'text' ? 'inline' : 'attachment',
+    )
+    c.header('Cache-Control', 'max-age=300')
+    return c.body(new Uint8Array(data))
   })
 
   app.post('/specs/:id/inputs', async (c) => {
@@ -248,8 +276,8 @@ export function createSpecsRoutes(deps: Deps): Hono {
   return app
 }
 
-function buildDraftPrompt(type: SpecType, requirement: string): string {
-  return [
+export function buildDraftPrompt(type: SpecType, requirement: string, draftId?: string): string {
+  const lines = [
     '请按 yorz-spec skill 的「新建 spec」流程，根据下方信息创建新的 spec 文档，并立即按 plan 阶段继续推进直至阻塞。',
     '',
     `类型：${type}（已由调用方指定，不要再询问）`,
@@ -262,7 +290,19 @@ function buildDraftPrompt(type: SpecType, requirement: string): string {
     `- 生成 kebab-case summary-name 时只使用对需求有语义代表性的英文/数字字符；如难以从中文中提炼出可读 slug，请直接使用 \`untitled-\` + 3 位日期内自增编号占位，禁止把中文挤压为零散英文片段（例如禁止出现 \`spec-agent-spec-agent\` 之类的拼接）。`,
     '- frontmatter.summary 必须是对需求的真实概述（≤200 字符），不要原样照搬整段需求。',
     '- 完成 spec 文件初始化后立即进入 plan 阶段，按 SKILL 规则补齐 `现状分析` / `技术实现方案` / `待确认问题`，再视需要进入 tasks/execute。',
-  ].join('\n')
+  ]
+  if (draftId) {
+    lines.push(
+      '',
+      `附件迁移：本次新建 spec 关联了草稿附件目录 \`.yorz/drafts/${draftId}/attachments/\`。`,
+      '- 在创建 `.yorz/specs/<id>/` 目录并写入 `spec.md` 骨架**之后**，立即把该 draft 目录下的所有文件迁移到 `.yorz/specs/<id>/attachments/`，文件名保持不变。',
+      '- 迁移完成后，在 `## 背景` 章节末尾追加一段附件列表，每个附件占一行（按文件扩展名判定 `kind`）：',
+      '  - 图片（`.png` / `.jpg` / `.jpeg` / `.gif` / `.webp` / `.bmp` / `.svg` / `.avif` / `.heic`）：使用 `![<文件名>](attachments/<文件名>)`',
+      '  - PDF（`.pdf`） / 文本（`.txt` / `.md` / `.markdown`）：使用 `[<文件名>](attachments/<文件名>)`',
+      '- 迁移失败（如 draft 目录已被清理、权限不足）时，**不要静默丢弃**：在 `## 待确认问题` 章节追加一条记录说明问题，并退出本轮等待用户介入。',
+    )
+  }
+  return lines.join('\n')
 }
 
 function cryptoRandomId(): string {
@@ -274,6 +314,7 @@ type CreateInput = {
   title?: string
   summary?: string
   requirement?: string
+  draftId?: string
 }
 
 function parseCreateBody(body: unknown): CreateInput | { error: string } {
@@ -289,7 +330,24 @@ function parseCreateBody(body: unknown): CreateInput | { error: string } {
   if (typeof obj.requirement === 'string' && obj.requirement.trim()) {
     out.requirement = obj.requirement
   }
+  if (obj.draftId !== undefined) {
+    if (typeof obj.draftId !== 'string' || !obj.draftId.trim()) {
+      return { error: 'draftId must be a non-empty string' }
+    }
+    if (!/^[a-zA-Z0-9-]{1,64}$/.test(obj.draftId)) {
+      return { error: 'draftId has invalid format' }
+    }
+    out.draftId = obj.draftId
+  }
   return out
+}
+
+function isSafeAttachmentName(name: string): boolean {
+  if (!name) return false
+  if (name.includes('/') || name.includes('\\')) return false
+  if (name === '.' || name === '..') return false
+  if (name.startsWith('.')) return false
+  return true
 }
 
 interface AnnotateInput {

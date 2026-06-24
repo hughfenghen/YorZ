@@ -4,6 +4,7 @@ import { SpecStore } from './spec-store.js'
 import { SpecWatcher } from './watcher.js'
 import { AgentRunner } from './agent.js'
 import { TouchedFilesStore } from './touched-files.js'
+import { AttachmentStore } from './attachment-store.js'
 import { createApp } from './server.js'
 import { HEARTBEAT_INTERVAL_MS } from './routes/events.js'
 
@@ -32,10 +33,22 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
   })
   const touched = new TouchedFilesStore({ cwd })
   const runner = new AgentRunner({ cwd, touched })
+  const attachments = new AttachmentStore({ cwd })
   await store.ensureRoot()
+  await attachments.ensureRoot()
+  // Best-effort TTL sweep at startup; do not block boot on it.
+  void attachments.cleanupExpired().catch(() => {})
   await watcher.start()
 
-  const app = createApp({ store, watcher, runner, touched, cwd, guiRoot: opts.guiRoot })
+  const app = createApp({
+    store,
+    watcher,
+    runner,
+    touched,
+    attachments,
+    cwd,
+    guiRoot: opts.guiRoot,
+  })
 
   const port = await listen(app.fetch, opts.port ?? DEFAULT_PORT)
   const url = `http://localhost:${port.port}/`

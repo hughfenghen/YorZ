@@ -2,17 +2,20 @@ import { Hono } from 'hono'
 import { createSpecsRoutes } from './routes/specs.js'
 import { createEventsRoutes } from './routes/events.js'
 import { createProjectRoutes } from './routes/project.js'
+import { createSpecDraftsRoutes } from './routes/spec-drafts.js'
 import { createStaticRoutes } from './static.js'
 import type { SpecStore } from './spec-store.js'
 import type { SpecWatcher } from './watcher.js'
 import type { AgentRunner } from './agent.js'
 import type { TouchedFilesStore } from './touched-files.js'
+import type { AttachmentStore } from './attachment-store.js'
 
 export interface CreateAppOptions {
   store: SpecStore
   watcher: SpecWatcher
   runner: AgentRunner
   touched: TouchedFilesStore
+  attachments: AttachmentStore
   cwd: string
   guiRoot?: string
 }
@@ -27,9 +30,11 @@ export function createApp(opts: CreateAppOptions): Hono {
       store: opts.store,
       runner: opts.runner,
       touched: opts.touched,
+      attachments: opts.attachments,
       cwd: opts.cwd,
     }),
   )
+  api.route('/', createSpecDraftsRoutes({ store: opts.attachments }))
   api.route(
     '/',
     createEventsRoutes({ store: opts.store, watcher: opts.watcher, runner: opts.runner }),

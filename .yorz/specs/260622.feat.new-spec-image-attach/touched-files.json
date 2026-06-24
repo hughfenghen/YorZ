@@ -1,0 +1,19 @@
+{
+  "paths": [
+    ".claude/skills/yorz-spec/new-spec.md",
+    ".yorz/specs/260622.feat.new-spec-image-attach/spec.md",
+    "src/gui/src/lib/__tests__/markdown.test.ts",
+    "src/gui/src/lib/api.ts",
+    "src/gui/src/lib/markdown.ts",
+    "src/gui/src/pages/NewSpec.tsx",
+    "src/gui/src/pages/SpecDetail.tsx",
+    "src/service/__tests__/attachment-store.test.ts",
+    "src/service/__tests__/build-draft-prompt.test.ts",
+    "src/service/__tests__/spec-drafts-route.test.ts",
+    "src/service/attachment-store.ts",
+    "src/service/index.ts",
+    "src/service/routes/spec-drafts.ts",
+    "src/service/routes/specs.ts",
+    "src/service/server.ts"
+  ]
+}

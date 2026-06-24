@@ -26,6 +26,17 @@ export interface CreateSpecBody {
   title?: string
   summary?: string
   requirement?: string
+  draftId?: string
+}
+
+export type AttachmentKind = 'image' | 'pdf' | 'text'
+
+export interface AttachmentMeta {
+  storedName: string
+  name: string
+  size: number
+  mime: string
+  kind: AttachmentKind
 }
 
 export interface AnnotationBody {
@@ -145,4 +156,41 @@ export const api = {
       body: JSON.stringify(body),
     }),
   getProject: () => request<{ cwd: string; name: string }>('/api/projects/current'),
+  createDraft: () =>
+    request<{ draftId: string }>('/api/spec-drafts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    }),
+  uploadAttachment: async (draftId: string, file: File): Promise<AttachmentMeta> => {
+    const fd = new FormData()
+    fd.append('file', file, file.name)
+    const res = await fetch(`/api/spec-drafts/${encodeURIComponent(draftId)}/attachments`, {
+      method: 'POST',
+      body: fd,
+    })
+    if (!res.ok) {
+      const detail = await extractErrorDetail(res)
+      throw new Error(`${res.status} ${detail || res.statusText}`)
+    }
+    return res.json() as Promise<AttachmentMeta>
+  },
+  deleteAttachment: (draftId: string, storedName: string) =>
+    request<{ ok: true }>(
+      `/api/spec-drafts/${encodeURIComponent(draftId)}/attachments/${encodeURIComponent(storedName)}`,
+      { method: 'DELETE' },
+    ),
+  renameAttachment: (draftId: string, storedName: string, name: string) =>
+    request<AttachmentMeta>(
+      `/api/spec-drafts/${encodeURIComponent(draftId)}/attachments/${encodeURIComponent(storedName)}`,
+      {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      },
+    ),
+  draftAttachmentUrl: (draftId: string, storedName: string): string =>
+    `/api/spec-drafts/${encodeURIComponent(draftId)}/attachments/${encodeURIComponent(storedName)}`,
+  specAttachmentUrl: (specId: string, name: string): string =>
+    `/api/specs/${encodeURIComponent(specId)}/attachments/${encodeURIComponent(name)}`,
 }

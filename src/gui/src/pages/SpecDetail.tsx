@@ -191,12 +191,7 @@ export const SpecDetail: Component = () => {
                       {s().frontmatter.stage}
                     </span>
                     <time>{s().frontmatter.updated_at}</time>
-                    <button
-                      type="button"
-                      class="append-btn"
-                      ref={appendBtnEl}
-                      onClick={openAppend}
-                    >
+                    <button type="button" class="append-btn" ref={appendBtnEl} onClick={openAppend}>
                       追加任务
                     </button>
                     <A class="ghost review-link" href={`/specs/${s().id}/review`}>
@@ -217,7 +212,11 @@ export const SpecDetail: Component = () => {
                   <p class="error">{runError()}</p>
                 </Show>
 
-                <article class="markdown" ref={setArticleEl} innerHTML={renderMarkdown(s().body)} />
+                <article
+                  class="markdown"
+                  ref={setArticleEl}
+                  innerHTML={renderMarkdown(s().body, { specId: s().id })}
+                />
 
                 <SelectionMenu
                   snap={popoverOpen() ? null : snap()}
