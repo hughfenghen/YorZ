@@ -1,7 +1,7 @@
 ---
 stage: execute
-last_action: 执行追加任务（fix）：响应式 project-id + 项目侧栏宽度可拖拽
-updated_at: 2026-06-24
+last_action: 提交 git
+updated_at: 2026-06-25
 summary: 引入多项目管理：全局配置记录托管项目，serve CLI 可在任意目录运行，URL 路由加 project-id 前缀，GUI 左侧新增可折叠项目导航面板。
 ---
 
@@ -90,6 +90,19 @@ serve cli 命令可以在任意目录运行，根据项目列表托管加载对�
 - 当前 `src/gui/src/components/ProjectsSidebar.tsx` 仅有"折叠 / 展开"两态，无 resize 手柄；展开态宽度由 `src/gui/src/styles.css` 中 `.projects-sidebar` / `.projects-sidebar.expanded` 固定 CSS 控制。
 - 折叠态宽度沿用 `.agent-dock` 折叠规范（约 36px），本次不改动。
 - 折叠态持久化键已用 `localStorage['yorz.projectsSidebar.collapsed']`；宽度也宜走同一类的客户端本地持久化。
+
+### 3.7 追加任务（feat）现状分析
+
+新增需求：`yorz add <path>` CLI 子命令，将指定目录登记到全局项目列表。
+
+- 当前增删项目仅有 GUI 入口：`POST /api/projects` / `DELETE /api/projects/:id`（`src/service/routes/project.ts:15-58`）；4.9 中明确"不在本期同步新增 CLI 子命令"，本次追加任务针对 `add` 解锁该限制（list / remove 仍不要求）。
+- `serve` 启动时虽会自动注册 `process.cwd()`（当其包含 `.yorz/`），但需要先 cd 到目标目录再启动 serve；用户希望在不启动 serve 的前提下批量登记任意目录。
+- 底层能力已具备：
+  - `addProject(absPath, filePath?, now?)`（`src/service/global-config.ts:100-117`）幂等写入；
+  - `generateProjectId(absPath)`（`src/service/global-config.ts:79-84`）按绝对路径稳定生成 ID；
+  - "校验存在/是目录 + 预创建 `.yorz/specs`" 逻辑当前藏在 `ProjectRegistry.add`（`src/service/project-registry.ts:100-106`）。HTTP 路由层 `routes/project.ts:30-37` 又重复了一遍 stat 校验，CLI 接入会形成第三处重复。
+- 路径处理差异：HTTP 端要求绝对路径并 400 拒绝相对路径（`routes/project.ts:27-29`）；CLI 自然语义应允许相对路径，基于 `process.cwd()` 解析为绝对。
+- 与运行中 serve 的耦合：`ProjectRegistry.list()` 每次都重新 `loadGlobalConfig`（`project-registry.ts:63-80`），新条目下一次 `GET /api/projects` 自动可见，无需热刷新机制。
 
 ## 4. 技术实现方案
 
@@ -257,6 +270,48 @@ export interface GlobalConfig {
   - 折叠后展开，宽度恢复到上次拖拽值；MIN/MAX 边界生效。
   - 拖拽过程中不会选中页面文字。
 
+### 4.11 追加任务（feat）实现方案
+
+#### 4.11.1 共享工具函数
+
+为避免 CLI / HTTP / Registry 三处校验逻辑漂移，先抽取共享函数：
+
+- 在 `src/service/global-config.ts` 末尾新增 `prepareProjectDir(inputPath: string, cwd?: string): Promise<string>`：
+  - 接受相对或绝对路径，相对路径基于 `cwd ?? process.cwd()` 通过 `path.resolve()` 转绝对；
+  - 校验：路径存在（`existsSync`），是目录（`stat().isDirectory()`），失败抛 `Error`；
+  - `mkdir -p <abs>/.yorz/specs`；
+  - 返回 normalized 绝对路径。
+- `ProjectRegistry.add(absPath)` 改为：`const normalized = await prepareProjectDir(absPath); return addProject(normalized, this.globalConfigPath)`，去重原内联逻辑。绝对路径检查作为前置 guard 保留（保持错误信息一致）。
+- HTTP `POST /api/projects` 路由（`routes/project.ts:15-52`）保持现有 400 错误返回语义不变（绝对路径校验、stat、不存在等都保留在路由层），最终仍调 `registry.add()`；服务层重复一次目录创建是可接受的副作用（`mkdir -p` 幂等）。
+
+#### 4.11.2 `yorz add <path>` 子命令
+
+- 入口：`src/cli/index.ts` 新增 commander 子命令：
+  ```ts
+  program
+    .command('add <path>')
+    .description('Register a directory as a YorZ project in the global config.')
+    .action(async (input: string) => { ... })
+  ```
+- 实现位置：新文件 `src/cli/add.ts` 导出 `runAdd({ path, cwd?, globalConfigPath? })`，便于单测；`index.ts` 仅做参数收集与错误打印。
+- 流程：
+  1. `const abs = await prepareProjectDir(input)`，失败时打印 stderr 并 `process.exit(1)`；
+  2. `const result = await addProject(abs)`；
+  3. 输出：
+     - `created === true`：`stdout` → `added project ${result.entry.id}: ${abs}`；
+     - `created === false`：`stdout` → `project already registered: ${result.entry.id} -> ${abs}`；
+     - exit 0。
+- 与运行中 serve 的关系：纯本地写 `~/.config/yorz/projects.json`；下一次 GUI 拉 `GET /api/projects` 即可见到新条目，本次不引入热刷新。
+- 非目标：`yorz list` / `yorz remove` 不在本次范围（用户未要求；GUI 已可完成）。
+
+#### 4.11.3 验收
+
+- `yorz add ./relative/dir` 与 `yorz add /abs/dir` 均能正确解析为绝对路径并落盘；
+- 不存在或非目录路径：stderr 输出错误、exit code 非 0、`projects.json` 未变更；
+- 同路径二次调用：打印 "already registered"、exit 0、`projects.json` 中条目数不变；
+- 添加后启动 / 已在运行的 `serve` 通过 `GET /api/projects` 可见该项目（首次访问时 lazy 物化 `ProjectInstance`）；
+- 现有 `POST /api/projects` 路由行为保持不变（单测仍通过）。
+
 ## 5. 待确认问题
 
 - 暂无
@@ -301,6 +356,13 @@ export interface GlobalConfig {
 - [x] 在 `ProjectsSidebar.tsx` 新增宽度 signal：`DEFAULT_WIDTH=220`、`MIN_WIDTH=160`、`MAX_WIDTH=480`；持久化键 `localStorage['yorz.projectsSidebar.width']`，读时 clamp 到 `[MIN, MAX]`，缺失/非法值回退 `DEFAULT_WIDTH`；展开态 `<aside style={{ width: width()+'px' }}>`，折叠态忽略 inline width 由 CSS 接管
 - [x] 在 `ProjectsSidebar.tsx` 渲染 resizer：`<div class="projects-sidebar-resizer" onMouseDown={beginResize}>`，仅展开态渲染；`beginResize` 记录 `startX` / `startW`，在 `document` 上挂 `mousemove`（用 `requestAnimationFrame` 节流）按 `clamp(startW + e.clientX - startX, MIN, MAX)` 更新 signal，挂 `mouseup` 清理监听并写 localStorage；拖拽期间给 `document.body` 添加 `.is-resizing` 类、`mouseup` 后移除；验收：松手刷新后宽度保持
 - [x] 更新 `src/gui/src/styles.css`：`.projects-sidebar` 的固定 `width: 200px` 改为 fallback（被 inline style 覆盖；折叠态仍由 `.projects-sidebar.collapsed { width: 36px }` 兜底）；新增 `.projects-sidebar { position: relative }`、`.projects-sidebar-resizer { position: absolute; top: 0; right: 0; width: 4px; height: 100%; cursor: col-resize }` + hover 高亮；新增 `body.is-resizing { user-select: none; cursor: col-resize }`；验收：拖拽中不会选中文本、光标保持 col-resize
+- [x] 在 `src/service/global-config.ts` 末尾新增 `prepareProjectDir(input: string, cwd?: string): Promise<string>`：相对路径基于 `cwd ?? process.cwd()` 通过 `path.resolve()` 解析；校验路径存在 + 是目录（失败抛 Error 并附路径信息）；成功后 `mkdir -p <abs>/.yorz/specs`；返回 normalized 绝对路径；验收：相对/绝对路径均能正确处理，非目录或不存在路径抛错且不创建任何子目录
+- [x] 重构 `src/service/project-registry.ts` 中 `ProjectRegistry.add(absPath)`：保留 `isAbsolute` 前置 guard，移除内联的 `ensureWritableDir` 调用与 `mkdir .yorz/specs`，改为 `const normalized = await prepareProjectDir(absPath)` 再调 `addProject(normalized, this.globalConfigPath)`；删除已无引用的私有 `ensureWritableDir` 函数；验收：`project-registry.test.ts` 与 `POST /api/projects` 相关测试全部通过
+- [x] 新建 `src/cli/add.ts`：导出 `async function runAdd(opts: { path: string; cwd?: string; globalConfigPath?: string }): Promise<{ entry: GlobalProjectEntry; created: boolean }>`，内部 `prepareProjectDir(opts.path, opts.cwd)` → `addProject(abs, opts.globalConfigPath)`；不直接 console / process.exit，便于测试；验收：可独立 import 并在 vitest 中调用
+- [x] 在 `src/cli/index.ts` 注册 `add <path>` 子命令：description `Register a directory as a YorZ project in the global config.`；action 中调 `runAdd({ path: input })`；`created` 时 stdout `added project <id>: <abs>`，`!created` 时 stdout `project already registered: <id> -> <abs>`；底层 Error 由顶层 catch 走 `error: <message>` + exit 1；验收：`yorz add ./nonexistent` 退 1 并不写盘，`yorz add <existingDir>` 成功后再次执行打印 "already registered" 且 `projects.json` 条目数不变
+- [x] 在 `src/service/__tests__/global-config.test.ts` 中新增 `prepareProjectDir` 用例：① 相对路径基于传入 cwd 解析为绝对、② 不存在路径 reject、③ 指向文件而非目录时 reject、④ 成功路径会创建 `.yorz/specs` 子目录且返回 normalized 路径；使用临时目录隔离；验收：vitest 全绿
+- [x] 新增 `src/cli/__tests__/add.test.ts`：覆盖 `runAdd`：① 新增返回 `created: true` 且 `loadGlobalConfig` 能读到新条目、② 重复添加返回 `created: false` 且条目数不变、③ 非目录路径 reject、④ 相对路径相对于显式 `cwd` 解析；使用隔离的 `globalConfigPath` 临时文件；验收：vitest 全绿
+- [x] 更新 `README.md`：在 CLI 命令章节加入 `yorz add <path>` 用法与一个示例（相对/绝对路径均可），并指出该命令仅修改全局配置，不需要 serve 在运行；验收：README 中可检索到 `yorz add` 章节
 
 ## 7. 追加任务
 
@@ -310,6 +372,9 @@ export interface GlobalConfig {
     http://localhost:7423/api/projects//runs
 
 2. 左侧项目导航面板宽度应该支持用户调整
+
+- [fixed] [feat] 2026-06-24 22:24 | 支持 yorz add 命令添加目录
+  - 描述：支持 yorz add 命令添加目录
 
 ## 8. 执行记录
 
@@ -334,3 +399,10 @@ export interface GlobalConfig {
 - 2026-06-24 追加任务 fix（项目侧栏宽度拖拽）：`ProjectsSidebar.tsx` 新增 `width` signal（DEFAULT=220, MIN=160, MAX=480）+ 持久化键 `localStorage['yorz.projectsSidebar.width']`，仅展开态在 `<aside>` 右边缘渲染 `.projects-sidebar-resizer`；mousedown 启动 RAF 节流拖拽，mouseup 写入 localStorage，过程中 body 添加 `.is-resizing` 类禁用文本选中并强制 `col-resize` cursor；onCleanup 兜底解绑
 - 2026-06-24 追加任务 fix 样式：`styles.css` 中 `.projects-sidebar` 添加 `position: relative` 以承载绝对定位的 resizer，220px 宽度仅作 fallback 由 inline style 接管，折叠态以 `!important` 强制 36px；新增 `.projects-sidebar-resizer` / `body.is-resizing` 样式
 - 2026-06-24 验证：`tsc --noEmit` 仅剩遗留的 `QuestionConfirmPanel.tsx` 错误（与本次改动无关）；`vitest run` 174/174 通过；`vite build --config vite.gui.config.ts` 成功（122 modules → 197 KB JS + 20 KB CSS）；浏览器端验证（根路径不再出现 `/api/projects//*` 请求、拖动 resizer 并刷新保持宽度）需在本地 `pnpm dev` 中由用户完成
+- 2026-06-24 提交 5738d45：feat(260624.feat.multi-project-management): 引入多项目管理：全局配置记录托管项目，serve CLI 可在任意目录运行，URL 路由加 project-id 前缀，GUI 左侧新增可折叠项目导航面板。（34 个文件）
+- 2026-06-24 变更重开（追加任务：feat）：消费 `## 追加任务` 中 `[open] [feat] 支持 yorz add 命令添加目录`，新增 3.7 现状分析与 4.11 实现方案；合并 trailing 重复的 `## 追加任务` / `## 执行记录` 章节回到既有 7/8 节，frontmatter `stage` 切回 `plan`。
+- 2026-06-24 追加任务 feat（yorz add）：`src/service/global-config.ts` 新增 `prepareProjectDir(input, cwd?)` 共享函数（相对/绝对路径解析 + 存在性/目录校验 + 预创建 `.yorz/specs`）；`src/service/project-registry.ts` `ProjectRegistry.add` 改为复用 `prepareProjectDir` 并删除已无引用的 `ensureWritableDir`；新增 `src/cli/add.ts` 导出 `runAdd({ path, cwd?, globalConfigPath? })`；`src/cli/index.ts` 注册 `add <path>` 子命令，created/already 分别打印；新增/补充测试：`global-config.test.ts` 增 4 个 `prepareProjectDir` 用例、新增 `src/cli/__tests__/add.test.ts` 4 个用例；`README.md` 新增 `yorz add` 章节与示例；验证：`vitest run` 182/182 通过，`tsc --noEmit` 仅剩遗留的 `QuestionConfirmPanel.tsx` 错误（与本次无关）。对应 `## 追加任务` 中 `[feat] 支持 yorz add 命令添加目录` 已置 `[fixed]`。
+
+## 执行记录
+
+- 2026-06-25 提交 8ec38e3：feat(260624.feat.multi-project-management): 引入多项目管理：全局配置记录托管项目，serve CLI 可在任意目录运行，URL 路由加 project-id 前缀，GUI 左侧新增可折叠项目导航面板。（8 个文件）

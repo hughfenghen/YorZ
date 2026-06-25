@@ -7,6 +7,7 @@ import {
   addProject,
   generateProjectId,
   loadGlobalConfig,
+  prepareProjectDir,
   removeProject,
   resolveGlobalConfigDir,
   resolveGlobalConfigPath,
@@ -125,5 +126,38 @@ describe('addProject / removeProject / touchProjectActivity', () => {
     const fp = await tmpConfigPath()
     const ok = await touchProjectActivity('no-such', '2026-06-24', fp)
     expect(ok).toBe(false)
+  })
+})
+
+describe('prepareProjectDir', () => {
+  it('resolves relative path against provided cwd', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'yorz-prep-cwd-'))
+    const { mkdir } = await import('node:fs/promises')
+    await mkdir(join(base, 'sub'))
+    const abs = await prepareProjectDir('./sub', base)
+    expect(abs).toBe(join(base, 'sub'))
+    expect(existsSync(join(abs, '.yorz', 'specs'))).toBe(true)
+  })
+
+  it('rejects when path does not exist', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'yorz-prep-missing-'))
+    await expect(prepareProjectDir(join(base, 'does-not-exist'))).rejects.toThrow(
+      /path does not exist/,
+    )
+  })
+
+  it('rejects when path is a file rather than a directory', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'yorz-prep-file-'))
+    const filePath = join(base, 'a.txt')
+    await writeFile(filePath, 'hi', 'utf8')
+    await expect(prepareProjectDir(filePath)).rejects.toThrow(/not a directory/)
+    expect(existsSync(join(base, '.yorz'))).toBe(false)
+  })
+
+  it('creates .yorz/specs and returns normalized absolute path for absolute input', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'yorz-prep-abs-'))
+    const abs = await prepareProjectDir(base)
+    expect(abs).toBe(base)
+    expect(existsSync(join(base, '.yorz', 'specs'))).toBe(true)
   })
 })

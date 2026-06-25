@@ -1,0 +1,14 @@
+{
+  "paths": [
+    ".yorz/specs/260624.fix.project-list-sidebar/spec.md",
+    "src/gui/src/components/ProjectsSidebar.tsx",
+    "src/gui/src/lib/agent-tasks.ts",
+    "src/gui/src/lib/api.ts",
+    "src/gui/src/lib/project.ts",
+    "src/gui/src/lib/sse.ts",
+    "src/gui/src/pages/Home.tsx",
+    "src/gui/src/pages/SpecDetail.tsx",
+    "src/gui/src/pages/Welcome.tsx",
+    "src/gui/src/styles.css"
+  ]
+}

@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 
 export interface GlobalProjectEntry {
   id: string
@@ -136,4 +136,21 @@ export async function touchProjectActivity(
   target.lastActivityAt = when
   await saveGlobalConfig(config, filePath)
   return true
+}
+
+export async function prepareProjectDir(input: string, cwd?: string): Promise<string> {
+  if (typeof input !== 'string' || !input.trim()) {
+    throw new Error('path required')
+  }
+  const trimmed = input.trim()
+  const abs = isAbsolute(trimmed) ? resolve(trimmed) : resolve(cwd ?? process.cwd(), trimmed)
+  if (!existsSync(abs)) {
+    throw new Error(`path does not exist: ${abs}`)
+  }
+  const stats = await stat(abs)
+  if (!stats.isDirectory()) {
+    throw new Error(`path is not a directory: ${abs}`)
+  }
+  await mkdir(join(abs, '.yorz', 'specs'), { recursive: true })
+  return abs
 }

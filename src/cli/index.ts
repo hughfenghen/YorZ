@@ -3,6 +3,7 @@ import { Command } from 'commander'
 import { install } from './install.js'
 import { uninstall } from './uninstall.js'
 import { runServe } from './serve.js'
+import { runAdd } from './add.js'
 import type { AgentName, InstallScope } from './adapters/types.js'
 
 interface CliOpts {
@@ -61,6 +62,15 @@ program
       if (result.removed) console.log(`[${agent}] removed: ${result.path}`)
       else console.log(`[${agent}] not installed at ${result.path}`)
     }
+  })
+
+program
+  .command('add <path>')
+  .description('Register a directory as a YorZ project in the global config.')
+  .action(async (input: string) => {
+    const { entry, created } = await runAdd({ path: input })
+    if (created) console.log(`added project ${entry.id}: ${entry.path}`)
+    else console.log(`project already registered: ${entry.id} -> ${entry.path}`)
   })
 
 program

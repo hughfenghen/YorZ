@@ -1,6 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, stat } from 'node:fs/promises'
-import { isAbsolute, resolve } from 'node:path'
+import { isAbsolute } from 'node:path'
 import { SpecStore } from './spec-store.js'
 import { SpecWatcher } from './watcher.js'
 import { AgentRunner } from './agent.js'
@@ -10,6 +9,7 @@ import {
   addProject,
   generateProjectId,
   loadGlobalConfig,
+  prepareProjectDir,
   removeProject,
   resolveGlobalConfigPath,
   type GlobalProjectEntry,
@@ -99,9 +99,7 @@ export class ProjectRegistry {
 
   async add(absPath: string): Promise<{ entry: GlobalProjectEntry; created: boolean }> {
     if (!isAbsolute(absPath)) throw new Error(`path must be absolute: ${absPath}`)
-    const normalized = resolve(absPath)
-    await ensureWritableDir(normalized)
-    await mkdir(`${normalized}/.yorz/specs`, { recursive: true })
+    const normalized = await prepareProjectDir(absPath)
     return await addProject(normalized, this.globalConfigPath)
   }
 
@@ -179,16 +177,6 @@ export class ProjectRegistry {
     this.cache.set(input.id, { instance, startPromise })
     await startPromise
     return instance
-  }
-}
-
-async function ensureWritableDir(absPath: string): Promise<void> {
-  if (!existsSync(absPath)) {
-    throw new Error(`path does not exist: ${absPath}`)
-  }
-  const stats = await stat(absPath)
-  if (!stats.isDirectory()) {
-    throw new Error(`path is not a directory: ${absPath}`)
   }
 }
 
