@@ -17,6 +17,9 @@ const DEFAULT_WIDTH = 220
 const MIN_WIDTH = 160
 const MAX_WIDTH = 480
 
+const ADD_HINT_TEXT = '添加项目请在终端执行：'
+const ADD_HINT_CMD = 'yorz add <path>'
+
 function readCollapsed(): boolean {
   try {
     return typeof window !== 'undefined' && window.localStorage.getItem(COLLAPSED_KEY) === '1'
@@ -62,44 +65,10 @@ function writeWidth(value: number): void {
   }
 }
 
-interface PickerWindow extends Window {
-  showDirectoryPicker?: (opts?: { mode?: 'read' | 'readwrite' }) => Promise<{ name: string }>
-}
-
-/**
- * Show the browser directory picker (when supported) then prompt the user for
- * the absolute path of the chosen directory. Returns null when the user
- * cancels at any step.
- */
-export async function promptAddProject(): Promise<string | null> {
-  let suggestedName = ''
-  const win = typeof window !== 'undefined' ? (window as PickerWindow) : undefined
-  if (win?.showDirectoryPicker) {
-    try {
-      const handle = await win.showDirectoryPicker({ mode: 'read' })
-      suggestedName = handle.name
-    } catch {
-      // user cancelled / not allowed; fall through to manual entry
-    }
-  }
-  const message = suggestedName
-    ? `请输入项目根目录的绝对路径（建议：${suggestedName}）`
-    : '请输入项目根目录的绝对路径'
-  const input = window.prompt(message, '')
-  if (!input) return null
-  const trimmed = input.trim()
-  return trimmed || null
-}
-
-function pickerSupported(): boolean {
-  return typeof window !== 'undefined' && 'showDirectoryPicker' in window
-}
-
 export const ProjectsSidebar: Component = () => {
   const [collapsed, setCollapsed] = createSignal(readCollapsed())
   const [width, setWidth] = createSignal(readWidth())
   const [projects, { refetch }] = createResource<ProjectListItem[]>(() => api.listProjects())
-  const [adding, setAdding] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
   const navigate = useNavigate()
   const location = useLocation()
@@ -158,23 +127,6 @@ export const ProjectsSidebar: Component = () => {
     if (docMouseUp) document.removeEventListener('mouseup', docMouseUp)
     document.body.classList.remove('is-resizing')
   })
-
-  async function onAdd() {
-    if (adding()) return
-    setError(null)
-    setAdding(true)
-    try {
-      const path = await promptAddProject()
-      if (!path) return
-      const entry = await api.addProject(path)
-      await refetch()
-      navigate(`/${encodeURIComponent(entry.id)}`)
-    } catch (err) {
-      setError((err as Error).message)
-    } finally {
-      setAdding(false)
-    }
-  }
 
   async function onRemove(p: ProjectListItem, ev: Event) {
     ev.preventDefault()
@@ -275,21 +227,23 @@ export const ProjectsSidebar: Component = () => {
       </Show>
 
       <footer class="projects-sidebar-foot">
-        <button
-          type="button"
-          class="projects-sidebar-add"
-          disabled={adding() || !pickerSupportedClient()}
-          title={
-            pickerSupportedClient()
-              ? '添加一个项目目录'
-              : '当前浏览器不支持 showDirectoryPicker，请使用 Chrome/Edge 等现代浏览器'
+        <Show
+          when={!collapsed()}
+          fallback={
+            <span
+              class="projects-sidebar-hint-icon"
+              title={`${ADD_HINT_TEXT}${ADD_HINT_CMD}`}
+              aria-label={`${ADD_HINT_TEXT}${ADD_HINT_CMD}`}
+            >
+              ?
+            </span>
           }
-          onClick={() => void onAdd()}
         >
-          <Show when={!collapsed()} fallback={<span>＋</span>}>
-            <span>＋ 添加项目</span>
-          </Show>
-        </button>
+          <p class="projects-sidebar-hint">
+            {ADD_HINT_TEXT}
+            <code>{ADD_HINT_CMD}</code>
+          </p>
+        </Show>
         {error() && (
           <p class="error projects-sidebar-error" title={error()!}>
             {error()}
@@ -308,8 +262,4 @@ export const ProjectsSidebar: Component = () => {
       </Show>
     </aside>
   )
-}
-
-function pickerSupportedClient(): boolean {
-  return pickerSupported()
 }

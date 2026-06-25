@@ -1,7 +1,7 @@
 import { For, Show, createSignal, onCleanup, type Component } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
 import { api, type AttachmentKind, type AttachmentMeta, type CreateSpecBody } from '../lib/api.js'
-import { projectHref } from '../lib/project.js'
+import { projectHref, useCurrentProjectId } from '../lib/project.js'
 import { subscribeSpecsList } from '../lib/sse.js'
 import { agentTasks } from '../lib/agent-tasks.js'
 
@@ -55,6 +55,7 @@ function uid(): string {
 
 export const NewSpec: Component = () => {
   const navigate = useNavigate()
+  const projectId = useCurrentProjectId()
   const [content, setContent] = createSignal('')
   const [type, setType] = createSignal<CreateSpecBody['type']>('feat')
   const [error, setError] = createSignal<string | null>(null)
@@ -81,7 +82,7 @@ export const NewSpec: Component = () => {
   async function ensureDraftId(): Promise<string> {
     const existing = draftId()
     if (existing) return existing
-    const { draftId: newId } = await api.createDraft()
+    const { draftId: newId } = await api.createDraft(projectId())
     setDraftId(newId)
     return newId
   }
@@ -152,7 +153,7 @@ export const NewSpec: Component = () => {
       const did = await ensureDraftId()
       for (const att of accepted) {
         try {
-          const meta = await api.uploadAttachment(did, att.file)
+          const meta = await api.uploadAttachment(projectId(), did, att.file)
           replaceAttachment(att.id, {
             storedName: meta.storedName,
             name: meta.storedName,
@@ -205,7 +206,7 @@ export const NewSpec: Component = () => {
     if (!att) return
     if (att.storedName && draftId()) {
       try {
-        await api.deleteAttachment(draftId()!, att.storedName)
+        await api.deleteAttachment(projectId(), draftId()!, att.storedName)
       } catch (err) {
         setError((err as Error).message)
         // Even on backend failure, remove from UI so the user is not stuck.
@@ -225,7 +226,7 @@ export const NewSpec: Component = () => {
     if (!next || !att.storedName || !draftId()) return
     if (next === stripExt(att.name)) return
     try {
-      const meta = await api.renameAttachment(draftId()!, att.storedName, next)
+      const meta = await api.renameAttachment(projectId(), draftId()!, att.storedName, next)
       replaceAttachment(att.id, { storedName: meta.storedName, name: meta.storedName })
     } catch (err) {
       setError((err as Error).message)
@@ -235,7 +236,7 @@ export const NewSpec: Component = () => {
   async function pollForNewSpec() {
     if (navigated) return
     try {
-      const list = await api.listSpecs()
+      const list = await api.listSpecs(projectId())
       const fresh = list.find((s) => !baselineIds.has(s.id))
       if (fresh) {
         navigated = true
@@ -274,24 +275,26 @@ export const NewSpec: Component = () => {
     setPhase('creating')
     navigated = false
     try {
-      const before = await api.listSpecs()
+      const pid = projectId()
+      const before = await api.listSpecs(pid)
       baselineIds = new Set(before.map((s) => s.id))
 
       const body: CreateSpecBody = { type: type(), requirement: text }
       const did = draftId()
       if (did) body.draftId = did
 
-      const resp = await api.createSpec(body)
+      const resp = await api.createSpec(pid, body)
       if ('draft' in resp && resp.draft) {
         activeRunId = resp.runId
         agentTasks.start({
           runId: resp.runId,
+          projectId: pid,
           mode: 'skill-run',
           specId: `__draft__-${resp.runId}`,
           specTitle: '（新建 spec 中）',
           source: 'draft',
         })
-        cleanupList = subscribeSpecsList(() => {
+        cleanupList = subscribeSpecsList(pid, () => {
           void pollForNewSpec()
         })
         void pollForNewSpec()

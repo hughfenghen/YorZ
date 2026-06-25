@@ -12,15 +12,9 @@ function initialProjectIdFromUrl(): string {
 export { activeProjectId, setActiveProjectId }
 
 /**
- * Read the current project id. Backed by a reactive signal that is kept in sync
- * with `@solidjs/router`'s `useLocation()` in `AppShell`. Safe to call from any
- * context (component or plain module) — reactive consumers subscribe, plain
- * callers just see the current value.
+ * 响应式取当前 pid：基于 useParams().projectId（SolidRouter 中唯一先于 pushState 同步更新的真相源）。
+ * 命令式入口已废弃，所有 project-scoped api / sse 调用需显式传 pid。
  */
-export function currentProjectId(): string {
-  return activeProjectId()
-}
-
 export function useCurrentProjectId(): () => string {
   const params = useParams<{ projectId?: string }>()
   return () => params.projectId ?? activeProjectId()
@@ -28,7 +22,7 @@ export function useCurrentProjectId(): () => string {
 
 /** Build a route href under the given (or current) project. */
 export function projectHref(sub: string = '', projectId?: string): string {
-  const pid = projectId ?? currentProjectId()
+  const pid = projectId ?? activeProjectId()
   if (!pid) return sub.startsWith('/') ? sub : `/${sub}`
   const tail = sub.startsWith('/') ? sub : sub ? `/${sub}` : ''
   return `/${pid}${tail}`

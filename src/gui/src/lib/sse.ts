@@ -1,8 +1,5 @@
-import { currentProjectId } from './project.js'
-
-function projectBase(): string | null {
-  const pid = currentProjectId()
-  return pid ? `/api/projects/${encodeURIComponent(pid)}` : null
+function projectBase(pid: string): string {
+  return `/api/projects/${encodeURIComponent(pid)}`
 }
 
 export type AgentMode = 'skill-run' | 'explain'
@@ -53,10 +50,13 @@ export interface SpecSubscribeHandlers {
   onServerHeartbeat?: (e: ServerHeartbeatEvent) => void
 }
 
-export function subscribeSpec(id: string, handlers: SpecSubscribeHandlers): SseSubscription {
-  const base = projectBase()
-  if (!base) return noopSubscription()
-  const source = new EventSource(`${base}/specs/${encodeURIComponent(id)}/events`)
+export function subscribeSpec(
+  pid: string,
+  id: string,
+  handlers: SpecSubscribeHandlers,
+): SseSubscription {
+  if (!pid) return noopSubscription()
+  const source = new EventSource(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/events`)
   const onUpdated = () => handlers.onUpdated?.()
   const onAgentStdout = (e: MessageEvent) => {
     try {
@@ -115,10 +115,13 @@ export interface RunSubscribeHandlers {
   onServerHeartbeat?: (e: ServerHeartbeatEvent) => void
 }
 
-export function subscribeRun(runId: string, handlers: RunSubscribeHandlers): SseSubscription {
-  const base = projectBase()
-  if (!base) return noopSubscription()
-  const source = new EventSource(`${base}/runs/${encodeURIComponent(runId)}/events`)
+export function subscribeRun(
+  pid: string,
+  runId: string,
+  handlers: RunSubscribeHandlers,
+): SseSubscription {
+  if (!pid) return noopSubscription()
+  const source = new EventSource(`${projectBase(pid)}/runs/${encodeURIComponent(runId)}/events`)
   const onStdout = (e: MessageEvent) => {
     try {
       handlers.onAgentStdout?.(JSON.parse(e.data))
@@ -172,10 +175,9 @@ export interface ActiveRunInfo {
   startedAt: number
 }
 
-export async function fetchActiveRuns(): Promise<ActiveRunInfo[]> {
-  const base = projectBase()
-  if (!base) return []
-  const res = await fetch(`${base}/runs`)
+export async function fetchActiveRuns(pid: string): Promise<ActiveRunInfo[]> {
+  if (!pid) return []
+  const res = await fetch(`${projectBase(pid)}/runs`)
   if (!res.ok) return []
   try {
     return (await res.json()) as ActiveRunInfo[]
@@ -184,20 +186,18 @@ export async function fetchActiveRuns(): Promise<ActiveRunInfo[]> {
   }
 }
 
-export async function cancelRun(runId: string): Promise<void> {
-  const base = projectBase()
-  if (!base) return
+export async function cancelRun(pid: string, runId: string): Promise<void> {
+  if (!pid) return
   try {
-    await fetch(`${base}/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
+    await fetch(`${projectBase(pid)}/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
   } catch {
     // network errors / 404 (run already ended) are non-fatal
   }
 }
 
-export function subscribeSpecsList(onChange: () => void): () => void {
-  const base = projectBase()
-  if (!base) return () => {}
-  const source = new EventSource(`${base}/events/specs`)
+export function subscribeSpecsList(pid: string, onChange: () => void): () => void {
+  if (!pid) return () => {}
+  const source = new EventSource(`${projectBase(pid)}/events/specs`)
   const handler = () => onChange()
   source.addEventListener('list-updated', handler)
   source.addEventListener('error', () => {

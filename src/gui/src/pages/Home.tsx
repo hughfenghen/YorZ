@@ -6,7 +6,7 @@ import { projectHref, useCurrentProjectId } from '../lib/project.js'
 export const Home: Component = () => {
   const projectId = useCurrentProjectId()
   const [specs, { refetch }] = createResource<SpecListItem[], string>(projectId, (pid) =>
-    pid ? api.listSpecs() : Promise.resolve([]),
+    pid ? api.listSpecs(pid) : Promise.resolve([]),
   )
 
   return (

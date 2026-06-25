@@ -20,7 +20,7 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
     const pid = activeProjectId()
     if (!pid || hydratedFor.has(pid)) return
     hydratedFor.add(pid)
-    void agentTasks.hydrateFromActiveRuns()
+    void agentTasks.hydrateFromActiveRuns(pid)
   })
 
   return (

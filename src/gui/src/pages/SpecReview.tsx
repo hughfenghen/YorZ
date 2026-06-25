@@ -9,18 +9,19 @@ import {
 } from 'solid-js'
 import { A, useParams } from '@solidjs/router'
 import { api, type GitChange, type SpecDetail } from '../lib/api.js'
-import { projectHref } from '../lib/project.js'
+import { projectHref, useCurrentProjectId } from '../lib/project.js'
 
 export const SpecReview: Component = () => {
   const params = useParams<{ id: string }>()
+  const projectId = useCurrentProjectId()
   const [spec] = createResource(
-    () => params.id,
-    (id) => api.getSpec(id),
+    () => [projectId(), params.id] as const,
+    ([pid, id]) => api.getSpec(pid, id),
   )
   const [refreshTick, setRefreshTick] = createSignal(0)
   const [changes] = createResource(
-    () => [params.id, refreshTick()] as const,
-    async ([id]) => api.listSpecChanges(id),
+    () => [projectId(), params.id, refreshTick()] as const,
+    async ([pid, id]) => api.listSpecChanges(pid, id),
   )
 
   const [draft, setDraft] = createSignal<string | null>(null)
@@ -44,7 +45,7 @@ export const SpecReview: Component = () => {
     }
     setSubmitting(true)
     try {
-      const res = await api.commitSpecChanges(params.id, { message: trimmed })
+      const res = await api.commitSpecChanges(projectId(), params.id, { message: trimmed })
       setSuccess({ commit: res.commit })
       setDraft(null)
       setRefreshTick((t) => t + 1)

@@ -1,4 +1,4 @@
-import { currentProjectId, type ProjectListItem } from './project.js'
+import type { ProjectListItem } from './project.js'
 
 export type SpecType = 'feat' | 'refct' | 'fix'
 
@@ -82,21 +82,8 @@ export interface CommitBody {
   paths?: string[]
 }
 
-function projectBase(): string | null {
-  const pid = currentProjectId()
-  return pid ? `/api/projects/${encodeURIComponent(pid)}` : null
-}
-
-function listReq<T>(builder: (base: string) => Promise<T>, fallback: T): Promise<T> {
-  const base = projectBase()
-  if (!base) return Promise.resolve(fallback)
-  return builder(base)
-}
-
-function opReq<T>(builder: (base: string) => Promise<T>): Promise<T> {
-  const base = projectBase()
-  if (!base) return Promise.reject(new Error('no active project'))
-  return builder(base)
+function projectBase(pid: string): string {
+  return `/api/projects/${encodeURIComponent(pid)}`
 }
 
 async function extractErrorDetail(res: Response): Promise<string> {
@@ -120,137 +107,111 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  listSpecs: () => listReq<SpecListItem[]>((base) => request<SpecListItem[]>(`${base}/specs`), []),
-  getSpec: (id: string) =>
-    opReq<SpecDetail>((base) => request<SpecDetail>(`${base}/specs/${encodeURIComponent(id)}`)),
+  listSpecs: (pid: string) => request<SpecListItem[]>(`${projectBase(pid)}/specs`),
+  getSpec: (pid: string, id: string) =>
+    request<SpecDetail>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}`),
   createSpec: (
+    pid: string,
     body: CreateSpecBody,
   ): Promise<{ id: string; path: string; draft?: false } | { runId: string; draft: true }> =>
-    opReq((base) =>
-      fetch(`${base}/specs`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      }).then(async (res) => {
-        if (!res.ok) {
-          const detail = await extractErrorDetail(res)
-          throw new Error(`${res.status} ${detail || res.statusText}`)
-        }
-        return res.json()
-      }),
-    ),
-  appendAnnotation: (id: string, body: AnnotationBody) =>
-    opReq<{ ok: true }>((base) =>
-      request<{ ok: true }>(`${base}/specs/${encodeURIComponent(id)}/inputs`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ kind: 'annotate', ...body }),
-      }),
-    ),
-  submitQuestionAnswers: (id: string, body: QuestionAnswersBody) =>
-    opReq<{ ok: true }>((base) =>
-      request<{ ok: true }>(`${base}/specs/${encodeURIComponent(id)}/questions/answers`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      }),
-    ),
-  runAgent: (id: string) =>
-    opReq<{ runId: string }>((base) =>
-      request<{ runId: string }>(`${base}/specs/${encodeURIComponent(id)}/run`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: '{}',
-      }),
-    ),
-  appendItem: (id: string, body: AppendItemBody) =>
-    opReq<{ ok: true; runId?: string }>((base) =>
-      request<{ ok: true; runId?: string }>(`${base}/specs/${encodeURIComponent(id)}/appends`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      }),
-    ),
-  explain: (id: string, text: string) =>
-    opReq<{ runId: string }>((base) =>
-      request<{ runId: string }>(`${base}/specs/${encodeURIComponent(id)}/explain`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text }),
-      }),
-    ),
-  listSpecChanges: (id: string) =>
-    listReq<{ changes: GitChange[] }>(
-      (base) =>
-        request<{ changes: GitChange[] }>(`${base}/specs/${encodeURIComponent(id)}/changes`),
-      { changes: [] },
-    ),
-  commitSpecChanges: (id: string, body: CommitBody) =>
-    opReq<{ ok: true; commit: string }>((base) =>
-      request<{ ok: true; commit: string }>(`${base}/specs/${encodeURIComponent(id)}/commit`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      }),
-    ),
-  listProjects: () => request<ProjectListItem[]>('/api/projects'),
-  addProject: (path: string) =>
-    request<ProjectListItem>('/api/projects', {
+    fetch(`${projectBase(pid)}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ path }),
+      body: JSON.stringify(body),
+    }).then(async (res) => {
+      if (!res.ok) {
+        const detail = await extractErrorDetail(res)
+        throw new Error(`${res.status} ${detail || res.statusText}`)
+      }
+      return res.json()
     }),
-  removeProject: (id: string) =>
-    request<{ ok: boolean }>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  createDraft: () =>
-    opReq<{ draftId: string }>((base) =>
-      request<{ draftId: string }>(`${base}/spec-drafts`, {
+  appendAnnotation: (pid: string, id: string, body: AnnotationBody) =>
+    request<{ ok: true }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/inputs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind: 'annotate', ...body }),
+    }),
+  submitQuestionAnswers: (pid: string, id: string, body: QuestionAnswersBody) =>
+    request<{ ok: true }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/questions/answers`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  runAgent: (pid: string, id: string) =>
+    request<{ runId: string }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/run`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    }),
+  appendItem: (pid: string, id: string, body: AppendItemBody) =>
+    request<{ ok: true; runId?: string }>(
+      `${projectBase(pid)}/specs/${encodeURIComponent(id)}/appends`,
+      {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: '{}',
-      }),
+        body: JSON.stringify(body),
+      },
     ),
-  uploadAttachment: async (draftId: string, file: File): Promise<AttachmentMeta> => {
-    const base = projectBase()
-    if (!base) throw new Error('no active project')
+  explain: (pid: string, id: string, text: string) =>
+    request<{ runId: string }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/explain`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+    }),
+  listSpecChanges: (pid: string, id: string) =>
+    request<{ changes: GitChange[] }>(
+      `${projectBase(pid)}/specs/${encodeURIComponent(id)}/changes`,
+    ),
+  commitSpecChanges: (pid: string, id: string, body: CommitBody) =>
+    request<{ ok: true; commit: string }>(
+      `${projectBase(pid)}/specs/${encodeURIComponent(id)}/commit`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    ),
+  listProjects: () => request<ProjectListItem[]>('/api/projects'),
+  removeProject: (id: string) =>
+    request<{ ok: boolean }>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  createDraft: (pid: string) =>
+    request<{ draftId: string }>(`${projectBase(pid)}/spec-drafts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    }),
+  uploadAttachment: async (pid: string, draftId: string, file: File): Promise<AttachmentMeta> => {
     const fd = new FormData()
     fd.append('file', file, file.name)
-    const res = await fetch(`${base}/spec-drafts/${encodeURIComponent(draftId)}/attachments`, {
-      method: 'POST',
-      body: fd,
-    })
+    const res = await fetch(
+      `${projectBase(pid)}/spec-drafts/${encodeURIComponent(draftId)}/attachments`,
+      {
+        method: 'POST',
+        body: fd,
+      },
+    )
     if (!res.ok) {
       const detail = await extractErrorDetail(res)
       throw new Error(`${res.status} ${detail || res.statusText}`)
     }
     return res.json() as Promise<AttachmentMeta>
   },
-  deleteAttachment: (draftId: string, storedName: string) =>
-    opReq<{ ok: true }>((base) =>
-      request<{ ok: true }>(
-        `${base}/spec-drafts/${encodeURIComponent(draftId)}/attachments/${encodeURIComponent(storedName)}`,
-        { method: 'DELETE' },
-      ),
+  deleteAttachment: (pid: string, draftId: string, storedName: string) =>
+    request<{ ok: true }>(
+      `${projectBase(pid)}/spec-drafts/${encodeURIComponent(draftId)}/attachments/${encodeURIComponent(storedName)}`,
+      { method: 'DELETE' },
     ),
-  renameAttachment: (draftId: string, storedName: string, name: string) =>
-    opReq<AttachmentMeta>((base) =>
-      request<AttachmentMeta>(
-        `${base}/spec-drafts/${encodeURIComponent(draftId)}/attachments/${encodeURIComponent(storedName)}`,
-        {
-          method: 'PATCH',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ name }),
-        },
-      ),
+  renameAttachment: (pid: string, draftId: string, storedName: string, name: string) =>
+    request<AttachmentMeta>(
+      `${projectBase(pid)}/spec-drafts/${encodeURIComponent(draftId)}/attachments/${encodeURIComponent(storedName)}`,
+      {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      },
     ),
-  draftAttachmentUrl: (draftId: string, storedName: string): string => {
-    const base = projectBase()
-    if (!base) return ''
-    return `${base}/spec-drafts/${encodeURIComponent(draftId)}/attachments/${encodeURIComponent(storedName)}`
-  },
-  specAttachmentUrl: (specId: string, name: string): string => {
-    const base = projectBase()
-    if (!base) return ''
-    return `${base}/specs/${encodeURIComponent(specId)}/attachments/${encodeURIComponent(name)}`
-  },
+  draftAttachmentUrl: (pid: string, draftId: string, storedName: string): string =>
+    `${projectBase(pid)}/spec-drafts/${encodeURIComponent(draftId)}/attachments/${encodeURIComponent(storedName)}`,
+  specAttachmentUrl: (pid: string, specId: string, name: string): string =>
+    `${projectBase(pid)}/specs/${encodeURIComponent(specId)}/attachments/${encodeURIComponent(name)}`,
 }

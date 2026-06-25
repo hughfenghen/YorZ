@@ -18,9 +18,9 @@ const subs: FakeSub[] = []
 
 vi.mock('../sse.js', () => {
   return {
-    cancelRun: vi.fn(async () => {}),
-    fetchActiveRuns: vi.fn(async () => []),
-    subscribeRun: (runId: string, handlers: FakeHandlers) => {
+    cancelRun: vi.fn(async (_pid: string, _runId: string) => {}),
+    fetchActiveRuns: vi.fn(async (_pid: string) => []),
+    subscribeRun: (_pid: string, runId: string, handlers: FakeHandlers) => {
       const entry: FakeSub = { runId, handlers, readyState: 1, unsubscribed: false }
       subs.push(entry)
       const unsub = (() => {
@@ -46,6 +46,7 @@ function startSampleTask() {
   const tasks = createAgentTasks()
   tasks.start({
     runId: 'r1',
+    projectId: 'p1',
     mode: 'skill-run',
     specId: 's1',
     source: 'run',

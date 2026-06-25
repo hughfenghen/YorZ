@@ -21,6 +21,7 @@ const EVENT_SOURCE_OPEN = 1
 
 export interface AgentTask {
   runId: string
+  projectId: string
   mode: AgentMode
   specId: string
   specTitle?: string
@@ -37,6 +38,7 @@ export interface AgentTask {
 
 export interface AgentTaskInput {
   runId: string
+  projectId: string
   mode: AgentMode
   specId: string
   specTitle?: string
@@ -140,6 +142,7 @@ export function createAgentTasks() {
     const startedAt = input.startedAt ?? Date.now()
     const task: AgentTask = {
       runId: input.runId,
+      projectId: input.projectId,
       mode: input.mode,
       specId: input.specId,
       specTitle: input.specTitle,
@@ -159,7 +162,7 @@ export function createAgentTasks() {
       }),
     )
 
-    const unsub = subscribeRun(input.runId, {
+    const unsub = subscribeRun(input.projectId, input.runId, {
       onAgentStdout: (e) => {
         setState(
           produce((s) => {
@@ -242,7 +245,7 @@ export function createAgentTasks() {
   function dismiss(runId: string) {
     const t = state.tasks[runId]
     if (t && (t.status === 'pending' || t.status === 'streaming')) {
-      void cancelRun(runId)
+      void cancelRun(t.projectId, runId)
     }
     setState(
       produce((s) => {
@@ -288,10 +291,11 @@ export function createAgentTasks() {
     return false
   }
 
-  async function hydrateFromActiveRuns(): Promise<void> {
+  async function hydrateFromActiveRuns(pid: string): Promise<void> {
+    if (!pid) return
     let list: ActiveRunInfo[] = []
     try {
-      list = await fetchActiveRuns()
+      list = await fetchActiveRuns(pid)
     } catch {
       return
     }
@@ -301,6 +305,7 @@ export function createAgentTasks() {
       const source: AgentTaskSource = item.mode === 'explain' ? 'explain' : 'run'
       start({
         runId: item.runId,
+        projectId: pid,
         mode: item.mode,
         specId: item.specId,
         source,
