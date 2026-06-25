@@ -1,6 +1,6 @@
 ---
 stage: execute
-last_action: 完成 SpecDetail + styles.css 改造，prettier/typecheck/vitest/vite build 全部通过
+last_action: 提交 git
 updated_at: 2026-06-25
 summary: 将待确认问题面板从悬浮 fixed 浮层改为与 spec 文档左右并列布局（panel 在左、宽度 1:2），两栏各自独立滚动，避免遮挡正文。
 ---
@@ -207,3 +207,7 @@ summary: 将待确认问题面板从悬浮 fixed 浮层改为与 spec 文档左�
 - 2026-06-25 完成 styles.css 改造：新增 `.spec-split` / `.spec-split > .spec-main` / `.spec-split > .question-confirm-panel` 规则与 `@media (max-width: 960px)` 堆叠规则；改写 `.question-confirm-panel` 删除 fixed 定位与尺寸耦合；移除 `@media (max-width: 1600px)` 抽屉降级块；`.qcp-list` 补 `flex: 1 1 auto; min-height: 0`；`.page` 补 `flex: 1 1 auto; min-height: 0`；`.content` 由 `overflow-y: auto` 改为 `overflow: hidden`。
 - 2026-06-25 QuestionConfirmPanel.tsx 保持零侵入（未修改 props/DOM）。
 - 2026-06-25 验证：`npx prettier --write` 三文件均已对齐；`npx tsc --noEmit` 仅报 `QuestionConfirmPanel.tsx:46` `note` 重复键的**预存在**告警（非本次引入，未在本次范围内修复）；`npx vitest run` 23 文件 / 182 用例全部通过；`npx vite build --config vite.gui.config.ts` 成功。
+
+## 执行记录
+
+- 2026-06-25 提交 4a951b9：refct(260625.refct.pending-questions-split-view): 将待确认问题面板从悬浮 fixed 浮层改为与 spec 文档左右并列布局（panel 在左、宽度 1:2），两栏各自独立滚动，避免遮挡正文。（3 个文件）
