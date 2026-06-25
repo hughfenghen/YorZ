@@ -1,10 +1,15 @@
 import { existsSync } from 'node:fs'
-import { isAbsolute } from 'node:path'
+import { isAbsolute, relative, resolve as resolvePath, sep } from 'node:path'
 import { SpecStore } from './spec-store.js'
 import { SpecWatcher } from './watcher.js'
 import { AgentRunner } from './agent.js'
 import { TouchedFilesStore } from './touched-files.js'
 import { AttachmentStore } from './attachment-store.js'
+import {
+  ensureSpecsDirExists,
+  loadProjectConfig,
+  resolveSpecsDir,
+} from './project-config.js'
 import {
   addProject,
   generateProjectId,
@@ -18,6 +23,10 @@ import {
 export interface ProjectInstance {
   id: string
   path: string
+  /** Absolute path to the spec directory. */
+  specsDir: string
+  /** POSIX-style spec directory path relative to project root. */
+  specsDirRelative: string
   store: SpecStore
   watcher: SpecWatcher
   runner: AgentRunner
@@ -116,6 +125,22 @@ export class ProjectRegistry {
     return await removeProject(id, this.globalConfigPath)
   }
 
+  /**
+   * Drop the cached instance for a project so the next getOrCreate() rebuilds
+   * SpecStore + watcher with the current project config. Used after the
+   * project's `.yorz/config.json` changes (e.g. specsDir or agent override).
+   */
+  async reload(id: string): Promise<void> {
+    const cached = this.cache.get(id)
+    if (!cached) return
+    try {
+      await cached.instance.close()
+    } catch {
+      // best-effort
+    }
+    this.cache.delete(id)
+  }
+
   async closeAll(): Promise<void> {
     const tasks: Array<Promise<void>> = []
     for (const c of this.cache.values()) {
@@ -137,9 +162,14 @@ export class ProjectRegistry {
   }
 
   private async materialize(input: ProjectInstanceInput): Promise<ProjectInstance> {
-    const watcher = new SpecWatcher({ cwd: input.path })
+    const cfg = await loadProjectConfig(input.path)
+    const specsDir = resolveSpecsDir(input.path, cfg)
+    const specsDirRelative = posixRelative(input.path, specsDir)
+    await ensureSpecsDirExists(specsDir)
+    const watcher = new SpecWatcher({ cwd: input.path, specsDir })
     const store = new SpecStore({
       cwd: input.path,
+      specsDir,
       onWrite: (path, mtime) => watcher.markSelfWrite(path, mtime),
     })
     const touched = new TouchedFilesStore({ cwd: input.path })
@@ -155,6 +185,8 @@ export class ProjectRegistry {
     const instance: ProjectInstance = {
       id: input.id,
       path: input.path,
+      specsDir,
+      specsDirRelative,
       store,
       watcher,
       runner,
@@ -185,12 +217,17 @@ function basename(p: string): string {
   return parts[parts.length - 1] ?? p
 }
 
+function posixRelative(from: string, to: string): string {
+  return relative(resolvePath(from), to).split(sep).join('/')
+}
+
 async function maxSpecUpdatedAt(projectPath: string): Promise<string | null> {
-  const specsRoot = `${projectPath}/.yorz/specs`
-  if (!existsSync(specsRoot)) return null
-  // Reuse SpecStore.list() semantics: max(updated_at) among specs
   try {
-    const store = new SpecStore({ cwd: projectPath })
+    const cfg = await loadProjectConfig(projectPath)
+    const specsDir = resolveSpecsDir(projectPath, cfg)
+    if (!existsSync(specsDir)) return null
+    // Reuse SpecStore.list() semantics: max(updated_at) among specs
+    const store = new SpecStore({ cwd: projectPath, specsDir })
     const items = await store.list()
     if (items.length === 0) return null
     let best: string = ''

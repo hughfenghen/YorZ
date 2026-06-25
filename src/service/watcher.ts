@@ -8,6 +8,11 @@ export type ListListener = () => void
 
 export interface WatcherOptions {
   cwd: string
+  /**
+   * Absolute path to the spec directory. When omitted, defaults to
+   * `<cwd>/.yorz/specs` for backward compatibility.
+   */
+  specsDir?: string
 }
 
 export class SpecWatcher {
@@ -19,7 +24,7 @@ export class SpecWatcher {
   private watcher: FSWatcher | null = null
 
   constructor(opts: WatcherOptions) {
-    this.root = join(opts.cwd, '.yorz', 'specs')
+    this.root = opts.specsDir ?? join(opts.cwd, '.yorz', 'specs')
   }
 
   async start(): Promise<void> {

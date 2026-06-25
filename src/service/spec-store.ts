@@ -55,6 +55,11 @@ export interface QuestionAnswersPayload {
 
 export interface SpecStoreOptions {
   cwd: string
+  /**
+   * Absolute path to the spec directory. When omitted, defaults to
+   * `<cwd>/.yorz/specs` to preserve legacy behaviour.
+   */
+  specsDir?: string
   /** Hook for echo suppression on writes. */
   onWrite?: (filePath: string, mtimeMs: number) => void
   /** Override of "now" for deterministic tests. */
@@ -87,7 +92,7 @@ export class SpecStore {
   private readonly now: () => Date
 
   constructor(opts: SpecStoreOptions) {
-    this.root = join(opts.cwd, '.yorz', 'specs')
+    this.root = opts.specsDir ?? join(opts.cwd, '.yorz', 'specs')
     this.onWrite = opts.onWrite
     this.now = opts.now ?? (() => new Date())
   }

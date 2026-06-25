@@ -70,20 +70,52 @@ export function resolveAgentCmd(opts: ResolveAgentCmdOptions): AgentCmd {
     return { cmd, args: (prompt) => [...prefix, '-p', prompt], streamFormat: 'text' }
   }
   if (opts.agent) return BUILTIN[opts.agent]
-  const name = readAgentName(opts.cwd)
-  return BUILTIN[name]
+  return readAgentCmd(opts.cwd)
 }
 
-function readAgentName(cwd: string): AgentName {
+/**
+ * Sync read of `.yorz/config.json` and convert to an AgentCmd. Mirrors the
+ * schema understood by `src/service/project-config.ts` (which is async). Kept
+ * sync because `resolveAgentCmd` is called from non-async hot paths.
+ */
+function readAgentCmd(cwd: string): AgentCmd {
   const path = join(cwd, '.yorz', 'config.json')
-  if (!existsSync(path)) return 'claude'
+  if (!existsSync(path)) return BUILTIN.claude
+  let raw: string
   try {
-    const raw = readFileSync(path, 'utf8')
-    const data = JSON.parse(raw) as { agent?: unknown }
-    if (data.agent === 'opencode') return 'opencode'
-    if (data.agent === 'claude') return 'claude'
-    return 'claude'
+    raw = readFileSync(path, 'utf8')
   } catch {
-    return 'claude'
+    return BUILTIN.claude
   }
+  if (!raw.trim()) return BUILTIN.claude
+  let data: unknown
+  try {
+    data = JSON.parse(raw)
+  } catch {
+    return BUILTIN.claude
+  }
+  if (!data || typeof data !== 'object') return BUILTIN.claude
+  const agent = (data as { agent?: unknown }).agent
+  // Legacy schema: bare string.
+  if (typeof agent === 'string') {
+    if (agent === 'opencode') return BUILTIN.opencode
+    return BUILTIN.claude
+  }
+  if (!agent || typeof agent !== 'object') return BUILTIN.claude
+  const kind = (agent as { kind?: unknown }).kind
+  if (kind === 'opencode') return BUILTIN.opencode
+  if (kind === 'custom') {
+    const cmd = (agent as { cmd?: unknown }).cmd
+    const argsRaw = (agent as { args?: unknown }).args
+    if (typeof cmd !== 'string' || !cmd.trim()) return BUILTIN.claude
+    const prefix: string[] = Array.isArray(argsRaw)
+      ? argsRaw.filter((a): a is string => typeof a === 'string')
+      : []
+    return {
+      cmd: cmd.trim(),
+      args: (prompt) => [...prefix, prompt],
+      streamFormat: 'text',
+    }
+  }
+  return BUILTIN.claude
 }

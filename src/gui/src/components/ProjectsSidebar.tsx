@@ -10,6 +10,7 @@ import {
 import { A, useLocation, useNavigate } from '@solidjs/router'
 import { api } from '../lib/api.js'
 import type { ProjectListItem } from '../lib/project.js'
+import { ProjectConfigDialog } from './ProjectConfigDialog.js'
 
 const COLLAPSED_KEY = 'yorz.projectsSidebar.collapsed'
 const WIDTH_KEY = 'yorz.projectsSidebar.width'
@@ -70,6 +71,8 @@ export const ProjectsSidebar: Component = () => {
   const [width, setWidth] = createSignal(readWidth())
   const [projects, { refetch }] = createResource<ProjectListItem[]>(() => api.listProjects())
   const [error, setError] = createSignal<string | null>(null)
+  const [editing, setEditing] = createSignal<ProjectListItem | null>(null)
+  const [toast, setToast] = createSignal<string | null>(null)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -127,6 +130,19 @@ export const ProjectsSidebar: Component = () => {
     if (docMouseUp) document.removeEventListener('mouseup', docMouseUp)
     document.body.classList.remove('is-resizing')
   })
+
+  function onEdit(p: ProjectListItem, ev: Event) {
+    ev.preventDefault()
+    ev.stopPropagation()
+    setEditing(p)
+  }
+
+  function showToast(message: string) {
+    setToast(message)
+    setTimeout(() => {
+      if (toast() === message) setToast(null)
+    }, 4000)
+  }
 
   async function onRemove(p: ProjectListItem, ev: Event) {
     ev.preventDefault()
@@ -211,6 +227,15 @@ export const ProjectsSidebar: Component = () => {
                   <Show when={!collapsed()}>
                     <button
                       type="button"
+                      class="projects-sidebar-edit"
+                      aria-label={`配置 ${p.name}`}
+                      title="项目配置"
+                      onClick={(e) => onEdit(p, e)}
+                    >
+                      ✎
+                    </button>
+                    <button
+                      type="button"
                       class="projects-sidebar-remove"
                       aria-label={`移除 ${p.name}`}
                       title="从列表移除（不删除磁盘文件）"
@@ -259,6 +284,24 @@ export const ProjectsSidebar: Component = () => {
           aria-label="拖动调整项目面板宽度"
           onMouseDown={beginResize}
         />
+      </Show>
+
+      <Show when={editing()}>
+        {(p) => (
+          <ProjectConfigDialog
+            open
+            projectId={p().id}
+            projectName={p().name}
+            onClose={() => setEditing(null)}
+            onSaved={(msg) => showToast(msg)}
+          />
+        )}
+      </Show>
+
+      <Show when={toast()}>
+        <div class="projects-sidebar-toast" role="status">
+          {toast()}
+        </div>
       </Show>
     </aside>
   )

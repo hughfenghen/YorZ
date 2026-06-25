@@ -9,6 +9,7 @@
   - 缺省时按以下顺序解析：
     1. **从 session 上下文恢复**：扫描当前会话历史中已出现/已读写过的 spec 文档路径（匹配 `.yorz/specs/<id>/spec.md` 或 `docs/specs/*.md`）；存在多个时，优先选取最近一次被读写的；若仍有歧义，向用户确认后再继续。
     2. **从当前 prompt 创建**：若上下文中没有任何 spec 文档，则把当前用户 prompt 视为新需求，按 [新建 spec 流程](./new-spec.md) 生成路径与骨架。
+- spec 目录默认为 `.yorz/specs`，可由 `<ProjectRoot>/.yorz/config.json` 的 `specsDir` 字段覆盖；CLI / Service 在拉起 Agent 时会用配置后的目录拼装 spec 路径，文档中所有 `.yorz/specs/<id>/spec.md` 形式的示例均按此推广。
 - `mode`：可选，`plan|tasks|execute|auto`，默认 `auto`。
 - 批注前缀：`！！！`
 

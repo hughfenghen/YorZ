@@ -82,6 +82,17 @@ export interface CommitBody {
   paths?: string[]
 }
 
+export type AgentConfig =
+  | { kind: 'claude' }
+  | { kind: 'opencode' }
+  | { kind: 'custom'; cmd: string; args: string[] }
+
+export interface ProjectConfig {
+  version: 1
+  agent: AgentConfig
+  specsDir: string
+}
+
 function projectBase(pid: string): string {
   return `/api/projects/${encodeURIComponent(pid)}`
 }
@@ -174,6 +185,17 @@ export const api = {
   listProjects: () => request<ProjectListItem[]>('/api/projects'),
   removeProject: (id: string) =>
     request<{ ok: boolean }>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  getProjectConfig: (pid: string) =>
+    request<ProjectConfig>(`/api/projects/${encodeURIComponent(pid)}/config`),
+  updateProjectConfig: (pid: string, body: { agent: AgentConfig; specsDir: string }) =>
+    request<{ ok: true; config: ProjectConfig }>(
+      `/api/projects/${encodeURIComponent(pid)}/config`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    ),
   createDraft: (pid: string) =>
     request<{ draftId: string }>(`${projectBase(pid)}/spec-drafts`, {
       method: 'POST',

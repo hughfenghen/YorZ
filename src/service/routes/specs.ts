@@ -79,7 +79,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     }
     const detail = await p.store.read(id)
     if (!detail) return c.json({ error: 'spec not found' }, 404)
-    const file = join(p.path, '.yorz', 'specs', id, 'attachments', name)
+    const file = join(p.specsDir, id, 'attachments', name)
     if (!existsSync(file)) return c.json({ error: 'attachment not found' }, 404)
     const ext = extname(name).toLowerCase()
     const mime = mimeForExt(ext)
@@ -162,7 +162,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
       const handle = p.runner.run({
         specId,
         mode: 'skill-run',
-        prompt: `请使用 yorz-spec skill 处理 spec：.yorz/specs/${specId}/spec.md`,
+        prompt: `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`,
       })
       return c.json({ ok: true, runId: handle.id })
     }
@@ -178,7 +178,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     const handle = p.runner.run({
       specId,
       mode: 'skill-run',
-      prompt: `请使用 yorz-spec skill 处理 spec：.yorz/specs/${specId}/spec.md`,
+      prompt: `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`,
     })
     return c.json({ runId: handle.id })
   })
@@ -282,7 +282,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     const detail = await p.store.read(specId)
     if (!detail) return c.json({ error: 'spec not found' }, 404)
     const prompt =
-      `以下为 spec 文档 .yorz/specs/${specId}/spec.md 中的一段内容。\n` +
+      `以下为 spec 文档 ${p.specsDirRelative}/${specId}/spec.md 中的一段内容。\n` +
       `请用中文简洁解释其含义、背景与可能的实施影响。**不要**修改任何文件，只在终端输出解释文本。\n\n` +
       `引用：\n"""\n${text}\n"""\n`
     const handle = p.runner.run({ specId, mode: 'explain', prompt })

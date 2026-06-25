@@ -18,8 +18,8 @@
 3. **生成 id**：`YYMMDD.<type>.<summary-name>`
    - `YYMMDD` 取当前日期
    - 例：`260614.feat.spec-frontmatter`
-4. **生成路径**：`.yorz/specs/<id>/spec.md`（每个 spec 一个独立子目录，方便附件/截图/中间产物共置）
-5. **id 冲突处理**：若 `.yorz/specs/<id>/spec.md` 已存在，将 `<id>` 追加 `-2`、`-3` …… 数字后缀，直至无冲突。
+4. **生成路径**：`<specsDir>/<id>/spec.md`（每个 spec 一个独立子目录，方便附件/截图/中间产物共置）。`specsDir` 默认 `.yorz/specs`，可由 `<ProjectRoot>/.yorz/config.json` 的 `specsDir` 字段覆盖。
+5. **id 冲突处理**：若 `<specsDir>/<id>/spec.md` 已存在，将 `<id>` 追加 `-2`、`-3` …… 数字后缀，直至无冲突。
 6. **初始化文档**：
    - 写入 frontmatter（`stage: plan`、`last_action: 新建 spec`、`updated_at: <YYMMDD 对应日期>`、`summary: <对需求的一句话概要，≤200 字符，禁止照搬整段需求原文>`）。
    - 补齐空章节：`## 背景` / `## 需求` / `## 现状分析` / `## 技术实现方案` / `## 待确认问题` / `## 任务清单` / `## 追加任务` / `## 执行记录`（顺序固定，章节齐全度见 [全局硬约束](./rewrite-rules.md)）。

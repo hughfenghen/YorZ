@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { createSpecsRoutes } from './routes/specs.js'
 import { createEventsRoutes } from './routes/events.js'
 import { createProjectRoutes } from './routes/project.js'
+import { createProjectConfigRoutes } from './routes/project-config.js'
 import { createSpecDraftsRoutes } from './routes/spec-drafts.js'
 import { createStaticRoutes } from './static.js'
 import type { ProjectRegistry } from './project-registry.js'
@@ -18,6 +19,7 @@ export function createApp(opts: CreateAppOptions): Hono {
   const resolveProject = (id: string) => opts.registry.getOrCreate(id)
 
   api.route('/', createProjectRoutes(opts.registry))
+  api.route('/', createProjectConfigRoutes(opts.registry))
   api.route('/', createSpecsRoutes(resolveProject))
   api.route('/', createSpecDraftsRoutes(resolveProject))
   api.route('/', createEventsRoutes(resolveProject, opts.registry))
