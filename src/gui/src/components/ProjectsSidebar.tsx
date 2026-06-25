@@ -163,9 +163,9 @@ export const ProjectsSidebar: Component = () => {
     }
   }
 
-  // Periodically refetch so lastActivityAt updates from agent runs surface.
-  const timer = setInterval(() => void refetch(), 30_000)
-  onCleanup(() => clearInterval(timer))
+  function onRefresh() {
+    void refetch()
+  }
 
   const asideStyle = () => (collapsed() ? undefined : { width: `${width()}px` })
 
@@ -190,20 +190,34 @@ export const ProjectsSidebar: Component = () => {
           }
         >
           <span class="projects-sidebar-title">项目</span>
-          <button
-            type="button"
-            class="projects-sidebar-toggle"
-            onClick={toggle}
-            title="折叠"
-            aria-label="折叠项目面板"
-          >
-            «
-          </button>
+          <div class="projects-sidebar-head-actions">
+            <button
+              type="button"
+              class="projects-sidebar-refresh"
+              onClick={onRefresh}
+              disabled={projects.loading}
+              title="刷新项目列表"
+              aria-label="刷新项目列表"
+            >
+              <span class={`projects-sidebar-refresh-icon ${projects.loading ? 'spinning' : ''}`}>
+                ⟳
+              </span>
+            </button>
+            <button
+              type="button"
+              class="projects-sidebar-toggle"
+              onClick={toggle}
+              title="折叠"
+              aria-label="折叠项目面板"
+            >
+              «
+            </button>
+          </div>
         </Show>
       </header>
 
       <Show
-        when={!projects.loading}
+        when={projects() !== undefined}
         fallback={<p class="muted projects-sidebar-loading">加载中…</p>}
       >
         <ul class="projects-sidebar-list">

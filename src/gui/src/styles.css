@@ -175,7 +175,8 @@ body.is-resizing {
   letter-spacing: 0.04em;
 }
 
-.projects-sidebar-toggle {
+.projects-sidebar-toggle,
+.projects-sidebar-refresh {
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -185,8 +186,38 @@ body.is-resizing {
   color: inherit;
 }
 
-.projects-sidebar-toggle:hover {
+.projects-sidebar-toggle:hover,
+.projects-sidebar-refresh:hover:not(:disabled) {
   background: var(--bg);
+}
+
+.projects-sidebar-refresh:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.projects-sidebar-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.projects-sidebar-refresh-icon {
+  display: inline-block;
+  line-height: 1;
+}
+
+.projects-sidebar-refresh-icon.spinning {
+  animation: yorz-spin 1s linear infinite;
+}
+
+@keyframes yorz-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .projects-sidebar-list {

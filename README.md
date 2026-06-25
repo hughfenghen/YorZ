@@ -49,3 +49,5 @@
 ## Bug
 
 - [ ] 提交git关联文件时，不会 stage 关联文件、不会提交 spec md 文件本身
+  - 最后一次提交动作会从touch files文件中移除掉spec文件路径
+  - 之后再更新 spec md last_action: 提交 git
