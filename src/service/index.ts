@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { networkInterfaces } from 'node:os'
 import { serve } from '@hono/node-server'
 import type { AddressInfo } from 'node:net'
 import { createApp } from './server.js'
@@ -46,6 +47,9 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
   const port = await listen(app.fetch, opts.port ?? DEFAULT_PORT)
   const url = `http://localhost:${port.port}/`
   console.log(`YorZ Service ready at ${url} (${projects.length} project${projects.length === 1 ? '' : 's'})`)
+  for (const lanUrl of listLanUrls(port.port)) {
+    console.log(`  LAN: ${lanUrl}`)
+  }
   for (const p of projects) {
     console.log(`  - ${p.name} -> ${p.path}`)
   }
@@ -76,9 +80,12 @@ async function listen(
     try {
       return await new Promise<{ port: number; server: ReturnType<typeof serve> }>(
         (resolve, reject) => {
-          const server = serve({ fetch: fetchHandler, port: tryPort }, (info: AddressInfo) => {
-            resolve({ port: info.port, server })
-          })
+          const server = serve(
+            { fetch: fetchHandler, port: tryPort, hostname: '0.0.0.0' },
+            (info: AddressInfo) => {
+              resolve({ port: info.port, server })
+            },
+          )
           server.on('error', (err: NodeJS.ErrnoException) => {
             if (err.code === 'EADDRINUSE') {
               server.close(() => {})
@@ -95,6 +102,19 @@ async function listen(
     }
   }
   throw lastErr ?? new Error(`failed to bind port near ${preferredPort}`)
+}
+
+function listLanUrls(port: number): string[] {
+  const urls: string[] = []
+  const ifaces = networkInterfaces()
+  for (const name of Object.keys(ifaces)) {
+    for (const info of ifaces[name] ?? []) {
+      if (info.family === 'IPv4' && !info.internal) {
+        urls.push(`http://${info.address}:${port}/`)
+      }
+    }
+  }
+  return urls
 }
 
 async function tryOpenBrowser(url: string): Promise<void> {
