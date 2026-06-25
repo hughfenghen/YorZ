@@ -10,7 +10,7 @@ import {
 } from 'solid-js'
 import { A, useParams, useSearchParams } from '@solidjs/router'
 import { api, type AppendItemBody, type QuestionAnswersBody } from '../lib/api.js'
-import { projectHref } from '../lib/project.js'
+import { projectHref, useCurrentProjectId } from '../lib/project.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { subscribeSpec } from '../lib/sse.js'
 import { agentTasks } from '../lib/agent-tasks.js'
@@ -23,11 +23,12 @@ import { QuestionConfirmPanel, type FreeformDraft } from '../components/Question
 
 export const SpecDetail: Component = () => {
   const params = useParams<{ id: string }>()
+  const projectId = useCurrentProjectId()
   const [search, setSearch] = useSearchParams<{ runId?: string }>()
   const [refreshTick, setRefreshTick] = createSignal(0)
   const [spec] = createResource(
-    () => [params.id, refreshTick()] as const,
-    async ([id]) => api.getSpec(id),
+    () => [projectId(), params.id, refreshTick()] as const,
+    async ([pid, id]) => api.getSpec(pid, id),
   )
 
   const [snap, setSnap] = createSignal<SelectionSnapshot | null>(null)
@@ -55,8 +56,9 @@ export const SpecDetail: Component = () => {
 
   createEffect(() => {
     const id = params.id
-    if (!id) return
-    const unsub = subscribeSpec(id, {
+    const pid = projectId()
+    if (!id || !pid) return
+    const unsub = subscribeSpec(pid, id, {
       onUpdated: () => setRefreshTick((t) => t + 1),
     })
     onCleanup(unsub)
@@ -71,6 +73,7 @@ export const SpecDetail: Component = () => {
     const title = spec()?.frontmatter.summary
     agentTasks.start({
       runId: rid,
+      projectId: projectId(),
       mode: 'skill-run',
       specId: params.id,
       specTitle: title,
@@ -89,9 +92,11 @@ export const SpecDetail: Component = () => {
   async function runAgent() {
     setRunError(null)
     try {
-      const { runId } = await api.runAgent(params.id)
+      const pid = projectId()
+      const { runId } = await api.runAgent(pid, params.id)
       agentTasks.start({
         runId,
+        projectId: pid,
         mode: 'skill-run',
         specId: params.id,
         specTitle: spec()?.frontmatter.summary,
@@ -123,7 +128,7 @@ export const SpecDetail: Component = () => {
       ])
       return
     }
-    await api.appendAnnotation(params.id, {
+    await api.appendAnnotation(projectId(), params.id, {
       sectionPath: s.sectionPath,
       quote: s.text,
       note,
@@ -135,7 +140,7 @@ export const SpecDetail: Component = () => {
   }
 
   async function submitAnswers(payload: QuestionAnswersBody) {
-    await api.submitQuestionAnswers(params.id, payload)
+    await api.submitQuestionAnswers(projectId(), params.id, payload)
     setFreeforms([])
     await runAgent()
   }
@@ -146,10 +151,12 @@ export const SpecDetail: Component = () => {
   }
 
   async function submitAppend(body: AppendItemBody) {
-    const res = await api.appendItem(params.id, body)
+    const pid = projectId()
+    const res = await api.appendItem(pid, params.id, body)
     if (res.runId) {
       agentTasks.start({
         runId: res.runId,
+        projectId: pid,
         mode: 'skill-run',
         specId: params.id,
         specTitle: spec()?.frontmatter.summary,
@@ -160,9 +167,11 @@ export const SpecDetail: Component = () => {
 
   async function openExplain(s: SelectionSnapshot) {
     try {
-      const { runId } = await api.explain(params.id, s.text)
+      const pid = projectId()
+      const { runId } = await api.explain(pid, params.id, s.text)
       agentTasks.start({
         runId,
+        projectId: pid,
         mode: 'explain',
         specId: params.id,
         specTitle: spec()?.frontmatter.summary,
@@ -213,11 +222,22 @@ export const SpecDetail: Component = () => {
                   <p class="error">{runError()}</p>
                 </Show>
 
-                <article
-                  class="markdown"
-                  ref={setArticleEl}
-                  innerHTML={renderMarkdown(s().body, { specId: s().id })}
-                />
+                <div class="spec-split">
+                  <Show when={showPanel()}>
+                    <QuestionConfirmPanel
+                      questions={questions()}
+                      freeforms={freeforms()}
+                      running={running()}
+                      onRemoveFreeform={removeFreeform}
+                      onSubmit={submitAnswers}
+                    />
+                  </Show>
+                  <article
+                    class="markdown spec-main"
+                    ref={setArticleEl}
+                    innerHTML={renderMarkdown(s().body, { specId: s().id })}
+                  />
+                </div>
 
                 <SelectionMenu
                   snap={popoverOpen() ? null : snap()}
@@ -238,15 +258,6 @@ export const SpecDetail: Component = () => {
                   onCancel={() => setAppendOpen(false)}
                   onSubmit={submitAppend}
                 />
-                <Show when={showPanel()}>
-                  <QuestionConfirmPanel
-                    questions={questions()}
-                    freeforms={freeforms()}
-                    running={running()}
-                    onRemoveFreeform={removeFreeform}
-                    onSubmit={submitAnswers}
-                  />
-                </Show>
               </>
             )
           }}

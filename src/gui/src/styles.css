@@ -78,7 +78,8 @@ button:disabled {
 .app {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .topbar {
@@ -104,6 +105,7 @@ button:disabled {
   display: flex;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .content {
@@ -111,6 +113,7 @@ button:disabled {
   padding: 1rem;
   width: min(960px, 100%);
   margin: 0 auto;
+  overflow: hidden;
 }
 
 .projects-sidebar {
@@ -256,29 +259,42 @@ body.is-resizing {
   border-top: 1px solid var(--border);
 }
 
-.projects-sidebar-add {
-  width: 100%;
-  padding: 0.4rem;
-  background: transparent;
-  border: 1px dashed var(--border);
+.projects-sidebar-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.projects-sidebar-hint code {
+  display: inline-block;
+  margin-top: 0.2rem;
+  padding: 0.05rem 0.35rem;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
   border-radius: 4px;
-  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.9em;
+  word-break: break-all;
+}
+
+.projects-sidebar.collapsed .projects-sidebar-foot {
+  padding: 0.5rem 0;
+  display: flex;
+  justify-content: center;
+}
+
+.projects-sidebar-hint-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--muted);
   font-size: 0.85rem;
-  color: inherit;
-}
-
-.projects-sidebar-add:not(:disabled):hover {
-  background: var(--bg);
-}
-
-.projects-sidebar-add:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.projects-sidebar.collapsed .projects-sidebar-add {
-  padding: 0.4rem 0;
-  font-size: 1rem;
+  cursor: help;
 }
 
 .projects-sidebar-loading {
@@ -306,6 +322,8 @@ body.is-resizing {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .page-head {
@@ -715,35 +733,48 @@ body.is-resizing {
   white-space: pre-wrap;
 }
 
-/* === Question confirm panel (left-of-content floating cards) === */
+/* === Question confirm panel (split-view left column) === */
+
+/* spec 详情页的左右并列容器：panel 左 / spec 右，宽度 1:2 */
+.spec-split {
+  display: flex;
+  gap: 1rem;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.spec-split > .spec-main {
+  flex: 2 1 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+.spec-split > .question-confirm-panel {
+  flex: 1 1 0;
+  min-width: 0;
+}
 
 .question-confirm-panel {
-  position: fixed;
-  top: 5rem;
-  /* 右缘锚到 .content (width: 960px) 左外侧再让出 0.5rem；
-     宽度取 min(600px, 左侧可用空间 - 1rem 边距) 自适应。
-     960px 与 .content 宽度耦合，若 .content 宽度变更需同步。*/
-  right: calc((100vw + 960px) / 2 + 0.5rem);
-  width: min(600px, calc((100vw - 960px) / 2 - 1rem));
-  max-height: calc(100vh - 7rem);
   display: flex;
   flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
-  z-index: 45;
   overflow: hidden;
 }
 
-/* 窄屏：左侧可用空间 < ~320px 时降级为顶部抽屉，避免与 .content 重叠。
-   阈值 ((100vw - 960) / 2 - 1rem) < 320 → 100vw < 1602 → 取整为 1600。*/
-@media (max-width: 1600px) {
-  .question-confirm-panel {
-    right: 1rem;
-    left: 1rem;
-    width: auto;
-    max-width: calc(100vw - 2rem);
+/* 窄屏退化：堆叠为上下，面板限高避免顶飞正文 */
+@media (max-width: 960px) {
+  .spec-split {
+    flex-direction: column;
+  }
+  .spec-split > .spec-main {
+    flex: 1 1 auto;
+  }
+  .spec-split > .question-confirm-panel {
+    flex: 0 0 auto;
     max-height: 50vh;
   }
 }
@@ -792,6 +823,8 @@ body.is-resizing {
   flex-direction: column;
   gap: 0.5rem;
   overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .qcp-card {
