@@ -1,6 +1,6 @@
 ---
 stage: execute
-last_action: 落地 C1 完成 — api/sse/project/agent-tasks/AppShell + 4 个页面 + 单测全部改造，build & test 通过
+last_action: 提交 git
 updated_at: 2026-06-25
 summary: 修复 YorZ GUI 左侧项目列表三处问题：切换项目时 specs API 仍带旧项目 ID（落地 C1：所有 project-scoped api 显式传 pid）、侧栏随主面板滚动、移除 Sidebar/Welcome 的"添加项目"按钮改为提示使用 `yorz add <path>`。
 ---
@@ -248,3 +248,7 @@ return activeProjectId()
   - `src/gui/src/pages/NewSpec.tsx`：以 `useCurrentProjectId()` 取 pid；`api.createDraft/uploadAttachment/deleteAttachment/renameAttachment/listSpecs(×2)/createSpec` 显式传 pid；`subscribeSpecsList(pid, ...)`；`agentTasks.start(...)` 补 `projectId`。
   - `src/gui/src/lib/__tests__/agent-tasks.test.ts`：mock 的 `cancelRun(_pid, _runId)` / `fetchActiveRuns(_pid)` / `subscribeRun(_pid, runId, handlers)` 签名加 pid；`startSampleTask()` 给 `start(...)` 加 `projectId: 'p1'`。
   - 验证：`grep -n "\bcurrentProjectId\b"` 无残留命中；`pnpm run build:gui` 成功（122 modules / 581ms）；`pnpm test` 23 个文件 / 182 个用例全 pass；`npx prettier --write` 10 个改动文件均合规。残留 jsdom EventSource 不支持的环境限制，未补 race 相关 e2e 用例（已在 §4.4 备注）；浏览器手动复现"切换项目立刻点列表项"路径需用户在真实环境验证。
+
+## 执行记录
+
+- 2026-06-25 提交 984ea23：fix(260624.fix.project-list-sidebar): 修复 YorZ GUI 左侧项目列表三处问题：切换项目时 specs API 仍带旧项目 ID（落地 C1：所有 project-scoped api 显式传 pid）、侧栏随主面板滚动、移除 Sid（12 个文件）
