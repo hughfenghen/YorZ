@@ -3,33 +3,6 @@
 产品设计文档 @docs/Prod-Design.md
 技术架构设计文档 @docs/Architecture.md
 
-## 多项目托管（自 0.1.0 起）
-
-YorZ Service 现在可以同时托管多个本地项目。
-
-- **全局配置文件**：`${YORZ_HOME ?? ${XDG_CONFIG_HOME:-~/.config}/yorz}/projects.json`，按需自动创建；保存已托管项目的 `{ id, path, addedAt, lastActivityAt }`。
-- **CLI**：`yorz serve` 不再绑定单一项目根，可在任意目录运行。
-  - 若 `process.cwd()` 包含 `.yorz/` 子目录且未在全局列表中，会被静默注册。
-  - 使用 `--no-register-cwd` 禁用上述自动注册。
-- **CLI `yorz add <path>`**：在不启动 serve 的情况下，把任意目录登记到全局项目列表；仅修改全局配置，幂等可重复执行。
-  - 接受相对（基于 `process.cwd()` 解析）或绝对路径，目录不存在或非目录时报错退出。
-  - 首次添加会自动创建 `<path>/.yorz/specs`。
-  - 示例：
-    ```bash
-    yorz add .                       # 把当前目录加入全局项目列表
-    yorz add ./packages/app          # 相对路径
-    yorz add /Users/me/code/project  # 绝对路径
-    ```
-- **GUI 路由**：所有路径加上 `/<projectId>` 前缀，例如 `/<projectId>/`、`/<projectId>/specs/<specId>`。访问 `/` 时会重定向到最近活跃的项目，列表为空则展示欢迎页。
-- **左侧项目面板**：可折叠（状态写入 `localStorage['yorz.projectsSidebar.collapsed']`），点击「＋ 添加项目」打开浏览器目录选择，并要求用户确认绝对路径；hover 列表项可点 ✕ 移除（仅清理全局配置，不删除磁盘 `.yorz/`）。
-- **API 路径变更**：原 `/api/specs/...`、`/api/spec-drafts/...`、`/api/runs/...`、`/api/events/...` 全部迁移到 `/api/projects/:projectId/...` 前缀；新增全局根级 `GET/POST /api/projects` 与 `DELETE /api/projects/:id`。
-
-### 破坏性变更
-
-- `serve --cwd` 不再代表“当前唯一项目根”，仅作为默认自动注册目录。
-- 旧 URL（无 `:projectId` 前缀）不再兼容，未命中前缀化路由的请求会落到欢迎页。
-- 旧 `GET /api/projects/current` 已移除；前端通过路由参数获取当前 `projectId`。
-
 ## TODO
 
 - [ ] Skill 优化
@@ -43,7 +16,6 @@ YorZ Service 现在可以同时托管多个本地项目。
 - [ ] review 模式
   - [x] git 变更文件
   - [ ] 图形化差异变更表达
-  - [ ] specs/260620.feat.pending-confirm-ui-polish/review 未能识别到变更文件
 - [ ] 不建立 spec 的沟通
   - [x] spec 追加 bug
   - [ ] 小问题咨询/执行
@@ -66,6 +38,7 @@ YorZ Service 现在可以同时托管多个本地项目。
     - [ ] 列表按时间降序，精确到秒
   - [ ] @ mention spec 或文件、模块
   - [ ] 界面结构、布局、元素的美化
+  - [ ] 快捷键系统
 - [ ] 外部能力集成
   - [ ] 代码知识库、
     - [ ] 项目模块分析
@@ -75,4 +48,4 @@ YorZ Service 现在可以同时托管多个本地项目。
 
 ## Bug
 
-- [ ] 提交git关联文件时，不会 stage 关联文件
+- [ ] 提交git关联文件时，不会 stage 关联文件、不会提交 spec md 文件本身
