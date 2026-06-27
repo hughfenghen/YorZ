@@ -75,6 +75,17 @@
         "每次写回 spec 必须同时更新 frontmatter"
       ],
       "relatedCases": ["reopen-on-new-requirement", "append-task-state"]
+    },
+    {
+      "module": "mermaid",
+      "file": "mermaid.md",
+      "keyRules": [
+        "根据信息特征选择图表类型，优先 flowchart/sequenceDiagram/architecture",
+        "mermaid code 必须用 ```mermaid 包裹、语义化命名、语法正确可渲染",
+        "节制原则：只在信息复杂、图形能显著提升可读性时输出",
+        "语法细节查阅 references/ 目录下对应文档"
+      ],
+      "relatedCases": ["mermaid-output-in-spec"]
     }
   ]
 }

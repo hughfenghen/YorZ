@@ -37,6 +37,7 @@
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.10.0",
     "markdown-it": "^14.2.0",
+    "mermaid": "^11.0.0",
     "prettier": "^3.4.0",
     "solid-js": "^1.9.13",
     "typescript": "^5.7.0",

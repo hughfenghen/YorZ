@@ -12,6 +12,7 @@ import { A, useParams, useSearchParams } from '@solidjs/router'
 import { api, type AppendItemBody, type QuestionAnswersBody } from '../lib/api.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
 import { renderMarkdown } from '../lib/markdown.js'
+import { renderMermaidIn } from '../lib/mermaid.js'
 import { subscribeSpec } from '../lib/sse.js'
 import { agentTasks } from '../lib/agent-tasks.js'
 import { observeSelection, type SelectionSnapshot } from '../lib/selection.js'
@@ -87,6 +88,21 @@ export const SpecDetail: Component = () => {
     if (!el) return
     const unsub = observeSelection(el, setSnap)
     onCleanup(unsub)
+  })
+
+  createEffect(() => {
+    const el = articleEl()
+    if (!el) return
+    let active = true
+    let cleanupFn: (() => void) | undefined
+    void renderMermaidIn(el).then((cleanup) => {
+      if (active) cleanupFn = cleanup
+      else cleanup()
+    })
+    onCleanup(() => {
+      active = false
+      cleanupFn?.()
+    })
   })
 
   async function runAgent() {

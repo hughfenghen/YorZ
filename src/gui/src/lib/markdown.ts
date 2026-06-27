@@ -20,6 +20,9 @@ const defaultImageRender =
 const defaultLinkOpenRender =
   md.renderer.rules.link_open ??
   ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
+const defaultFenceRender =
+  md.renderer.rules.fence ??
+  ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
 
 function rewriteHrefIfAttachment(href: string, specId: string): string {
   if (!href) return href
@@ -59,6 +62,17 @@ md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
     }
   }
   return defaultLinkOpenRender(tokens, idx, options, env, self)
+}
+
+md.renderer.rules.fence = function (tokens, idx, options, env, self) {
+  const token = tokens[idx]
+  const info = token.info.trim()
+  if (info === 'mermaid') {
+    const code = token.content
+    const escaped = code.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    return `<div class="mermaid" data-mermaid-source="${escaped}">${code}</div>`
+  }
+  return defaultFenceRender(tokens, idx, options, env, self)
 }
 
 export function renderMarkdown(source: string, opts: RenderOptions = {}): string {

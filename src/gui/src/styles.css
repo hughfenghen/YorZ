@@ -719,6 +719,23 @@ body.is-resizing {
   overflow-x: auto;
 }
 
+.markdown .mermaid {
+  display: flex;
+  justify-content: center;
+  margin: 1rem 0;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+@media (prefers-color-scheme: dark) {
+  .markdown .mermaid {
+    background: color-mix(in srgb, var(--text) 4%, var(--surface));
+  }
+}
+
 .markdown blockquote {
   border-left: 3px solid var(--accent);
   margin: 1rem 0;
