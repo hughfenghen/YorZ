@@ -113,7 +113,7 @@ button:disabled {
   flex-direction: column;
   flex: 1;
   padding: 1rem;
-  width: min(960px, 100%);
+  width: min(1600px, 100%);
   margin: 0 auto;
   overflow: hidden;
 }
@@ -548,14 +548,8 @@ body.is-resizing {
   padding: 0;
   margin: 0;
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
   gap: 0.75rem;
-}
-
-@media (min-width: 720px) {
-  .spec-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
 }
 
 .spec-card {
