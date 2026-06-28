@@ -1,0 +1,7 @@
+{
+  "paths": [
+    ".yorz/specs/260628.feat.flexible-card-layout/spec.md",
+    "src/gui/src/pages/Home.tsx",
+    "src/gui/src/styles.css"
+  ]
+}

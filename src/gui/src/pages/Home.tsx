@@ -10,7 +10,7 @@ export const Home: Component = () => {
   )
 
   return (
-    <section class="page">
+    <section class="page home-page">
       <header class="page-head">
         <h1>需求列表</h1>
         <button class="ghost" onClick={() => refetch()}>
