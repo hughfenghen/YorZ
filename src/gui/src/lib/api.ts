@@ -1,4 +1,4 @@
-import type { ProjectListItem } from './project.js'
+import type { ProjectListItem, WorktreeMeta } from './project.js'
 
 export type SpecType = 'feat' | 'refct' | 'fix'
 
@@ -81,6 +81,35 @@ export interface CommitBody {
   message: string
   paths?: string[]
 }
+
+export interface CreateWorktreeBody {
+  specSlug: string
+  branch?: string
+}
+
+export interface CreateWorktreeResponse {
+  id: string
+  name: string
+  path: string
+  lastActivityAt: string | null
+  worktree: WorktreeMeta
+  branch: string
+  baseRef: string
+}
+
+export interface MergeWorktreeBody {
+  commitMessage?: string
+}
+
+export type MergeWorktreeResponse =
+  | { status: 'merged'; mainProjectId: string; mergeCommit: string }
+  | {
+      status: 'conflict'
+      mainProjectId: string
+      conflictSpecId: string
+      conflictSpecPath: string
+      conflictFiles: string[]
+    }
 
 export type AgentConfig =
   | { kind: 'claude' }
@@ -185,6 +214,18 @@ export const api = {
   listProjects: () => request<ProjectListItem[]>('/api/projects'),
   removeProject: (id: string) =>
     request<{ ok: boolean }>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  createWorktree: (projectId: string, body: CreateWorktreeBody) =>
+    request<CreateWorktreeResponse>(`/api/projects/${encodeURIComponent(projectId)}/worktrees`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  mergeWorktreeToMain: (projectId: string, body: MergeWorktreeBody) =>
+    request<MergeWorktreeResponse>(`/api/projects/${encodeURIComponent(projectId)}/merge-main`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
   getProjectConfig: (pid: string) =>
     request<ProjectConfig>(`/api/projects/${encodeURIComponent(pid)}/config`),
   updateProjectConfig: (pid: string, body: { agent: AgentConfig; specsDir: string }) =>

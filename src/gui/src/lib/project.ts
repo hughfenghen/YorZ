@@ -28,9 +28,18 @@ export function projectHref(sub: string = '', projectId?: string): string {
   return `/${pid}${tail}`
 }
 
+export interface WorktreeMeta {
+  mainProjectId: string
+  mainPath: string
+  branch: string
+  specId: string
+  createdAt: string
+}
+
 export interface ProjectListItem {
   id: string
   name: string
   path: string
   lastActivityAt: string | null
+  worktree?: WorktreeMeta
 }

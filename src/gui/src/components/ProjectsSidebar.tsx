@@ -236,6 +236,11 @@ export const ProjectsSidebar: Component = () => {
                       fallback={<span class="initial">{(p.name[0] ?? '?').toUpperCase()}</span>}
                     >
                       <span class="name">{p.name}</span>
+                      <Show when={p.worktree}>
+                        <span class="worktree-badge" title={`worktree of ${p.worktree!.mainPath}`}>
+                          ⎇ main
+                        </span>
+                      </Show>
                     </Show>
                   </A>
                   <Show when={!collapsed()}>

@@ -64,10 +64,12 @@ export const NewSpec: Component = () => {
   const [draftId, setDraftId] = createSignal<string | null>(null)
   const [renamingId, setRenamingId] = createSignal<string | null>(null)
   const [renameDraft, setRenameDraft] = createSignal('')
+  const [useWorktree, setUseWorktree] = createSignal(false)
   const busy = () => phase() === 'creating'
 
   let cleanupList: (() => void) | null = null
   let baselineIds: Set<string> = new Set()
+  let targetProjectId: string = ''
   let activeRunId: string | null = null
   let navigated = false
   let fileInputEl: HTMLInputElement | undefined
@@ -235,17 +237,19 @@ export const NewSpec: Component = () => {
 
   async function pollForNewSpec() {
     if (navigated) return
+    const pid = targetProjectId || projectId()
     try {
-      const list = await api.listSpecs(projectId())
+      const list = await api.listSpecs(pid)
       const fresh = list.find((s) => !baselineIds.has(s.id))
       if (fresh) {
         navigated = true
         const runId = activeRunId
         cleanupList?.()
         cleanupList = null
-        const target =
-          projectHref(`specs/${encodeURIComponent(fresh.id)}`) +
-          (runId ? `?runId=${encodeURIComponent(runId)}` : '')
+        const base = pid
+          ? `/${pid}/specs/${encodeURIComponent(fresh.id)}`
+          : projectHref(`specs/${encodeURIComponent(fresh.id)}`)
+        const target = base + (runId ? `?runId=${encodeURIComponent(runId)}` : '')
         navigate(target)
       }
     } catch {
@@ -275,7 +279,14 @@ export const NewSpec: Component = () => {
     setPhase('creating')
     navigated = false
     try {
-      const pid = projectId()
+      const sourcePid = projectId()
+      let pid = sourcePid
+      if (useWorktree()) {
+        const slug = deriveSlug(text)
+        const wt = await api.createWorktree(sourcePid, { specSlug: slug })
+        pid = wt.id
+      }
+      targetProjectId = pid
       const before = await api.listSpecs(pid)
       baselineIds = new Set(before.map((s) => s.id))
 
@@ -299,7 +310,7 @@ export const NewSpec: Component = () => {
         })
         void pollForNewSpec()
       } else if ('id' in resp) {
-        navigate(projectHref(`specs/${encodeURIComponent(resp.id)}`))
+        navigate(`/${pid}/specs/${encodeURIComponent(resp.id)}`)
       }
     } catch (err) {
       setError((err as Error).message)
@@ -334,6 +345,19 @@ export const NewSpec: Component = () => {
             </label>
           ))}
         </fieldset>
+        <label class="worktree-toggle">
+          <input
+            type="checkbox"
+            checked={useWorktree()}
+            onChange={(e) => setUseWorktree(e.currentTarget.checked)}
+            disabled={busy()}
+          />
+          <span>新开项目并行</span>
+          <span class="muted">
+            以 git worktree
+            形式开新分支并行开发，避免与主项目互相干扰；合并将通过列表页『合入主项目』按钮一键完成。
+          </span>
+        </label>
         <label>
           <span>需求内容</span>
           <textarea
@@ -460,4 +484,15 @@ function stripExt(name: string): string {
   const idx = name.lastIndexOf('.')
   if (idx <= 0) return name
   return name.slice(0, idx)
+}
+
+function deriveSlug(requirement: string): string {
+  const firstLine = requirement.split(/\r?\n/)[0] ?? ''
+  const ascii = firstLine
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+  if (ascii && !/^[0-9]+$/.test(ascii)) return ascii
+  return `spec-${Date.now().toString(36)}`
 }

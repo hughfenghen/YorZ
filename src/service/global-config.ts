@@ -4,11 +4,20 @@ import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 
+export interface WorktreeMeta {
+  mainProjectId: string
+  mainPath: string
+  branch: string
+  specId: string
+  createdAt: string
+}
+
 export interface GlobalProjectEntry {
   id: string
   path: string
   addedAt: string
   lastActivityAt: string | null
+  worktree?: WorktreeMeta
 }
 
 export interface GlobalConfig {
@@ -71,9 +80,24 @@ function normalizeConfig(value: unknown): GlobalConfig {
     if (!id || !path) continue
     const addedAt = typeof it.addedAt === 'string' ? it.addedAt : ''
     const lastActivityAt = typeof it.lastActivityAt === 'string' ? it.lastActivityAt : null
-    projects.push({ id, path, addedAt, lastActivityAt })
+    const worktree = normalizeWorktree(it.worktree)
+    const entry: GlobalProjectEntry = { id, path, addedAt, lastActivityAt }
+    if (worktree) entry.worktree = worktree
+    projects.push(entry)
   }
   return { version: CURRENT_VERSION, projects }
+}
+
+function normalizeWorktree(value: unknown): WorktreeMeta | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const it = value as Record<string, unknown>
+  const mainProjectId = typeof it.mainProjectId === 'string' ? it.mainProjectId : ''
+  const mainPath = typeof it.mainPath === 'string' ? it.mainPath : ''
+  const branch = typeof it.branch === 'string' ? it.branch : ''
+  const specId = typeof it.specId === 'string' ? it.specId : ''
+  const createdAt = typeof it.createdAt === 'string' ? it.createdAt : ''
+  if (!mainProjectId || !mainPath || !branch) return undefined
+  return { mainProjectId, mainPath, branch, specId, createdAt }
 }
 
 export function generateProjectId(absPath: string): string {
@@ -114,6 +138,20 @@ export async function addProject(
   config.projects.push(entry)
   await saveGlobalConfig(config, filePath)
   return { entry, created: true }
+}
+
+export async function setProjectWorktree(
+  id: string,
+  worktree: WorktreeMeta | null,
+  filePath?: string,
+): Promise<boolean> {
+  const config = await loadGlobalConfig(filePath)
+  const target = config.projects.find((p) => p.id === id)
+  if (!target) return false
+  if (worktree) target.worktree = worktree
+  else delete target.worktree
+  await saveGlobalConfig(config, filePath)
+  return true
 }
 
 export async function removeProject(id: string, filePath?: string): Promise<boolean> {

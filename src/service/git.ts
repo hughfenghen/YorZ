@@ -92,6 +92,46 @@ async function runGit(cwd: string, args: string[]): Promise<{ stdout: string; st
   }
 }
 
+/**
+ * Throwing form of `git` shared with WorktreeManager. Preserves the GitError
+ * shape so callers can distinguish missing-git from execution failure.
+ */
+export async function runGitChecked(
+  cwd: string,
+  args: string[],
+): Promise<{ stdout: string; stderr: string }> {
+  return runGit(cwd, args)
+}
+
+/**
+ * Non-throwing form for commands where a non-zero exit is meaningful state
+ * (e.g. `git merge` conflicting). Returns the exit code along with stdout/stderr.
+ */
+export async function runGitRaw(
+  cwd: string,
+  args: string[],
+): Promise<{ stdout: string; stderr: string; code: number }> {
+  try {
+    const result = await execFileP('git', args, {
+      cwd,
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+    })
+    return { stdout: result.stdout, stderr: result.stderr, code: 0 }
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException & {
+      stderr?: string
+      stdout?: string
+      code?: number | string
+    }
+    if (e.code === 'ENOENT') {
+      throw new GitError('git_missing', 'git not found on PATH')
+    }
+    const code = typeof e.code === 'number' ? e.code : 1
+    return { stdout: e.stdout ?? '', stderr: e.stderr ?? e.message ?? '', code }
+  }
+}
+
 export async function listChanges(cwd: string): Promise<GitChange[]> {
   const { stdout } = await runGit(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all'])
   return parsePorcelain(stdout)

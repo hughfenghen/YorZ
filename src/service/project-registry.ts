@@ -5,11 +5,7 @@ import { SpecWatcher } from './watcher.js'
 import { AgentRunner } from './agent.js'
 import { TouchedFilesStore } from './touched-files.js'
 import { AttachmentStore } from './attachment-store.js'
-import {
-  ensureSpecsDirExists,
-  loadProjectConfig,
-  resolveSpecsDir,
-} from './project-config.js'
+import { ensureSpecsDirExists, loadProjectConfig, resolveSpecsDir } from './project-config.js'
 import {
   addProject,
   generateProjectId,
@@ -18,6 +14,7 @@ import {
   removeProject,
   resolveGlobalConfigPath,
   type GlobalProjectEntry,
+  type WorktreeMeta,
 } from './global-config.js'
 
 export interface ProjectInstance {
@@ -46,6 +43,7 @@ export interface ProjectListItem {
   name: string
   path: string
   lastActivityAt: string | null
+  worktree?: WorktreeMeta
 }
 
 export interface ProjectRegistryOptions {
@@ -76,16 +74,22 @@ export class ProjectRegistry {
       const name = basename(p.path)
       const fallback = await maxSpecUpdatedAt(p.path)
       const sortKey = p.lastActivityAt ?? fallback ?? ''
-      items.push({
+      const item: ProjectListItem & { sortKey: string } = {
         id: p.id,
         name,
         path: p.path,
         lastActivityAt: p.lastActivityAt,
         sortKey,
-      })
+      }
+      if (p.worktree) item.worktree = p.worktree
+      items.push(item)
     }
     items.sort((a, b) => (a.sortKey < b.sortKey ? 1 : a.sortKey > b.sortKey ? -1 : 0))
-    return items.map(({ id, name, path, lastActivityAt }) => ({ id, name, path, lastActivityAt }))
+    return items.map(({ id, name, path, lastActivityAt, worktree }) => {
+      const out: ProjectListItem = { id, name, path, lastActivityAt }
+      if (worktree) out.worktree = worktree
+      return out
+    })
   }
 
   async findEntry(id: string): Promise<GlobalProjectEntry | null> {
