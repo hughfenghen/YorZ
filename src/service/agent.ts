@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events'
 import { isAbsolute, relative, sep as pathSep } from 'node:path'
 import { resolveAgentCmd, type AgentCmd } from './agent-config.js'
 import { touchProjectActivity } from './global-config.js'
+import type { AgentLogStore, AgentLogWriter } from './agent-log-store.js'
 import type { TouchedFilesStore } from './touched-files.js'
 
 const WRITE_TOOL_NAMES = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
@@ -48,6 +49,8 @@ export interface AgentRunnerOptions {
   resolveAgentCmd?: () => AgentCmd
   /** Optional sink for file paths the agent writes/edits during a run. */
   touched?: TouchedFilesStore
+  /** Optional persistent log store; when provided every run is streamed to disk. */
+  logStore?: AgentLogStore
 }
 
 const BUFFER_MAX = 64 * 1024
@@ -60,6 +63,7 @@ export class AgentRunner {
   private readonly globalConfigPath?: string
   private readonly resolveCmd: () => AgentCmd
   private readonly touched?: TouchedFilesStore
+  private readonly logStore?: AgentLogStore
   private readonly skillRunBySpec = new Map<string, AgentRunHandle>()
   private readonly handlesById = new Map<string, AgentRunHandle>()
   private readonly listenersBySpec = new Map<string, Set<(h: AgentRunHandle) => void>>()
@@ -70,12 +74,16 @@ export class AgentRunner {
     this.globalConfigPath = opts.globalConfigPath
     this.resolveCmd = opts.resolveAgentCmd ?? (() => resolveAgentCmd({ cwd: opts.cwd }))
     this.touched = opts.touched
+    this.logStore = opts.logStore
   }
 
   run(input: RunAgentInput): AgentRunHandle {
     if (input.mode === 'skill-run') {
       const existing = this.skillRunBySpec.get(input.specId)
       if (existing) return existing
+    }
+    if (this.logStore) {
+      void this.logStore.cleanupExpired().catch(() => {})
     }
     const handle = this.spawn(input)
     this.handlesById.set(handle.id, handle)
@@ -148,9 +156,54 @@ export class AgentRunner {
       buf += chunk
       if (buf.length > BUFFER_MAX) buf = buf.slice(buf.length - BUFFER_MAX)
     }
+    let writer: AgentLogWriter | null = null
+    let writerReady: Promise<void> | null = null
+    const pendingChunks: string[] = []
+    let writerFailed = false
+    if (this.logStore) {
+      writerReady = this.logStore
+        .openWriter({ runId: id, specId: input.specId, mode: input.mode, startedAt })
+        .then((w) => {
+          writer = w
+          if (pendingChunks.length) {
+            for (const c of pendingChunks) w.append(c)
+            pendingChunks.length = 0
+          }
+        })
+        .catch((err) => {
+          writerFailed = true
+          console.warn(`[agent-log] openWriter failed: ${(err as Error).message}`)
+        })
+    }
+    const writeToLog = (text: string) => {
+      if (!this.logStore || writerFailed) return
+      if (writer) {
+        try {
+          writer.append(text)
+        } catch {
+          // best-effort
+        }
+        return
+      }
+      pendingChunks.push(text)
+    }
+    const finalizeLog = (exitCode: number | null, error?: string) => {
+      if (!this.logStore || writerFailed) return
+      const run = async () => {
+        if (writerReady) await writerReady
+        if (!writer) return
+        try {
+          await writer.finalize({ exitCode, ...(error ? { error } : {}) })
+        } catch {
+          // best-effort
+        }
+      }
+      void run()
+    }
     const pushStdout = (text: string) => {
       if (!text) return
       append(text)
+      writeToLog(text)
       emitter.emit('stdout', text)
     }
 
@@ -171,6 +224,7 @@ export class AgentRunner {
         emitter.emit('error', msg)
         emitter.emit('exit', null)
       })
+      finalizeLog(null, msg)
       return makeHandle(
         id,
         startedAt,
@@ -199,17 +253,21 @@ export class AgentRunner {
     }
     child.stderr?.on('data', (data: Buffer) => pushStdout(data.toString('utf8')))
     let exited = false
+    let lastError: string | undefined
     child.on('error', (err) => {
+      lastError = err.message
       emitter.emit('error', err.message)
       if (!exited) {
         exited = true
         emitter.emit('exit', null)
+        finalizeLog(null, lastError)
       }
     })
     child.on('exit', (code) => {
       if (!exited) {
         exited = true
         emitter.emit('exit', code)
+        finalizeLog(code, lastError)
       }
     })
 

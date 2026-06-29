@@ -1449,6 +1449,126 @@ body.is-resizing {
   margin-top: 0.6rem;
 }
 
+.agent-logs-link {
+  display: inline-flex;
+  align-items: center;
+}
+
+.spec-agent-logs .agent-log-list {
+  margin-top: 1.2rem;
+}
+
+.spec-agent-logs .agent-log-cards {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.spec-agent-logs .agent-log-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.spec-agent-logs .agent-log-card-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.spec-agent-logs .agent-log-card-head:hover {
+  background: var(--surface-hover, rgba(0, 0, 0, 0.03));
+}
+
+.spec-agent-logs .agent-log-card-toggle {
+  display: inline-block;
+  width: 1em;
+  color: var(--muted);
+}
+
+.spec-agent-logs .agent-log-time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+
+.spec-agent-logs .agent-log-mode {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--radius);
+  font-size: 0.75em;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.spec-agent-logs .agent-log-status {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--radius);
+  font-size: 0.75em;
+  border: 1px solid var(--border);
+}
+
+.spec-agent-logs .agent-log-status.status-ok {
+  color: #008b3c;
+  border-color: #b6e2c1;
+}
+
+.spec-agent-logs .agent-log-status.status-fail {
+  color: #b80000;
+  border-color: #f0c1c1;
+}
+
+.spec-agent-logs .agent-log-status.status-running {
+  color: #b58a00;
+  border-color: #ecd9a0;
+}
+
+.spec-agent-logs .agent-log-duration {
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.spec-agent-logs .agent-log-size {
+  margin-left: auto;
+  font-size: 0.8em;
+}
+
+.spec-agent-logs .agent-log-card-body {
+  padding: 0.6rem 0.8rem 0.8rem;
+  border-top: 1px solid var(--border);
+}
+
+.spec-agent-logs .agent-log-truncated {
+  margin-top: 0;
+  font-size: 0.85em;
+}
+
+.spec-agent-logs .agent-log-body {
+  margin: 0;
+  padding: 0.6rem;
+  background: var(--bg);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82em;
+  max-height: 60vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .append-btn {
   border: 1px solid var(--border);
 }

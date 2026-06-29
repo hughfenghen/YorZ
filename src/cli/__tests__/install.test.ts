@@ -94,6 +94,34 @@ describe('install', () => {
   })
 })
 
+describe('install · .gitignore handling', () => {
+  it('appends .yorz/tmp to a missing .gitignore when cwd is a git repo', async () => {
+    await mkdir(join(cwd, '.git'), { recursive: true })
+    const res = await install({ agent: 'claude', scope: 'user', home, cwd })
+    expect(res.gitignore?.updated).toBe(true)
+    const giPath = join(cwd, '.gitignore')
+    expect(res.gitignore?.path).toBe(giPath)
+    const content = await readFile(giPath, 'utf8')
+    expect(content).toBe('.yorz/tmp\n')
+  })
+
+  it('is idempotent when .gitignore already includes .yorz/tmp', async () => {
+    await mkdir(join(cwd, '.git'), { recursive: true })
+    const giPath = join(cwd, '.gitignore')
+    await writeFile(giPath, 'node_modules\n.yorz/tmp\ndist\n', 'utf8')
+    const res = await install({ agent: 'claude', scope: 'user', home, cwd })
+    expect(res.gitignore).toEqual({ updated: false, path: giPath })
+    const content = await readFile(giPath, 'utf8')
+    expect(content).toBe('node_modules\n.yorz/tmp\ndist\n')
+  })
+
+  it('does nothing when cwd is not a git repository', async () => {
+    const res = await install({ agent: 'claude', scope: 'user', home, cwd })
+    expect(res.gitignore).toBeNull()
+    await expect(stat(join(cwd, '.gitignore'))).rejects.toThrow()
+  })
+})
+
 describe('uninstall', () => {
   it('removes an installed skill dir', async () => {
     await install({ agent: 'claude', scope: 'user', home, cwd })

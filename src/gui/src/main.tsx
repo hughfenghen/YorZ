@@ -5,6 +5,7 @@ import { Home } from './pages/Home.jsx'
 import { NewSpec } from './pages/NewSpec.jsx'
 import { SpecDetail } from './pages/SpecDetail.jsx'
 import { SpecReview } from './pages/SpecReview.jsx'
+import { SpecAgentLogs } from './pages/SpecAgentLogs.jsx'
 import { ProjectIndexRedirect } from './pages/ProjectIndexRedirect.jsx'
 import { WelcomePage } from './pages/Welcome.jsx'
 import { AppShell } from './AppShell.jsx'
@@ -20,6 +21,7 @@ render(
       <Route path="/:projectId/specs/new" component={NewSpec} />
       <Route path="/:projectId/specs/:id" component={SpecDetail} />
       <Route path="/:projectId/specs/:id/review" component={SpecReview} />
+      <Route path="/:projectId/specs/:id/agent-logs" component={SpecAgentLogs} />
       <Route path="*" component={WelcomePage} />
     </Router>
   ),

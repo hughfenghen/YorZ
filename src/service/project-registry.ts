@@ -3,6 +3,7 @@ import { isAbsolute, relative, resolve as resolvePath, sep } from 'node:path'
 import { SpecStore } from './spec-store.js'
 import { SpecWatcher } from './watcher.js'
 import { AgentRunner } from './agent.js'
+import { AgentLogStore } from './agent-log-store.js'
 import { TouchedFilesStore } from './touched-files.js'
 import { AttachmentStore } from './attachment-store.js'
 import {
@@ -32,6 +33,7 @@ export interface ProjectInstance {
   runner: AgentRunner
   touched: TouchedFilesStore
   attachments: AttachmentStore
+  agentLogs: AgentLogStore
   /** Stop watchers + free resources. Idempotent. */
   close(): Promise<void>
 }
@@ -173,11 +175,13 @@ export class ProjectRegistry {
       onWrite: (path, mtime) => watcher.markSelfWrite(path, mtime),
     })
     const touched = new TouchedFilesStore({ cwd: input.path })
+    const agentLogs = new AgentLogStore({ cwd: input.path })
     const runner = new AgentRunner({
       cwd: input.path,
       projectId: input.id,
       globalConfigPath: this.globalConfigPath,
       touched,
+      logStore: agentLogs,
     })
     const attachments = new AttachmentStore({ cwd: input.path })
 
@@ -192,6 +196,7 @@ export class ProjectRegistry {
       runner,
       touched,
       attachments,
+      agentLogs,
       async close() {
         if (closed) return
         closed = true
@@ -203,6 +208,8 @@ export class ProjectRegistry {
       await store.ensureRoot()
       await attachments.ensureRoot()
       void attachments.cleanupExpired().catch(() => {})
+      await agentLogs.ensureRoot()
+      void agentLogs.cleanupExpired().catch(() => {})
       await watcher.start()
     })()
 

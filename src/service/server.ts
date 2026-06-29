@@ -4,6 +4,7 @@ import { createEventsRoutes } from './routes/events.js'
 import { createProjectRoutes } from './routes/project.js'
 import { createProjectConfigRoutes } from './routes/project-config.js'
 import { createSpecDraftsRoutes } from './routes/spec-drafts.js'
+import { createAgentLogsRoutes } from './routes/agent-logs.js'
 import { createStaticRoutes } from './static.js'
 import type { ProjectRegistry } from './project-registry.js'
 
@@ -22,6 +23,7 @@ export function createApp(opts: CreateAppOptions): Hono {
   api.route('/', createProjectConfigRoutes(opts.registry))
   api.route('/', createSpecsRoutes(resolveProject))
   api.route('/', createSpecDraftsRoutes(resolveProject))
+  api.route('/', createAgentLogsRoutes(resolveProject))
   api.route('/', createEventsRoutes(resolveProject, opts.registry))
   app.route('/api', api)
 
