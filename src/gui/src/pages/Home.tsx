@@ -76,9 +76,11 @@ export const Home: Component = () => {
       <Show when={current()?.worktree}>
         <div class="worktree-bar">
           <div class="worktree-bar-info">
-            <span class="badge worktree">worktree</span>
-            <code>{current()!.worktree!.branch}</code>
-            <span class="muted">主项目：{current()!.worktree!.mainPath}</span>
+            <span class="muted">
+              主项目：
+              {current()!.worktree!.mainPath.split('/').filter(Boolean).pop() ??
+                current()!.worktree!.mainPath}
+            </span>
           </div>
           <button
             type="button"

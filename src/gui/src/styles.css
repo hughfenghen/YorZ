@@ -555,6 +555,34 @@ body.is-resizing {
   font-size: 0.9rem;
 }
 
+/* Worktree controls (NewSpec checkbox row + Home action bar) */
+.worktree-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.worktree-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.worktree-bar-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.worktree-bar .primary-action {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 13px;
+  border-radius: 6px;
+}
+
 /* Spec list */
 .spec-grid {
   list-style: none;

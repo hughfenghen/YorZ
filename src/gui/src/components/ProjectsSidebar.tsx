@@ -66,6 +66,14 @@ function writeWidth(value: number): void {
   }
 }
 
+function displayProjectName(p: ProjectListItem): string {
+  if (!p.worktree) return p.name
+  const mainBasename =
+    p.worktree.mainPath.split('/').filter(Boolean).pop() ?? p.worktree.mainPath
+  const slug = p.worktree.branch.replace(/^wt\//, '')
+  return `${mainBasename} · ${slug}`
+}
+
 export const ProjectsSidebar: Component = () => {
   const [collapsed, setCollapsed] = createSignal(readCollapsed())
   const [width, setWidth] = createSignal(readWidth())
@@ -235,7 +243,7 @@ export const ProjectsSidebar: Component = () => {
                       when={!collapsed()}
                       fallback={<span class="initial">{(p.name[0] ?? '?').toUpperCase()}</span>}
                     >
-                      <span class="name">{p.name}</span>
+                      <span class="name">{displayProjectName(p)}</span>
                       <Show when={p.worktree}>
                         <span class="worktree-badge" title={`worktree of ${p.worktree!.mainPath}`}>
                           ⎇ main

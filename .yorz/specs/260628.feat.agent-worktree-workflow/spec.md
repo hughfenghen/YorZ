@@ -1,7 +1,7 @@
 ---
 stage: execute
-last_action: 完成全部 12 项任务（WorktreeManager / 路由 / 冲突自动恢复 / 3 处 GUI 改造），182 个 vitest 用例通过
-updated_at: 2026-06-28
+last_action: 提交 git
+updated_at: 2026-06-29
 summary: 为 Agent 并行开发提供 git worktree 工作流：新建 spec 可勾选「新开项目并行」自动建 worktree 并注册为 YorZ 项目；worktree 项目列表页支持「合入主项目」一键提交/合并/清理；合并冲突时自动新建关联 spec 调度 Agent 解决。
 ---
 
@@ -57,6 +57,36 @@ summary: 为 Agent 并行开发提供 git worktree 工作流：新建 spec 可�
 
 - `yorz-spec` skill 的「新建 spec 流程」（`.claude/skills/yorz-spec/new-spec.md`）默认把 spec 写到 `<cwd>/.yorz/specs/<id>/spec.md`；当 worktree 是一个独立 YorZ 项目时，Agent 在该项目目录下运行，自然落到正确路径，无需改动 skill 路径逻辑。
 - skill 没有「关联其它 spec / 冲突修复模板」相关的章节定义。
+
+### 3.6 追加任务（fix 2026-06-29）现状
+
+- `src/gui/src/pages/NewSpec.tsx:348-360` 渲染 `<label class="worktree-toggle">`，内部依次是 checkbox、`<span>新开项目并行</span>`、`<span class="muted">…长 tip 文案…</span>`。
+- `src/gui/src/pages/Home.tsx:76-101` 渲染 `<div class="worktree-bar">`，包含：
+  - `<div class="worktree-bar-info">`：`<span class="badge worktree">worktree</span>` + `<code>{branch}</code>` + `<span class="muted">主项目：{mainPath}</span>`；
+  - `<button class="primary-action">⇧ 合入主项目</button>`；
+  - 三段条件可见的状态/错误/toast `<span>`。
+- 全局样式 `src/gui/src/styles.css` 中**完全没有** `.worktree-toggle` / `.worktree-bar` / `.worktree-bar-info` 选择器（已 grep 确认）。
+- 根因：两处容器（`<label>`、`<div>`）默认为 block 布局，子元素中既有 inline 又有 block；缺少显式 `display: flex` 导致每个块级子元素自动换行，呈现"分成 3 行"的视觉效果。
+- 用户体感问题之二：Home 页 worktree-bar 的 `worktree` badge 与 `wt/<branch>` 代码块属于"git worktree 技术词汇"，普通用户不需要理解 worktree 概念。
+
+### 3.7 追加任务（fix 2026-06-29 16:18）现状
+
+围绕第二轮 fix 的两项体感问题：
+
+**问题 1：Home 页「⇧ 合入主项目」按钮过大**
+
+- 当前实例 DOM：`<div class="worktree-bar"><div class="worktree-bar-info"><span class="muted">主项目：YorZ</span></div><button type="button" class="primary-action" title="提交 worktree 改动并合入主项目">⇧ 合入主项目</button></div>`。
+- 按钮使用 `.primary-action` 类，全局基线样式定义在 `src/gui/src/styles.css:51-67`：所有 `button` 与 `.primary-action` 共享 `min-height: 44px; padding: 0.55rem 1rem`，叠加 primary 配色后视觉重量明显高于同行的「主项目：YorZ」纯文本，破坏了 worktree-bar 的轻量信息条调性。
+- 同页面已存在的「刷新」按钮使用 `class="ghost"`（透明背景），但仍继承 44px min-height —— 项目内目前没有"小尺寸按钮"的样式约定。
+
+**问题 2：侧栏 worktree 项目名以 `wt__` 开头**
+
+- 当前实例 DOM：`<a title="/Users/fenghen/my-space/YorZ.wt/wt__agent-agent-agent" href="/wt-agent-agent-agent-370616" class="projects-sidebar-link active"><span class="name">wt__agent-agent-agent</span><span class="worktree-badge" title="worktree of /Users/fenghen/my-space/YorZ">⎇ main</span></a>`。
+- 渲染链路：`src/gui/src/components/ProjectsSidebar.tsx:238` 直接读 `p.name`；`p.name` 由 Service 端 `src/service/project-registry.ts:74` 的 `basename(p.path)` 计算。
+- worktree 项目路径由 `src/service/worktree-manager.ts:87-88` 构造：`<dirname(mainPath)>/<basename(mainPath)>.wt/<branch.replace('/', '__')>`。本例分支 `wt/agent-agent-agent` → 目录 `wt__agent-agent-agent` → basename 同名。
+- 主项目身份信息已在 `p.worktree.mainPath` 中冗余可用（4.1 章节定义），无需后端再加字段即可在侧栏拼出"主项目名 + slug"的展示名。
+- 影响面：侧栏 `.name` 文本是该问题唯一直接体验点；项目侧栏 tooltip 仍以 `p.path`（绝对路径）显示，可保留作为消歧。Home 页顶部信息条已展示主项目 basename（见 4.7），不重复。
+- `.projects-sidebar-link` 已设置 `white-space: nowrap; overflow: hidden; text-overflow: ellipsis`（`styles.css:237-247`），其 inline 子节点（如 `.name`）天然继承截断行为，因此本次仅扩文本不需要新增 CSS。
 
 ## 4. 技术实现方案
 
@@ -157,9 +187,55 @@ skill 侧无需改动：skill 不感知"是否 worktree"，仅看到 `cwd` 是 w
 - worktree 项目即使在 Service 重启后也能被恢复（`worktree` 字段持久化在全局配置里）。
 - 主项目离线/被 `yorz remove` 时，worktree 仍是合法 YorZ 项目，只是「合入主项目」按钮显示为禁用 + 提示"主项目不可达"。
 
+### 4.7 追加任务（fix 2026-06-29）方案
+
+最小修复半径：仅改 `src/gui/src/styles.css`（新增两段选择器） + `src/gui/src/pages/Home.tsx`（删去技术词汇渲染）。不动业务逻辑、不动数据结构。
+
+1. CSS：在 `styles.css` 追加：
+   - `.worktree-toggle { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }`
+     - 复用项目既有的 8px 间距节奏；`flex-wrap: wrap` 兜底窄屏（tip 较长时允许整段 tip 折到第二行而不挤裂 checkbox+主标题）；checkbox 与「新开项目并行」恒在第一行。
+   - `.worktree-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }` 与 `.worktree-bar-info { display: flex; align-items: center; gap: 8px; }`
+     - 同样给 wrap 兜底；按钮、提示与 info 在同一行水平排列。
+2. Home.tsx 精简：
+   - 删除 `<span class="badge worktree">worktree</span>` 与 `<code>{branch}</code>` 两个节点（"worktree" 字眼与 `wt/...` 分支名是 git 技术概念，普通用户无感知必要）。
+   - 保留「主项目：<mainBasename>」（只展示主项目路径末段，不暴露绝对路径，亦不展示 worktree 概念），由 `worktree.mainPath` 取末段实现（`mainPath.split('/').filter(Boolean).pop()`，兼容尾部斜杠）。
+   - 保留 `worktree-bar-info` 容器，作为 flex 子项继续承载这一句话。
+3. 不需要 `NewSpec.tsx` 任何结构性改动——只靠 CSS 即可让三个元素同行。
+4. 视觉回归：合并完成后跑 `npm run dev` 手动核对两处页面在常规桌面宽度（≥1024px）下不再折行，且窄屏（~600px）下不破版。
+
+### 4.8 追加任务（fix 2026-06-29 16:18）方案
+
+最小改动半径：仅 `src/gui/src/styles.css`（新增局部小按钮覆写）+ `src/gui/src/components/ProjectsSidebar.tsx`（计算 worktree 项目展示名）。不动 Service / 不动数据模型。
+
+**问题 1：缩小「⇧ 合入主项目」按钮**
+
+- 不引入全局"小按钮"通用类（避免与 5.1 决策快照中已固化的按钮基线打架）；只在 `.worktree-bar` 局部覆写 `.primary-action`，确保仅影响 worktree 项目顶部动作条。
+- 在 `styles.css` 追加：
+
+  ```css
+  .worktree-bar .primary-action {
+    min-height: 32px;
+    padding: 4px 12px;
+    font-size: 13px;
+    border-radius: 6px;
+  }
+  ```
+
+  保留 primary 配色，仅压缩 min-height / padding / font-size / 圆角。
+
+**问题 2：侧栏 worktree 项目名以主项目名开头**
+
+- 改动落在 GUI（`ProjectsSidebar.tsx`），不动 Service `list()` 返回的 `name`，避免影响其它消费者（路由、SSE、tooltip）。
+- 新增本地小工具 `displayProjectName(p: ProjectListItem): string`：
+  - `p.worktree == null` → 返回 `p.name`。
+  - 否则：取 `mainBasename = p.worktree.mainPath.split('/').filter(Boolean).pop() ?? p.worktree.mainPath`；取 `slug = p.worktree.branch.replace(/^wt\//, '')`；返回 `` `${mainBasename} · ${slug}` ``（间隔点，前后各一个半角空格，例：`YorZ · agent-agent-agent`）。
+- `<span class="name">` 渲染改读 `displayProjectName(p)`；`A.title` 仍保留 `p.path`（绝对路径）作为消歧 tooltip。
+- 既有的 `⎇ main` badge 保持不变（已承担"这是 worktree"的语义）。
+- 视觉回归：`.projects-sidebar-link` 已具备 `white-space: nowrap; overflow: hidden; text-overflow: ellipsis`（`styles.css:237-247`），inline 子节点自然继承截断；本次无需新增 CSS。
+
 ## 5. 待确认问题
 
-- 暂无（2026-06-28 用户已确认全部 8 项选择，结论已并入 4. 技术实现方案）
+- 暂无
 
 ### 5.1 已确认决策快照
 
@@ -171,6 +247,9 @@ skill 侧无需改动：skill 不感知"是否 worktree"，仅看到 `cwd` 是 w
 - commit message：默认 `feat(<branch>): merge from worktree`，弹窗内可编辑。
 - 侧栏视觉：扁平 + worktree 项目名后追加 `⎇ main` badge。
 - 冲突解决 spec：落在主项目 `.yorz/specs/`，type=`fix`，自动启动 Agent。
+- worktree 项目 Home 页 `worktree-bar` 仅展示「主项目：<mainBasename>」（路径末段），不再渲染 `worktree` badge 与 `wt/<branch>` 技术词汇。
+- worktree 项目侧栏展示名：`<mainBasename> · <slug>`（间隔点 + 前后空格；slug 为 branch 去掉 `wt/` 前缀；例：`YorZ · agent-agent-agent`）。
+- 「⇧ 合入主项目」按钮缩小：仅 `.worktree-bar .primary-action` 局部覆写 `min-height: 32px; padding: 4px 12px; font-size: 13px; border-radius: 6px`，保留 primary 配色。
 
 ## 6. 任务清单
 
@@ -186,10 +265,23 @@ skill 侧无需改动：skill 不感知"是否 worktree"，仅看到 `cwd` 是 w
 - [x] GUI `src/gui/src/components/ProjectsSidebar.tsx`：当 `p.worktree != null` 时在项目名后渲染 `⎇ main` badge（含 tooltip 显示主项目名）；保持扁平列表，不引入折叠分组；验收：worktree 项目视觉可区分且排序逻辑未受影响。
 - [x] GUI `src/gui/src/pages/Home.tsx`：worktree 项目顶部新增项目级动作条，包含「合入主项目」按钮 → 弹窗确认 commit message（默认 `feat(<branch>): merge from worktree`，可编辑）→ 调用 `mergeWorktreeToMain`；`status: merged` 触发 toast + 跳回 `/<mainProjectId>`，`status: conflict` 跳到 `/<mainProjectId>/specs/<conflictSpecId>`；验收：两种返回路径分别可在 GUI 中体验到正确跳转。
 - [x] 在 Home 页主项目离线（`mainProjectId` 不在当前 registry）的情况下：禁用「合入主项目」按钮并显示 "主项目不可达" 提示；验收：手动 `yorz remove <main>` 后该 worktree 项目页面按钮即变禁用。
+- [x] 在 `src/gui/src/styles.css` 追加 `.worktree-toggle { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }`，让 NewSpec 页 checkbox + 「新开项目并行」 + 长 tip 在桌面宽度（≥1024px）同行展示，窄屏（~600px）允许 tip 换行而 checkbox+主标题仍同一行；验收：浏览器实测同一行渲染，窄屏不破版。
+- [x] 在 `src/gui/src/styles.css` 追加 `.worktree-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }` 与 `.worktree-bar-info { display: flex; align-items: center; gap: 8px; }`，让 Home 页 worktree 项目顶部动作条 info 区与按钮、状态提示水平排列；验收：常规桌面宽度下不再折成三行。
+- [x] 修改 `src/gui/src/pages/Home.tsx` 的 worktree-bar：删除 `<span class="badge worktree">worktree</span>` 与 `<code>{branch}</code>` 节点；将「主项目：{mainPath}」改为只展示主项目路径末段（用 `mainPath.split('/').filter(Boolean).pop()` 取 basename，兼容尾斜杠）；保留 `worktree-bar-info` 容器；验收：worktree 项目首页不再出现 `worktree` 字样与 `wt/<branch>` 分支名，且「主项目：<mainBasename>」正确显示。
+- [x] 在 `src/gui/src/styles.css` 新增局部覆写 `.worktree-bar .primary-action { min-height: 32px; padding: 4px 12px; font-size: 13px; border-radius: 6px }`，仅缩小 Home 页 worktree 项目顶部「⇧ 合入主项目」按钮，保留 primary 配色；验收：浏览器实测 worktree-bar 内按钮明显变小且不影响其它页面 `.primary-action` 基线。
+- [x] 在 `src/gui/src/components/ProjectsSidebar.tsx` 新增本地 `displayProjectName(p)`：当 `p.worktree != null` 返回 `` `${basename(p.worktree.mainPath)} · ${p.worktree.branch.replace(/^wt\//, '')}` ``（basename 用 `mainPath.split('/').filter(Boolean).pop() ?? mainPath`），否则返回 `p.name`；`<span class="name">` 渲染改读该函数，`A.title` 仍保留 `p.path`；验收：侧栏 worktree 项目展示名形如 `YorZ · agent-agent-agent`，主项目展示名不变。
 
 ## 7. 追加任务
 
-- 暂无
+- [fixed] [fix] 2026-06-29 11:39 | 1. 新建spec页面，这些元素应该出现在同一行，目前是分成了三行：<label class="worktree-toggle"><input type="ch
+  - 描述：1. 新建spec页面，这些元素应该出现在同一行，目前是分成了三行：<label class="worktree-toggle"><input type="checkbox"><span>新开项目并行</span><span class="muted">以 git worktree 形式开新分支并行开发，避免与主项目互相干扰；合并将通过列表页『合入主项目』按钮一键完成。</span></label>
+
+2. Spec列表页，这几个元素也折行了，应该出现在同一行，同时移除 worktree 元素，不用把技术概念暴露给用户：<div class="worktree-bar"><div class="worktree-bar-info"><span class="badge worktree">worktree</span><code>wt/agent-agent-agent</code><span class="muted">主项目：/Users/fenghen/my-space/YorZ</span></div><button type="button" class="primary-action" title="提交 worktree 改动并合入主项目">⇧ 合入主项目</button></div>
+
+- [fixed] [fix] 2026-06-29 16:18 | 1. 按钮尺寸太大了： <div class="worktree-bar"><div class="worktree-bar-info"><span class
+  - 描述：1. 按钮尺寸太大了： <div class="worktree-bar"><div class="worktree-bar-info"><span class="muted">主项目：YorZ</span></div><button type="button" class="primary-action" title="提交 worktree 改动并合入主项目">⇧ 合入主项目</button></div>
+
+2. 左侧菜单栏，项目名称应该使用主项目名字开头，替代掉 wt：<a title="/Users/fenghen/my-space/YorZ.wt/wt__agent-agent-agent" href="/wt-agent-agent-agent-370616" class="projects-sidebar-link active" link="" aria-current="page"><span class="name">wt\_\_agent-agent-agent</span><span class="worktree-badge" title="worktree of /Users/fenghen/my-space/YorZ">⎇ main</span></a>
 
 ## 8. 执行记录
 
@@ -206,3 +298,21 @@ skill 侧无需改动：skill 不感知"是否 worktree"，仅看到 `cwd` 是 w
 - 2026-06-28 完成任务 10：`src/gui/src/components/ProjectsSidebar.tsx` 在 worktree 项目名后渲染 `⎇ main` badge（tooltip 显示主项目路径），保持扁平列表与排序逻辑不变。
 - 2026-06-28 完成任务 11 + 12：`src/gui/src/pages/Home.tsx` 在 worktree 项目顶部新增 `worktree-bar` 操作条，弹 `prompt` 让用户编辑 commit message（默认 `feat(<branch>): merge from worktree`），根据 `mergeWorktreeToMain` 返回 `merged` / `conflict` 分别跳转主项目首页或冲突 spec 详情；当 `mainProjectId` 不在 `listProjects()` 结果中时按钮禁用并显示"主项目不可达"。
 - 2026-06-28 验证：`npx tsc --noEmit` 仅余 `QuestionConfirmPanel.tsx:46` 的旧错误（与本 spec 改动无关）；`npx vitest run` 23 个测试文件全部通过，共 182 / 182。
+- 2026-06-29 收到追加任务 `[open] [fix]`：NewSpec 页 `.worktree-toggle` 与 Home 页 `.worktree-bar` 分别折成三行，且 Home 页暴露了 `worktree` badge 与 `wt/<branch>` 技术概念。stage 切回 `plan`：定位根因为 `styles.css` 缺失这两个选择器（默认 block 布局导致换行）；补充 3.6 / 4.7 章节给出最小修复方案，并就「主项目: <path>」是否保留留 1 项待确认问题；阻塞等待用户批注。
+- 2026-06-29 消费 `## 用户批注` 中的 `！！！` 答复：选定「主项目：<mainBasename>」方案；更新 4.7 与 5.1 决策快照、清空待确认问题、删除用户批注章节，并拆出 3 项可执行任务（CSS × 2 + Home.tsx × 1），stage 切到 `tasks` 准备进入 execute。
+- 2026-06-29 完成 3 项追加修复任务：
+  - `src/gui/src/styles.css` 第 558 行前新增 `.worktree-toggle` / `.worktree-bar` / `.worktree-bar-info` 三段 flex 规则（gap 8/12/8、`flex-wrap: wrap` 兜底窄屏）。
+  - `src/gui/src/pages/Home.tsx` worktree-bar 内删除 `worktree` badge 与 `<code>{branch}</code>` 节点；「主项目：」改为 `mainPath.split('/').filter(Boolean).pop() ?? mainPath` 取末段 basename，兼容尾斜杠。
+  - 追加任务 `[open] → [fixed]`，原描述位置不动作历史保留。
+  - 验证：`npx tsc --noEmit` 仅余 `QuestionConfirmPanel.tsx:46` 旧错误（与本 spec 改动无关）；视觉回归需手动 `npm run dev` 在 ≥1024px 与 ~600px 两档复核（待人工执行）。
+- 2026-06-29 收到第二轮追加任务 `[open] [fix]`（16:18）：①「⇧ 合入主项目」按钮过大；②侧栏 worktree 项目名 `wt__agent-agent-agent` 应以主项目名开头。stage 切回 `plan`：补 3.7 现状（按钮基线 44px、侧栏 name 来自 `basename(p.path)`）+ 4.8 方案（GUI 局部覆写 + ProjectsSidebar 计算展示名，不动 Service）；提 2 条候选项问题（展示名格式 / 按钮缩小规格）阻塞等待用户批注。
+- 2026-06-29 消费 `## 用户批注` 中的 `！！！` 答复：展示名选定 `YorZ · agent-agent-agent`（间隔点 + 前后空格）、按钮缩小选定 `min-height: 32px; padding: 4px 12px; font-size: 13px; border-radius: 6px`（保留 primary 配色）；落实到 4.8、追加到 5.1 决策快照、清空 5. 待确认问题、删除 `## 用户批注` 章节、将「追加任务」与「执行记录」按规范重排为 7 / 8；拆出 2 条可执行任务（CSS 局部覆写 × 1 + ProjectsSidebar 展示名 × 1）；stage 切到 `tasks` 准备衔接 execute。
+- 2026-06-29 完成第二轮追加修复 2 项任务：
+  - `src/gui/src/styles.css`：在 `.worktree-bar-info` 之后追加 `.worktree-bar .primary-action { min-height: 32px; padding: 4px 12px; font-size: 13px; border-radius: 6px }` 局部覆写，仅作用于 worktree-bar 内的 primary-action。
+  - `src/gui/src/components/ProjectsSidebar.tsx`：新增本地工具 `displayProjectName(p)`（worktree → `${basename(mainPath)} · ${branch去掉wt/前缀}`，主项目 → `p.name`）；`<span class="name">` 渲染改读该函数，`A.title` 仍保留 `p.path` 作消歧 tooltip。
+  - 追加任务 16:18 条目 `[open] → [fixed]`，原描述位置不动作历史保留。
+  - 验证：`npx tsc --noEmit` 仅余 `QuestionConfirmPanel.tsx:46` 旧错误（与本 spec 改动无关）；视觉回归需手动 `npm run dev` 在常规桌面宽与窄屏复核两处 UI（待人工执行）。
+
+## 执行记录
+
+- 2026-06-29 提交 ce39cda：feat(260628.feat.agent-worktree-workflow): 为 Agent 并行开发提供 git worktree 工作流：新建 spec 可勾选「新开项目并行」自动建 worktree 并注册为 YorZ 项目；worktree 项目列表页支持「合入主项目」（4 个文件）

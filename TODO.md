@@ -49,3 +49,25 @@
 - [ ] 提交git关联文件时，不会 stage 关联文件、不会提交 spec md 文件本身
   - 最后一次提交动作会从touch files文件中移除掉spec文件路径
   - 之后再更新 spec md last_action: 提交 git
+- [ ] 图片在 GUI 中无法显示`![image-d175.png](attachments/image-d175.png)`
+
+- [ ] 持久化 Agent任务的执行信息，与 spec 文档关联
+- [ ] task 阶段长任务也积极执行，而不是暂停询问
+- [ ] 生成待确认问题清单的UI应该忽略已确认决策内容
+
+```md
+5. 待确认问题
+   worktree 项目 Home 页 worktree-bar 中「主项目：<mainPath>」这条信息，去掉 worktree 技术词汇后是否继续展示？
+   完全移除，仅留「合入主项目」按钮 + 状态提示
+   改为「主项目：<mainBasename>」（只展示路径末段，保留辨识度，不暴露绝对路径） (推荐)
+   保留当前完整绝对路径
+   5.1 已确认决策快照
+   worktree 目录：<mainPath>/../<mainBasename>.wt/<branch>。
+   分支命名：wt/<spec-summary-name>，重名追加 -2/-3。
+   主项目合并方式：git merge --no-ff <branch>。
+   冲突相关 spec 定位：仅按 git log 文件历史（30 天窗口），不依赖 touched-files.json。
+   主项目自动更新：等同 merge 动作本身，不额外 git pull。
+   commit message：默认 feat(<branch>): merge from worktree，弹窗内可编辑。
+   侧栏视觉：扁平 + worktree 项目名后追加 ⎇ main badge。
+   冲突解决 spec：落在主项目 .yorz/specs/，type=fix，自动启动 Agent。
+```
