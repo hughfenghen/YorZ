@@ -1,0 +1,19 @@
+{
+  "paths": [
+    ".yorz/specs/260629.feat.agent-run-log-persistence/spec.md",
+    "src/cli/__tests__/install.test.ts",
+    "src/cli/index.ts",
+    "src/cli/install.ts",
+    "src/gui/src/lib/api.ts",
+    "src/gui/src/main.tsx",
+    "src/gui/src/pages/SpecAgentLogs.tsx",
+    "src/gui/src/pages/SpecDetail.tsx",
+    "src/gui/src/styles.css",
+    "src/service/__tests__/agent-log-store.test.ts",
+    "src/service/agent-log-store.ts",
+    "src/service/agent.ts",
+    "src/service/project-registry.ts",
+    "src/service/routes/agent-logs.ts",
+    "src/service/server.ts"
+  ]
+}

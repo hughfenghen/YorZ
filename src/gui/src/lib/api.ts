@@ -111,6 +111,25 @@ export type MergeWorktreeResponse =
       conflictFiles: string[]
     }
 
+export type AgentLogMode = 'skill-run' | 'explain'
+
+export interface AgentLogMeta {
+  runId: string
+  specId: string
+  mode: AgentLogMode
+  startedAt: number
+  endedAt: number | null
+  exitCode: number | null
+  error?: string
+  sizeBytes: number
+}
+
+export interface AgentLogPayload {
+  meta: AgentLogMeta
+  content: string
+  truncated: boolean
+}
+
 export type AgentConfig =
   | { kind: 'claude' }
   | { kind: 'opencode' }
@@ -277,4 +296,10 @@ export const api = {
     `${projectBase(pid)}/spec-drafts/${encodeURIComponent(draftId)}/attachments/${encodeURIComponent(storedName)}`,
   specAttachmentUrl: (pid: string, specId: string, name: string): string =>
     `${projectBase(pid)}/specs/${encodeURIComponent(specId)}/attachments/${encodeURIComponent(name)}`,
+  listAgentLogs: (pid: string, specId: string) =>
+    request<AgentLogMeta[]>(`${projectBase(pid)}/specs/${encodeURIComponent(specId)}/agent-logs`),
+  getAgentLog: (pid: string, specId: string, runId: string) =>
+    request<AgentLogPayload>(
+      `${projectBase(pid)}/specs/${encodeURIComponent(specId)}/agent-logs/${encodeURIComponent(runId)}`,
+    ),
 }

@@ -220,6 +220,9 @@ export const SpecDetail: Component = () => {
                     <button type="button" class="append-btn" ref={appendBtnEl} onClick={openAppend}>
                       追加任务
                     </button>
+                    <A class="ghost agent-logs-link" href={projectHref(`specs/${s().id}/agent-logs`)}>
+                      执行日志
+                    </A>
                     <A class="ghost review-link" href={projectHref(`specs/${s().id}/review`)}>
                       Review
                     </A>

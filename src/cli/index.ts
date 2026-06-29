@@ -46,6 +46,11 @@ program
       const result = await install({ agent, scope, home: homedir(), cwd: process.cwd() })
       const verb = result.overwritten ? 'overwritten' : 'installed'
       console.log(`[${agent}] ${verb}: ${result.path}`)
+      if (result.gitignore?.updated) {
+        console.log(`[gitignore] appended .yorz/tmp to ${result.gitignore.path}`)
+      } else if (result.gitignore && !result.gitignore.updated) {
+        console.log(`[gitignore] already ignored .yorz/tmp`)
+      }
     }
   })
 

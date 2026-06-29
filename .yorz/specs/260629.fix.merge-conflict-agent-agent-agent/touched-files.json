@@ -1,0 +1,7 @@
+{
+  "paths": [
+    ".yorz/specs/260629.fix.merge-conflict-agent-agent-agent/spec.md",
+    "src/gui/src/lib/api.ts",
+    "src/service/server.ts"
+  ]
+}

@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { getAdapter } from './adapters/index.js'
 import type { AgentName, InstallScope } from './adapters/types.js'
@@ -29,6 +29,11 @@ export interface InstallResult {
   overwritten: boolean
   /** All files written, relative paths under the skill dir. */
   files: string[]
+  /**
+   * Result of the optional `.gitignore` update for `.yorz/tmp`. `null` when
+   * `cwd` is not a git repository (no change attempted).
+   */
+  gitignore: { updated: boolean; path: string } | null
 }
 
 interface SkillFile {
@@ -69,19 +74,67 @@ export async function install(opts: InstallOptions): Promise<InstallResult> {
     await writeFile(target, f.content, 'utf8')
   }
 
+  const gitignore = await ensureTmpIgnored(opts.cwd)
+
   return {
     path: entry,
     overwritten,
     files: files.map((f) => f.relPath),
+    gitignore,
   }
 }
 
 async function dirExists(path: string): Promise<boolean> {
   try {
-    const { stat } = await import('node:fs/promises')
     const s = await stat(path)
     return s.isDirectory()
   } catch {
     return false
   }
+}
+
+async function isGitRepo(cwd: string): Promise<boolean> {
+  try {
+    // `.git` may be a directory (normal repo) or a file (worktree pointer).
+    await stat(join(cwd, '.git'))
+    return true
+  } catch {
+    return false
+  }
+}
+
+function hasIgnoreEntry(content: string, target: string): boolean {
+  const normalized = target.replace(/\/$/, '')
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trim()
+    if (!line || line.startsWith('#')) continue
+    const cleaned = line.replace(/\/$/, '').replace(/^\//, '')
+    if (cleaned === normalized) return true
+  }
+  return false
+}
+
+/**
+ * Append `.yorz/tmp` to `<cwd>/.gitignore` when `cwd` is a git repository
+ * and the entry isn't already present. Returns `null` when `cwd` is not a
+ * git repo (no change attempted).
+ */
+export async function ensureTmpIgnored(
+  cwd: string,
+): Promise<{ updated: boolean; path: string } | null> {
+  if (!(await isGitRepo(cwd))) return null
+  const giPath = join(cwd, '.gitignore')
+  let existing = ''
+  try {
+    existing = await readFile(giPath, 'utf8')
+  } catch {
+    existing = ''
+  }
+  if (hasIgnoreEntry(existing, '.yorz/tmp')) {
+    return { updated: false, path: giPath }
+  }
+  const needsNewline = existing.length > 0 && !existing.endsWith('\n')
+  const next = `${existing}${needsNewline ? '\n' : ''}.yorz/tmp\n`
+  await writeFile(giPath, next, 'utf8')
+  return { updated: true, path: giPath }
 }
