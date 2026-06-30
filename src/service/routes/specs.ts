@@ -4,19 +4,10 @@ import { readFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import { Hono } from 'hono'
 import { type SpecType } from '../spec-store.js'
-import { commit as gitCommit, listChanges, GitError } from '../git.js'
 import { classifyMime, mimeForExt } from '../attachment-store.js'
 import type { ProjectInstance } from '../project-registry.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
-
-const SPEC_ANCHOR_RE = /\[spec:[^\]]+\]/
-
-function ensureSpecAnchor(message: string, specId: string): string {
-  if (SPEC_ANCHOR_RE.test(message)) return message
-  const trimmed = message.replace(/\s+$/, '')
-  return `${trimmed}\n\n[spec:${specId}]\n`
-}
 
 export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
   const app = new Hono()
@@ -181,85 +172,6 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
       prompt: `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`,
     })
     return c.json({ runId: handle.id })
-  })
-
-  app.get('/projects/:projectId/specs/:id/changes', async (c) => {
-    const p = await need(c)
-    if (p instanceof Response) return p
-    const specId = c.req.param('id')
-    const detail = await p.store.read(specId)
-    if (!detail) return c.json({ error: 'spec not found' }, 404)
-    const [touched, allChanges] = await Promise.all([p.touched.read(specId), listChanges(p.path)])
-    if (touched.length === 0) return c.json({ changes: [] })
-    const set = new Set(touched)
-    const ignored = p.touched.relativeFilePath(specId)
-    const filtered = allChanges
-      .filter((c) => c.path !== ignored && set.has(c.path))
-      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
-    return c.json({ changes: filtered })
-  })
-
-  app.post('/projects/:projectId/specs/:id/commit', async (c) => {
-    const p = await need(c)
-    if (p instanceof Response) return p
-    const specId = c.req.param('id')
-    const detail = await p.store.read(specId)
-    if (!detail) return c.json({ error: 'spec not found' }, 404)
-    let body: unknown
-    try {
-      body = await c.req.json()
-    } catch {
-      return c.json({ error: 'invalid JSON body' }, 400)
-    }
-    const parsed = parseCommitBody(body)
-    if ('error' in parsed) return c.json({ error: parsed.error }, 400)
-
-    const touched = await p.touched.read(specId)
-    if (touched.length === 0) {
-      return c.json({ error: 'no touched files to commit' }, 409)
-    }
-    const allChanges = await listChanges(p.path)
-    const ignored = p.touched.relativeFilePath(specId)
-    const candidatePaths = new Set(
-      allChanges
-        .filter((ch) => ch.path !== ignored && touched.includes(ch.path))
-        .map((ch) => ch.path),
-    )
-    let pathsToCommit: string[]
-    if (parsed.paths) {
-      for (const pth of parsed.paths) {
-        if (!candidatePaths.has(pth)) {
-          return c.json({ error: `path not in touched changes: ${pth}` }, 400)
-        }
-      }
-      pathsToCommit = parsed.paths
-    } else {
-      pathsToCommit = Array.from(candidatePaths).sort()
-    }
-    if (pathsToCommit.length === 0) {
-      return c.json({ error: 'no touched files to commit' }, 409)
-    }
-
-    const message = ensureSpecAnchor(parsed.message, specId)
-    try {
-      const { commit } = await gitCommit(p.path, { message, paths: pathsToCommit })
-      await p.touched.remove(specId, pathsToCommit)
-      const firstLine = parsed.message.split(/\r?\n/)[0]!.trim() || '(no message)'
-      const short = commit.slice(0, 7)
-      const line = `${today()} 提交 ${short}：${firstLine}（${pathsToCommit.length} 个文件）`
-      try {
-        await p.store.appendExecutionLog(specId, line)
-      } catch {
-        // best-effort: commit already happened
-      }
-      return c.json({ ok: true, commit })
-    } catch (err) {
-      if (err instanceof GitError) {
-        const status = err.code === 'invalid_path' || err.code === 'invalid_message' ? 400 : 500
-        return c.json({ ok: false, error: err.message, stderr: err.stderr }, status)
-      }
-      return c.json({ ok: false, error: (err as Error).message }, 500)
-    }
   })
 
   app.post('/projects/:projectId/specs/:id/explain', async (c) => {
@@ -471,42 +383,6 @@ function parseAppendBody(body: unknown): AppendInput | { error: string } {
     out.autoRun = obj.autoRun
   }
   return out
-}
-
-interface CommitInput {
-  message: string
-  paths?: string[]
-}
-
-function parseCommitBody(body: unknown): CommitInput | { error: string } {
-  if (!body || typeof body !== 'object') return { error: 'body must be an object' }
-  const obj = body as Record<string, unknown>
-  const message = obj.message
-  if (typeof message !== 'string' || !message.trim()) {
-    return { error: 'message required' }
-  }
-  if (message.length > 2000) return { error: 'message too long (max 2000)' }
-  const out: CommitInput = { message: message.trim() }
-  if (obj.paths !== undefined) {
-    if (!Array.isArray(obj.paths)) return { error: 'paths must be an array' }
-    const paths: string[] = []
-    for (const pth of obj.paths) {
-      if (typeof pth !== 'string' || !pth) {
-        return { error: 'paths entries must be non-empty strings' }
-      }
-      paths.push(pth)
-    }
-    out.paths = paths
-  }
-  return out
-}
-
-function today(): string {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
 }
 
 function parseAnnotateBody(body: unknown): AnnotateInput | { error: string } {

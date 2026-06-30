@@ -2,7 +2,8 @@ function projectBase(pid: string): string {
   return `/api/projects/${encodeURIComponent(pid)}`
 }
 
-export type AgentMode = 'skill-run' | 'explain'
+export type AgentMode = 'skill-run' | 'explain' | 'review' | 'git-ops'
+export type GitOpsAction = 'commit' | 'discard' | 'stash'
 
 export interface AgentStdoutEvent {
   runId: string
@@ -173,6 +174,7 @@ export interface ActiveRunInfo {
   mode: AgentMode
   specId: string
   startedAt: number
+  action?: GitOpsAction
 }
 
 export async function fetchActiveRuns(pid: string): Promise<ActiveRunInfo[]> {

@@ -1,6 +1,6 @@
 ---
 stage: execute
-last_action: 执行 5 项任务完毕、pnpm test 全绿
+last_action: 提交 git
 updated_at: 2026-06-30
 summary: 强化 yorz-spec skill 的"持续推进"约定：所有待确认问题清空后，禁止再追加"是否执行"的元确认，即便任务量较大也应直接进入 execute。
 ---
@@ -126,3 +126,7 @@ flowchart LR
 - 2026-06-30 新建 `src/skill/__tests__/yorz-spec-docs.test.ts`：3 个 `it()` 断言 SKILL/tasks/execute 三份文档关键词存在性；放在 `src/skill/__tests__/` 是因为 root `vite.config.ts` 已把 `src/skill/yorz-spec/__tests__/**` 从 `pnpm test` 中排除。
 - 2026-06-30 验证：`pnpm test` 全部 25 个 file / 204 个 case 通过（含 3 个新增 case）；`pnpm exec prettier --write` 报告所有改动文档 `(unchanged)`，已是 prettier 期望格式。
 - 2026-06-30 提示：本次仅修改了 `src/skill/yorz-spec/` 真源，若想让本机 `~/.claude/skills/yorz-spec/` 立即生效，需要在本仓库重新构建并运行 `yorz install`；其它会话/项目无需介入。
+
+## 执行记录
+
+- 2026-06-30 提交 75f1fae：refct: 强化 yorz-spec skill 的"持续推进"约定：所有待确认问题清空后，禁止再追加"是否执行"的元确认，即便任务量较大也应直接进入 execute。（5 个文件）

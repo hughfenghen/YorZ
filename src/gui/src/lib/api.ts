@@ -69,18 +69,7 @@ export interface AppendItemBody {
   autoRun?: boolean
 }
 
-export interface GitChange {
-  path: string
-  index: string
-  worktree: string
-  status: string
-  renamedFrom?: string
-}
-
-export interface CommitBody {
-  message: string
-  paths?: string[]
-}
+export type GitOpsAction = 'commit' | 'discard' | 'stash'
 
 export interface CreateWorktreeBody {
   specSlug: string
@@ -111,12 +100,14 @@ export type MergeWorktreeResponse =
       conflictFiles: string[]
     }
 
-export type AgentLogMode = 'skill-run' | 'explain'
+export type AgentLogMode = 'skill-run' | 'explain' | 'review' | 'git-ops'
 
 export interface AgentLogMeta {
   runId: string
   specId: string
   mode: AgentLogMode
+  /** Sub-action when mode === 'git-ops'. Absent for legacy modes. */
+  action?: GitOpsAction
   startedAt: number
   endedAt: number | null
   exitCode: number | null
@@ -217,19 +208,20 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text }),
     }),
-  listSpecChanges: (pid: string, id: string) =>
-    request<{ changes: GitChange[] }>(
-      `${projectBase(pid)}/specs/${encodeURIComponent(id)}/changes`,
-    ),
-  commitSpecChanges: (pid: string, id: string, body: CommitBody) =>
-    request<{ ok: true; commit: string }>(
-      `${projectBase(pid)}/specs/${encodeURIComponent(id)}/commit`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      },
-    ),
+  triggerReview: (pid: string, id: string) =>
+    request<{ runId: string }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/review`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    }),
+  gitOp: (pid: string, id: string, action: GitOpsAction) =>
+    request<{ runId: string }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/git`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action }),
+    }),
+  getReview: (pid: string, id: string) =>
+    request<{ text: string }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/review`),
   listProjects: () => request<ProjectListItem[]>('/api/projects'),
   removeProject: (id: string) =>
     request<{ ok: boolean }>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),

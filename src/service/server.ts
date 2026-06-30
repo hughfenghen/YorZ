@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { createSpecsRoutes } from './routes/specs.js'
+import { createSpecReviewRoutes } from './routes/spec-review.js'
 import { createEventsRoutes } from './routes/events.js'
 import { createProjectRoutes } from './routes/project.js'
 import { createProjectConfigRoutes } from './routes/project-config.js'
@@ -45,6 +46,7 @@ export function createApp(opts: CreateAppOptions): Hono {
   api.route('/', createProjectRoutes(opts.registry))
   api.route('/', createProjectConfigRoutes(opts.registry))
   api.route('/', createSpecsRoutes(resolveProject))
+  api.route('/', createSpecReviewRoutes(resolveProject))
   api.route('/', createSpecDraftsRoutes(resolveProject))
   api.route('/', createWorktreeRoutes(opts.registry, worktreeManager))
   api.route('/', createAgentLogsRoutes(resolveProject))

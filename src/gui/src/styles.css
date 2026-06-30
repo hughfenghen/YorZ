@@ -1404,78 +1404,20 @@ body.is-resizing {
   align-items: center;
 }
 
-.spec-review .review-changes,
-.spec-review .review-commit {
+.spec-review .review-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.spec-review .review-actions .danger {
+  color: #b8431f;
+  border-color: #f0c4b5;
+}
+
+.spec-review .review-body {
   margin-top: 1.2rem;
-}
-
-.spec-review .change-list {
-  list-style: none;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.spec-review .change-list li {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.spec-review .status-badge {
-  display: inline-block;
-  min-width: 1.6em;
-  text-align: center;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.8em;
-  padding: 0.05rem 0.4rem;
-  border-radius: var(--radius);
-  background: var(--surface);
-  border: 1px solid var(--border);
-}
-
-.spec-review .status-m {
-  color: #b58a00;
-}
-.spec-review .status-a {
-  color: #008b3c;
-}
-.spec-review .status-d {
-  color: #b80000;
-}
-.spec-review .status-r {
-  color: #5252b3;
-}
-.spec-review .status-untracked {
-  color: #8b008b;
-}
-
-.spec-review .path {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.85em;
-}
-
-.spec-review .commit-message {
-  width: 100%;
-  font: inherit;
-  padding: 0.5rem 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  resize: vertical;
-}
-
-.spec-review .commit-actions {
-  margin-top: 0.6rem;
-  display: flex;
-  gap: 0.6rem;
-}
-
-.spec-review .success {
-  color: #008b3c;
-  margin-top: 0.6rem;
 }
 
 .agent-logs-link {
@@ -1539,6 +1481,31 @@ body.is-resizing {
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--muted);
+}
+
+.spec-agent-logs .agent-log-mode.mode-review {
+  color: #1e6fc8;
+  border-color: #b8d4f0;
+}
+
+.spec-agent-logs .agent-log-mode.mode-git-ops {
+  color: #6f4ab0;
+  border-color: #d4c6ec;
+}
+
+.spec-agent-logs .agent-log-mode.mode-git-ops-commit {
+  color: #2c7d3a;
+  border-color: #c1e2c8;
+}
+
+.spec-agent-logs .agent-log-mode.mode-git-ops-discard {
+  color: #b8431f;
+  border-color: #f0c4b5;
+}
+
+.spec-agent-logs .agent-log-mode.mode-git-ops-stash {
+  color: #806a1d;
+  border-color: #e8d8a8;
 }
 
 .spec-agent-logs .agent-log-status {

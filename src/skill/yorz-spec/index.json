@@ -86,6 +86,17 @@
         "语法细节查阅 references/ 目录下对应文档"
       ],
       "relatedCases": ["mermaid-output-in-spec"]
+    },
+    {
+      "module": "review",
+      "file": "review.md",
+      "keyRules": [
+        "mode=review 时把结构化报告追加到 <spec_dir>/review.md，禁止覆盖历史条目",
+        "review 二级标题使用本机当前时间 YYYY-MM-DD HH:mm:ss",
+        "每次 review 必含 4 节：变更总结/影响范围/风险提醒/变更文件清单",
+        "mode=git-ops 仅允许 git add/commit/restore/clean/stash，禁止 push 与 reset --hard"
+      ],
+      "relatedCases": []
     }
   ]
 }

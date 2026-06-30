@@ -108,18 +108,11 @@ const LogCard: Component<{ meta: AgentLogMeta }> = (props) => {
 
   return (
     <li class="agent-log-card">
-      <button
-        type="button"
-        class="agent-log-card-head"
-        onClick={toggle}
-        aria-expanded={open()}
-      >
+      <button type="button" class="agent-log-card-head" onClick={toggle} aria-expanded={open()}>
         <span class="agent-log-card-toggle">{open() ? '▾' : '▸'}</span>
         <time class="agent-log-time">{formatTime(props.meta.startedAt)}</time>
-        <span class={`agent-log-mode mode-${props.meta.mode}`}>{props.meta.mode}</span>
-        <span class={`agent-log-status ${statusClass(props.meta)}`}>
-          {statusLabel(props.meta)}
-        </span>
+        <span class={modeClassName(props.meta)}>{agentTagLabel(props.meta)}</span>
+        <span class={`agent-log-status ${statusClass(props.meta)}`}>{statusLabel(props.meta)}</span>
         <span class="agent-log-duration">{formatDuration(props.meta)}</span>
         <span class="agent-log-size muted">{formatSize(props.meta.sizeBytes)}</span>
       </button>
@@ -144,6 +137,36 @@ const LogCard: Component<{ meta: AgentLogMeta }> = (props) => {
       </Show>
     </li>
   )
+}
+
+function agentTagLabel(meta: AgentLogMeta): string {
+  switch (meta.mode) {
+    case 'skill-run':
+      return 'Run'
+    case 'explain':
+      return 'Explain'
+    case 'review':
+      return 'Review'
+    case 'git-ops':
+      switch (meta.action) {
+        case 'commit':
+          return 'GitCommit'
+        case 'discard':
+          return 'GitDiscard'
+        case 'stash':
+          return 'GitStash'
+        default:
+          return 'GitOps'
+      }
+    default:
+      return String(meta.mode)
+  }
+}
+
+function modeClassName(meta: AgentLogMeta): string {
+  const base = `agent-log-mode mode-${meta.mode}`
+  if (meta.mode === 'git-ops' && meta.action) return `${base} mode-${meta.mode}-${meta.action}`
+  return base
 }
 
 function formatTime(ms: number): string {

@@ -20,6 +20,7 @@ description: Drive YorZ spec docs through plan / tasks / execute stages with det
 4. 涉及新建 spec 时读 [新建 spec 流程](./new-spec.md)。
 5. 任何阶段都需要遵守的硬约束、变更重开判定见 [全局硬约束](./rewrite-rules.md)。
 6. 各阶段输出 mermaid 图表时参考 [mermaid 图表输出指南](./mermaid.md)（含选型表 / 输出规范 / 落点指导 / 节制原则）；语法细节查阅 `references/` 目录。
+7. 当 Agent 以 `mode=review` / `mode=git-ops` 启动时（由 service 端拉起），按 [Review / Git Ops 阶段说明](./review.md) 执行；该路径不进入 plan/tasks/execute 状态机，也不修改 spec.md 的 frontmatter。
 
 > 子文档之间通过 markdown 链接互相引用；遇到引用就把目标 md 也 Read 进来再继续。
 

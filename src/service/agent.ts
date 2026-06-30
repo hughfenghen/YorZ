@@ -1,20 +1,20 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { isAbsolute, relative, sep as pathSep } from 'node:path'
 import { resolveAgentCmd, type AgentCmd } from './agent-config.js'
 import { touchProjectActivity } from './global-config.js'
 import type { AgentLogStore, AgentLogWriter } from './agent-log-store.js'
-import type { TouchedFilesStore } from './touched-files.js'
 
-const WRITE_TOOL_NAMES = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
+export type AgentMode = 'skill-run' | 'explain' | 'review' | 'git-ops'
 
-export type AgentMode = 'skill-run' | 'explain'
+export type GitOpsAction = 'commit' | 'discard' | 'stash'
 
 export interface RunAgentInput {
   specId: string
   mode: AgentMode
   prompt: string
+  /** Sub-action; only meaningful when mode === 'git-ops'. */
+  action?: GitOpsAction
 }
 
 export interface AgentRunHandle {
@@ -22,10 +22,10 @@ export interface AgentRunHandle {
   mode: AgentMode
   specId: string
   startedAt: number
+  action?: GitOpsAction
   onStdout(cb: (chunk: string) => void): () => void
   onExit(cb: (code: number | null) => void): () => void
   onError(cb: (msg: string) => void): () => void
-  onFileTouched(cb: (path: string) => void): () => void
   buffer(): string
   kill(): void
   /** Resolves with the final exit code once the process terminates. */
@@ -37,6 +37,7 @@ export interface ActiveRunInfo {
   mode: AgentMode
   specId: string
   startedAt: number
+  action?: GitOpsAction
 }
 
 export interface AgentRunnerOptions {
@@ -47,8 +48,6 @@ export interface AgentRunnerOptions {
   globalConfigPath?: string
   /** Override the agent command resolution (used by tests). */
   resolveAgentCmd?: () => AgentCmd
-  /** Optional sink for file paths the agent writes/edits during a run. */
-  touched?: TouchedFilesStore
   /** Optional persistent log store; when provided every run is streamed to disk. */
   logStore?: AgentLogStore
 }
@@ -62,7 +61,6 @@ export class AgentRunner {
   private readonly projectId?: string
   private readonly globalConfigPath?: string
   private readonly resolveCmd: () => AgentCmd
-  private readonly touched?: TouchedFilesStore
   private readonly logStore?: AgentLogStore
   private readonly skillRunBySpec = new Map<string, AgentRunHandle>()
   private readonly handlesById = new Map<string, AgentRunHandle>()
@@ -73,7 +71,6 @@ export class AgentRunner {
     this.projectId = opts.projectId
     this.globalConfigPath = opts.globalConfigPath
     this.resolveCmd = opts.resolveAgentCmd ?? (() => resolveAgentCmd({ cwd: opts.cwd }))
-    this.touched = opts.touched
     this.logStore = opts.logStore
   }
 
@@ -118,7 +115,14 @@ export class AgentRunner {
   listActive(): ActiveRunInfo[] {
     const out: ActiveRunInfo[] = []
     for (const h of this.handlesById.values()) {
-      out.push({ runId: h.id, mode: h.mode, specId: h.specId, startedAt: h.startedAt })
+      const info: ActiveRunInfo = {
+        runId: h.id,
+        mode: h.mode,
+        specId: h.specId,
+        startedAt: h.startedAt,
+      }
+      if (h.action) info.action = h.action
+      out.push(info)
     }
     return out
   }
@@ -162,7 +166,13 @@ export class AgentRunner {
     let writerFailed = false
     if (this.logStore) {
       writerReady = this.logStore
-        .openWriter({ runId: id, specId: input.specId, mode: input.mode, startedAt })
+        .openWriter({
+          runId: id,
+          specId: input.specId,
+          mode: input.mode,
+          startedAt,
+          ...(input.action ? { action: input.action } : {}),
+        })
         .then((w) => {
           writer = w
           if (pendingChunks.length) {
@@ -236,7 +246,7 @@ export class AgentRunner {
     }
 
     if (cmd.streamFormat === 'json') {
-      attachJsonlStream(child, emitter, pushStdout, this.cwd)
+      attachJsonlStream(child, pushStdout)
     } else {
       child.stdout?.on('data', (data: Buffer) => pushStdout(data.toString('utf8')))
     }
@@ -244,12 +254,6 @@ export class AgentRunner {
       const pid = this.projectId
       const fp = this.globalConfigPath
       void touchProjectActivity(pid, new Date().toISOString(), fp).catch(() => {})
-    }
-    if (this.touched) {
-      const touched = this.touched
-      emitter.on('file_touched', (relPath: string) => {
-        void touched.add(input.specId, [relPath]).catch(() => {})
-      })
     }
     child.stderr?.on('data', (data: Buffer) => pushStdout(data.toString('utf8')))
     let exited = false
@@ -282,12 +286,7 @@ export class AgentRunner {
   }
 }
 
-function attachJsonlStream(
-  child: ChildProcess,
-  emitter: EventEmitter,
-  pushStdout: (text: string) => void,
-  cwd: string,
-): void {
+function attachJsonlStream(child: ChildProcess, pushStdout: (text: string) => void): void {
   let pending = ''
   child.stdout?.on('data', (data: Buffer) => {
     pending += data.toString('utf8')
@@ -296,68 +295,24 @@ function attachJsonlStream(
       const line = pending.slice(0, idx).trimEnd()
       pending = pending.slice(idx + 1)
       if (!line) continue
-      handleLine(line, emitter, pushStdout, cwd)
+      handleLine(line, pushStdout)
     }
   })
   child.stdout?.on('end', () => {
-    if (pending.trim()) handleLine(pending.trim(), emitter, pushStdout, cwd)
+    if (pending.trim()) handleLine(pending.trim(), pushStdout)
     pending = ''
   })
 }
 
-function handleLine(
-  line: string,
-  emitter: EventEmitter,
-  pushStdout: (text: string) => void,
-  cwd: string,
-): void {
+function handleLine(line: string, pushStdout: (text: string) => void): void {
   let ev: unknown
   try {
     ev = JSON.parse(line)
   } catch {
-    emitter.emit('error', `agent stream JSON parse failed: ${line.slice(0, 200)}`)
     pushStdout(`${line}\n`)
     return
   }
-  emitTouchedFromEvent(ev, emitter, cwd)
   pushStdout(formatStreamEvent(ev))
-}
-
-/**
- * Inspect a parsed stream-json event for `tool_use` items that mutate files
- * and emit `file_touched` (path normalized to POSIX, relative to cwd). Exported
- * for tests.
- */
-export function emitTouchedFromEvent(ev: unknown, emitter: EventEmitter, cwd: string): void {
-  if (!ev || typeof ev !== 'object') return
-  const obj = ev as Record<string, unknown>
-  const type = String(obj.type ?? '')
-  if (type !== 'assistant') return
-  const msg = obj.message as Record<string, unknown> | undefined
-  const content = msg?.content
-  if (!Array.isArray(content)) return
-  for (const part of content) {
-    if (!part || typeof part !== 'object') continue
-    const p = part as Record<string, unknown>
-    if (String(p.type ?? '') !== 'tool_use') continue
-    const name = String(p.name ?? '')
-    if (!WRITE_TOOL_NAMES.has(name)) continue
-    const input = p.input as Record<string, unknown> | undefined
-    const filePath = input?.file_path
-    if (typeof filePath !== 'string' || !filePath) continue
-    const rel = normalizeRel(filePath, cwd)
-    if (!rel) continue
-    emitter.emit('file_touched', rel)
-  }
-}
-
-function normalizeRel(filePath: string, cwd: string): string | null {
-  let rel = filePath
-  if (isAbsolute(rel)) {
-    rel = relative(cwd, rel)
-  }
-  if (!rel || rel.startsWith('..') || rel === '.') return null
-  return rel.split(pathSep).join('/')
 }
 
 /**
@@ -490,7 +445,7 @@ function makeHandle(
   const done = new Promise<number | null>((resolve) => {
     emitter.once('exit', (code: number | null) => resolve(code))
   })
-  return {
+  const handle: AgentRunHandle = {
     id,
     mode: input.mode,
     specId: input.specId,
@@ -510,9 +465,7 @@ function makeHandle(
       emitter.on('error', cb)
       return () => emitter.off('error', cb)
     },
-    onFileTouched(cb) {
-      emitter.on('file_touched', cb)
-      return () => emitter.off('file_touched', cb)
-    },
   }
+  if (input.action) handle.action = input.action
+  return handle
 }

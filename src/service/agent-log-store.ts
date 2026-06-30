@@ -2,12 +2,14 @@ import { existsSync } from 'node:fs'
 import { createWriteStream, type WriteStream } from 'node:fs'
 import { mkdir, open, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { AgentMode } from './agent.js'
+import type { AgentMode, GitOpsAction } from './agent.js'
 
 export interface AgentLogMeta {
   runId: string
   specId: string
   mode: AgentMode
+  /** Sub-action for mode === 'git-ops'. Optional and absent for legacy modes. */
+  action?: GitOpsAction
   startedAt: number
   endedAt: number | null
   exitCode: number | null
@@ -71,6 +73,7 @@ export class AgentLogStore {
     runId: string
     specId: string
     mode: AgentMode
+    action?: GitOpsAction
     startedAt: number
   }): Promise<AgentLogWriter> {
     if (!isSafeId(input.specId) || !isSafeId(input.runId)) {
@@ -82,6 +85,7 @@ export class AgentLogStore {
       runId: input.runId,
       specId: input.specId,
       mode: input.mode,
+      ...(input.action ? { action: input.action } : {}),
       startedAt: input.startedAt,
       endedAt: null,
       exitCode: null,
@@ -124,6 +128,7 @@ export class AgentLogStore {
           runId: input.runId,
           specId: input.specId,
           mode: input.mode,
+          ...(input.action ? { action: input.action } : {}),
           startedAt: input.startedAt,
           endedAt: this.now(),
           exitCode,
