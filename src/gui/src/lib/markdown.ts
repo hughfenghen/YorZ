@@ -8,10 +8,14 @@ const md = new MarkdownIt({
 
 export interface RenderOptions {
   /**
-   * When set, relative `attachments/...` URLs in image/link tokens are rewritten
-   * to `/api/specs/:id/attachments/...` so the server can stream the file.
+   * When both `specId` and `projectId` are set, relative `attachments/...` URLs
+   * in image/link tokens are rewritten to
+   * `/api/projects/:projectId/specs/:specId/attachments/...` so the server can
+   * stream the file. When `projectId` is missing, the original href is kept and
+   * a dev-only warning is emitted to surface the missing argument.
    */
   specId?: string
+  projectId?: string
 }
 
 const defaultImageRender =
@@ -24,33 +28,64 @@ const defaultFenceRender =
   md.renderer.rules.fence ??
   ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
 
-function rewriteHrefIfAttachment(href: string, specId: string): string {
+let warnedMissingProjectId = false
+function warnMissingProjectIdOnce(specId: string): void {
+  if (warnedMissingProjectId) return
+  warnedMissingProjectId = true
+  const isDev =
+    typeof import.meta !== 'undefined' &&
+    (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV === true
+  if (isDev) {
+    console.warn(
+      `[markdown] renderMarkdown called with specId="${specId}" but no projectId; ` +
+        `relative attachments/* URLs will not be rewritten and may 404.`,
+    )
+  }
+}
+
+function rewriteHrefIfAttachment(
+  href: string,
+  specId: string,
+  projectId: string | undefined,
+): string {
   if (!href) return href
   if (/^([a-z]+:)?\/\//i.test(href)) return href
   if (href.startsWith('/')) return href
   if (href.startsWith('#')) return href
   const m = href.match(/^attachments\/(.+)$/)
   if (!m) return href
-  return `/api/specs/${encodeURIComponent(specId)}/attachments/${encodeURIComponent(m[1]!)}`
+  if (!projectId) {
+    warnMissingProjectIdOnce(specId)
+    return href
+  }
+  return (
+    `/api/projects/${encodeURIComponent(projectId)}` +
+    `/specs/${encodeURIComponent(specId)}` +
+    `/attachments/${encodeURIComponent(m[1]!)}`
+  )
 }
 
+type RenderEnv = { specId?: string; projectId?: string }
+
 md.renderer.rules.image = function (tokens, idx, options, env, self) {
-  const specId = (env as { specId?: string } | undefined)?.specId
+  const e = env as RenderEnv | undefined
+  const specId = e?.specId
   if (specId) {
     const token = tokens[idx]!
     const srcAttr = token.attrs?.find(([k]) => k === 'src')
-    if (srcAttr) srcAttr[1] = rewriteHrefIfAttachment(srcAttr[1], specId)
+    if (srcAttr) srcAttr[1] = rewriteHrefIfAttachment(srcAttr[1], specId, e?.projectId)
   }
   return defaultImageRender(tokens, idx, options, env, self)
 }
 
 md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
-  const specId = (env as { specId?: string } | undefined)?.specId
+  const e = env as RenderEnv | undefined
+  const specId = e?.specId
   if (specId) {
     const token = tokens[idx]!
     const hrefAttr = token.attrs?.find(([k]) => k === 'href')
     if (hrefAttr) {
-      const rewritten = rewriteHrefIfAttachment(hrefAttr[1], specId)
+      const rewritten = rewriteHrefIfAttachment(hrefAttr[1], specId, e?.projectId)
       if (rewritten !== hrefAttr[1]) {
         hrefAttr[1] = rewritten
         // open non-image attachments in a new tab so navigation doesn't lose spec view.
@@ -76,5 +111,8 @@ md.renderer.rules.fence = function (tokens, idx, options, env, self) {
 }
 
 export function renderMarkdown(source: string, opts: RenderOptions = {}): string {
-  return md.render(source, opts.specId ? { specId: opts.specId } : {})
+  if (!opts.specId) return md.render(source, {})
+  const env: RenderEnv = { specId: opts.specId }
+  if (opts.projectId) env.projectId = opts.projectId
+  return md.render(source, env)
 }

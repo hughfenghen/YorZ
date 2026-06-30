@@ -7,25 +7,51 @@ describe('renderMarkdown attachment rewrite', () => {
     expect(html).toContain('src="attachments/a.png"')
   })
 
-  it('rewrites relative attachments/* image src when specId is provided', () => {
+  it('keeps attachments/* in image src when specId is provided but projectId is missing', () => {
     const html = renderMarkdown('![pic](attachments/a.png)', { specId: '260622.feat.demo' })
-    expect(html).toContain('src="/api/specs/260622.feat.demo/attachments/a.png"')
+    expect(html).toContain('src="attachments/a.png"')
+    expect(html).not.toContain('/api/')
   })
 
-  it('rewrites attachments/* in link href and adds target=_blank', () => {
-    const html = renderMarkdown('[doc](attachments/design.pdf)', { specId: 'x' })
-    expect(html).toContain('href="/api/specs/x/attachments/design.pdf"')
+  it('rewrites relative attachments/* image src when both specId and projectId are provided', () => {
+    const html = renderMarkdown('![pic](attachments/a.png)', {
+      specId: '260622.feat.demo',
+      projectId: 'p1',
+    })
+    expect(html).toContain('src="/api/projects/p1/specs/260622.feat.demo/attachments/a.png"')
+  })
+
+  it('rewrites attachments/* in link href and adds target=_blank when projectId is provided', () => {
+    const html = renderMarkdown('[doc](attachments/design.pdf)', { specId: 'x', projectId: 'p1' })
+    expect(html).toContain('href="/api/projects/p1/specs/x/attachments/design.pdf"')
     expect(html).toContain('target="_blank"')
     expect(html).toContain('rel="noopener noreferrer"')
   })
 
+  it('keeps attachments/* in link href untouched when projectId is missing', () => {
+    const html = renderMarkdown('[doc](attachments/design.pdf)', { specId: 'x' })
+    expect(html).toContain('href="attachments/design.pdf"')
+    expect(html).not.toContain('target="_blank"')
+  })
+
   it('leaves absolute URLs untouched', () => {
-    const html = renderMarkdown('![pic](https://example.com/a.png)', { specId: 'x' })
+    const html = renderMarkdown('![pic](https://example.com/a.png)', {
+      specId: 'x',
+      projectId: 'p1',
+    })
     expect(html).toContain('src="https://example.com/a.png"')
   })
 
   it('leaves non-attachments relative paths untouched', () => {
-    const html = renderMarkdown('![pic](other/path.png)', { specId: 'x' })
+    const html = renderMarkdown('![pic](other/path.png)', { specId: 'x', projectId: 'p1' })
     expect(html).toContain('src="other/path.png"')
+  })
+
+  it('url-encodes projectId, specId and filename segments', () => {
+    const html = renderMarkdown('![pic](attachments/a%20b.png)', {
+      specId: 'spec.id',
+      projectId: 'proj/id',
+    })
+    expect(html).toContain('src="/api/projects/proj%2Fid/specs/spec.id/attachments/a%2520b.png"')
   })
 })

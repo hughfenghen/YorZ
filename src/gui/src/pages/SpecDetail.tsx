@@ -254,7 +254,10 @@ export const SpecDetail: Component = () => {
                   <article
                     class="markdown spec-main"
                     ref={setArticleEl}
-                    innerHTML={renderMarkdown(s().body, { specId: s().id })}
+                    innerHTML={renderMarkdown(s().body, {
+                      specId: s().id,
+                      projectId: projectId() || undefined,
+                    })}
                   />
                 </div>
 
