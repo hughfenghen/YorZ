@@ -12,7 +12,8 @@ export interface ConfirmQuestion {
 }
 
 const HEADING_RE = /^##\s+(?:\d+(?:\.\d+)*\.?\s+)?待确认问题\s*$/
-const NEXT_H2_RE = /^##\s+/
+const NEXT_HEADING_RE = /^#{2,3}\s+/
+const BLANK_LINE_RE = /^\s*$/
 const RECOMMEND_SUFFIX_RE = /\s*\(推荐\)\s*$/
 const FREEFORM_SUFFIX_RE = /\s*（自由文本）\s*$/
 
@@ -23,6 +24,9 @@ const FREEFORM_SUFFIX_RE = /\s*（自由文本）\s*$/
  * sub-bullets (`  - ` / `\t- `) become candidate options. A trailing
  * ` (推荐)` marks the recommended option (at most one per question).
  * A question with no sub-bullets degrades to a freeform card.
+ *
+ * 扫描在下一 `##` 或任意 `### ` 标题处终止（避免 `### N.x 已确认决策快照`
+ * 等子节内的列表被误吸入）；问题正文与候选子项之间允许任意空行。
  *
  * Returns `[]` for a `- 暂无` section or when the heading is absent.
  */
@@ -36,7 +40,7 @@ export function parseConfirmQuestions(body: string): ConfirmQuestion[] {
   const questions: ConfirmQuestion[] = []
   while (i < lines.length) {
     const line = lines[i]!
-    if (NEXT_H2_RE.test(line)) break
+    if (NEXT_HEADING_RE.test(line)) break
     const top = matchTopBullet(line)
     if (!top) {
       i += 1
@@ -52,7 +56,12 @@ export function parseConfirmQuestions(body: string): ConfirmQuestion[] {
     let originalRecommendedCount = 0
     i += 1
     while (i < lines.length) {
-      const sub = matchSubBullet(lines[i]!)
+      const current = lines[i]!
+      if (BLANK_LINE_RE.test(current)) {
+        i += 1
+        continue
+      }
+      const sub = matchSubBullet(current)
       if (sub === null) break
       const recommended = RECOMMEND_SUFFIX_RE.test(sub)
       const label = recommended ? sub.replace(RECOMMEND_SUFFIX_RE, '').trim() : sub.trim()

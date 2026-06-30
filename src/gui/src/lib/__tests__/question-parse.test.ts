@@ -77,6 +77,51 @@ describe('parseConfirmQuestions', () => {
     expect(out[0].isFreeform).toBe(true)
   })
 
+  it('stops at any `### ` sub-heading (e.g. 已确认决策快照) and ignores its list items', () => {
+    const body = [
+      '## 5. 待确认问题',
+      '',
+      '- 真正的问题',
+      '  - 候选 A (推荐)',
+      '  - 候选 B',
+      '',
+      '### 5.1 已确认决策快照',
+      '',
+      '- 决策项 1：foo',
+      '- 决策项 2：bar',
+      '- 决策项 3：baz',
+      '',
+      '## 6. 任务清单',
+    ].join('\n')
+    const out = parseConfirmQuestions(body)
+    expect(out).toHaveLength(1)
+    expect(out[0].text).toBe('真正的问题')
+    expect(out[0].options.map((o) => o.label)).toEqual(['候选 A', '候选 B'])
+    expect(out[0].isFreeform).toBe(false)
+  })
+
+  it('keeps candidate options even when blank lines separate the question from its sub-bullets', () => {
+    const body = ['## 待确认问题', '', '- 问题', '', '  - 候选 A', '  - 候选 B (推荐)', ''].join(
+      '\n',
+    )
+    const out = parseConfirmQuestions(body)
+    expect(out).toHaveLength(1)
+    expect(out[0].options).toHaveLength(2)
+    expect(out[0].options.map((o) => o.label)).toEqual(['候选 A', '候选 B'])
+    expect(out[0].options.map((o) => o.recommended)).toEqual([false, true])
+    expect(out[0].isFreeform).toBe(false)
+  })
+
+  it('tolerates multiple blank lines between the question and its sub-bullets', () => {
+    const body = ['## 待确认问题', '', '- 问题', '', '', '  - 候选 A', '', '  - 候选 B', ''].join(
+      '\n',
+    )
+    const out = parseConfirmQuestions(body)
+    expect(out).toHaveLength(1)
+    expect(out[0].options.map((o) => o.label)).toEqual(['候选 A', '候选 B'])
+    expect(out[0].isFreeform).toBe(false)
+  })
+
   it('keeps only the first `(推荐)` when multiple are declared', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const body = [
