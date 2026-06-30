@@ -18,7 +18,7 @@ describe('SpecStore.appendItem', () => {
     await store.appendItem(id, { kind: 'fix', description: '登录失败无反馈' })
     const raw = await readFile(path, 'utf8')
     expect(raw).toContain('## 追加任务')
-    expect(raw).toMatch(/- \[open\] \[fix\] \d{4}-\d{2}-\d{2} \d{2}:\d{2} \| 登录失败无反馈/)
+    expect(raw).toMatch(/- \[open\] \[fix\] \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \| 登录失败无反馈/)
     const appendIdx = raw.indexOf('## 追加任务')
     const execIdx = raw.indexOf('## 执行记录')
     expect(appendIdx).toBeGreaterThan(0)
@@ -48,7 +48,7 @@ describe('SpecStore.appendItem', () => {
     const header = raw.split('---')[1]!.trim().split('\n')
     expect(header[0]).toBe('stage: plan')
     expect(header[1]).toBe('last_action: 追加任务（refct）')
-    expect(header[2]).toBe('updated_at: 2026-06-20')
+    expect(header[2]).toMatch(/^updated_at: '2026-06-20 \d{2}:\d{2}:\d{2}'$/)
     expect(header[3]).toBe('summary: x')
   })
 

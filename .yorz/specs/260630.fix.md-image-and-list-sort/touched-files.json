@@ -1,0 +1,18 @@
+{
+  "paths": [
+    ".yorz/specs/260630.fix.md-image-and-list-sort/spec.md",
+    "src/gui/src/lib/__tests__/markdown.test.ts",
+    "src/gui/src/lib/__tests__/time.test.ts",
+    "src/gui/src/lib/markdown.ts",
+    "src/gui/src/lib/time.ts",
+    "src/gui/src/pages/Home.tsx",
+    "src/gui/src/pages/SpecDetail.tsx",
+    "src/service/__tests__/apply-question-answers.test.ts",
+    "src/service/__tests__/spec-store.appends.test.ts",
+    "src/service/__tests__/spec-store.test.ts",
+    "src/service/spec-store.ts",
+    "src/service/worktree-manager.ts",
+    "src/skill/yorz-spec/conventions.md",
+    "src/skill/yorz-spec/new-spec.md"
+  ]
+}

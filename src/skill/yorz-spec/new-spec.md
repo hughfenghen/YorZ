@@ -21,7 +21,7 @@
 4. **生成路径**：`<specsDir>/<id>/spec.md`（每个 spec 一个独立子目录，方便附件/截图/中间产物共置）。`specsDir` 默认 `.yorz/specs`，可由 `<ProjectRoot>/.yorz/config.json` 的 `specsDir` 字段覆盖。
 5. **id 冲突处理**：若 `<specsDir>/<id>/spec.md` 已存在，将 `<id>` 追加 `-2`、`-3` …… 数字后缀，直至无冲突。
 6. **初始化文档**：
-   - 写入 frontmatter（`stage: plan`、`last_action: 新建 spec`、`updated_at: <YYMMDD 对应日期>`、`summary: <对需求的一句话概要，≤200 字符，禁止照搬整段需求原文>`）。
+   - 写入 frontmatter（`stage: plan`、`last_action: 新建 spec`、`updated_at: '<YYYY-MM-DD HH:mm:ss>'`（本地秒级时间，必须加单引号）、`summary: <对需求的一句话概要，≤200 字符，禁止照搬整段需求原文>`）。
    - 补齐空章节：`## 背景` / `## 需求` / `## 现状分析` / `## 技术实现方案` / `## 待确认问题` / `## 任务清单` / `## 追加任务` / `## 执行记录`（顺序固定，章节齐全度见 [全局硬约束](./rewrite-rules.md)）。
    - 将用户原始需求原样写入 `## 背景`（或 `## 需求`），便于后续追溯。
 7. **进入 plan 阶段**：随即按 [plan 规范](./plan.md) 继续工作，**不要因为「文档已创建」就退出本轮**。

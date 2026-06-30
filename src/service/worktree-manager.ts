@@ -358,6 +358,8 @@ function renderConflictSpec(args: {
 }): string {
   const { branch, report, now } = args
   const today = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+  const nowStamp =
+    `${today} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`
   const fileLines = report.files.length
     ? report.files.map((f) => `- \`${f}\``).join('\n')
     : '- （无 — 合并失败但未列出冲突文件，请人工核查）'
@@ -439,7 +441,7 @@ ${mergeBlock}
     '---',
     'stage: plan',
     'last_action: 由 worktree 合并冲突自动生成',
-    `updated_at: ${today}`,
+    `updated_at: '${nowStamp}'`,
     `summary: 解决 ${branch} 合并到主项目时产生的 ${report.files.length} 个冲突文件`,
     '---',
     '',

@@ -126,7 +126,13 @@ export class SpecStore {
         mtime: stats.mtimeMs,
       })
     }
-    items.sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1))
+    items.sort((a, b) => {
+      if (a.updated_at < b.updated_at) return 1
+      if (a.updated_at > b.updated_at) return -1
+      // Tie-break by file mtime so equal/empty updated_at still yields a
+      // deterministic "most-recently-touched first" order.
+      return b.mtime - a.mtime
+    })
     return items
   }
 
@@ -156,7 +162,7 @@ export class SpecStore {
     const filePath = join(dir, 'spec.md')
     const content = renderInitialSpec(
       { type: input.type, title, summary, requirement: input.requirement },
-      this.today(),
+      this.nowDateTime(),
     )
     await this.write(filePath, content)
     return { id, path: filePath }
@@ -196,7 +202,7 @@ export class SpecStore {
     const fm: SpecFrontmatter = {
       stage: 'plan',
       last_action: '用户批量答复待确认问题',
-      updated_at: this.today(),
+      updated_at: this.nowDateTime(),
       summary: existing.summary,
     }
     const merged = mergeUserAnnotations(parsed.content, blocks)
@@ -223,7 +229,7 @@ export class SpecStore {
     const fm: SpecFrontmatter = {
       stage: 'plan',
       last_action: `追加任务（${kind}）`,
-      updated_at: this.today(),
+      updated_at: this.nowDateTime(),
       summary: existing.summary,
     }
     const firstLine = description.split(/\r?\n/)[0]!.slice(0, 80)
@@ -249,7 +255,7 @@ export class SpecStore {
     const fm: SpecFrontmatter = {
       stage: existing.stage,
       last_action: '提交 git',
-      updated_at: this.today(),
+      updated_at: this.nowDateTime(),
       summary: existing.summary,
     }
     const merged = appendExecutionLogToBody(parsed.content, `- ${trimmed}`)
@@ -271,7 +277,7 @@ export class SpecStore {
     const fm: SpecFrontmatter = {
       stage: 'plan',
       last_action: '用户新增批注 ！！！',
-      updated_at: this.today(),
+      updated_at: this.nowDateTime(),
       summary: existing.summary,
     }
     const block = `\n\n> ${sectionPath} 中 "${quote}"\n>\n> ！！！${note}\n`
@@ -303,8 +309,8 @@ export class SpecStore {
     }
   }
 
-  private today(): string {
-    return formatDate(this.now())
+  private nowDateTime(): string {
+    return formatDateTime(this.now())
   }
 
   private timestamp(): string {
@@ -331,7 +337,8 @@ function formatDateTime(d: Date): string {
   const date = formatDate(d)
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
-  return `${date} ${hh}:${mm}`
+  const ss = String(d.getSeconds()).padStart(2, '0')
+  return `${date} ${hh}:${mm}:${ss}`
 }
 
 function kebab(text: string): string {
@@ -372,7 +379,11 @@ function normalizeFrontmatter(data: Record<string, unknown>): SpecFrontmatter {
 }
 
 function dateString(value: unknown): string {
+  // Historical `YYYY-MM-DD` values are parsed as Date by gray-matter (YAML 1.1
+  // timestamp); fall back to YYYY-MM-DD for backwards compatibility.
   if (value instanceof Date) return formatDate(value)
+  // Newer `YYYY-MM-DD HH:mm:ss` values are written quoted in serializeSpec, so
+  // they round-trip as strings — return them untouched (no trimming).
   if (typeof value === 'string') return value
   return ''
 }
@@ -444,12 +455,21 @@ function serializeSpec(fm: SpecFrontmatter, body: string): string {
     '---',
     `stage: ${fm.stage}`,
     `last_action: ${fm.last_action}`,
-    `updated_at: ${fm.updated_at}`,
+    `updated_at: ${formatUpdatedAtForYaml(fm.updated_at)}`,
     `summary: ${fm.summary}`,
     '---',
     '',
   ].join('\n')
   return `${head}${body.startsWith('\n') ? '' : '\n'}${body}${body.endsWith('\n') ? '' : '\n'}`
+}
+
+function formatUpdatedAtForYaml(value: string): string {
+  // YAML 1.1 parses bare `YYYY-MM-DD HH:mm:ss` (or `YYYY-MM-DDTHH:mm:ss…`)
+  // as timestamps and gray-matter then hands us a `Date`. Quote second-level
+  // values so they round-trip as strings. Legacy `YYYY-MM-DD` is left bare for
+  // diff stability — `dateString()` falls back to formatDate when re-reading.
+  if (/[T :]/.test(value) && /:/.test(value)) return `'${value}'`
+  return value
 }
 
 function renderInitialSpec(

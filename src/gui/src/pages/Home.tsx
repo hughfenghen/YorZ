@@ -14,6 +14,7 @@ import { api, type SpecListItem } from '../lib/api.js'
 import type { ProjectListItem } from '../lib/project.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
 import { subscribeProjectsList } from '../lib/sse.js'
+import { formatSpecUpdatedAt } from '../lib/time.js'
 
 export const Home: Component = () => {
   const navigate = useNavigate()
@@ -140,7 +141,7 @@ export const Home: Component = () => {
                   <A href={projectHref(`specs/${encodeURIComponent(spec.id)}`)}>
                     <div class="spec-card-head">
                       <span class={`badge stage-${spec.stage}`}>{spec.stage}</span>
-                      <time>{spec.updated_at}</time>
+                      <time>{formatSpecUpdatedAt(spec.updated_at)}</time>
                     </div>
                     <h2>{spec.title || '（待 Agent 补全）'}</h2>
                     <p class="summary">{spec.summary || '（待 Agent 补全）'}</p>

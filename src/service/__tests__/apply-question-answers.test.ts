@@ -41,7 +41,7 @@ describe('SpecStore.applyQuestionAnswers', () => {
     const headerLines = raw.split('---')[1].trim().split('\n')
     expect(headerLines[0]).toBe('stage: plan')
     expect(headerLines[1]).toBe('last_action: 用户批量答复待确认问题')
-    expect(headerLines[2]).toBe('updated_at: 2026-06-18')
+    expect(headerLines[2]).toMatch(/^updated_at: '2026-06-18 \d{2}:\d{2}:\d{2}'$/)
   })
 
   it('merges into existing 用户批注 section instead of creating a duplicate heading', async () => {

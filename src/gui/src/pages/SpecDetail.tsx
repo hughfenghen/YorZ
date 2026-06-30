@@ -16,6 +16,7 @@ import { renderMermaidIn } from '../lib/mermaid.js'
 import { subscribeSpec } from '../lib/sse.js'
 import { agentTasks } from '../lib/agent-tasks.js'
 import { observeSelection, type SelectionSnapshot } from '../lib/selection.js'
+import { formatSpecUpdatedAt } from '../lib/time.js'
 import { parseConfirmQuestions } from '../lib/question-parse.js'
 import { SelectionMenu } from '../components/SelectionMenu.jsx'
 import { AnnotatePopover } from '../components/AnnotatePopover.jsx'
@@ -216,7 +217,7 @@ export const SpecDetail: Component = () => {
                     <span class={`badge stage-${s().frontmatter.stage}`}>
                       {s().frontmatter.stage}
                     </span>
-                    <time>{s().frontmatter.updated_at}</time>
+                    <time>{formatSpecUpdatedAt(s().frontmatter.updated_at)}</time>
                     <button type="button" class="append-btn" ref={appendBtnEl} onClick={openAppend}>
                       追加任务
                     </button>

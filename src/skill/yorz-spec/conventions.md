@@ -21,7 +21,7 @@
 ---
 stage: plan # plan | tasks | execute
 last_action: 简述上一次动作
-updated_at: 2026-06-14 # YYYY-MM-DD
+updated_at: '2026-06-14 15:42:07' # 写入必须加单引号；读取兼容 'YYYY-MM-DD'
 summary: 一句话概要，供列表/索引视图展示
 ---
 ```
@@ -29,7 +29,7 @@ summary: 一句话概要，供列表/索引视图展示
 - 字段顺序固定为 `stage` → `last_action` → `updated_at` → `summary`，每个字段独占一行，禁止嵌套。
 - 键名使用英文，便于工具静态解析；字段值允许中文。
 - `summary` **必填**，长度 ≤ 200 字符，不允许空字符串。
-- 时间字段使用 `YYYY-MM-DD`，不引入时区与时间部分。
+- `updated_at` 使用本地时间秒级形态 `YYYY-MM-DD HH:mm:ss`（如 `2026-06-14 15:42:07`），**写入时必须用单引号包裹**，避免 YAML 1.1 把空格分隔的 datetime 解析为 timestamp；读取时兼容历史的纯 `YYYY-MM-DD`，但任何写回都应升级到秒级。
 - 缺失任意字段时，先补齐再继续。
 - skill **不解析**旧 `## 流程状态` 章节；遇到使用旧格式的 spec，按此规范一次性迁移并删除该章节。
 
@@ -38,7 +38,7 @@ summary: 一句话概要，供列表/索引视图展示
 为保证 spec 文档结构稳定、易被工具与人审阅：
 
 - frontmatter 元信息按本节约束写入；字段顺序固定，禁止嵌套与额外字段（如需扩展请先更新本 skill）。
-- 时间字段使用 `YYYY-MM-DD`（如 `updated_at: 2026-06-14`），不引入时区与时间部分。
+- 时间字段使用本地秒级 `YYYY-MM-DD HH:mm:ss`（如 `updated_at: '2026-06-14 15:42:07'`），写入时必须加单引号；读取时兼容历史的纯 `YYYY-MM-DD`。
 - 每次写回 spec md 后，**应在仓库支持的条件下运行 Markdown formatter**（优先使用项目根的 `prettier`，例如 `npx prettier --write <spec_path>`）；若仓库未配置 prettier，则跳过并在执行记录中说明。
 - formatter 必须保留 YAML frontmatter 不变。
 - 任务清单仅使用单层 `- [ ]` / `- [x]`，避免缩进与嵌套以利 formatter 稳定。
