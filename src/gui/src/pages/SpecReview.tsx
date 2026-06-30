@@ -124,7 +124,7 @@ export const SpecReview: Component = () => {
 function buildDefaultMessage(spec: SpecDetail | undefined, specId: string): string {
   const type = inferType(specId)
   const summary = (spec?.frontmatter.summary ?? '').trim().slice(0, 100) || '(待 Agent 补全)'
-  return `${type}(${specId}): ${summary}`
+  return `${type}: ${summary}`
 }
 
 function inferType(specId: string): string {
