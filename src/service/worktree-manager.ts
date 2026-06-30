@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { GitError, runGitChecked, runGitRaw } from './git.js'
 import {
   loadGlobalConfig,
+  resolveGlobalConfigPath,
   saveGlobalConfig,
   setProjectWorktree,
   type GlobalProjectEntry,
@@ -60,17 +61,21 @@ interface WorktreeManagerOptions {
   globalConfigPath?: string
   /** Override the agent runner trigger (used by tests). */
   triggerConflictAgent?: (mainProjectId: string, specId: string) => Promise<void> | void
+  /** Notify the project list changed (used by createApp to feed the SSE bus). */
+  onProjectsChanged?: () => void
 }
 
 export class WorktreeManager {
   private readonly registry: ProjectRegistry
   private readonly globalConfigPath?: string
   private readonly triggerConflictAgent?: WorktreeManagerOptions['triggerConflictAgent']
+  private readonly onProjectsChanged?: () => void
 
   constructor(opts: WorktreeManagerOptions) {
     this.registry = opts.registry
     this.globalConfigPath = opts.globalConfigPath
     this.triggerConflictAgent = opts.triggerConflictAgent
+    this.onProjectsChanged = opts.onProjectsChanged
   }
 
   async createWorktree(input: CreateWorktreeInput): Promise<CreateWorktreeResult> {
@@ -149,7 +154,11 @@ export class WorktreeManager {
       const conflict = await this.handleMergeConflict({
         mainPath,
         mainProjectId: mainEntry?.id ?? entry.worktree.mainProjectId,
+        worktreeProjectId: entry.id,
+        wtPath,
         branch,
+        defaultMergeCommitMessage: message,
+        globalConfigPath: this.globalConfigPath ?? resolveGlobalConfigPath(),
         now: input.now ?? (() => new Date()),
       })
       return conflict
@@ -170,6 +179,7 @@ export class WorktreeManager {
     if (mainEntry) {
       await this.registry.reload(mainEntry.id)
     }
+    this.onProjectsChanged?.()
 
     return {
       status: 'merged',
@@ -218,7 +228,11 @@ export class WorktreeManager {
   private async handleMergeConflict(args: {
     mainPath: string
     mainProjectId: string
+    worktreeProjectId: string
+    wtPath: string
     branch: string
+    defaultMergeCommitMessage: string
+    globalConfigPath: string
     now: () => Date
   }): Promise<MergeBackResult> {
     const report = await this.collectConflictReport(args.mainPath)
@@ -235,21 +249,28 @@ export class WorktreeManager {
     const dir = join(specsRoot, specId)
     await mkdir(dir, { recursive: true })
     const specPath = join(dir, 'spec.md')
-    await writeFile(specPath, renderConflictSpec(args.branch, report, args.now()), 'utf8')
+    await writeFile(
+      specPath,
+      renderConflictSpec({
+        branch: args.branch,
+        report,
+        now: args.now(),
+        mainProjectId: args.mainProjectId,
+        worktreeProjectId: args.worktreeProjectId,
+        wtPath: args.wtPath,
+        mainPath: args.mainPath,
+        defaultMergeCommitMessage: args.defaultMergeCommitMessage,
+        globalConfigPath: args.globalConfigPath,
+      }),
+      'utf8',
+    )
 
     if (this.triggerConflictAgent) {
       await this.triggerConflictAgent(args.mainProjectId, specId)
     } else {
-      const main = await this.registry.getOrCreate(args.mainProjectId)
-      if (main) {
-        await this.registry.reload(args.mainProjectId)
-        const rebuilt = await this.registry.getOrCreate(args.mainProjectId)
-        rebuilt?.runner.run({
-          specId,
-          mode: 'skill-run',
-          prompt: `请使用 yorz-spec skill 处理 spec：${(rebuilt ?? main).specsDirRelative}/${specId}/spec.md`,
-        })
-      }
+      console.warn(
+        `[worktree] triggerConflictAgent not configured; conflict spec ${specId} created at ${specPath} but no Agent was launched`,
+      )
     }
 
     return {
@@ -324,7 +345,18 @@ function parseCommitLines(stdout: string): RelatedCommit[] {
   return out
 }
 
-function renderConflictSpec(branch: string, report: ConflictReport, now: Date): string {
+function renderConflictSpec(args: {
+  branch: string
+  report: ConflictReport
+  now: Date
+  mainProjectId: string
+  worktreeProjectId: string
+  wtPath: string
+  mainPath: string
+  defaultMergeCommitMessage: string
+  globalConfigPath: string
+}): string {
+  const { branch, report, now } = args
   const today = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
   const fileLines = report.files.length
     ? report.files.map((f) => `- \`${f}\``).join('\n')
@@ -344,28 +376,40 @@ function renderConflictSpec(branch: string, report: ConflictReport, now: Date): 
         .map((c) => `- \`${c.hash}\` ${c.date} · ${c.author} · ${c.subject}`)
         .join('\n')
     : '- （30 天内无合并 commit）'
+  const contextYaml = [
+    `mainProjectId: ${args.mainProjectId}`,
+    `worktreeProjectId: ${args.worktreeProjectId}`,
+    `branch: ${args.branch}`,
+    `wtPath: ${args.wtPath}`,
+    `mainPath: ${args.mainPath}`,
+    `defaultMergeCommitMessage: ${JSON.stringify(args.defaultMergeCommitMessage)}`,
+    `globalConfigPath: ${args.globalConfigPath}`,
+  ].join('\n')
   const body = `# Spec: 解决 ${branch} 合并冲突
 
-## 1. 背景
+## 1. 合并上下文
 
-worktree 分支 \`${branch}\` 合并回主项目时出现冲突，需要在主项目工作区内手动解决，最终保留两边的核心意图，必要时分别确认。
+> 由 service 写入，merge-worktree skill 在 finalize 阶段按此 yaml 块解析参数；勿手工编辑。
 
-### 1.1 冲突文件
+\`\`\`yaml
+${contextYaml}
+\`\`\`
+
+## 2. 背景
+
+worktree 分支 \`${branch}\` 合并回主项目时出现冲突，需要在主项目工作区内解决，最终保留两边的核心意图，必要时分别确认；冲突全部修复后由 merge-worktree skill 自动完成 \`git commit\`、移除 worktree、清理 registry 条目。
+
+### 2.1 冲突文件
 
 ${fileLines}
 
-### 1.2 近 30 天内涉及冲突文件的 commit（按文件分组）
+### 2.2 近 30 天内涉及冲突文件的 commit（按文件分组）
 
 ${commitBlocks}
 
-### 1.3 近 30 天的主项目 merge commit（参考）
+### 2.3 近 30 天的主项目 merge commit（参考）
 
 ${mergeBlock}
-
-## 2. 需求
-
-- 在主项目工作区解决以下 git merge 冲突，最终保留两边的核心意图，必要时分别确认。
-- 解决完成后由用户决定何时 \`git commit\`；Agent 不应自行 \`git merge --abort\`。
 
 ## 3. 现状分析
 
@@ -389,7 +433,7 @@ ${mergeBlock}
 
 ## 8. 执行记录
 
-- ${today} 由 worktree 合并失败触发新建本 spec；冲突文件清单与近 30 天相关 commit 已写入 1.1 / 1.2 / 1.3。
+- ${today} 由 worktree 合并失败触发新建本 spec；合并上下文与冲突清单已写入 1 / 2.1 / 2.2 / 2.3。
 `
   const head = [
     '---',

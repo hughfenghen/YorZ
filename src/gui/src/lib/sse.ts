@@ -208,3 +208,16 @@ export function subscribeSpecsList(pid: string, onChange: () => void): () => voi
     source.close()
   }
 }
+
+export function subscribeProjectsList(onChange: () => void): () => void {
+  const source = new EventSource(`/api/events/projects`)
+  const handler = () => onChange()
+  source.addEventListener('projects-changed', handler)
+  source.addEventListener('error', () => {
+    // EventSource auto-reconnects; no-op
+  })
+  return () => {
+    source.removeEventListener('projects-changed', handler)
+    source.close()
+  }
+}

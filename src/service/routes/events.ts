@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { streamSSE, type SSEStreamingApi } from 'hono/streaming'
 import type { AgentRunHandle } from '../agent.js'
 import type { ProjectInstance, ProjectRegistry } from '../project-registry.js'
+import type { RegistryEventBus } from '../registry-events.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
@@ -39,8 +40,52 @@ export function attachHeartbeat(
 export function createEventsRoutes(
   resolveProject: ResolveProject,
   _registry?: ProjectRegistry,
+  projectsBus?: RegistryEventBus,
 ): Hono {
   const app = new Hono()
+
+  // Project-list SSE: fired whenever the global registry changes (worktree
+  // merged + cleaned up, project added/removed, etc). Sits at a top-level path
+  // because it isn't scoped to any one project.
+  app.get('/events/projects', (c) => {
+    return streamSSE(c, async (stream) => {
+      await stream.writeSSE({ event: 'ready', data: '{}' })
+      const stopHeartbeat = attachHeartbeat(stream)
+
+      const queue: SseEvent[] = []
+      let resolve: (() => void) | null = null
+      let closed = false
+      const nudge = () => {
+        resolve?.()
+        resolve = null
+      }
+
+      const unsub = projectsBus
+        ? projectsBus.subscribe(() => {
+            queue.push({ event: 'projects-changed', data: '{}' })
+            nudge()
+          })
+        : () => {}
+
+      stream.onAbort(() => {
+        closed = true
+        stopHeartbeat()
+        unsub()
+        nudge()
+      })
+
+      while (!closed) {
+        if (queue.length === 0) {
+          await new Promise<void>((r) => {
+            resolve = r
+          })
+          continue
+        }
+        const payload = queue.shift()!
+        await stream.writeSSE(payload)
+      }
+    })
+  })
 
   // Use a distinct path (not /specs/events) to avoid colliding with the
   // dynamic /specs/:id/events route in Hono's router.

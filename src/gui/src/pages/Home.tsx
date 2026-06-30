@@ -5,12 +5,15 @@ import {
   createMemo,
   createResource,
   createSignal,
+  onCleanup,
+  onMount,
   type Component,
 } from 'solid-js'
 import { A, useNavigate } from '@solidjs/router'
 import { api, type SpecListItem } from '../lib/api.js'
 import type { ProjectListItem } from '../lib/project.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
+import { subscribeProjectsList } from '../lib/sse.js'
 
 export const Home: Component = () => {
   const navigate = useNavigate()
@@ -35,6 +38,22 @@ export const Home: Component = () => {
   const [mergeError, setMergeError] = createSignal<string | null>(null)
   const [toast, setToast] = createSignal<string | null>(null)
 
+  onMount(() => {
+    const unsub = subscribeProjectsList(() => {
+      void (async () => {
+        const previousMainId = current()?.worktree?.mainProjectId ?? null
+        await refetchProjects()
+        const pid = projectId()
+        if (!pid) return
+        const stillExists = (projects() ?? []).some((p) => p.id === pid)
+        if (stillExists) return
+        // Worktree we were viewing got cleaned up — fall back to its main project.
+        if (previousMainId) navigate(`/${encodeURIComponent(previousMainId)}`)
+      })()
+    })
+    onCleanup(unsub)
+  })
+
   async function onMerge() {
     const cur = current()
     if (!cur?.worktree) return
@@ -52,7 +71,7 @@ export const Home: Component = () => {
         await refetchProjects()
         navigate(`/${encodeURIComponent(result.mainProjectId)}`)
       } else {
-        setToast('合并冲突，已自动新建修复 spec…')
+        setToast('冲突 spec 已自动派给 Agent 处理，列表会在合并完成后自动刷新')
         await refetchProjects()
         navigate(
           `/${encodeURIComponent(result.mainProjectId)}/specs/${encodeURIComponent(result.conflictSpecId)}`,
