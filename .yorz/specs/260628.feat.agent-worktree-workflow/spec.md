@@ -1,6 +1,6 @@
 ---
 stage: execute
-last_action: 提交 git
+last_action: 完成第三轮 fix：升级 .worktree-toggle 选择器特异性以扳回 row 布局
 updated_at: 2026-06-29
 summary: 为 Agent 并行开发提供 git worktree 工作流：新建 spec 可勾选「新开项目并行」自动建 worktree 并注册为 YorZ 项目；worktree 项目列表页支持「合入主项目」一键提交/合并/清理；合并冲突时自动新建关联 spec 调度 Agent 解决。
 ---
@@ -87,6 +87,21 @@ summary: 为 Agent 并行开发提供 git worktree 工作流：新建 spec 可�
 - 主项目身份信息已在 `p.worktree.mainPath` 中冗余可用（4.1 章节定义），无需后端再加字段即可在侧栏拼出"主项目名 + slug"的展示名。
 - 影响面：侧栏 `.name` 文本是该问题唯一直接体验点；项目侧栏 tooltip 仍以 `p.path`（绝对路径）显示，可保留作为消歧。Home 页顶部信息条已展示主项目 basename（见 4.7），不重复。
 - `.projects-sidebar-link` 已设置 `white-space: nowrap; overflow: hidden; text-overflow: ellipsis`（`styles.css:237-247`），其 inline 子节点（如 `.name`）天然继承截断行为，因此本次仅扩文本不需要新增 CSS。
+
+### 3.8 追加任务（fix 2026-06-29 21:32）现状
+
+第三轮反馈：NewSpec 页 `.worktree-toggle` 内 checkbox / 「新开项目并行」 / 长 tip 仍然折成 3 行。第一轮（3.6 / 4.7）已经追加 `.worktree-toggle { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }`（实测见 `src/gui/src/styles.css:559-564`），但效果并未生效。
+
+定位根因：
+
+- `<label class="worktree-toggle">` 位于 `<form class="form">` 之内（`src/gui/src/pages/NewSpec.tsx:330` + `:348`）。
+- `src/gui/src/styles.css:669-674` 存在 `.form label { display: flex; flex-direction: column; gap: 0.35rem; font-weight: 500; }`。
+- 特异性比较：`.form label`（1 class + 1 element = 0,1,1 = 11）严格大于 `.worktree-toggle`（1 class = 0,1,0 = 10）；即便特异性持平，`.form label` 在文件中位于 `.worktree-toggle` 之后，document order 也会让它胜出。
+- 结果：`.worktree-toggle` 的 `display: flex` 形同虚设，被父级的 `.form label` 强制改成 `flex-direction: column`，3 个子节点垂直堆叠。
+
+第一轮 Home 页 `.worktree-bar` 没有出现同类问题，是因为 `<div class="worktree-bar">` 不是 `<label>`、也不在 `.form` 内，`.form label` 无法命中——这解释了"为什么 Home 修复有效、NewSpec 没生效"。
+
+影响面：仅 NewSpec 页该 label，不波及其它表单 label 的列布局。
 
 ## 4. 技术实现方案
 
@@ -233,6 +248,42 @@ skill 侧无需改动：skill 不感知"是否 worktree"，仅看到 `cwd` 是 w
 - 既有的 `⎇ main` badge 保持不变（已承担"这是 worktree"的语义）。
 - 视觉回归：`.projects-sidebar-link` 已具备 `white-space: nowrap; overflow: hidden; text-overflow: ellipsis`（`styles.css:237-247`），inline 子节点自然继承截断；本次无需新增 CSS。
 
+### 4.9 追加任务（fix 2026-06-29 21:32）方案
+
+最小修复半径：仅改 `src/gui/src/styles.css` 既有 `.worktree-toggle` 规则的选择器与属性，不动 NewSpec / Home / 其它 CSS。
+
+将现有：
+
+```css
+.worktree-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+```
+
+替换为更高特异性、并显式声明行方向的写法：
+
+```css
+.form label.worktree-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+```
+
+要点：
+
+- 选择器 `.form label.worktree-toggle` 特异性 0,2,1 = 21，严格高于 `.form label`（0,1,1 = 11），不再依赖文档顺序。
+- 显式 `flex-direction: row` 把父级 `column` 强制扳回，避免任何继承/级联意外。
+- 保留 `flex-wrap: wrap` 以兜底窄屏（tip 较长时整段 tip 折到第二行而不挤裂 checkbox+主标题）。
+- 不引入新选择器、不动 HTML 结构，回滚成本=单段 CSS。
+
+视觉回归：合并后跑 `npm run dev` 手动核对 NewSpec 页桌面宽度（≥1024px）三元素同行、窄屏（~600px）仅 tip 折行。
+
 ## 5. 待确认问题
 
 - 暂无
@@ -250,6 +301,7 @@ skill 侧无需改动：skill 不感知"是否 worktree"，仅看到 `cwd` 是 w
 - worktree 项目 Home 页 `worktree-bar` 仅展示「主项目：<mainBasename>」（路径末段），不再渲染 `worktree` badge 与 `wt/<branch>` 技术词汇。
 - worktree 项目侧栏展示名：`<mainBasename> · <slug>`（间隔点 + 前后空格；slug 为 branch 去掉 `wt/` 前缀；例：`YorZ · agent-agent-agent`）。
 - 「⇧ 合入主项目」按钮缩小：仅 `.worktree-bar .primary-action` 局部覆写 `min-height: 32px; padding: 4px 12px; font-size: 13px; border-radius: 6px`，保留 primary 配色。
+- `.worktree-toggle` 选择器升级为 `.form label.worktree-toggle` 并显式 `flex-direction: row`，以高于 `.form label` 的特异性扳回行布局；不依赖文档顺序、不引入额外 HTML 改动。
 
 ## 6. 任务清单
 
@@ -270,6 +322,7 @@ skill 侧无需改动：skill 不感知"是否 worktree"，仅看到 `cwd` 是 w
 - [x] 修改 `src/gui/src/pages/Home.tsx` 的 worktree-bar：删除 `<span class="badge worktree">worktree</span>` 与 `<code>{branch}</code>` 节点；将「主项目：{mainPath}」改为只展示主项目路径末段（用 `mainPath.split('/').filter(Boolean).pop()` 取 basename，兼容尾斜杠）；保留 `worktree-bar-info` 容器；验收：worktree 项目首页不再出现 `worktree` 字样与 `wt/<branch>` 分支名，且「主项目：<mainBasename>」正确显示。
 - [x] 在 `src/gui/src/styles.css` 新增局部覆写 `.worktree-bar .primary-action { min-height: 32px; padding: 4px 12px; font-size: 13px; border-radius: 6px }`，仅缩小 Home 页 worktree 项目顶部「⇧ 合入主项目」按钮，保留 primary 配色；验收：浏览器实测 worktree-bar 内按钮明显变小且不影响其它页面 `.primary-action` 基线。
 - [x] 在 `src/gui/src/components/ProjectsSidebar.tsx` 新增本地 `displayProjectName(p)`：当 `p.worktree != null` 返回 `` `${basename(p.worktree.mainPath)} · ${p.worktree.branch.replace(/^wt\//, '')}` ``（basename 用 `mainPath.split('/').filter(Boolean).pop() ?? mainPath`），否则返回 `p.name`；`<span class="name">` 渲染改读该函数，`A.title` 仍保留 `p.path`；验收：侧栏 worktree 项目展示名形如 `YorZ · agent-agent-agent`，主项目展示名不变。
+- [x] 在 `src/gui/src/styles.css` 将既有 `.worktree-toggle { ... }` 规则的选择器升级为 `.form label.worktree-toggle`，并显式追加 `flex-direction: row`，其余属性 `display: flex; align-items: center; gap: 8px; flex-wrap: wrap` 保持不变；验收：NewSpec 页 `<label class="worktree-toggle">` 内 checkbox + 「新开项目并行」 + 长 tip 在桌面宽（≥1024px）同一行渲染，窄屏（~600px）仅 tip 折到第二行，checkbox 与主标题仍同行。
 
 ## 7. 追加任务
 
@@ -282,6 +335,13 @@ skill 侧无需改动：skill 不感知"是否 worktree"，仅看到 `cwd` 是 w
   - 描述：1. 按钮尺寸太大了： <div class="worktree-bar"><div class="worktree-bar-info"><span class="muted">主项目：YorZ</span></div><button type="button" class="primary-action" title="提交 worktree 改动并合入主项目">⇧ 合入主项目</button></div>
 
 2. 左侧菜单栏，项目名称应该使用主项目名字开头，替代掉 wt：<a title="/Users/fenghen/my-space/YorZ.wt/wt__agent-agent-agent" href="/wt-agent-agent-agent-370616" class="projects-sidebar-link active" link="" aria-current="page"><span class="name">wt\_\_agent-agent-agent</span><span class="worktree-badge" title="worktree of /Users/fenghen/my-space/YorZ">⎇ main</span></a>
+
+- [fixed] [fix] 2026-06-29 21:32 | <label class="worktree-toggle"><input type="checkbox"><span>新开项目并行</span><span c
+  - 描述：<label class="worktree-toggle"><input type="checkbox"><span>新开项目并行</span><span class="muted">以 git worktree 形式开新分支并行开发，避免与主项目互相干扰；合并将通过列表页『合入主项目』按钮一键完成。</span></label>
+
+---
+
+新建spec页面，上述的3个元素分成了3行，希望并列到同1行显示
 
 ## 8. 执行记录
 
@@ -312,7 +372,6 @@ skill 侧无需改动：skill 不感知"是否 worktree"，仅看到 `cwd` 是 w
   - `src/gui/src/components/ProjectsSidebar.tsx`：新增本地工具 `displayProjectName(p)`（worktree → `${basename(mainPath)} · ${branch去掉wt/前缀}`，主项目 → `p.name`）；`<span class="name">` 渲染改读该函数，`A.title` 仍保留 `p.path` 作消歧 tooltip。
   - 追加任务 16:18 条目 `[open] → [fixed]`，原描述位置不动作历史保留。
   - 验证：`npx tsc --noEmit` 仅余 `QuestionConfirmPanel.tsx:46` 旧错误（与本 spec 改动无关）；视觉回归需手动 `npm run dev` 在常规桌面宽与窄屏复核两处 UI（待人工执行）。
-
-## 执行记录
-
-- 2026-06-29 提交 ce39cda：feat(260628.feat.agent-worktree-workflow): 为 Agent 并行开发提供 git worktree 工作流：新建 spec 可勾选「新开项目并行」自动建 worktree 并注册为 YorZ 项目；worktree 项目列表页支持「合入主项目」（4 个文件）
+- 2026-06-29 提交 ce39cda：feat(260628.feat.agent-worktree-workflow): 为 Agent 并行开发提供 git worktree 工作流：新建 spec 可勾选「新开项目并行」自动建 worktree 并注册为 YorZ 项目；worktree 项目列表页支持「合入主项目」（4 个文件）。
+- 2026-06-29 21:32 收到第三轮追加任务 `[open] [fix]`：NewSpec 页 `.worktree-toggle` 内三元素仍折成 3 行。stage 切回 `plan`：定位根因为 `.form label { flex-direction: column }`（特异性 11）覆盖了 `.worktree-toggle`（特异性 10），第一轮的 flex 规则形同虚设；补 3.8 现状 + 4.9 方案，决策为将选择器升级为 `.form label.worktree-toggle`（特异性 21）并显式 `flex-direction: row`；同时合并末尾被服务追加的重复 `## 追加任务` / `## 执行记录` 段回到 7 / 8 章节，新增 1 条任务，stage 推进至 `tasks` 准备进入 execute。
+- 2026-06-29 21:32 完成第三轮追加修复：`src/gui/src/styles.css:559` 处把规则块由 `.worktree-toggle { ... }` 改为 `.form label.worktree-toggle { display: flex; flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; }`，特异性 21 > `.form label` 11，可靠覆盖父级 `flex-direction: column`。追加任务 21:32 条目 `[open] → [fixed]`，描述原位保留。视觉回归需手动 `npm run dev` 在 ≥1024px 与 ~600px 两档复核（待人工执行）。

@@ -1,7 +1,7 @@
 ---
 stage: execute
-last_action: 完成全部 19 项任务实施——AgentLogStore/AgentRunner 接线/ProjectRegistry/HTTP 路由/GUI 独立页面/CLI gitignore；测试 191 passed、构建通过
-updated_at: 2026-06-29
+last_action: 提交 git
+updated_at: 2026-06-30
 summary: 将 Agent 任务执行日志持久化到 .yorz/tmp，按 specId 隔离，服务端定期清理 3 个月前的旧日志；spec 详情页新增 "Agent 执行日志" 独立子页面（按时间降序、卡片化、可折叠）；yorz install 在 git 仓库下把 .yorz/tmp 写入 .gitignore
 ---
 
@@ -358,3 +358,7 @@ async function ensureTmpIgnored(cwd: string): Promise<{ updated: boolean; path: 
 ## 用户批注
 
 （已全部消费，相关决策见 §5.1 已确认的决策）
+
+## 执行记录
+
+- 2026-06-30 提交 2dbeff1：feat(260629.feat.agent-run-log-persistence): 将 Agent 任务执行日志持久化到 .yorz/tmp，按 specId 隔离，服务端定期清理 3 个月前的旧日志；spec 详情页新增 "Agent 执行日志" 独立子页面（按时间降序、卡片化、可（1 个文件）

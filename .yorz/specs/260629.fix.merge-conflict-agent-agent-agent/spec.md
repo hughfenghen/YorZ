@@ -1,7 +1,7 @@
 ---
 stage: execute
-last_action: 两处冲突已解决并通过 tsc 校验，等待用户确认提交
-updated_at: 2026-06-29
+last_action: 提交 git
+updated_at: 2026-06-30
 summary: 解决 wt/agent-agent-agent 合并到主项目时产生的 2 个冲突文件
 ---
 
@@ -95,3 +95,7 @@ worktree 分支 `wt/agent-agent-agent` 合并回主项目时出现冲突，需�
   - `src/service/server.ts`：保留 `createWorktreeRoutes` 与 `createAgentLogsRoutes` 双 import；`api.route('/', ...)` 中 worktree 路由在前、agent-logs 路由在后，紧随 `createSpecDraftsRoutes`、在 `createEventsRoutes` 之前。
   - 校验：`grep '<<<<<<<\|=======\|>>>>>>>' src/gui/src/lib/api.ts src/service/server.ts` 无输出；`npx tsc --noEmit` 对这两个文件无报错（仓库中另有一处 `QuestionConfirmPanel.tsx` 的 TS2783 与本次合并冲突无关，已存在于合入侧代码）。
   - 收尾：未执行 `git add` / `git commit` / `git merge --abort`，待用户确认后自行 `git add` 并提交。
+
+## 执行记录
+
+- 2026-06-30 提交 1062da3：fix(260629.fix.merge-conflict-agent-agent-agent): 解决 wt/agent-agent-agent 合并到主项目时产生的 2 个冲突文件（1 个文件）

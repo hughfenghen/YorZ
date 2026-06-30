@@ -1,0 +1,8 @@
+{
+  "paths": [
+    ".claude/skills/yorz-spec/SKILL.md",
+    ".claude/skills/yorz-spec/merge-worktree.md",
+    ".claude/skills/yorz-spec/routing.md",
+    "src/service/server.ts"
+  ]
+}

@@ -1,7 +1,7 @@
 ---
 stage: execute
-last_action: 执行任务清单 1-10，#11 端到端手测因 headless 环境受阻
-updated_at: 2026-06-29
+last_action: 提交 git
+updated_at: 2026-06-30
 summary: 在 yorz-spec skill 内新增 merge-worktree 子流程，指导 Agent 自动解冲突、提交合并、清理 worktree，并由 service 监听 registry 变更广播 projects-changed 让 GUI 自动刷新。
 ---
 
@@ -208,3 +208,7 @@ sequenceDiagram
   - GUI：`sse.ts` 新增 `subscribeProjectsList`；`Home.tsx` 在 `onMount` 订阅项目列表变更 → 自动 `refetchProjects()`，若当前路由指向已被清理的 worktree 则回退到 `previousMainId`；`onMerge` 冲突分支文案改为"冲突 spec 已自动派给 Agent 处理，列表会在合并完成后自动刷新"。
   - 验证：`npx vitest run` 191/191 通过；`npx tsc --noEmit` 仅余一项无关本次改动的旧错（`src/gui/src/components/QuestionConfirmPanel.tsx:46`）；`npx prettier --write` 全部 unchanged。
 - 2026-06-29 任务 #11 端到端手测因当前 headless 环境无 GUI 无法自动执行，保持未勾选；建议用户在本地 dev 环境按任务描述四点验收。
+
+## 执行记录
+
+- 2026-06-30 提交 c17136e：feat(260629.feat.auto-merge-worktree-skill): 在 yorz-spec skill 内新增 merge-worktree 子流程，指导 Agent 自动解冲突、提交合并、清理 worktree，并由 service 监听 registry 变更广播（6 个文件）

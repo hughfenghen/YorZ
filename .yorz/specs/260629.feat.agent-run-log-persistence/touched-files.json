@@ -8,7 +8,6 @@
     "src/gui/src/main.tsx",
     "src/gui/src/pages/SpecAgentLogs.tsx",
     "src/gui/src/pages/SpecDetail.tsx",
-    "src/gui/src/styles.css",
     "src/service/__tests__/agent-log-store.test.ts",
     "src/service/agent-log-store.ts",
     "src/service/agent.ts",

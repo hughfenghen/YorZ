@@ -6,7 +6,6 @@
   - [ ] 方案的影响范围、变更范围
   - [ ] Skill 的可测试性、效果评估
   - [x] 待确认问题列表没有按规范格式生成，AI输出未提供方案候选项和建议方案
-  - [ ] 用户添加批注内容缺少二级标题
 - [ ] review 模式
   - [x] git 变更文件
   - [ ] 图形化差异变更表达
@@ -14,19 +13,14 @@
   - [x] spec 追加 bug
   - [ ] 小问题咨询/执行
   - [x] 内容解释
-- [ ] 快捷指令
-  - [x] 提交git
-  - [x] 内容解释
+- [ ] 临时问题咨询 Agent？
 - [ ] 图形化、可视化
   - [ ] spec 文档需要更丰富的可视化表达
   - [ ] 优先展示图形、默认折叠文字
-- [ ] 项目配置
-  - [x] agent ：opencode/claude
-  - [x] spec 目录
 - [ ] UI / 功能 优化
-  - [ ] 项目管理、Worktree 管理
-    - [ ] 添加 drafts 到 ignore
-  - [ ] 支持导入或粘贴剪贴板中的图片
+  - [ ] 按模块或文件依赖图，标记影响范围
+  - [ ] 启动项目开发服务
+    - [ ] 分享服务日志给 Agent
   - [ ] spec 列表，按天分组，降序
     - [ ] 按分类、模块过滤，名称、内容模糊匹配
     - [ ] 列表按时间降序，精确到秒
@@ -53,21 +47,26 @@
 
 - [ ] 持久化 Agent任务的执行信息，与 spec 文档关联
 - [ ] task 阶段长任务也积极执行，而不是暂停询问
-- [ ] 生成待确认问题清单的UI应该忽略已确认决策内容
+- [ ] 待确认问题 UI
+  - [ ] 生成待确认问题清单的UI应该忽略已确认决策内容
 
-```md
-5. 待确认问题
-   worktree 项目 Home 页 worktree-bar 中「主项目：<mainPath>」这条信息，去掉 worktree 技术词汇后是否继续展示？
-   完全移除，仅留「合入主项目」按钮 + 状态提示
-   改为「主项目：<mainBasename>」（只展示路径末段，保留辨识度，不暴露绝对路径） (推荐)
-   保留当前完整绝对路径
-   5.1 已确认决策快照
-   worktree 目录：<mainPath>/../<mainBasename>.wt/<branch>。
-   分支命名：wt/<spec-summary-name>，重名追加 -2/-3。
-   主项目合并方式：git merge --no-ff <branch>。
-   冲突相关 spec 定位：仅按 git log 文件历史（30 天窗口），不依赖 touched-files.json。
-   主项目自动更新：等同 merge 动作本身，不额外 git pull。
-   commit message：默认 feat(<branch>): merge from worktree，弹窗内可编辑。
-   侧栏视觉：扁平 + worktree 项目名后追加 ⎇ main badge。
-   冲突解决 spec：落在主项目 .yorz/specs/，type=fix，自动启动 Agent。
-```
+    ```md
+    5. 待确认问题
+       worktree 项目 Home 页 worktree-bar 中「主项目：<mainPath>」这条信息，去掉 worktree 技术词汇后是否继续展示？
+       完全移除，仅留「合入主项目」按钮 + 状态提示
+       改为「主项目：<mainBasename>」（只展示路径末段，保留辨识度，不暴露绝对路径） (推荐)
+       保留当前完整绝对路径
+       5.1 已确认决策快照
+       worktree 目录：<mainPath>/../<mainBasename>.wt/<branch>。
+       分支命名：wt/<spec-summary-name>，重名追加 -2/-3。
+       主项目合并方式：git merge --no-ff <branch>。
+       冲突相关 spec 定位：仅按 git log 文件历史（30 天窗口），不依赖 touched-files.json。
+       主项目自动更新：等同 merge 动作本身，不额外 git pull。
+       commit message：默认 feat(<branch>): merge from worktree，弹窗内可编辑。
+       侧栏视觉：扁平 + worktree 项目名后追加 ⎇ main badge。
+       冲突解决 spec：落在主项目 .yorz/specs/，type=fix，自动启动 Agent。
+    ```
+
+  - [ ] 待确认问题与候选方案如果存在空行，会导致无法渲染候选 radio; 修改skill或解析算法
+
+- [ ] 图形化语法错误
