@@ -556,8 +556,9 @@ body.is-resizing {
 }
 
 /* Worktree controls (NewSpec checkbox row + Home action bar) */
-.worktree-toggle {
+.form label.worktree-toggle {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
