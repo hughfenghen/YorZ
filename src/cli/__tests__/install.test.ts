@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { install, SKILL_DIR_NAME } from '../install.js'
 import { uninstall } from '../uninstall.js'
+import { INSTALL_SCOPE_DEFAULT } from '../defaults.js'
 
 let home: string
 let cwd: string
@@ -119,6 +120,12 @@ describe('install · .gitignore handling', () => {
     const res = await install({ agent: 'claude', scope: 'user', home, cwd })
     expect(res.gitignore).toBeNull()
     await expect(stat(join(cwd, '.gitignore'))).rejects.toThrow()
+  })
+})
+
+describe('CLI defaults', () => {
+  it('INSTALL_SCOPE_DEFAULT is "project"', () => {
+    expect(INSTALL_SCOPE_DEFAULT).toBe('project')
   })
 })
 

@@ -5,6 +5,7 @@ import { uninstall } from './uninstall.js'
 import { runServe } from './serve.js'
 import { runAdd } from './add.js'
 import type { AgentName, InstallScope } from './adapters/types.js'
+import { INSTALL_SCOPE_DEFAULT } from './defaults.js'
 
 interface CliOpts {
   agent: string
@@ -38,7 +39,7 @@ program
   .command('install')
   .description('Install the yorz-spec skill into the target agent(s).')
   .option('-a, --agent <agent>', 'target agent: claude | opencode | all', 'all')
-  .option('-s, --scope <scope>', 'install scope: user | project', 'user')
+  .option('-s, --scope <scope>', 'install scope: user | project', INSTALL_SCOPE_DEFAULT)
   .action(async (opts: CliOpts) => {
     const agents = parseAgents(opts.agent)
     const scope = parseScope(opts.scope)
@@ -58,7 +59,7 @@ program
   .command('uninstall')
   .description('Remove the yorz-spec skill from the target agent(s).')
   .option('-a, --agent <agent>', 'target agent: claude | opencode | all', 'all')
-  .option('-s, --scope <scope>', 'uninstall scope: user | project', 'user')
+  .option('-s, --scope <scope>', 'uninstall scope: user | project', INSTALL_SCOPE_DEFAULT)
   .action(async (opts: CliOpts) => {
     const agents = parseAgents(opts.agent)
     const scope = parseScope(opts.scope)

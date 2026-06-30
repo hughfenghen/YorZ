@@ -165,7 +165,7 @@ User 在浏览器 / 手机打开链接 → GUI 加载该 spec.md
 | 命令 | 说明 |
 |------|------|
 | `yorz init` | 在当前项目创建 `.yorz/` 目录骨架（默认 **不**写入 `.gitignore`，由用户决定是否提交） |
-| `yorz install [--agent claude\|opencode] [--scope project\|user]` | 把 YorZ 内置 skills 复制到目标 Agent 的 skills 目录；**重复执行时直接覆盖** |
+| `yorz install [--agent claude\|opencode] [--scope project\|user]`（默认 scope=project） | 把 YorZ 内置 skills 复制到目标 Agent 的 skills 目录；**重复执行时直接覆盖** |
 | `yorz serve [--port 7423] [--background] [--open]` | 启动 Service；后台模式时写入 `~/.yorz/runtime.json` 供其他进程探活 |
 | `yorz status` | 显示运行中的 Service / 端口 / 项目路径 |
 | `yorz stop` | 优雅停止 Service |
