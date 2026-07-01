@@ -17,9 +17,36 @@ const STATUS_LABEL: Record<AgentTask['status'], string> = {
 }
 
 const COLLAPSE_THRESHOLD = 3
+const COLLAPSED_KEY = 'yorz.agentDock.collapsed'
+
+let hasPersisted = false
+
+function readCollapsed(): boolean {
+  try {
+    if (typeof window === 'undefined') return false
+    const raw = window.localStorage.getItem(COLLAPSED_KEY)
+    if (raw === '1' || raw === '0') {
+      hasPersisted = true
+      return raw === '1'
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
+function writeCollapsed(value: boolean): void {
+  try {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(COLLAPSED_KEY, value ? '1' : '0')
+    }
+  } catch {
+    // ignore quota / access errors
+  }
+}
 
 export const AgentPanelDock: Component = () => {
-  const [collapsed, setCollapsed] = createSignal(false)
+  const [collapsed, setCollapsed] = createSignal(readCollapsed())
 
   const visibleTasks = createMemo<AgentTask[]>(() =>
     agentTasks.state.order
@@ -38,8 +65,13 @@ export const AgentPanelDock: Component = () => {
   const failedCount = createMemo(() => visibleTasks().filter((t) => t.status === 'failed').length)
 
   // When list grows large, auto-collapse the dock once on next mount; user can re-expand.
+  // Skip if the user has already persisted a choice — respect their intent over the heuristic.
   createMemo(() => {
-    if (visibleTasks().length > COLLAPSE_THRESHOLD && !collapsed()) setCollapsed(true)
+    if (!hasPersisted && visibleTasks().length > COLLAPSE_THRESHOLD && !collapsed()) {
+      setCollapsed(true)
+      writeCollapsed(true)
+      hasPersisted = true
+    }
   })
 
   return (
@@ -52,7 +84,12 @@ export const AgentPanelDock: Component = () => {
           <button
             type="button"
             class="agent-dock-toggle"
-            onClick={() => setCollapsed((v) => !v)}
+            onClick={() => {
+              const next = !collapsed()
+              setCollapsed(next)
+              writeCollapsed(next)
+              hasPersisted = true
+            }}
             aria-expanded={!collapsed()}
           >
             <span class="agent-dock-title">Agent 任务</span>
@@ -130,7 +167,10 @@ const AgentTaskCard: Component<{ task: AgentTask }> = (props) => {
             when={!isDraft()}
             fallback={<em class="muted">{props.task.specTitle ?? '（新建中）'}</em>}
           >
-            <A href={projectHref(`specs/${encodeURIComponent(props.task.specId)}`)} class="agent-task-link">
+            <A
+              href={projectHref(`specs/${encodeURIComponent(props.task.specId)}`)}
+              class="agent-task-link"
+            >
               {props.task.specTitle ?? props.task.specId}
             </A>
           </Show>
