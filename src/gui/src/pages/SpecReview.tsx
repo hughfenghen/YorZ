@@ -1,15 +1,41 @@
-import { Show, Suspense, createMemo, createResource, createSignal, type Component } from 'solid-js'
+import {
+  Show,
+  Suspense,
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  type Component,
+} from 'solid-js'
 import { A, useParams } from '@solidjs/router'
 import { api, type GitOpsAction } from '../lib/api.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { agentTasks } from '../lib/agent-tasks.js'
 
+type ActionKind = 'review' | GitOpsAction
+
 const ACTION_LABEL: Record<GitOpsAction, string> = {
   commit: '提交',
   discard: '丢弃',
   stash: '暂存',
 }
+
+const LOADING_LABEL: Record<ActionKind, string> = {
+  review: '刷新中…',
+  commit: '提交中…',
+  discard: '丢弃中…',
+  stash: '暂存中…',
+}
+
+const IDLE_LABEL: Record<ActionKind, string> = {
+  review: '刷新 Review',
+  commit: ACTION_LABEL.commit,
+  discard: ACTION_LABEL.discard,
+  stash: ACTION_LABEL.stash,
+}
+
+const ALL_KINDS: ActionKind[] = ['review', 'commit', 'discard', 'stash']
 
 export const SpecReview: Component = () => {
   const params = useParams<{ id: string }>()
@@ -24,12 +50,13 @@ export const SpecReview: Component = () => {
     async ([pid, id]) => api.getReview(pid, id),
   )
 
-  const [busy, setBusy] = createSignal<'review' | GitOpsAction | null>(null)
+  const [busy, setBusy] = createSignal<ActionKind | null>(null)
   const [error, setError] = createSignal<string | null>(null)
   const [lastRun, setLastRun] = createSignal<{
-    kind: 'review' | GitOpsAction
+    kind: ActionKind
     runId: string
   } | null>(null)
+  const [activeRuns, setActiveRuns] = createSignal<Partial<Record<ActionKind, string>>>({})
 
   const reviewHtml = createMemo(() => {
     const text = review()?.text ?? ''
@@ -38,7 +65,34 @@ export const SpecReview: Component = () => {
   })
   const lastReviewTime = createMemo(() => extractLastReviewTime(review()?.text ?? ''))
 
-  async function trigger(kind: 'review' | GitOpsAction): Promise<void> {
+  function isKindRunning(kind: ActionKind): boolean {
+    const runId = activeRuns()[kind]
+    if (!runId) return false
+    const t = agentTasks.state.tasks[runId]
+    if (!t) return false
+    return t.status === 'pending' || t.status === 'streaming'
+  }
+  const runningKind = createMemo<ActionKind | null>(() => {
+    for (const k of ALL_KINDS) if (isKindRunning(k)) return k
+    return null
+  })
+  const isAnyRunning = createMemo(() => busy() !== null || runningKind() !== null)
+
+  createEffect<'pending' | 'streaming' | 'done' | 'failed' | undefined>((prev) => {
+    const runId = activeRuns().review
+    if (!runId) return undefined
+    const status = agentTasks.state.tasks[runId]?.status
+    if (
+      (prev === 'pending' || prev === 'streaming') &&
+      (status === 'done' || status === 'failed')
+    ) {
+      setRefreshTick((t) => t + 1)
+    }
+    return status
+  }, undefined)
+
+  async function trigger(kind: ActionKind): Promise<void> {
+    if (isAnyRunning()) return
     setError(null)
     if (kind === 'discard') {
       const ok = window.confirm('确定要丢弃当前 spec 相关的所有未提交变更吗？此操作不可撤销。')
@@ -51,6 +105,7 @@ export const SpecReview: Component = () => {
           ? await api.triggerReview(projectId(), params.id)
           : await api.gitOp(projectId(), params.id, kind)
       setLastRun({ kind, runId: res.runId })
+      setActiveRuns((prev) => ({ ...prev, [kind]: res.runId }))
       agentTasks.start({
         runId: res.runId,
         projectId: projectId(),
@@ -59,14 +114,15 @@ export const SpecReview: Component = () => {
         specTitle: spec()?.frontmatter.summary,
         source: 'run',
       })
-      if (kind === 'review') {
-        setTimeout(() => setRefreshTick((t) => t + 1), 1500)
-      }
     } catch (err) {
       setError((err as Error).message)
     } finally {
       setBusy(null)
     }
+  }
+
+  function buttonLoading(kind: ActionKind): boolean {
+    return isKindRunning(kind) || busy() === kind
   }
 
   return (
@@ -91,34 +147,46 @@ export const SpecReview: Component = () => {
           <button
             type="button"
             class="primary-action"
-            disabled={busy() !== null}
+            disabled={isAnyRunning()}
             onClick={() => trigger('review')}
           >
-            {busy() === 'review' ? '刷新中…' : '刷新 Review'}
+            <Show when={buttonLoading('review')}>
+              <span class="review-action-spinner" aria-hidden="true" />
+            </Show>
+            {buttonLoading('review') ? LOADING_LABEL.review : IDLE_LABEL.review}
           </button>
           <button
             type="button"
             class="ghost"
-            disabled={busy() !== null}
+            disabled={isAnyRunning()}
             onClick={() => trigger('commit')}
           >
-            {busy() === 'commit' ? '提交中…' : ACTION_LABEL.commit}
+            <Show when={buttonLoading('commit')}>
+              <span class="review-action-spinner" aria-hidden="true" />
+            </Show>
+            {buttonLoading('commit') ? LOADING_LABEL.commit : IDLE_LABEL.commit}
           </button>
           <button
             type="button"
             class="ghost danger"
-            disabled={busy() !== null}
+            disabled={isAnyRunning()}
             onClick={() => trigger('discard')}
           >
-            {busy() === 'discard' ? '丢弃中…' : ACTION_LABEL.discard}
+            <Show when={buttonLoading('discard')}>
+              <span class="review-action-spinner" aria-hidden="true" />
+            </Show>
+            {buttonLoading('discard') ? LOADING_LABEL.discard : IDLE_LABEL.discard}
           </button>
           <button
             type="button"
             class="ghost"
-            disabled={busy() !== null}
+            disabled={isAnyRunning()}
             onClick={() => trigger('stash')}
           >
-            {busy() === 'stash' ? '暂存中…' : ACTION_LABEL.stash}
+            <Show when={buttonLoading('stash')}>
+              <span class="review-action-spinner" aria-hidden="true" />
+            </Show>
+            {buttonLoading('stash') ? LOADING_LABEL.stash : IDLE_LABEL.stash}
           </button>
         </section>
 

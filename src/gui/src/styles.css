@@ -1413,9 +1413,25 @@ body.is-resizing {
   margin-top: 1rem;
 }
 
+.spec-review .review-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .spec-review .review-actions .danger {
   color: #b8431f;
   border-color: #f0c4b5;
+}
+
+.review-action-spinner {
+  width: 0.85em;
+  height: 0.85em;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  display: inline-block;
+  animation: yorz-spin 0.8s linear infinite;
 }
 
 .spec-review .review-body {

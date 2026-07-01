@@ -1,8 +1,8 @@
 ---
 stage: execute
-last_action: 完成追加任务（fix）—— Review 页样式复用 spec 详情页 + review.md 按时间降序插入
-updated_at: '2026-07-01 13:38:34'
-summary: 重构 spec review 工作流：移除 touched-files 链路，新增 Agent 驱动的结构化 review + 提交/丢弃/暂存动作；追加修复 Review 页样式（复用 spec 详情页白底 + 可滚动）与 review.md 追加顺序（按时间降序，最新在顶）。
+last_action: 完成追加任务（feat）5 项子任务，pnpm build 通过
+updated_at: '2026-07-01 20:41:20'
+summary: 重构 spec review 工作流：移除 touched-files 链路，新增 Agent 驱动的结构化 review + 提交/丢弃/暂存动作；追加修复 Review 页样式 / review.md 追加顺序 / Review 操作按钮运行中 loading 与互斥 disabled。
 ---
 
 # Agent-driven Review Workflow
@@ -109,6 +109,51 @@ sequenceDiagram
   API->>TF: remove(committed paths)
   API-->>GUI: { commit }
 ```
+
+### 3.7 追加任务分析：Review 操作按钮 loading 状态与互斥 disabled
+
+来自末尾 `## 追加任务` 中新增的 `[open] [feat]` 条目（2026-07-01 20:32:09）：
+
+> review 界面的几个操作按钮，当任务运行时应该添加 loading 状态；当某个任务运行时，对应的按钮 loading，其他按钮 disable；避免误操作。
+
+**现状定位**（对照 `src/gui/src/pages/SpecReview.tsx`）：
+
+- 第 27 行 `const [busy, setBusy] = createSignal<'review' | GitOpsAction | null>(null)` —— busy 是本地"http 请求进行中"的短命状态。
+- 第 41–70 行 `trigger()` 中：`setBusy(kind)` 在 http 请求发起前；`finally { setBusy(null) }` 在 http 请求返回**后**立即清零。
+- 服务端 `POST /review` / `POST /git` 只等待 Agent 派发成功并返回 `{ runId }` 就结束响应，Agent 后续在后台异步执行（`src/service/routes/spec-review.ts` 与 `AgentRunner.run` 语义一致）。
+- 结果：`busy` 仅覆盖了几十到几百毫秒的 http 请求窗口；一旦 `{ runId }` 返回，`busy → null`，4 个按钮全部恢复可点，而 Agent 仍在后台跑 review / commit / discard / stash，用户此时能反复点击、混合派发，产生误操作与并发歧义。
+- 视觉上无 loading 反馈：按钮文案只在 `busy === kind` 期间短暂显示"刷新中… / 提交中… / 丢弃中… / 暂存中…"，其余时间即使有任务在跑也看不出。
+- disabled 语义不足：现代码用 `disabled={busy() !== null}`，因 `busy` 只在 http 请求期间为非 null，绝大多数时间下 4 个按钮都是启用的，违反用户诉求"某任务运行时其余按钮 disable"。
+
+**任务运行状态的真源**（对照 `src/gui/src/lib/agent-tasks.ts`）：
+
+- `agentTasks.state.tasks[runId].status` 由 SSE 事件驱动：`pending`（初始）→ `streaming`（收到首个 stdout）→ `done` / `failed`（`agent-exit` 或 `agent-error` 事件）。
+- 现 `trigger()` 已经在成功派发后调用 `agentTasks.start({ runId, ... })`，因此 dock 已能感知到运行/结束事件；Review 页只需要**订阅同一份 state**，就能得到"某 runId 是否仍在运行"的权威判定，无需增加新的通信通道。
+- 由 `hasRunningSkillRun(specId)` 可以看出：已存在按 mode + specId 判断"当前 spec 是否有该模式任务在跑"的先例，可作为 API 风格参照，但本页需要更细的 (mode, action) 粒度。
+
+**运行态到按钮的映射（本次改动的核心）**：
+
+- Review 页有 4 个"逻辑按钮" kind：`review` / `commit` / `discard` / `stash`。
+- 每个 kind **同一时刻至多一个"当前跟踪的 runId"**（每次成功派发覆盖上一次记录，用户此前的历史 runId 一旦超出跟踪就不再影响按钮态；仍在 dock 中可查看）。
+- kind 的"运行中"= 其跟踪 runId 存在且 `agentTasks.state.tasks[runId]?.status` ∈ `{ 'pending', 'streaming' }`。
+- 全页"是否有任何 kind 在运行"= 4 个 kind 中至少一个运行中，或 `busy() !== null`（覆盖 http 派发阶段的等待）。
+- disabled 规则：
+  - 若某 kind 自身运行中 → 显示 loading 文案 + `disabled=true`（不允许重复触发）。
+  - 若非本 kind 有运行中 → `disabled=true`（避免误操作）。
+  - 全空闲 → 全部可点。
+- 视觉 loading：按钮文案继续沿用当前"刷新中… / 提交中… / 丢弃中… / 暂存中…"文本；额外前缀一个统一的旋转 spinner（复用 styles.css:216 `@keyframes yorz-spin` 与 `src/gui/src/styles.css:207-214` 的 `.projects-sidebar-refresh-icon.spinning` 命名/动画约束，Review 页新增 `.review-action-spinner`）。
+
+**副作用清理（顺带修正的小 bug，不算需求扩张）**：
+
+- 现第 62–64 行 `if (kind === 'review') setTimeout(() => setRefreshTick((t) => t + 1), 1500)`，1.5 秒后强刷 `review.md` —— 与 Agent 实际完成时刻脱耦；若 Agent 慢于 1.5s 或写入更慢，页面会展示旧 review 文本，直到用户手动再触发。
+- 本次借按钮状态改造，把"review 任务从运行 → 结束"作为触发 `setRefreshTick` 的事件源，语义与体验都更准确；`setTimeout` 兜底删除。
+
+**不涉及的范围**（明确留白，避免范围蔓延）：
+
+- 不改 dock（AgentPanelDock）的呈现；本改动仅影响 Review 页 4 个按钮。
+- 不改 Service 侧路由 / Agent 派发协议；Agent 派发返回 `{ runId }` 的现状即已满足。
+- 不改 `agent-tasks.ts` 内部结构；只消费其现有 state。
+- 页面刷新（reload）后，浏览器端 `agentTasks` 已通过 `hydrateFromActiveRuns` 从服务端恢复活跃 runId，但本页 4 个 kind → runId 的**本地映射**会丢失；此时按钮无法自动"识别原属自己的 runId"。这是可接受的行为：刷新后进入"未知任务态"，如果 dock 中仍有活跃任务，Review 页按下述"派发前预检"仍能防止叠加派发，UI 上呈现为按钮短暂全启用，用户触发新动作时会立即补齐映射并显示 loading。若这一点被后续追加任务反馈为体验缺陷，再作独立需求处理，本轮不预先设计。
 
 ## 4. 技术实现方案
 
@@ -237,6 +282,138 @@ skill 安装路径由 `src/cli/install.ts` 拷贝（与现有 `yorz-spec` 同机
 - 明确不迁移已存在的历史 review.md：若某 spec 目录下 review.md 已有旧的升序条目，本次改动**只影响后续新增**；页面顶部展示的"最近一次 review 时间"读到的是**文件中第一个** `## YYYY-MM-DD HH:mm:ss`，历史旧文件（老升序）看到的会是最早那次时间，这属于历史遗留可接受，用户如需归档可另起追加任务清理。
 - 相应改动 `src/gui/src/pages/SpecReview.tsx:158-166` `extractLastReviewTime`：由"从后向前扫描"改为"**从前向后扫描**取第一个匹配"；命名与语义保持不变（仍代表"最近一次 review"），只是数据源改为按新规则位于文件顶部的条目。
 
+### 4.8 追加任务修复方案：Review 操作按钮 loading 与互斥 disabled
+
+**改动位置**：`src/gui/src/pages/SpecReview.tsx`（主要）、`src/gui/src/styles.css`（新增 spinner 与 loading 视觉规则）。
+
+**a. 数据结构：kind → 当前跟踪 runId 的映射**
+
+在组件内新增：
+
+```ts
+type ActionKind = 'review' | GitOpsAction
+const [activeRuns, setActiveRuns] = createSignal<Partial<Record<ActionKind, string>>>({})
+```
+
+- key 为 4 个 kind；value 为该 kind **最近一次成功派发**得到的 `runId`。
+- 每次 `trigger(kind)` 派发成功后，用 `setActiveRuns((prev) => ({ ...prev, [kind]: res.runId }))` 覆盖。
+- 组件卸载不需要清理：`agentTasks` 是全局单例，本页只做只读订阅。
+
+**b. 运行态派生（依赖 `agentTasks.state`，通过 solid 的 reactive 传播）**
+
+```ts
+function isKindRunning(kind: ActionKind): boolean {
+  const runId = activeRuns()[kind]
+  if (!runId) return false
+  const t = agentTasks.state.tasks[runId]
+  if (!t) return false
+  return t.status === 'pending' || t.status === 'streaming'
+}
+const runningKind = createMemo<ActionKind | null>(() => {
+  const kinds: ActionKind[] = ['review', 'commit', 'discard', 'stash']
+  for (const k of kinds) if (isKindRunning(k)) return k
+  return null
+})
+const isAnyRunning = createMemo(() => busy() !== null || runningKind() !== null)
+```
+
+- `busy()` 覆盖 http 派发窗口（发起请求到拿到 runId 之间），此期间尚无 runId 可查，需要以 busy 为准。
+- 一旦拿到 runId，busy 立即被 `finally` 清零，接力棒转到 `agentTasks.state.tasks[runId].status`。
+- solid 的 `createMemo` 会自动订阅 `agentTasks.state` 的细粒度变化——`state` 由 `createStore` 创建，读取 `state.tasks[runId].status` 即触发依赖登记，无需手动订阅。
+
+**c. 按钮渲染改造**
+
+按钮统一使用如下模板（示意，实际按现有 4 个按钮块分别改）：
+
+```tsx
+<button
+  type="button"
+  class="primary-action"
+  disabled={busy() !== null || (runningKind() !== null && runningKind() !== 'review')}
+  onClick={() => trigger('review')}
+>
+  <Show when={isKindRunning('review') || busy() === 'review'}>
+    <span class="review-action-spinner" aria-hidden="true" />
+  </Show>
+  {isKindRunning('review') || busy() === 'review' ? '刷新中…' : '刷新 Review'}
+</button>
+```
+
+关键点：
+
+- disabled 判定融合"当前 kind 正在运行"与"其他 kind 正在运行"两种情况（两者都需要 disable，但只有前者显示 loading）。
+- 简化写法：`disabled={runningKind() ? runningKind() !== <thisKind> || true : busy() !== null}`。为可读性拟采用直接的条件：`disabled={isAnyRunning()}`——因为当前 kind 运行中时本身也要 disable（避免重复触发），"其余按钮 disable"是同一 disabled 语义的自然推论。
+- loading 文案沿用当前"刷新中…/提交中…/丢弃中…/暂存中…"字面；新增 spinner 的 DOM 是纯装饰，通过 `aria-hidden` 隔离辅助技术。
+
+**d. 派发前互斥兜底（防止边界竞态）**
+
+`trigger()` 入口追加：
+
+```ts
+if (isAnyRunning()) return
+```
+
+- 覆盖极端情况：用户在浏览器 devtools 中强制启用按钮、或键盘 Enter 事件绕过 disabled 状态时，仍能兜底阻止叠加派发。
+- 该早退不 setError，避免"我明明什么都没干却弹错"的困惑。
+
+**e. review 完成后自动刷新 review.md（顺带修复现有 setTimeout 兜底）**
+
+用 `createEffect` 订阅 `activeRuns().review` 对应 task 的 status 变化：
+
+```ts
+createEffect((prev) => {
+  const runId = activeRuns().review
+  if (!runId) return undefined
+  const status = agentTasks.state.tasks[runId]?.status
+  if ((prev === 'pending' || prev === 'streaming') && (status === 'done' || status === 'failed')) {
+    setRefreshTick((t) => t + 1)
+  }
+  return status
+}, undefined)
+```
+
+- 上一次状态属于运行中 + 本次状态属于结束，判定为"该 review 任务刚完成" → 触发 `review.md` 重新拉取。
+- 同步删除 `trigger()` 中"1.5 秒后强刷"的 `setTimeout` 兜底。
+- 失败也刷新一次：即便 review 生成中途挂掉，`review.md` 可能已被部分写入，刷新能让用户看到落地内容（若无落地则维持之前渲染）。
+
+**f. 样式**（追加到 `src/gui/src/styles.css`）
+
+新增：
+
+```css
+.spec-review .review-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.review-action-spinner {
+  width: 0.85em;
+  height: 0.85em;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  display: inline-block;
+  animation: yorz-spin 0.8s linear infinite;
+}
+```
+
+- 复用 styles.css:216 已存在的 `@keyframes yorz-spin`，不重复定义。
+- 采用 `currentColor` 让 spinner 颜色跟随按钮字色（primary-action 白字、ghost 深色、ghost danger 橙红）。
+- 未新增 `.button--loading` 之类的按钮级 loading class，因语义由 spinner + 文案已充分表达；不引入冗余 class。
+- 现有 `button:disabled`（styles.css:75）已定义 opacity 与 cursor，无需重复。
+
+**g. 影响面与回归**
+
+- 影响文件：`src/gui/src/pages/SpecReview.tsx` + `src/gui/src/styles.css`；不涉及 Service / API / Skill / 测试文件。
+- 现有单测（`src/service/__tests__/*.test.ts`）不覆盖该 GUI 交互，无需新增/调整测试。
+- 手动验收：`pnpm dev` 启动后打开 Review 页，依次点击 4 个按钮，观察：
+  1. 被点按钮进入 loading（spinner + 文案改变）；
+  2. 其余按钮 disable；
+  3. Agent 完成后，按钮同时解锁；
+  4. review 完成后 `review.md` 主体区自动刷新（无 1.5s 视觉抖动）。
+- 回归检查：`pnpm build` 通过；`tsc --noEmit` 无新增报错。
+
 ## 5. 待确认问题
 
 - 暂无
@@ -258,11 +435,18 @@ skill 安装路径由 `src/cli/install.ts` 拷贝（与现有 `yorz-spec` 同机
 - [x] 修改 `src/gui/src/pages/SpecReview.tsx:146` article 的 class：`markdown-body` → `markdown review-md`；同时改 `extractLastReviewTime`（当前 158-166 行）由"从后向前扫描"改为"从前向后扫描取第一个 `## YYYY-MM-DD HH:mm:ss` 匹配"；函数名与调用点保持不变。验收：`pnpm build` 通过；tsc 无新增报错。
 - [x] 修改 `src/gui/src/styles.css` 中 `.spec-review .review-body`（约 1419 行）：改造为 flex 容器 `display: flex; flex: 1 1 auto; min-height: 0; margin-top: 1.2rem;`；新增规则 `.spec-review .review-md { flex: 1 1 auto; min-width: 0; overflow: auto; }`，使 markdown 主体独立滚动、按钮区不被推离视口。验收：`.markdown` 复用带来白色背景 / 边框 / 圆角 / padding；页面高度受限时 review 主体出现内部滚动条。
 - [x] 运行 `pnpm test` 与 `pnpm build` 回归；若无失败即视为通过。验收：全部原有用例仍通过（实际 27 文件 / 212 用例通过），构建无新报错。
+- [x] 在 `src/gui/src/pages/SpecReview.tsx` 引入 `activeRuns` signal（key = `'review' | GitOpsAction`，value = 最近一次成功派发的 runId），并在 `trigger()` 成功派发后调用 `setActiveRuns((prev) => ({ ...prev, [kind]: res.runId }))` 覆盖；`trigger()` 入口追加 `if (isAnyRunning()) return` 兜底早退（不 setError）。验收：本地手工点 4 个按钮，`activeRuns()` map 中对应 kind 的 runId 与派发结果一致；页面 devtools 强启按钮点第二次时不再重复派发。
+- [x] 在 `src/gui/src/pages/SpecReview.tsx` 增加 `isKindRunning(kind)` 函数 + `runningKind()` / `isAnyRunning()` `createMemo`，运行态源为 `agentTasks.state.tasks[runId].status ∈ {pending, streaming}`，并将 http 派发窗口的 `busy()` 一并纳入 `isAnyRunning()`；把 4 个按钮的 `disabled` 统一改为 `disabled={isAnyRunning()}`，loading 判定改为 `isKindRunning(kind) || busy() === kind` 并渲染 `<span class="review-action-spinner" aria-hidden="true" />` + 现有中文文案。验收：Agent 后台运行期间对应按钮持续保持 loading + 其余 3 按钮 disable；完成后 4 按钮同时解锁。
+- [x] 在 `src/gui/src/pages/SpecReview.tsx` 用 `createEffect` 订阅 `activeRuns().review` 对应 task 的 status 变化，检测到"上一次运行中 → 本次结束（done/failed）"时触发 `setRefreshTick`；同步删除 `trigger()` 内 `if (kind === 'review') setTimeout(..., 1500)` 兜底。验收：review Agent 完成后 review.md 主体区自动刷新，不再出现 1.5s 视觉抖动；失败也刷新一次。
+- [x] 在 `src/gui/src/styles.css` 新增 `.spec-review .review-actions button { display: inline-flex; align-items: center; gap: 0.4rem; }` 与 `.review-action-spinner { width: 0.85em; height: 0.85em; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; display: inline-block; animation: yorz-spin 0.8s linear infinite; }`；复用已存在的 `@keyframes yorz-spin`，不重复定义。验收：spinner 颜色跟随按钮字色（primary/ghost/danger 各自协调），旋转流畅；`pnpm build` 通过。
+- [x] 运行 `pnpm build` 回归，若无新增 tsc 报错即视为通过（本改动不涉及 service 侧测试，无需跑 `pnpm test`）。验收：构建通过；`pnpm exec tsc --noEmit` 无新增报错（原有 `QuestionConfirmPanel.tsx` 中 `note` 重复键告警可忽略，与本次无关）。
 
 ## 7. 追加任务
 
 - [fixed] [fix] 2026-07-01 13:32:51 | 1. review 界面 md 文档的渲染样式应该参考 spec 详情页，白色背景、文档区允许滚动；
   - 描述：1. review 界面 md 文档的渲染样式应该参考 spec 详情页，白色背景、文档区允许滚动；2. Agent 允许向 review.md 多次写入记录，应该按时间降序
+- [fixed] [feat] 2026-07-01 20:32:09 | review 界面的几个操作按钮，当任务运行时应该添加 loading 状态；
+  - 描述：review 界面的几个操作按钮，当任务运行时应该添加 loading 状态；当某个任务运行时，对应的按钮 loading，其他按钮 disable；避免误操作。
 
 ## 8. 执行记录
 
@@ -271,3 +455,5 @@ skill 安装路径由 `src/cli/install.ts` 拷贝（与现有 `yorz-spec` 同机
 - 2026-06-30 22:05：完成全部 11 项任务的执行：服务端 `AgentMode` 扩展 + 删除 touched 链路 + 删除 `/changes` `/commit` 路由；新增 `src/service/routes/spec-review.ts` 三接口；新增 `src/skill/yorz-spec/review.md` 并登记 index.json；GUI 重写 `SpecReview.tsx` + 改造 `api.ts` + 扩展 `SpecAgentLogs.tsx` 标签 + 补 styles.css；新增 `src/service/__tests__/spec-review.test.ts` 覆盖 9 个场景。验证：`pnpm test` 通过（26 文件 / 203 用例），`pnpm build` 通过；`tsc --noEmit` 仅剩 1 个预先存在、与本次改动无关的告警（`QuestionConfirmPanel.tsx` 中 `note` 重复键）。
 - 2026-07-01 13:34:43：变更重开流程（追加任务：fix）。补充 3.5 追加任务分析、4.7 追加任务修复方案；合并末尾裸露的 `## 追加任务` 到第 7 节；`## 待确认问题` 保持"暂无"（两项改动均明确无需再确认）。
 - 2026-07-01 13:38:34：完成追加任务 4 项子任务的执行：`src/skill/yorz-spec/review.md` 将追加规则改为按时间降序插入到一级标题之后；`src/gui/src/pages/SpecReview.tsx` article 类名由 `markdown-body` 改为 `markdown review-md`，`extractLastReviewTime` 由从后向前扫描改为从前向后取第一个匹配；`src/gui/src/styles.css` 的 `.spec-review .review-body` 改造为 flex 容器 + 新增 `.spec-review .review-md` 独立滚动规则，复用 `.markdown` 白色背景。回归：`pnpm test` 通过（27 文件 / 212 用例），`pnpm build` 通过。追加任务条目由 `[open]` 更新为 `[fixed]`。
+- 2026-07-01 20:33:35：变更重开流程（追加任务：feat）。合并末尾裸 `## 追加任务` 到第 7 节；补充 3.7 现状分析（定位 `SpecReview.tsx` 中 busy 只覆盖 http 派发窗口、任务运行态未反馈的问题，明确以 `agentTasks.state.tasks[runId].status` 作为运行态真源）与 4.8 技术方案（引入 kind→runId 映射 + `runningKind()` / `isAnyRunning()` 派生 + 全按钮统一 `disabled={isAnyRunning()}` + 复用 `@keyframes yorz-spin` 的 `.review-action-spinner`；顺带以 `createEffect` 监听 review 任务完成事件，替代 1.5s `setTimeout` 兜底刷新）；`## 待确认问题` 保持"暂无"（用户诉求已明确，无候选决策）。
+- 2026-07-01 20:41:20：完成追加任务（feat）5 项子任务的执行：`src/gui/src/pages/SpecReview.tsx` 重构 —— 引入 `activeRuns` signal（kind→runId 映射）+ `isKindRunning` / `runningKind` / `isAnyRunning` 派生 memo（运行态源自 `agentTasks.state.tasks[runId].status ∈ {pending, streaming}`，融合 `busy()` 覆盖 http 派发窗口）；4 个按钮的 `disabled` 统一改为 `isAnyRunning()`，loading 判定使用 `buttonLoading(kind)` 并渲染 `.review-action-spinner`；`trigger()` 入口追加 `if (isAnyRunning()) return` 兜底早退；用 `createEffect` 订阅 review kind 的 task status 变化以在 done/failed 时触发 `setRefreshTick`，删除原 `setTimeout(..., 1500)` 兜底。`src/gui/src/styles.css` 追加 `.spec-review .review-actions button { display: inline-flex; align-items: center; gap: 0.4rem; }` 与 `.review-action-spinner { … animation: yorz-spin 0.8s linear infinite; }`，复用已存在的 `@keyframes yorz-spin`。回归：`pnpm build` 通过（4.39s，无新增 tsc 报错）；本改动仅涉及 GUI，不新增/调整 service 测试。追加任务条目由 `[open]` 更新为 `[fixed]`。
