@@ -1,5 +1,7 @@
 # 阶段三：execute
 
+> 每次写回 spec.md / review.md 后运行 `yorz lint <path> --format json`；有 `severity: error` 按 ruleId 修复直到通过（细节见 [SKILL.md · 写回后的 lint 硬约束](./SKILL.md#写回后的-lint-硬约束)）。
+
 理解文档内容，然后执行文档中的任务，每完成一个任务后勾选文档中的任务状态。
 
 > 在 `## 执行记录` 中可按需输出 mermaid 图表描述变更影响与数据流变化——参见 [mermaid 图表输出指南](./mermaid.md)。

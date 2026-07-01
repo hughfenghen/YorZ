@@ -5,6 +5,7 @@ import { uninstall } from './uninstall.js'
 import { runServe } from './serve.js'
 import { runAdd } from './add.js'
 import { runInit, InitAbortedError } from './init.js'
+import { runLint } from './lint.js'
 import type { AgentName, InstallScope } from './adapters/types.js'
 import { INSTALL_SCOPE_DEFAULT, installScopeTip } from './defaults.js'
 
@@ -129,6 +130,25 @@ program
     const { entry, created } = await runAdd({ path: input })
     if (created) console.log(`added project ${entry.id}: ${entry.path}`)
     else console.log(`project already registered: ${entry.id} -> ${entry.path}`)
+  })
+
+program
+  .command('lint [paths...]')
+  .description('Lint spec.md / review.md files for structural rules.')
+  .option('--format <format>', 'output format: text | json', 'text')
+  .option('--all', 'lint every spec.md / review.md under the project specsDir', false)
+  .option('--cwd <path>', 'working directory (default: process.cwd())')
+  .option('--skip-mermaid-parse', 'skip mermaid deep-parse rule (fence rule still runs)', false)
+  .action(async (paths: string[], opts: { format?: string; all?: boolean; cwd?: string; skipMermaidParse?: boolean }) => {
+    const format = opts.format === 'json' ? 'json' : 'text'
+    const result = await runLint({
+      paths: paths ?? [],
+      format,
+      all: opts.all === true,
+      cwd: opts.cwd ?? process.cwd(),
+      skipMermaidParse: opts.skipMermaidParse === true,
+    })
+    if (result.exitCode !== 0) process.exit(result.exitCode)
   })
 
 program

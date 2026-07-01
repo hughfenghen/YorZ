@@ -27,6 +27,10 @@ export default defineConfig({
         '@hono/node-server',
         'chokidar',
         'gray-matter',
+        'markdown-it',
+        /^markdown-it\//,
+        'mermaid',
+        'jsdom',
       ],
       output: {
         banner: SHEBANG,
