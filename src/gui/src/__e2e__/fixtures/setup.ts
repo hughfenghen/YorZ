@@ -8,6 +8,7 @@ const REPO_ROOT = resolve(__dirname, '..', '..', '..', '..', '..')
 export const E2E_CWD = join(REPO_ROOT, '.tmp-e2e')
 export const SPEC_ID = '260616.feat.e2e-seed'
 export const QUESTIONS_SPEC_ID = '260618.feat.e2e-questions'
+export const TASK_LIST_SPEC_ID = '260701.feat.e2e-task-list'
 
 const SEED_SPEC = `---
 stage: plan
@@ -50,6 +51,35 @@ summary: Playwright e2e 用于验证待确认问题确认面板
 3. 自定义 YAML 块
 `
 
+const TASK_LIST_SPEC = `---
+stage: tasks
+last_action: e2e 种子 spec
+updated_at: '2026-07-01 12:00:00'
+summary: Playwright e2e 用于验证 GFM 任务列表 checkbox 渲染
+---
+
+# E2E 任务列表 checkbox
+
+## 1. 背景
+
+用于验证 markdown-it-task-lists 插件接入后的渲染。
+
+## 2. 任务清单
+
+- [ ] 未完成的任务 A
+- [x] 已完成的任务 B
+- [X] 已完成的任务 C（大写 X）
+- 普通列表项，不应变成 checkbox
+`
+
+const TASK_LIST_REVIEW = `# Review 报告
+
+## 1. 覆盖项
+
+- [ ] review 待办 1
+- [x] review 已办 2
+`
+
 function seed(): void {
   rmSync(E2E_CWD, { recursive: true, force: true })
   const baseDir = join(E2E_CWD, '.yorz', 'specs', SPEC_ID)
@@ -59,6 +89,11 @@ function seed(): void {
   const qDir = join(E2E_CWD, '.yorz', 'specs', QUESTIONS_SPEC_ID)
   mkdirSync(qDir, { recursive: true })
   writeFileSync(join(qDir, 'spec.md'), QUESTIONS_SPEC, 'utf8')
+
+  const tlDir = join(E2E_CWD, '.yorz', 'specs', TASK_LIST_SPEC_ID)
+  mkdirSync(tlDir, { recursive: true })
+  writeFileSync(join(tlDir, 'spec.md'), TASK_LIST_SPEC, 'utf8')
+  writeFileSync(join(tlDir, 'review.md'), TASK_LIST_REVIEW, 'utf8')
 }
 
 export default async function globalSetup(): Promise<void> {

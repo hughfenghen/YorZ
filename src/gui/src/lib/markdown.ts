@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it'
+import taskLists from 'markdown-it-task-lists'
 
 const md = new MarkdownIt({
   html: false,
@@ -109,6 +110,8 @@ md.renderer.rules.fence = function (tokens, idx, options, env, self) {
   }
   return defaultFenceRender(tokens, idx, options, env, self)
 }
+
+md.use(taskLists, { enabled: false, label: false })
 
 export function renderMarkdown(source: string, opts: RenderOptions = {}): string {
   if (!opts.specId) return md.render(source, {})

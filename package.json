@@ -33,10 +33,11 @@
   "devDependencies": {
     "@playwright/test": "^1.61.0",
     "@solidjs/router": "^0.16.1",
-    "concurrently": "^9.1.0",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.10.0",
+    "concurrently": "^9.1.0",
     "markdown-it": "^14.2.0",
+    "markdown-it-task-lists": "^2.1.1",
     "mermaid": "^11.0.0",
     "prettier": "^3.4.0",
     "solid-js": "^1.9.13",

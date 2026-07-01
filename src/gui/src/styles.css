@@ -794,6 +794,19 @@ body.is-resizing {
   text-align: left;
 }
 
+.markdown .task-list-item {
+  list-style: none;
+}
+
+.markdown .task-list-item-checkbox {
+  margin-right: 0.4em;
+  vertical-align: middle;
+}
+
+.markdown ul:has(> .task-list-item) {
+  padding-left: 0.2em;
+}
+
 /* Note form */
 .note-form {
   background: var(--surface);

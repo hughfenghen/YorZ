@@ -55,3 +55,39 @@ describe('renderMarkdown attachment rewrite', () => {
     expect(html).toContain('src="/api/projects/proj%2Fid/specs/spec.id/attachments/a%2520b.png"')
   })
 })
+
+describe('renderMarkdown GFM task lists', () => {
+  it('renders "- [ ]" as an unchecked, disabled checkbox with task-list-item class', () => {
+    const html = renderMarkdown('- [ ] pending item')
+    expect(html).toContain('class="task-list-item"')
+    expect(html).toMatch(/<input[^>]*class="task-list-item-checkbox"[^>]*type="checkbox"/)
+    expect(html).toContain('disabled=""')
+    expect(html).not.toMatch(/<input[^>]*\schecked/)
+    expect(html).toContain('pending item')
+  })
+
+  it('renders "- [x]" as a checked, disabled checkbox', () => {
+    const html = renderMarkdown('- [x] done item')
+    expect(html).toMatch(/<input[^>]*checked=""[^>]*type="checkbox"|<input[^>]*type="checkbox"[^>]*checked=""/)
+    expect(html).toContain('disabled=""')
+    expect(html).toContain('done item')
+  })
+
+  it('accepts uppercase "- [X]" as checked', () => {
+    const html = renderMarkdown('- [X] done')
+    expect(html).toMatch(/<input[^>]*checked=""[^>]*type="checkbox"|<input[^>]*type="checkbox"[^>]*checked=""/)
+  })
+
+  it('leaves non-task list items untouched inside a mixed list', () => {
+    const html = renderMarkdown('- [ ] a\n- plain item\n- [x] b')
+    const inputCount = (html.match(/<input[^>]*task-list-item-checkbox/g) ?? []).length
+    expect(inputCount).toBe(2)
+    expect(html).toContain('<li>plain item</li>')
+  })
+
+  it('does not turn "[ ]" inside a fenced code block into a checkbox', () => {
+    const html = renderMarkdown('```\n- [ ] not a task\n```')
+    expect(html).not.toContain('task-list-item-checkbox')
+    expect(html).toContain('- [ ] not a task')
+  })
+})
