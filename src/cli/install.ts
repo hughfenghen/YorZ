@@ -2,6 +2,7 @@ import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { getAdapter } from './adapters/index.js'
 import type { AgentName, InstallScope } from './adapters/types.js'
+import { isGitRepo } from './git.js'
 
 export const SKILL_DIR_NAME = 'yorz-spec'
 
@@ -88,16 +89,6 @@ async function dirExists(path: string): Promise<boolean> {
   try {
     const s = await stat(path)
     return s.isDirectory()
-  } catch {
-    return false
-  }
-}
-
-async function isGitRepo(cwd: string): Promise<boolean> {
-  try {
-    // `.git` may be a directory (normal repo) or a file (worktree pointer).
-    await stat(join(cwd, '.git'))
-    return true
   } catch {
     return false
   }

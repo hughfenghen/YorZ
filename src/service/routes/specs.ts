@@ -222,7 +222,7 @@ export function buildDraftPrompt(type: SpecType, requirement: string, draftId?: 
   if (draftId) {
     lines.push(
       '',
-      `附件迁移：本次新建 spec 关联了草稿附件目录 \`.yorz/drafts/${draftId}/attachments/\`。`,
+      `附件迁移：本次新建 spec 关联了草稿附件目录 \`.yorz/tmp/drafts/${draftId}/attachments/\`。`,
       '- 在创建 `.yorz/specs/<id>/` 目录并写入 `spec.md` 骨架**之后**，立即把该 draft 目录下的所有文件迁移到 `.yorz/specs/<id>/attachments/`，文件名保持不变。',
       '- 迁移完成后，在 `## 背景` 章节末尾追加一段附件列表，每个附件占一行（按文件扩展名判定 `kind`）：',
       '  - 图片（`.png` / `.jpg` / `.jpeg` / `.gif` / `.webp` / `.bmp` / `.svg` / `.avif` / `.heic`）：使用 `![<文件名>](attachments/<文件名>)`',

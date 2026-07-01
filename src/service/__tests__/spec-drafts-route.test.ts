@@ -61,7 +61,7 @@ describe('POST /api/spec-drafts/:draftId/attachments', () => {
     expect(meta.size).toBe(4)
 
     const onDisk = await readFile(
-      join(cwd, '.yorz', 'drafts', draftId, 'attachments', meta.storedName),
+      join(cwd, '.yorz', 'tmp', 'drafts', draftId, 'attachments', meta.storedName),
     )
     expect(Array.from(onDisk)).toEqual([0x89, 0x50, 0x4e, 0x47])
   })

@@ -1,11 +1,12 @@
 import { homedir } from 'node:os'
-import { Command } from 'commander'
+import { Command, Option } from 'commander'
 import { install } from './install.js'
 import { uninstall } from './uninstall.js'
 import { runServe } from './serve.js'
 import { runAdd } from './add.js'
+import { runInit, InitAbortedError } from './init.js'
 import type { AgentName, InstallScope } from './adapters/types.js'
-import { INSTALL_SCOPE_DEFAULT } from './defaults.js'
+import { INSTALL_SCOPE_DEFAULT, installScopeTip } from './defaults.js'
 
 interface CliOpts {
   agent: string
@@ -17,6 +18,11 @@ interface ServeOpts {
   open?: boolean
   cwd?: string
   noRegisterCwd?: boolean
+}
+
+interface InitOpts {
+  yes?: boolean
+  cwd?: string
 }
 
 const ALL_AGENTS: AgentName[] = ['claude', 'opencode']
@@ -36,11 +42,50 @@ const program = new Command()
 program.name('yorz').description('YorZ CLI — manage the yorz-spec skill.').version('0.0.1')
 
 program
+  .command('init')
+  .description('Initialize a YorZ project (create .yorz/, ensure .gitignore, guide git init).')
+  .option('-y, --yes', 'skip the git-init confirmation prompt', false)
+  .option('--cwd <path>', 'target directory (default: process.cwd())')
+  .action(async (opts: InitOpts) => {
+    try {
+      const result = await runInit({ cwd: opts.cwd, yes: opts.yes })
+      if (result.gitInitialized) {
+        console.log(`[git] initialized ${result.cwd}`)
+      }
+      console.log(`[yorz] ensured ${result.cwd}/.yorz`)
+      if (result.gitignore?.updated) {
+        console.log(`[gitignore] appended .yorz/tmp to ${result.gitignore.path}`)
+      } else if (result.gitignore && !result.gitignore.updated) {
+        console.log(`[gitignore] already ignored .yorz/tmp`)
+      }
+    } catch (err) {
+      if (err instanceof InitAbortedError) {
+        console.error(`error: ${err.message}`)
+        process.exit(1)
+      }
+      throw err
+    }
+  })
+
+const installCmd = program
   .command('install')
+  .description('Install YorZ artifacts (skills, ...).')
+installCmd.action(() => {
+  installCmd.help()
+})
+
+installCmd
+  .command('skills')
   .description('Install the yorz-spec skill into the target agent(s).')
   .option('-a, --agent <agent>', 'target agent: claude | opencode | all', 'all')
-  .option('-s, --scope <scope>', 'install scope: user | project', INSTALL_SCOPE_DEFAULT)
-  .action(async (opts: CliOpts) => {
+  .addOption(
+    new Option('-s, --scope <scope>', 'install scope: user | project').default(
+      INSTALL_SCOPE_DEFAULT,
+    ),
+  )
+  .action(async function (this: Command, opts: CliOpts) {
+    const tip = installScopeTip(this.getOptionValueSource('scope'))
+    if (tip) console.log(tip)
     const agents = parseAgents(opts.agent)
     const scope = parseScope(opts.scope)
     for (const agent of agents) {
@@ -55,8 +100,15 @@ program
     }
   })
 
-program
+const uninstallCmd = program
   .command('uninstall')
+  .description('Remove YorZ artifacts (skills, ...).')
+uninstallCmd.action(() => {
+  uninstallCmd.help()
+})
+
+uninstallCmd
+  .command('skills')
   .description('Remove the yorz-spec skill from the target agent(s).')
   .option('-a, --agent <agent>', 'target agent: claude | opencode | all', 'all')
   .option('-s, --scope <scope>', 'uninstall scope: user | project', INSTALL_SCOPE_DEFAULT)

@@ -95,7 +95,7 @@ export class AttachmentStore {
   private readonly now: () => number
 
   constructor(opts: AttachmentStoreOptions) {
-    this.root = join(opts.cwd, '.yorz', 'drafts')
+    this.root = join(opts.cwd, '.yorz', 'tmp', 'drafts')
     this.maxFileSize = opts.maxFileSize ?? DEFAULT_MAX_FILE_SIZE
     this.maxCount = opts.maxCount ?? DEFAULT_MAX_COUNT
     this.ttlMs = opts.ttlMs ?? DEFAULT_TTL_MS

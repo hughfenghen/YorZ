@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { install, SKILL_DIR_NAME } from '../install.js'
 import { uninstall } from '../uninstall.js'
-import { INSTALL_SCOPE_DEFAULT } from '../defaults.js'
+import { INSTALL_SCOPE_DEFAULT, installScopeTip } from '../defaults.js'
 
 let home: string
 let cwd: string
@@ -124,8 +124,30 @@ describe('install · .gitignore handling', () => {
 })
 
 describe('CLI defaults', () => {
-  it('INSTALL_SCOPE_DEFAULT is "project"', () => {
-    expect(INSTALL_SCOPE_DEFAULT).toBe('project')
+  it('INSTALL_SCOPE_DEFAULT is "user"', () => {
+    expect(INSTALL_SCOPE_DEFAULT).toBe('user')
+  })
+})
+
+describe('installScopeTip', () => {
+  it('returns a tip when scope came from the default (user did not pass -s)', () => {
+    const tip = installScopeTip('default')
+    expect(tip).not.toBeNull()
+    expect(tip).toContain('--scope user')
+    expect(tip).toContain('pass -s project')
+  })
+
+  it('also returns a tip when the option source is undefined', () => {
+    expect(installScopeTip(undefined)).not.toBeNull()
+  })
+
+  it('returns null when the user explicitly passed -s (CLI source)', () => {
+    expect(installScopeTip('cli')).toBeNull()
+  })
+
+  it('returns null when the option was set from env or config', () => {
+    expect(installScopeTip('env')).toBeNull()
+    expect(installScopeTip('config')).toBeNull()
   })
 })
 
