@@ -8,7 +8,6 @@ const REQUIRED_ORDER = [
   '技术实现方案',
   '待确认问题',
   '任务清单',
-  '追加任务',
   '执行记录',
 ]
 
@@ -23,7 +22,7 @@ const CORE_ORDER = [
 
 export const sectionsRequired: LintRule = {
   id: 'sections/required',
-  description: '八大章节齐全（背景 / 需求 / 现状分析 / 技术实现方案 / 待确认问题 / 任务清单 / 追加任务 / 执行记录），且核心六章按指定顺序。',
+  description: '七大必备章节齐全（背景 / 需求 / 现状分析 / 技术实现方案 / 待确认问题 / 任务清单 / 执行记录），核心章节按指定顺序；追加任务由用户额外操作产生，属可选章节，若存在须落在任务清单与执行记录之间。',
   kinds: ['spec'],
   check(ctx: LintContext): LintFinding[] {
     const findings: LintFinding[] = []
@@ -53,7 +52,7 @@ export const sectionsRequired: LintRule = {
         findings.push({
           ruleId: this.id,
           severity: 'error',
-          message: `章节 "${found.name}" 位置不符：核心六章应按 ${CORE_ORDER.join(' → ')} 顺序。`,
+          message: `章节 "${found.name}" 位置不符：核心章节应按 ${CORE_ORDER.join(' → ')} 顺序。`,
           line: found.line,
         })
       } else {

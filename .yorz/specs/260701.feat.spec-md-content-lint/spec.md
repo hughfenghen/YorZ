@@ -1,7 +1,7 @@
 ---
 stage: execute
-last_action: 完成 lint 骨架、CLI、单测、skill 文档同步与全量回归
-updated_at: '2026-07-01 20:40:30'
+last_action: 完成"追加任务改为可选章节"追加需求
+updated_at: '2026-07-01 21:35:00'
 summary: 为 spec.md / review.md 引入内容格式 lint 机制，覆盖 skill 中的 MD 规则并接入 Agent 写回后的自检回路
 ---
 
@@ -89,6 +89,22 @@ flowchart LR
 ### 3.6 skill 精简边界
 
 `plan.md` 现有的「产出前自检 checklist」「反例 ❌ 1~7」等段落约占 90 行，主要是把待确认问题结构规则用中文重复讲了 3 次。若 lint 能可靠捕获同类问题，可以把这几段收敛为一句「产出前请调用 `yorz lint <spec_path>`；细则以 lint 规则为准」。但过度删减会让"不跑 lint 时"的 Agent 失去指引。精简程度作为待确认问题 [5.4](#54-skill-文档精简程度)。
+
+### 3.7 追加任务：非必备章节的重定位
+
+在执行本 spec 的过程中观察到：`## 追加任务` 仅在用户通过 GUI/CLI 主动追加时才有实际内容，绝大多数 spec 长期只有一条 `- 暂无` 占位。因此把它列为"必备章节"既与其"由用户额外操作产生"的语义不符，又会污染新建骨架、令 lint `sections/required` 报出无意义 error（例如 [`260701.fix.body-scrollbar-overflow/spec.md`](../260701.fix.body-scrollbar-overflow/spec.md) 就因缺 `## 追加任务` 命中过 `sections/required`）。
+
+当前把 `追加任务` 视为必备的落点：
+
+| 位置                                       | 影响                                                                 |
+| ------------------------------------------ | -------------------------------------------------------------------- |
+| `src/lint/rules/sections.ts::REQUIRED_ORDER` | `sections/required` 强制要求存在。                                 |
+| `src/lint/rules/headings.ts::REQUIRED_SECTIONS` | `heading/section-level` 把 `# 追加任务` 视作误写误报。         |
+| `src/service/spec-store.ts::SECTIONS`       | `renderInitialSpec` 在初始化时写入空的 `## 追加任务`。              |
+| `src/service/worktree-manager.ts`           | worktree 合并冲突 spec 模板固定包含 `## 7. 追加任务` + `- 暂无`。   |
+| `src/skill/yorz-spec/*.md` / `index.json`   | 「六大必备章节」表述、new-spec 骨架列表均含 `追加任务`。            |
+
+保留"若存在则位置固定在 `## 任务清单` 与 `## 执行记录` 之间"的约束仍然合理：位置一旦漂移会破坏 `mergeAppendTasksEntry` 的懒插入逻辑。
 
 ## 4. 技术实现方案
 
@@ -233,6 +249,19 @@ MVP 落地范围（含深校验、含 skill 深度精简）：
 - pre-commit / GitHub Actions 集成。
 - 「任务项包含动作+对象+验收点」等语义类规则。
 
+### 4.9 追加任务改为可选章节的落地方案
+
+针对 [3.7](#37-追加任务非必备章节的重定位) 的诉求，本次调整只做"降为可选章节 + 语言同步"，不改动 `## 追加任务` 的懒插入与 `[open]→[fixed]` 状态机：
+
+- `src/lint/rules/sections.ts`：`REQUIRED_ORDER` 从 8 项收敛为 7 项（去掉 `追加任务`）；`CORE_ORDER` 保留 `追加任务`，用于"若存在则位置须固定"的顺序检查；`sections/required.description` 与超序报错消息里的"六章 / 八大"字样统一改为"必备章节 / 核心章节"。
+- `src/lint/rules/headings.ts`：`REQUIRED_SECTIONS` 从 8 项收敛为 7 项；新增 `OPTIONAL_SECTIONS = ['追加任务']`；`heading/section-level` 的判定改为 `REQUIRED_SECTIONS ∪ OPTIONAL_SECTIONS`，既避免"缺失即 error"又保留"若写成 `# 追加任务` 仍提示层级违规"。
+- `src/service/spec-store.ts`：`SECTIONS` 骨架去掉 `## 追加任务`，注释中说明由 `mergeAppendTasksEntry` 懒插入。既有 `mergeAppendTasksEntry` 已能兼容"section 不存在"分支，无需改动。
+- `src/service/worktree-manager.ts`：worktree 合并冲突模板去掉 `## 7. 追加任务` + `- 暂无` 两行，`## 8. 执行记录` 顺移为 `## 7. 执行记录`。
+- `src/skill/yorz-spec/{rewrite-rules,new-spec,index.json,plan}.md/.json`：把「六大 / 八大必备章节」表述统一为「必备章节」，新增可选章节的定义与懒插入说明；new-spec 骨架初始化列表去掉 `## 追加任务`。
+- `src/lint/__tests__/sections.test.ts`（新增）：4 个用例覆盖 "缺失 追加任务 通过 / 存在且位置正确通过 / 缺执行记录报错 / 追加任务 在 执行记录 之后报错"。
+- 既有 lint 单元测试的内联 fixture 保留 `## 7. 追加任务` 段：对新规则而言等价于「可选章节恰好存在」的正例，无需重写。
+- `SpecStore.appendItem` 的 3 个测试无需改动：它们本就断言 `mergeAppendTasksEntry` 在 section 不存在时会创建 section 并保持排位。
+
 ## 5. 待确认问题
 
 _暂无_
@@ -265,10 +294,24 @@ _暂无_
 - [x] 修改 `src/skill/yorz-spec/tasks.md` 与 `src/skill/yorz-spec/execute.md`：顶部各补一句「写回 spec.md / review.md 后运行 `yorz lint <path> --format json`；有 error 按 ruleId 修复直到通过」
 - [x] 运行 `yorz lint` 覆盖已知 bad 样例（agent-panel-collapse-persist、body-scrollbar-overflow）与本 spec 自身，确认前者精准报错、后者零 error，把结果贴入 `## 执行记录`
 - [x] 全量 `pnpm test` 通过，无回归
+- [x] 修改 `src/lint/rules/sections.ts`：`REQUIRED_ORDER` 去掉 `追加任务`，`CORE_ORDER` 保留（位置检查用），刷新描述文本与顺序报错消息中的"六章 / 八大"表述
+- [x] 修改 `src/lint/rules/headings.ts`：`REQUIRED_SECTIONS` 去掉 `追加任务`，新增 `OPTIONAL_SECTIONS`，`heading/section-level` 判定并入 optional 集合
+- [x] 修改 `src/service/spec-store.ts`：`SECTIONS` 骨架去掉 `## 追加任务`，附注释说明由 `mergeAppendTasksEntry` 懒插入
+- [x] 修改 `src/service/worktree-manager.ts`：worktree 合并冲突 spec 模板去掉 `## 7. 追加任务` + `- 暂无` 两行，`执行记录` 顺移编号
+- [x] 修改 `src/skill/yorz-spec/rewrite-rules.md`：把「六大必备章节」重写为「必备章节 + 可选章节」两小节，`## 追加任务` 挪至可选章节说明
+- [x] 修改 `src/skill/yorz-spec/new-spec.md`：初始化骨架列表去掉 `## 追加任务`，补一句"由用户触发追加时懒插入"
+- [x] 修改 `src/skill/yorz-spec/index.json`：`rewrite-rules` 模块的两条 keyRules 同步为"必备章节 / 可选章节"表述
+- [x] 修改 `src/skill/yorz-spec/plan.md`：lint 规则 ID 索引表里 `heading/section-level` / `sections/required` 的描述同步为「七大必备 + 可选章节」
+- [x] 新建 `src/lint/__tests__/sections.test.ts`：覆盖"追加任务 缺失通过 / 存在且位置正确通过 / 缺 执行记录 报错 / 追加任务 位置在 执行记录 之后报错"共 4 个用例
+- [x] 消费本条追加任务：把 `## 追加任务` 中的 `[open]` 条目原地改为 `[fixed]` 保留历史，并在 `## 执行记录` 追加一条结果
+- [x] 全量 `pnpm test` 再次通过，本 spec 自身 `yorz lint` 依旧 0 error / 0 warn
 
 ## 7. 追加任务
 
-- 暂无
+- [fixed] [fix] 2026-07-01 21:19:54 | “追加任务” 由用户额外操作产生， 不是必备章节，更新源码、单测、skill；
+  - 描述：“追加任务” 由用户额外操作产生， 不是必备章节，更新源码、单测、skill；
+  - 引用：@src/lint/rules/sections.ts
+  - 引用：@src/skill/yorz-spec/plan.md
 
 ## 8. 执行记录
 
@@ -277,3 +320,4 @@ _暂无_
 - 2026-07-01 16:35:00 execute 首步实测发现 `@mermaid-js/parser@1.2.0` 仅支持 Langium 化的新一代 diagram（`pie / gitGraph / architecture / treemap / ...`），对本仓库 spec 里大量使用的 `flowchart / sequenceDiagram` 直接 throw `Unknown diagram type`。已回滚该 devDep，触发变更重开：stage → plan，新增 5.1 待确认问题等待用户重新选择 mermaid 校验策略。
 - 2026-07-01 20:30:00 消费 5.1 批注：选定方案 A（jsdom + mermaid@11 shim DOM 深校验）。同步更新 4.4 落地细节；任务清单去除 mermaid.ts 阻塞标记并新增 `package.json` devDep 变更任务；stage → execute 进入实施。
 - 2026-07-01 20:40:30 execute 落地完成。新增 `src/lint/`（types/context/8 类规则/入口）、`src/cli/lint.ts` 与 `yorz lint` 子命令；`package.json` 添加 `jsdom@25`、`@types/jsdom@21` devDep；vite 外部化 `markdown-it / mermaid / jsdom` 避免 CLI bundle 膨胀。mermaid 深校验用 `Object.defineProperty` 把 jsdom window/document/... 挂到 globalThis，成功让 `mermaid.parse('flowchart LR ...')` 返回 `{ diagramType: 'flowchart-v2', ... }`（当初 `g.window = win` 赋值写法在 mermaid ESM 里仍报 `window is not defined`，改用 `defineProperty` 后恢复）。测试：`src/lint/__tests__/{frontmatter,headings,pending-questions,task-append,mermaid,integration}.test.ts` + `src/cli/__tests__/lint.test.ts`，31 条 lint 单测 + 2 条 CLI 冒烟均通过；全量 `pnpm test` 34 files / 249 tests 全绿。lint 冒烟：本 spec 0 error / 0 warn；`agent-panel-collapse-persist/spec.md` 精准报出 30 error（含 `heading/section-level` × 5、`heading/h1-single` × 5、编号错位等）；`body-scrollbar-overflow/spec.md` 报 2 error（`heading/h1-single` 缺失 H1 + `pending-questions/empty` 用 `- 暂无`）。skill 同步：`SKILL.md` 新增「写回后的 lint 硬约束」节含 3 次失败退出；`plan.md` 删除 checklist / 反例 1~7、替换为 ruleId 索引表 + 保留一组正例；`tasks.md` / `execute.md` 顶部各加一句 lint 提醒；`conventions.md` 未动。约定差异：任务清单里「__tests__/fixtures/{good,bad}/*.md」改为在测试文件里内联字符串 fixture，语义等价、维护更集中；如后续更倾向文件化 fixture 可作为 refct 追加任务。
+- 2026-07-01 21:35:00 消费追加任务「追加任务 由用户额外操作产生，不是必备章节」：完成 plan → tasks → execute。plan 补 3.7 / 4.9 两小节盘点影响面与落地方案。execute 落地代码：`src/lint/rules/sections.ts`（`REQUIRED_ORDER` 去掉追加任务、描述与报错消息去"六 / 八"字样）、`src/lint/rules/headings.ts`（`REQUIRED_SECTIONS` 去掉、新增 `OPTIONAL_SECTIONS`）、`src/service/spec-store.ts`（`SECTIONS` 骨架去掉 `## 追加任务` 并加注释）、`src/service/worktree-manager.ts`（合并冲突模板去掉 `## 7. 追加任务` + `- 暂无`，`执行记录` 顺移为 `## 7.`）、`src/skill/yorz-spec/{rewrite-rules,new-spec,index.json,plan}.md/.json`（表述统一为"必备章节 / 可选章节"）。新增 `src/lint/__tests__/sections.test.ts` 覆盖 4 条正/反例。修复本 spec 自身：合并末尾多出的 `## 追加任务` 段（历史 merge 冲突残留）到 `## 7. 追加任务`，`[open]` → `[fixed]` 保留历史。测试：`pnpm test` → 35 files / 262 tests 全绿；`yorz lint` 冒烟：本 spec 0 error / 0 warn；`agent-panel-collapse-persist/spec.md` 仍精准报错、`body-scrollbar-overflow/spec.md` 缺 H1 仍报错（后者原本命中的 `sections/required(追加任务)` 报错按预期消失）。

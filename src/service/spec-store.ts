@@ -66,6 +66,8 @@ export interface SpecStoreOptions {
   now?: () => Date
 }
 
+// `## 追加任务` 由用户额外操作产生，不在初始化骨架中；首次追加时由 `mergeAppendTasksEntry`
+// 在 `## 任务清单` 与 `## 执行记录` 之间懒插入。
 const SECTIONS = [
   '## 背景',
   '## 需求',
@@ -73,7 +75,6 @@ const SECTIONS = [
   '## 技术实现方案',
   '## 待确认问题',
   '## 任务清单',
-  '## 追加任务',
   '## 执行记录',
 ]
 

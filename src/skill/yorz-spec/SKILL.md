@@ -32,14 +32,12 @@ description: Drive YorZ spec docs through plan / tasks / execute stages with det
 
 ## 写回后的 lint 硬约束
 
-任何阶段完成对 `spec.md` / `review.md` 的写入后，Agent **必须**通过 Bash 运行 `yorz lint <path> --format json`（若开发环境无全局 `yorz`，可退回 `node dist/cli/index.js lint <path> --format json`），并 parse stdout。
+任何阶段完成对 `spec.md` / `review.md` 的写入后，Agent **必须**通过 Bash 运行 `yorz lint <path> --format json`，并 parse stdout。
 
 - 输出 `errorCount === 0` 时视为通过，可继续下一步。
 - 存在 `severity: error` 时按每条 finding 的 `ruleId` + `message` + `line` 定位并修改文档，然后重新运行 lint。
 - 同一文件 lint 连续失败达到 **3 次**仍未通过，将当前偏差作为新的 `## 待确认问题` 条目（写清 finding 列表和当前无法修复的原因）写入 spec.md 后立即退出当轮，等待用户人工干预。
 - `warn` 级 finding 不阻断推进，但应尽力消除；`annotations/leftover` 一类在 tasks 阶段之外出现时应视作待清理项。
-
-lint 规则与本 skill 的 md 约束同源，规则细节见 `src/lint/rules/` 与 `src/lint/__tests__/`。
 
 ## 持续推进硬约束
 

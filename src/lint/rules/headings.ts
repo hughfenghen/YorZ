@@ -7,9 +7,12 @@ const REQUIRED_SECTIONS = [
   '技术实现方案',
   '待确认问题',
   '任务清单',
-  '追加任务',
   '执行记录',
 ]
+
+// 可选章节：`追加任务` 由用户额外操作产生，不作为必备章节，但一旦以 H1 出现同样需要提示
+// 层级违规（保持"章节级别应为 H2"的直觉）。
+const OPTIONAL_SECTIONS = ['追加任务']
 
 interface HeadingInfo {
   level: number
@@ -82,15 +85,16 @@ export const headingH1Single: LintRule = {
 
 export const headingSectionLevel: LintRule = {
   id: 'heading/section-level',
-  description: '六大必备章节必须以 `## ` 出现，不允许写成 `# `。',
+  description: '七大必备章节及 `追加任务` 可选章节必须以 `## ` 出现，不允许写成 `# `。',
   kinds: ['spec'],
   check(ctx: LintContext): LintFinding[] {
     const findings: LintFinding[] = []
     const headings = collectHeadings(ctx)
+    const knownSections = [...REQUIRED_SECTIONS, ...OPTIONAL_SECTIONS]
     for (const h of headings) {
       if (h.level === 1) continue
       const bareText = stripHeadingNumber(h.text)
-      if (REQUIRED_SECTIONS.includes(bareText) && h.level !== 2) {
+      if (knownSections.includes(bareText) && h.level !== 2) {
         findings.push({
           ruleId: this.id,
           severity: 'error',
@@ -99,15 +103,15 @@ export const headingSectionLevel: LintRule = {
         })
       }
     }
-    // Also flag H1 lines whose text matches a required section (e.g. `# 背景`).
+    // Also flag H1 lines whose text matches a known section (e.g. `# 背景`).
     for (const h of headings) {
       if (h.level !== 1) continue
       const bareText = stripHeadingNumber(h.text)
-      if (REQUIRED_SECTIONS.includes(bareText)) {
+      if (knownSections.includes(bareText)) {
         findings.push({
           ruleId: this.id,
           severity: 'error',
-          message: `一级标题 "${h.text}" 疑似把章节写成 # ；六大章节应为 ## 。`,
+          message: `一级标题 "${h.text}" 疑似把章节写成 # ；章节标题应为 ## 。`,
           line: h.line,
         })
       }
