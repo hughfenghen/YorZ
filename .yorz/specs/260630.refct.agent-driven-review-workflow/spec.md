@@ -1,8 +1,8 @@
 ---
 stage: execute
-last_action: execute 全部 11 项任务完成，pnpm test 全绿
-updated_at: '2026-06-30 22:05:50'
-summary: 重构 spec review 工作流：移除 touched-files 链路（保留旧 .json 残留），新增 Agent 驱动的结构化 review（写入 review.md），并补齐提交 / 丢弃 / 暂存三个 Agent 动作；agent-logs 头新增 Review/GitCommit/GitDiscard/GitStash 标签。
+last_action: 完成追加任务（fix）—— Review 页样式复用 spec 详情页 + review.md 按时间降序插入
+updated_at: '2026-07-01 13:38:34'
+summary: 重构 spec review 工作流：移除 touched-files 链路，新增 Agent 驱动的结构化 review + 提交/丢弃/暂存动作；追加修复 Review 页样式（复用 spec 详情页白底 + 可滚动）与 review.md 追加顺序（按时间降序，最新在顶）。
 ---
 
 # Agent-driven Review Workflow
@@ -73,7 +73,23 @@ summary: 重构 spec review 工作流：移除 touched-files 链路（保留旧 
 - `src/skill/yorz-spec/SKILL.md` + 子文档（`plan.md` / `tasks.md` / `execute.md` / `new-spec.md` / `rewrite-rules.md` / `mermaid.md` / `routing.md` / `conventions.md`）。
 - 未提供"review / git 操作"指引；当前 review 完全是 service 端逻辑。
 
-### 3.5 端到端时序（现状）
+### 3.5 追加任务分析：SpecReview 样式 & review.md 顺序
+
+来自 `## 追加任务` 中的 `[open] [fix]` 条目（2026-07-01 13:32:51），拆解为两个子问题：
+
+**问题 1：Review 页 md 渲染样式与 spec 详情页不一致**
+
+- 现状：`src/gui/src/pages/SpecReview.tsx:146` 用 `<article class="markdown-body" innerHTML={reviewHtml()} />` 渲染 review.md；`markdown-body` 类在 `src/gui/src/styles.css` 中**并未定义**（grep 只命中 tsx 引用点），导致既无白色背景、无边框圆角、无内边距，也无独立滚动容器。
+- 参照：spec 详情页 `src/gui/src/pages/SpecDetail.tsx:255-262` 用 `<article class="markdown spec-main" ...>`；`.markdown`（styles.css:730）提供 `background: var(--surface)` + 边框 + 圆角 + padding；`.spec-split > .spec-main`（styles.css:971）设 `flex: 2 1 0; min-width: 0; overflow: auto` 让主体独立滚动。
+- 现有 `.spec-review .review-body`（styles.css:1419）仅有 `margin-top: 1.2rem;`，不是 flex 容器，也未开滚动。
+
+**问题 2：review.md 追加顺序应按时间降序**
+
+- 现状：`src/skill/yorz-spec/review.md:15-17` 明文要求"仅在文件末尾追加新二级标题"，即时间升序；`SpecReview.tsx:158-166` 的 `extractLastReviewTime` 相应地"从后向前"扫描取最后一个 `## YYYY-MM-DD HH:mm:ss`。
+- 用户诉求：新条目应位于最上方（在 `# Review · <spec-id>` 一级标题之后、既有二级标题之前），使读者进入页面直接看到最近一次 review。
+- 历史 review.md 文件（如已生成的 `260630.refct.agent-driven-review-workflow/review.md`，若存在）保留原始升序内容，不做迁移；后续新写入按新规则倒序插入，读者视觉上"最新在顶、历史在底"。
+
+### 3.6 端到端时序（现状）
 
 ```mermaid
 sequenceDiagram
@@ -203,6 +219,24 @@ skill 安装路径由 `src/cli/install.ts` 拷贝（与现有 `yorz-spec` 同机
 - 集成：手动启 `pnpm dev` 验证 Review 页 4 个动作 → agent-logs 出现对应标签 → review.md 追加 → git 状态变化。
 - 旧 review 页快照 / 测试同步删除。
 
+### 4.7 追加任务修复方案
+
+**修复 A：Review 页样式复用 `.markdown`，让 review 主体独立滚动**
+
+- 改动 `src/gui/src/pages/SpecReview.tsx:146`：`<article class="markdown-body" ...>` → `<article class="markdown review-md" innerHTML={reviewHtml()} />`；`.markdown` 复用 spec 详情页白底 + 边框 + 圆角 + padding，`.review-md` 承载 review 页独有的滚动约束。
+- 改动 `src/gui/src/styles.css` 中 `.spec-review .review-body`：改造为 flex 容器（`display: flex; flex: 1 1 auto; min-height: 0; margin-top: 1.2rem;`），使其在 `.page` 的列 flex 布局下能真正撑满剩余高度。
+- 新增 `.spec-review .review-md`：`flex: 1 1 auto; min-width: 0; overflow: auto;`，把滚动条限制在 markdown 主体内，避免整页滚动导致按钮区被推离视口。
+- 不改现有 `.markdown` 全局样式，避免影响 spec 详情页。空 review 时的 `<p class="muted">…</p>` 兜底文案不动。
+
+**修复 B：review.md 追加规则改为按时间降序，插入到一级标题之后**
+
+- 改动 `src/skill/yorz-spec/review.md:16-17`：
+  - 第 16 行"若不存在：先写入 `# Review · <spec-id>` 一级标题，然后再追加本次条目"——保留（首次仍然是"标题 + 本次条目"，此时降序与升序一致）。
+  - 第 17 行"若已存在：**禁止覆盖**历史条目，仅在文件末尾追加新二级标题"——改为**"若已存在：禁止覆盖历史条目；将本次二级标题及其正文块插入到 `# Review · <spec-id>` 一级标题之后、既有第一个 `## ` 二级标题之前，使 review 条目按时间降序（最新在顶）排列。"**
+  - 一级标题与新条目之间保留 1 个空行，新条目与后续既有条目之间保留 1 个空行。
+- 明确不迁移已存在的历史 review.md：若某 spec 目录下 review.md 已有旧的升序条目，本次改动**只影响后续新增**；页面顶部展示的"最近一次 review 时间"读到的是**文件中第一个** `## YYYY-MM-DD HH:mm:ss`，历史旧文件（老升序）看到的会是最早那次时间，这属于历史遗留可接受，用户如需归档可另起追加任务清理。
+- 相应改动 `src/gui/src/pages/SpecReview.tsx:158-166` `extractLastReviewTime`：由"从后向前扫描"改为"**从前向后扫描**取第一个匹配"；命名与语义保持不变（仍代表"最近一次 review"），只是数据源改为按新规则位于文件顶部的条目。
+
 ## 5. 待确认问题
 
 - 暂无
@@ -220,13 +254,20 @@ skill 安装路径由 `src/cli/install.ts` 拷贝（与现有 `yorz-spec` 同机
 - [x] 修改 `src/gui/src/pages/SpecAgentLogs.tsx`：新增 `agentTagLabel(meta)` / `modeClassName(meta)`，根据 (mode, action) 组合得出 `Run` / `Explain` / `Review` / `GitCommit` / `GitDiscard` / `GitStash`；替换 `.agent-log-card-head` 内 `{meta.mode}` 渲染，保留 `mode-${meta.mode}` 类名并按需追加 `mode-${meta.mode}-${meta.action}`。
 - [x] 调整 `src/gui/src/styles.css`：为 `.mode-review` / `.mode-git-ops` / `.mode-git-ops-commit` / `.mode-git-ops-discard` / `.mode-git-ops-stash` 增加色块样式；旧 `.mode-skill-run` / `.mode-explain` 保持；移除已不再使用的 `.review-changes` / `.review-commit` / `.change-list` 等样式，新增 `.review-actions` / `.review-body`。
 - [x] 在 `src/service/__tests__/` 增加 `spec-review.test.ts` 覆盖 3 个新 route 的参数校验（action 非法 → 400）与 Runner 调用。`pnpm test` 全部 26 个文件、203 个用例通过。
+- [x] 修改 `src/skill/yorz-spec/review.md` mode=review 小节：把"若已存在：仅在文件末尾追加新二级标题"改为"将本次二级标题及其正文块插入到 `# Review · <spec-id>` 一级标题之后、既有第一个 `## ` 二级标题之前，使 review 条目按时间降序（最新在顶）排列"；保留首次写入（不存在 review.md 时）的行为不变；标题与新条目之间保留 1 个空行。验收：文档内包含"降序""插入""最新在顶"等关键词，且未再出现"末尾追加"。
+- [x] 修改 `src/gui/src/pages/SpecReview.tsx:146` article 的 class：`markdown-body` → `markdown review-md`；同时改 `extractLastReviewTime`（当前 158-166 行）由"从后向前扫描"改为"从前向后扫描取第一个 `## YYYY-MM-DD HH:mm:ss` 匹配"；函数名与调用点保持不变。验收：`pnpm build` 通过；tsc 无新增报错。
+- [x] 修改 `src/gui/src/styles.css` 中 `.spec-review .review-body`（约 1419 行）：改造为 flex 容器 `display: flex; flex: 1 1 auto; min-height: 0; margin-top: 1.2rem;`；新增规则 `.spec-review .review-md { flex: 1 1 auto; min-width: 0; overflow: auto; }`，使 markdown 主体独立滚动、按钮区不被推离视口。验收：`.markdown` 复用带来白色背景 / 边框 / 圆角 / padding；页面高度受限时 review 主体出现内部滚动条。
+- [x] 运行 `pnpm test` 与 `pnpm build` 回归；若无失败即视为通过。验收：全部原有用例仍通过（实际 27 文件 / 212 用例通过），构建无新报错。
 
 ## 7. 追加任务
 
-- 暂无
+- [fixed] [fix] 2026-07-01 13:32:51 | 1. review 界面 md 文档的渲染样式应该参考 spec 详情页，白色背景、文档区允许滚动；
+  - 描述：1. review 界面 md 文档的渲染样式应该参考 spec 详情页，白色背景、文档区允许滚动；2. Agent 允许向 review.md 多次写入记录，应该按时间降序
 
 ## 8. 执行记录
 
 - 2026-06-30 21:50：新建 spec，完成 plan 阶段，待确认问题已列出，等待用户批注后再进入 tasks。
 - 2026-06-30 21:52：消费用户对全部 8 个待确认问题的批注。决策：4 个动作合并为 `git-ops` mode（action 参数区分）；review 指引并入 `yorz-spec` skill（新增 `review.md`）；提交范围由 Agent 自主决定；丢弃仅 GUI 端 confirm；不限并发；不预先 stash 备份；保留旧 `touched-files.json` 残留；agent-logs 标签沿用英文 PascalCase。已更新 4.2 / 4.3 / 4.4 / 4.5，删除"用户批注"章节，进入 execute。
 - 2026-06-30 22:05：完成全部 11 项任务的执行：服务端 `AgentMode` 扩展 + 删除 touched 链路 + 删除 `/changes` `/commit` 路由；新增 `src/service/routes/spec-review.ts` 三接口；新增 `src/skill/yorz-spec/review.md` 并登记 index.json；GUI 重写 `SpecReview.tsx` + 改造 `api.ts` + 扩展 `SpecAgentLogs.tsx` 标签 + 补 styles.css；新增 `src/service/__tests__/spec-review.test.ts` 覆盖 9 个场景。验证：`pnpm test` 通过（26 文件 / 203 用例），`pnpm build` 通过；`tsc --noEmit` 仅剩 1 个预先存在、与本次改动无关的告警（`QuestionConfirmPanel.tsx` 中 `note` 重复键）。
+- 2026-07-01 13:34:43：变更重开流程（追加任务：fix）。补充 3.5 追加任务分析、4.7 追加任务修复方案；合并末尾裸露的 `## 追加任务` 到第 7 节；`## 待确认问题` 保持"暂无"（两项改动均明确无需再确认）。
+- 2026-07-01 13:38:34：完成追加任务 4 项子任务的执行：`src/skill/yorz-spec/review.md` 将追加规则改为按时间降序插入到一级标题之后；`src/gui/src/pages/SpecReview.tsx` article 类名由 `markdown-body` 改为 `markdown review-md`，`extractLastReviewTime` 由从后向前扫描改为从前向后取第一个匹配；`src/gui/src/styles.css` 的 `.spec-review .review-body` 改造为 flex 容器 + 新增 `.spec-review .review-md` 独立滚动规则，复用 `.markdown` 白色背景。回归：`pnpm test` 通过（27 文件 / 212 用例），`pnpm build` 通过。追加任务条目由 `[open]` 更新为 `[fixed]`。

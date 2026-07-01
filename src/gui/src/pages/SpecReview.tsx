@@ -143,7 +143,7 @@ export const SpecReview: Component = () => {
                 when={reviewHtml()}
                 fallback={<p class="muted">尚无 review 报告。点击「刷新 Review」让 Agent 生成。</p>}
               >
-                <article class="markdown-body" innerHTML={reviewHtml()} />
+                <article class="markdown review-md" innerHTML={reviewHtml()} />
               </Show>
             }
           >
@@ -158,7 +158,7 @@ export const SpecReview: Component = () => {
 function extractLastReviewTime(text: string): string {
   if (!text) return ''
   const lines = text.split(/\r?\n/)
-  for (let i = lines.length - 1; i >= 0; i--) {
+  for (let i = 0; i < lines.length; i++) {
     const m = /^##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s*$/.exec(lines[i] ?? '')
     if (m) return m[1] ?? ''
   }
