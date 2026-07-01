@@ -27,3 +27,17 @@ render(
   ),
   root,
 )
+
+queueMicrotask(() => {
+  const body = document.body
+  const doc = document.documentElement
+  console.log('[body-overflow-diagnostic]', {
+    bodyScrollHeight: body.scrollHeight,
+    bodyClientHeight: body.clientHeight,
+    docScrollHeight: doc.scrollHeight,
+    docClientHeight: doc.clientHeight,
+    windowInnerHeight: window.innerHeight,
+    bodyOverflowing: body.scrollHeight > body.clientHeight,
+    docOverflowing: doc.scrollHeight > doc.clientHeight,
+  })
+})
