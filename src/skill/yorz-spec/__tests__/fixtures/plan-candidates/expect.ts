@@ -2,8 +2,9 @@ import type { AssertResult, ParsedSpec } from '../../runner.js'
 
 /**
  * Verify the `## 待确认问题` block follows the candidate hard-constraint:
- * each top-level `- ` question either
- *   - has 2+ child `  -` candidates with EXACTLY one ending in ` (推荐)`, OR
+ * each `### N.M 问题正文` heading either
+ *   - has 2+ child ordered-list candidates (`1. / 2. / …`) with EXACTLY one
+ *     ending in ` (推荐)` or ` （推荐）`, OR
  *   - ends in `（自由文本）` (no child candidates required).
  *
  * Also asserts at least one question was produced (the fixture has 4 explicit
@@ -27,7 +28,7 @@ export async function assert(parsed: ParsedSpec): Promise<AssertResult> {
 
   rules.push('待确认问题 contains at least 1 real question')
   const questions = parseQuestions(section)
-  if (questions.length === 0 || (questions.length === 1 && questions[0]!.text.trim() === '暂无')) {
+  if (questions.length === 0 || section.trim() === '_暂无_') {
     failures.push('待确认问题 produced 0 questions despite 4 explicit unknowns in 需求')
   }
 
@@ -40,7 +41,9 @@ export async function assert(parsed: ParsedSpec): Promise<AssertResult> {
       continue
     }
     if (hasCandidates) {
-      const recommended = q.children.filter((c) => /\s\(推荐\)\s*$/.test(c) || /\s（推荐）\s*$/.test(c))
+      const recommended = q.children.filter(
+        (c) => /\s\(推荐\)\s*$/.test(c) || /\s（推荐）\s*$/.test(c),
+      )
       if (recommended.length !== 1) {
         failures.push(
           `question "${truncate(q.text, 40)}" should have exactly 1 candidate ending with (推荐), got ${recommended.length}`,
@@ -76,11 +79,15 @@ function parseQuestions(section: string): ParsedQuestion[] {
   const out: ParsedQuestion[] = []
   let cur: ParsedQuestion | null = null
   for (const line of lines) {
-    if (/^- /.test(line)) {
+    const headingMatch = /^###\s+(?:\d+(?:\.\d+)*\s+)?(.+\S)\s*$/.exec(line)
+    if (headingMatch) {
       if (cur) out.push(cur)
-      cur = { text: line.replace(/^- /, '').trim(), children: [] }
-    } else if (/^\s{2,}-\s/.test(line)) {
-      cur?.children.push(line.replace(/^\s+-\s/, '').trim())
+      cur = { text: headingMatch[1]!.trim(), children: [] }
+      continue
+    }
+    const candidateMatch = /^\d+\.\s+(.*\S)\s*$/.exec(line)
+    if (candidateMatch) {
+      cur?.children.push(candidateMatch[1]!.trim())
     }
   }
   if (cur) out.push(cur)

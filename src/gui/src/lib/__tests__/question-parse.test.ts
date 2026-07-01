@@ -6,13 +6,18 @@ describe('parseConfirmQuestions', () => {
     expect(parseConfirmQuestions('# 标题\n\n正文')).toEqual([])
   })
 
-  it('returns [] for `- 暂无`', () => {
-    const body = `## 5. 待确认问题\n\n- 暂无\n`
+  it('returns [] for `_暂无_` empty-state paragraph', () => {
+    const body = `## 5. 待确认问题\n\n_暂无_\n`
+    expect(parseConfirmQuestions(body)).toEqual([])
+  })
+
+  it('returns [] when the section is empty', () => {
+    const body = `## 5. 待确认问题\n\n## 6. 任务清单\n`
     expect(parseConfirmQuestions(body)).toEqual([])
   })
 
   it('parses a single question with a recommended option', () => {
-    const body = `## 待确认问题\n\n- 用什么数据库？\n  - SQLite (推荐)\n`
+    const body = `## 待确认问题\n\n### 5.1 用什么数据库？\n1. SQLite (推荐)\n`
     const out = parseConfirmQuestions(body)
     expect(out).toHaveLength(1)
     expect(out[0].text).toBe('用什么数据库？')
@@ -24,34 +29,74 @@ describe('parseConfirmQuestions', () => {
     const body = [
       '## 5. 待确认问题',
       '',
-      '- 候选答案的展现形式应采用哪种？',
-      '  - 嵌套子列表',
-      '  - 表格 (推荐)',
-      '  - 自定义 YAML 块',
+      '### 5.1 候选答案的展现形式应采用哪种？',
+      '1. 嵌套子列表',
+      '2. 表格 (推荐)',
+      '3. 自定义 YAML 块',
       '',
     ].join('\n')
     const out = parseConfirmQuestions(body)
     expect(out).toHaveLength(1)
+    expect(out[0].text).toBe('候选答案的展现形式应采用哪种？')
     expect(out[0].options.map((o) => o.label)).toEqual(['嵌套子列表', '表格', '自定义 YAML 块'])
     expect(out[0].options.map((o) => o.recommended)).toEqual([false, true, false])
   })
 
-  it('treats a question without sub-bullets as freeform', () => {
-    const body = `## 待确认问题\n\n- release notes 文案该怎么写？\n`
+  it('accepts full-width `（推荐）` as the recommendation marker', () => {
+    const body = [
+      '## 5. 待确认问题',
+      '',
+      '### 5.1 用什么数据库？',
+      '1. SQLite （推荐）',
+      '2. Postgres',
+      '',
+    ].join('\n')
+    const out = parseConfirmQuestions(body)
+    expect(out).toHaveLength(1)
+    expect(out[0].options.map((o) => ({ label: o.label, recommended: o.recommended }))).toEqual([
+      { label: 'SQLite', recommended: true },
+      { label: 'Postgres', recommended: false },
+    ])
+  })
+
+  it('treats a question without candidates as freeform', () => {
+    const body = `## 待确认问题\n\n### 5.1 release notes 文案该怎么写？\n`
     const out = parseConfirmQuestions(body)
     expect(out).toHaveLength(1)
     expect(out[0].isFreeform).toBe(true)
     expect(out[0].options).toEqual([])
   })
 
-  it('stops at the next heading and supports numbered headings', () => {
+  it('strips the numeric heading prefix from the question text', () => {
+    const body = ['## 5. 待确认问题', '', '### 5.3 有跳号的问题？', '1. 是 (推荐)', ''].join('\n')
+    const out = parseConfirmQuestions(body)
+    expect(out).toHaveLength(1)
+    expect(out[0].text).toBe('有跳号的问题？')
+  })
+
+  it('tolerates numbering gaps and preserves document order', () => {
     const body = [
       '## 5. 待确认问题',
       '',
-      '- 问题 A',
-      '  - 选项 1 (推荐)',
+      '### 5.1 问题 A',
+      '1. 选项 1 (推荐)',
       '',
-      '- 问题 B',
+      '### 5.3 问题 B',
+      '',
+    ].join('\n')
+    const out = parseConfirmQuestions(body)
+    expect(out.map((q) => q.text)).toEqual(['问题 A', '问题 B'])
+    expect(out[1].isFreeform).toBe(true)
+  })
+
+  it('stops at the next `## ` heading', () => {
+    const body = [
+      '## 5. 待确认问题',
+      '',
+      '### 5.1 问题 A',
+      '1. 选项 1 (推荐)',
+      '',
+      '### 5.2 问题 B',
       '',
       '## 6. 任务清单',
       '',
@@ -63,47 +108,30 @@ describe('parseConfirmQuestions', () => {
   })
 
   it('generates stable ids derived from text + index', () => {
-    const body = `## 待确认问题\n\n- 同一文本\n- 同一文本\n`
+    const body = `## 待确认问题\n\n### 5.1 同一文本\n### 5.2 同一文本\n`
     const out = parseConfirmQuestions(body)
     expect(out).toHaveLength(2)
     expect(out[0].id).not.toBe(out[1].id)
   })
 
   it('treats a question with `（自由文本）` suffix as freeform and strips the suffix', () => {
-    const body = `## 待确认问题\n\n- release notes 文案该怎么写？（自由文本）\n  - 这条子项不应阻止 freeform 退化\n`
+    const body = `## 待确认问题\n\n### 5.1 release notes 文案该怎么写？（自由文本）\n1. 这条候选不应阻止 freeform 退化\n`
     const out = parseConfirmQuestions(body)
     expect(out).toHaveLength(1)
     expect(out[0].text).toBe('release notes 文案该怎么写？')
     expect(out[0].isFreeform).toBe(true)
   })
 
-  it('stops at any `### ` sub-heading (e.g. 已确认决策快照) and ignores its list items', () => {
+  it('keeps candidates even when a blank line separates the heading from the ordered list', () => {
     const body = [
-      '## 5. 待确认问题',
+      '## 待确认问题',
       '',
-      '- 真正的问题',
-      '  - 候选 A (推荐)',
-      '  - 候选 B',
+      '### 5.1 问题',
       '',
-      '### 5.1 已确认决策快照',
+      '1. 候选 A',
+      '2. 候选 B (推荐)',
       '',
-      '- 决策项 1：foo',
-      '- 决策项 2：bar',
-      '- 决策项 3：baz',
-      '',
-      '## 6. 任务清单',
     ].join('\n')
-    const out = parseConfirmQuestions(body)
-    expect(out).toHaveLength(1)
-    expect(out[0].text).toBe('真正的问题')
-    expect(out[0].options.map((o) => o.label)).toEqual(['候选 A', '候选 B'])
-    expect(out[0].isFreeform).toBe(false)
-  })
-
-  it('keeps candidate options even when blank lines separate the question from its sub-bullets', () => {
-    const body = ['## 待确认问题', '', '- 问题', '', '  - 候选 A', '  - 候选 B (推荐)', ''].join(
-      '\n',
-    )
     const out = parseConfirmQuestions(body)
     expect(out).toHaveLength(1)
     expect(out[0].options).toHaveLength(2)
@@ -112,10 +140,18 @@ describe('parseConfirmQuestions', () => {
     expect(out[0].isFreeform).toBe(false)
   })
 
-  it('tolerates multiple blank lines between the question and its sub-bullets', () => {
-    const body = ['## 待确认问题', '', '- 问题', '', '', '  - 候选 A', '', '  - 候选 B', ''].join(
-      '\n',
-    )
+  it('tolerates multiple blank lines between candidates', () => {
+    const body = [
+      '## 待确认问题',
+      '',
+      '### 5.1 问题',
+      '',
+      '',
+      '1. 候选 A',
+      '',
+      '2. 候选 B',
+      '',
+    ].join('\n')
     const out = parseConfirmQuestions(body)
     expect(out).toHaveLength(1)
     expect(out[0].options.map((o) => o.label)).toEqual(['候选 A', '候选 B'])
@@ -127,10 +163,10 @@ describe('parseConfirmQuestions', () => {
     const body = [
       '## 待确认问题',
       '',
-      '- 用什么数据库？',
-      '  - SQLite (推荐)',
-      '  - Postgres (推荐)',
-      '  - MySQL',
+      '### 5.1 用什么数据库？',
+      '1. SQLite (推荐)',
+      '2. Postgres （推荐）',
+      '3. MySQL',
       '',
     ].join('\n')
     try {
@@ -145,5 +181,17 @@ describe('parseConfirmQuestions', () => {
     } finally {
       warn.mockRestore()
     }
+  })
+
+  it('hard-switches away from the old bullet format (legacy input yields 0 questions)', () => {
+    const body = [
+      '## 5. 待确认问题',
+      '',
+      '- 旧格式问题',
+      '  - 旧候选 A (推荐)',
+      '  - 旧候选 B',
+      '',
+    ].join('\n')
+    expect(parseConfirmQuestions(body)).toEqual([])
   })
 })
