@@ -4,22 +4,57 @@
 
 ## 图表选型表
 
-根据信息特征选择最合适的图表类型。**优先选择最能清晰传达信息的类型**，而非最复杂的类型。
+根据信息特征选择最合适的图表类型。**优先选择最能清晰传达信息的类型**，而非最复杂的类型。每行"替代什么"列提示：该场景下应**用图替代**的低效文本形式。
 
-| 信息特征                       | 推荐图表            | 典型 spec 落点             |
-| ------------------------------ | ------------------- | -------------------------- |
-| 流程、步骤、决策分支           | **flowchart**       | 技术方案、执行流程         |
-| 组件间交互、消息传递、API 调用 | **sequenceDiagram** | 现状分析链路、技术方案交互 |
-| 状态机、阶段流转、生命周期     | **stateDiagram**    | spec 阶段流转、任务状态机  |
-| 类结构、继承关系、接口         | **classDiagram**    | 数据模型、模块结构         |
-| 数据库表、实体关系             | **erDiagram**       | 数据模型设计               |
-| 系统架构、组件依赖、分组       | **architecture**    | 现状分析架构、总体架构     |
-| 层级关系、知识结构、脑暴       | **mindmap**         | 需求拆解、影响面分析       |
-| 项目计划、时间线、里程碑       | **gantt**           | 任务排期                   |
-| 占比、分布                     | **pie**             | 数据分布分析               |
-| 历史事件、时间轴               | **timeline**        | 执行记录、变更历史         |
+| 信息特征                   | 推荐图表                                                 | 替代什么               | 典型 spec 落点               |
+| -------------------------- | -------------------------------------------------------- | ---------------------- | ---------------------------- |
+| 流程、步骤、决策分支       | [**flowchart**](references/flowchart.md)                 | md 列表 + 文字描述     | 核心代码逻辑、执行流程       |
+| 组件间交互、消息传递       | [**sequenceDiagram**](references/sequenceDiagram.md)     | 编号文字描述交互过程   | 现状分析链路、技术方案交互   |
+| 状态机、阶段流转           | [**stateDiagram**](references/stateDiagram.md)           | 文字列举状态变更条件   | 关键状态关系、spec 阶段流转  |
+| 类结构、类型定义、继承关系 | [**classDiagram**](references/classDiagram.md)           | TS/代码片段            | 数据模型、模块结构、类型设计 |
+| 数据库表、实体关系         | [**erDiagram**](references/entityRelationshipDiagram.md) | 建表 SQL 或文字描述    | 数据模型设计                 |
+| 系统架构、组件依赖         | [**architecture**](references/architecture.md)           | 文字描述系统组成       | 现状分析架构、总体架构       |
+| 层级逻辑、数据结构         | [**treeView**](references/treeView.md)                   | ASCII 字符树、嵌套列表 | 模块层级、文件结构、AST 结构 |
+| 层级结构 + 占比分布        | [**treemap**](references/treemap.md)                     | ASCII 字符树、嵌套列表 | 模块层级量级、文件结构占比   |
+| 层级关系、知识结构         | [**mindmap**](references/mindmap.md)                     | 缩进列表               | 需求拆解、影响面分析         |
+| 历史事件、变更时间线       | [**timeline**](references/timeline.md)                   | 文字按日期罗列         | 执行记录、变更历史           |
+| Git 分支、合并策略         | [**gitgraph**](references/gitgraph.md)                   | 文字描述分支操作       | Git 工作流设计               |
+| 事件建模、系统信息流       | [**eventmodeling**](references/eventmodeling.md)         | 文字描述事件流         | 事件驱动架构设计、CQRS 模型  |
+| 二进制协议、数据包结构     | [**packet**](references/packet.md)                       | 文字描述协议字段       | 二进制协议分析、网络包结构   |
+| 方案候选决策、风险象限     | [**quadrantChart**](references/quadrantChart.md)         | 文字描述优劣对比       | 候选方案决策、风险评估       |
+| 多方案能力对比、权衡       | [**radar**](references/radar.md)                         | 文字描述能力对比       | 架构方案对比、技术选型权衡   |
+| 多模块职责在复杂流程中     | [**swimlane**](references/swimlanes.md)                  | 普通流程图             | 复杂业务流程、跨团队协作     |
+| 统计数据、趋势分析         | [**xyChart**](references/xyChart.md)                     | 文字描述数据           | 变更影响分析、日志统计       |
 
-> 完整图表类型列表与语法参考见 `references/` 目录（flowchart.md / sequenceDiagram.md / stateDiagram.md / classDiagram.md / entityRelationshipDiagram.md / architecture.md / mindmap.md / gantt.md 等 38 个文件）。
+## 场景优先级
+
+### 必须用图（高优先级）
+
+以下场景**必须**使用对应图表替代纯文字描述：
+
+1. **类型定义与关系** → `classDiagram`：展示接口/类型的属性、方法、继承与组合关系。不要用 TS 代码块替代——类图能直观展现关系拓扑。
+2. **核心业务流程/算法逻辑** → `flowchart`：包含分支判断、循环、并行路径的逻辑。不要用 md 列表 + 文字逐步描述——flowchart 的分支视觉远比缩进列表清晰。
+3. **状态机与生命周期** → `stateDiagram`：实体在不同状态间的流转与触发条件。不要用文字列举状态——状态图能展现并发状态与守卫条件。
+4. **层级逻辑与数据结构** → `treeView`：模块/文件/目录的层级关系、AST 结构等。不要用 ASCII 字符树——treeView 更清晰且可渲染。
+
+### 推荐用图（中优先级）
+
+5. **组件交互** → `sequenceDiagram`：多组件间的消息传递、API 调用时序。
+6. **数据模型** → `erDiagram`：数据库表结构与外键关系。
+7. **系统架构** → `architecture`：组件依赖与分组、部署拓扑。
+8. **需求拆解** → `mindmap`：影响面分析、需求分解为子项。
+9. **多模块职责流程** → `swimlane`：复杂业务流程中跨模块/团队的分工与职责边界。
+
+### 按需用图（低优先级）
+
+10. **变更历史** → `timeline`：执行记录中按时间排列关键事件。
+11. **Git 工作流** → `gitgraph`：描述分支策略与合并流程。
+12. **层级占比** → `treemap`：需要同时展示层级结构与各部分量级/占比时。
+13. **方案候选决策** → `quadrantChart`：Review/方案选择时做象限分析。
+14. **多方案能力对比** → `radar`：架构选型时做多维度能力雷达对比。
+15. **统计数据** → `xyChart`：日志/变更影响/性能数据等统计可视化。
+16. **事件建模** → `eventmodeling`：事件驱动系统设计时描述信息流。
+17. **二进制协议** → `packet`：协议分析时展示数据包字段结构。
 
 ## 各阶段落点指导
 
@@ -32,9 +67,11 @@
 
 - **## 任务清单**：当任务间存在依赖关系时，可用 **flowchart** 绘制任务依赖图辅助理解执行顺序。
 
-### execute 阶段
+### review 阶段
 
-- **## 执行记录**：可用 **flowchart** 或 **sequenceDiagram** 描述已完成变更的影响范围与数据流变化。
+- **风险提示**：用 **quadrantChart** 按风险概率 × 影响程度做象限分布，直观标识高优风险项；用 **mindmap** 将风险按类别（安全 / 性能 / 兼容性 / 数据一致性等）层级展开，快速纵览全貌。
+- **变更范围**：用 **mindmap** 以变更源为根节点展开影响面（受影响模块、文件、接口、配置等）；当变更沿调用链传播时，用 **flowchart** 绘制波及路径，标明直接与间接影响层级。
+- **变更前后差异**：用 **flowchart** 并排呈现 Before / After 流程，关键变更点用样式高亮（如红色边框标记新增节点、删除线标记移除节点）；涉及数据模型变更时用 **classDiagram** 或 **erDiagram** 对比结构差异；涉及配置/枚举等层级数据变化时用 **treeView** 做树形 Diff。
 
 ## 输出规范
 

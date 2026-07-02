@@ -43,7 +43,7 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
   function setChoice(qid: string, label: string) {
     setAnswers((prev) => ({
       ...prev,
-      [qid]: { note: '', ...prev[qid], selectedOptionLabel: label },
+      [qid]: { ...prev[qid], selectedOptionLabel: label },
     }))
   }
   function setNote(qid: string, note: string) {

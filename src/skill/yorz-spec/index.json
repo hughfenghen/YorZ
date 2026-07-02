@@ -39,10 +39,13 @@
       "module": "mermaid",
       "file": "mermaid.md",
       "keyRules": [
-        "根据信息特征选择图表类型，优先 flowchart/sequenceDiagram/architecture",
+        "选型表 18 种图表，按信息特征 + 替代什么选择，优先 flowchart/sequenceDiagram/architecture/classDiagram/stateDiagram/treeView",
+        "高优先级场景必须用图：类型定义→classDiagram、流程逻辑→flowchart、状态流转→stateDiagram、层级结构→treeView",
+        "treeView 用于层级逻辑/数据结构（替代 ASCII 树），treemap 用于层级+占比（需要量级时）",
         "mermaid code 必须用 ```mermaid 包裹、语义化命名、语法正确可渲染",
-        "节制原则：只在信息复杂、图形能显著提升可读性时输出",
-        "语法细节查阅 references/ 目录下对应文档"
+        "反模式：简单线性步骤/单层分类/纯文本能表达清楚的不出图",
+        "节制原则：只在信息复杂、图形能显著提升可读性时输出，单章节不超过 2 张图",
+        "语法细节查阅 references/ 目录（25 个文件）下对应文档"
       ],
       "relatedCases": []
     },

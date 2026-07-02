@@ -15,24 +15,19 @@ const DIAGRAM_TYPES = [
   'stateDiagram',
   'stateDiagram-v2',
   'erDiagram',
-  'journey',
   'gantt',
-  'pie',
   'mindmap',
   'timeline',
-  'xychart-beta',
+  'treemap-beta',
   'gitGraph',
-  'packet-beta',
   'architecture-beta',
+  'packet-beta',
+  'xychart-beta',
   'quadrantChart',
-  'requirementDiagram',
-  'C4Context',
-  'C4Container',
-  'C4Component',
-  'C4Dynamic',
-  'C4Deployment',
-  'sankey-beta',
-  'block-beta',
+  'radar-beta',
+  'treeView-beta',
+  'eventmodeling',
+  'swimlane',
 ]
 
 function collectMermaidBlocks(ctx: LintContext): MermaidBlock[] {
@@ -80,7 +75,8 @@ export const mermaidFence: LintRule = {
         continue
       }
       const matched = DIAGRAM_TYPES.some(
-        (t) => b.firstLine === t || b.firstLine.startsWith(`${t} `) || b.firstLine.startsWith(`${t}\n`),
+        (t) =>
+          b.firstLine === t || b.firstLine.startsWith(`${t} `) || b.firstLine.startsWith(`${t}\n`),
       )
       if (!matched) {
         findings.push({
@@ -96,9 +92,9 @@ export const mermaidFence: LintRule = {
   },
 }
 
-let mermaidInitPromise: Promise<typeof import('mermaid')['default'] | null> | null = null
+let mermaidInitPromise: Promise<(typeof import('mermaid'))['default'] | null> | null = null
 
-async function initMermaid(): Promise<typeof import('mermaid')['default'] | null> {
+async function initMermaid(): Promise<(typeof import('mermaid'))['default'] | null> {
   if (mermaidInitPromise) return mermaidInitPromise
   mermaidInitPromise = (async () => {
     try {
