@@ -158,7 +158,22 @@ const AgentTaskCard: Component<{ task: AgentTask }> = (props) => {
 
   return (
     <li class={`agent-task agent-task-${props.task.status}`}>
-      <header class="agent-task-head">
+      <header
+        class="agent-task-head"
+        role="button"
+        tabIndex={0}
+        aria-expanded={props.task.expanded}
+        onClick={() => agentTasks.toggleExpand(props.task.runId)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            agentTasks.toggleExpand(props.task.runId)
+          }
+        }}
+      >
+        <span class="agent-task-chevron" aria-hidden="true">
+          {props.task.expanded ? '▾' : '▸'}
+        </span>
         <span class={`agent-task-source source-${props.task.source}`}>
           {SOURCE_LABEL[props.task.source]}
         </span>
@@ -170,6 +185,7 @@ const AgentTaskCard: Component<{ task: AgentTask }> = (props) => {
             <A
               href={projectHref(`specs/${encodeURIComponent(props.task.specId)}`)}
               class="agent-task-link"
+              onClick={(e) => e.stopPropagation()}
             >
               {props.task.specTitle ?? props.task.specId}
             </A>
@@ -181,17 +197,12 @@ const AgentTaskCard: Component<{ task: AgentTask }> = (props) => {
         <span class="agent-task-timer">{elapsed()}s</span>
         <button
           type="button"
-          class="agent-task-expand"
-          aria-label={props.task.expanded ? '收起' : '展开'}
-          onClick={() => agentTasks.toggleExpand(props.task.runId)}
-        >
-          {props.task.expanded ? '收起' : '展开'}
-        </button>
-        <button
-          type="button"
           class="agent-task-close"
           aria-label="关闭"
-          onClick={() => agentTasks.dismiss(props.task.runId)}
+          onClick={(e) => {
+            e.stopPropagation()
+            agentTasks.dismiss(props.task.runId)
+          }}
         >
           ×
         </button>

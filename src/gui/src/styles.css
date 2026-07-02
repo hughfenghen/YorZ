@@ -1385,6 +1385,18 @@ body.is-resizing {
   align-items: center;
   gap: 0.4rem;
   font-size: 0.85em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.agent-task-head:hover {
+  background: var(--hover, rgba(0, 0, 0, 0.04));
+}
+
+.agent-task-chevron {
+  font-size: 0.7em;
+  color: var(--muted);
+  flex-shrink: 0;
 }
 
 .agent-task-source {
@@ -1450,7 +1462,6 @@ body.is-resizing {
   font-size: 0.75em;
 }
 
-.agent-task-expand,
 .agent-task-close {
   font: inherit;
   background: transparent;
