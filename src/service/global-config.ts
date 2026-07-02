@@ -10,6 +10,7 @@ export interface WorktreeMeta {
   branch: string
   specId: string
   createdAt: string
+  cleanSlug?: string
 }
 
 export interface GlobalProjectEntry {
@@ -97,7 +98,10 @@ function normalizeWorktree(value: unknown): WorktreeMeta | undefined {
   const specId = typeof it.specId === 'string' ? it.specId : ''
   const createdAt = typeof it.createdAt === 'string' ? it.createdAt : ''
   if (!mainProjectId || !mainPath || !branch) return undefined
-  return { mainProjectId, mainPath, branch, specId, createdAt }
+  const cleanSlug = typeof it.cleanSlug === 'string' ? it.cleanSlug : undefined
+  const meta: WorktreeMeta = { mainProjectId, mainPath, branch, specId, createdAt }
+  if (cleanSlug) meta.cleanSlug = cleanSlug
+  return meta
 }
 
 export function generateProjectId(absPath: string): string {

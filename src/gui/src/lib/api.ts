@@ -225,6 +225,10 @@ export const api = {
   listProjects: () => request<ProjectListItem[]>('/api/projects'),
   removeProject: (id: string) =>
     request<{ ok: boolean }>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  removeProjectWithFiles: (id: string) =>
+    request<{ ok: boolean }>(`/api/projects/${encodeURIComponent(id)}?deleteFiles=true`, {
+      method: 'DELETE',
+    }),
   createWorktree: (projectId: string, body: CreateWorktreeBody) =>
     request<CreateWorktreeResponse>(`/api/projects/${encodeURIComponent(projectId)}/worktrees`, {
       method: 'POST',

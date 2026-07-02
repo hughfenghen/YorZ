@@ -43,7 +43,7 @@ export function createApp(opts: CreateAppOptions): Hono {
     },
   })
 
-  api.route('/', createProjectRoutes(opts.registry))
+  api.route('/', createProjectRoutes(opts.registry, worktreeManager))
   api.route('/', createProjectConfigRoutes(opts.registry))
   api.route('/', createSpecsRoutes(resolveProject))
   api.route('/', createSpecReviewRoutes(resolveProject))

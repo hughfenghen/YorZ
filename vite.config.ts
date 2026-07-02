@@ -31,6 +31,10 @@ export default defineConfig({
         /^markdown-it\//,
         'mermaid',
         'jsdom',
+        'trash',
+        'globby',
+        'is-path-inside',
+        'is-gitignored',
       ],
       output: {
         banner: SHEBANG,

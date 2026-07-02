@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { copyFile, mkdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
+import trash from 'trash'
 import { GitError, runGitChecked, runGitRaw } from './git.js'
 import {
   loadGlobalConfig,
@@ -87,6 +88,7 @@ export class WorktreeManager {
     const mainPath = main.path
     const baseRef = await detectDefaultBranch(mainPath)
     const slug = sanitizeSlug(input.specSlug)
+    const cleanSlug = cleanWorktreeSlug(slug)
     const baseBranch = (input.branch && input.branch.trim()) || `wt/${slug}`
     const branch = await uniqueBranch(mainPath, baseBranch)
     const wtRoot = resolve(dirname(mainPath), `${basename(mainPath)}.wt`)
@@ -111,6 +113,7 @@ export class WorktreeManager {
       branch,
       specId: '',
       createdAt: new Date().toISOString(),
+      cleanSlug,
     }
     await setProjectWorktree(entry.id, meta, this.globalConfigPath)
     const updated = (await this.registry.findEntry(entry.id)) ?? { ...entry, worktree: meta }
@@ -186,6 +189,32 @@ export class WorktreeManager {
       mainProjectId: mainEntry?.id ?? entry.worktree.mainProjectId,
       mergeCommit,
     }
+  }
+
+  async removeWorktree(worktreeProjectId: string): Promise<void> {
+    const entry = await this.registry.findEntry(worktreeProjectId)
+    if (!entry) throw new GitError('not_found', `project not found: ${worktreeProjectId}`)
+    if (!entry.worktree) {
+      throw new GitError('not_worktree', 'project is not a worktree')
+    }
+    const { mainPath, branch } = entry.worktree
+    const wtPath = entry.path
+
+    if (existsSync(wtPath)) {
+      const status = await runGitChecked(wtPath, ['status', '--porcelain'])
+      if (status.stdout.trim().length > 0) {
+        throw new GitError('dirty', '存在未提交 git 的变更')
+      }
+      await trash(wtPath)
+    }
+
+    if (existsSync(mainPath)) {
+      await runGitRaw(mainPath, ['worktree', 'prune'])
+      await runGitRaw(mainPath, ['branch', '-D', branch])
+    }
+
+    await this.registry.remove(worktreeProjectId)
+    this.onProjectsChanged?.()
   }
 
   async listWorktreesOf(mainProjectId: string): Promise<GlobalProjectEntry[]> {
@@ -321,6 +350,12 @@ function sanitizeSlug(raw: string): string {
   )
 }
 
+export function cleanWorktreeSlug(rawSlug: string): string {
+  return rawSlug
+    .replace(/^\d{6}-(feat|fix|refct)-/i, '')
+    .replace(/-(main|master|develop|dev)$/i, '')
+}
+
 function compactDate(d: Date): string {
   const y = String(d.getFullYear()).slice(-2)
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -358,8 +393,7 @@ function renderConflictSpec(args: {
 }): string {
   const { branch, report, now } = args
   const today = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
-  const nowStamp =
-    `${today} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`
+  const nowStamp = `${today} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`
   const fileLines = report.files.length
     ? report.files.map((f) => `- \`${f}\``).join('\n')
     : '- （无 — 合并失败但未列出冲突文件，请人工核查）'

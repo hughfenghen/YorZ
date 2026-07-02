@@ -68,9 +68,8 @@ function writeWidth(value: number): void {
 
 function displayProjectName(p: ProjectListItem): string {
   if (!p.worktree) return p.name
-  const mainBasename =
-    p.worktree.mainPath.split('/').filter(Boolean).pop() ?? p.worktree.mainPath
-  const slug = p.worktree.branch.replace(/^wt\//, '')
+  const mainBasename = p.worktree.mainPath.split('/').filter(Boolean).pop() ?? p.worktree.mainPath
+  const slug = p.worktree.cleanSlug ?? p.worktree.branch.replace(/^wt\//, '')
   return `${mainBasename} · ${slug}`
 }
 
@@ -81,6 +80,13 @@ export const ProjectsSidebar: Component = () => {
   const [error, setError] = createSignal<string | null>(null)
   const [editing, setEditing] = createSignal<ProjectListItem | null>(null)
   const [toast, setToast] = createSignal<string | null>(null)
+  const [deleting, setDeleting] = createSignal<ProjectListItem | null>(null)
+  const [deleteFiles, setDeleteFiles] = createSignal(false)
+  const [deleteBusy, setDeleteBusy] = createSignal(false)
+  const [deletePopoverPos, setDeletePopoverPos] = createSignal<{ top: number; left: number }>({
+    top: 0,
+    left: 0,
+  })
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -152,22 +158,42 @@ export const ProjectsSidebar: Component = () => {
     }, 4000)
   }
 
-  async function onRemove(p: ProjectListItem, ev: Event) {
+  function onRemove(p: ProjectListItem, ev: Event) {
     ev.preventDefault()
     ev.stopPropagation()
-    const ok = window.confirm(
-      `从列表中移除项目「${p.name}」？\n` +
-        `仅会从 YorZ 全局配置中删除，磁盘上的 ${p.path}/.yorz/ 目录不会被删除。`,
-    )
-    if (!ok) return
+    const btn = ev.currentTarget as HTMLElement
+    const rect = btn.getBoundingClientRect()
+    const popoverWidth = 280
+    let left = rect.right - popoverWidth
+    if (left < 8) left = 8
+    setDeletePopoverPos({ top: rect.bottom + 8, left })
+    setDeleteFiles(false)
+    setDeleting(p)
+  }
+
+  async function confirmDelete() {
+    const p = deleting()
+    if (!p) return
+    setDeleteBusy(true)
     try {
-      await api.removeProject(p.id)
-      await refetch()
-      if (activeProjectId() === p.id) {
-        navigate('/')
+      if (deleteFiles() && p.worktree) {
+        await api.removeProjectWithFiles(p.id)
+      } else {
+        await api.removeProject(p.id)
       }
+      await refetch()
+      if (activeProjectId() === p.id) navigate('/')
+      setDeleting(null)
     } catch (err) {
-      setError((err as Error).message)
+      const msg = (err as Error).message
+      if (msg.includes('409')) {
+        showToast('存在未提交 git 的变更')
+        setDeleting(null)
+      } else {
+        setError(msg)
+      }
+    } finally {
+      setDeleteBusy(false)
     }
   }
 
@@ -265,7 +291,7 @@ export const ProjectsSidebar: Component = () => {
                       type="button"
                       class="projects-sidebar-remove"
                       aria-label={`移除 ${p.name}`}
-                      title="从列表移除（不删除磁盘文件）"
+                      title="删除项目"
                       onClick={(e) => void onRemove(p, e)}
                     >
                       ✕
@@ -329,6 +355,54 @@ export const ProjectsSidebar: Component = () => {
         <div class="projects-sidebar-toast" role="status">
           {toast()}
         </div>
+      </Show>
+
+      <Show when={deleting()}>
+        {(p) => (
+          <>
+            <div
+              class="delete-popover-backdrop"
+              onClick={() => !deleteBusy() && setDeleting(null)}
+            />
+            <div
+              class="delete-project-popover"
+              style={{
+                top: `${deletePopoverPos().top}px`,
+                left: `${deletePopoverPos().left}px`,
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <header>
+                <strong>删除项目</strong>
+              </header>
+              <p class="delete-project-name">{displayProjectName(p())}</p>
+              <p class="delete-project-desc">此操作将从 YorZ 项目列表中移除该项目。</p>
+              <Show when={p().worktree}>
+                <label class="delete-files-check">
+                  <input
+                    type="checkbox"
+                    checked={deleteFiles()}
+                    onChange={(e) => setDeleteFiles(e.currentTarget.checked)}
+                  />
+                  同时删除文件目录
+                </label>
+              </Show>
+              <div class="delete-project-actions">
+                <button type="button" onClick={() => setDeleting(null)} disabled={deleteBusy()}>
+                  取消
+                </button>
+                <button
+                  type="button"
+                  class="delete-confirm-btn"
+                  onClick={() => void confirmDelete()}
+                  disabled={deleteBusy()}
+                >
+                  {deleteBusy() ? '删除中…' : '确认删除'}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </Show>
     </aside>
   )

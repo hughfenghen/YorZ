@@ -34,6 +34,7 @@ export interface WorktreeMeta {
   branch: string
   specId: string
   createdAt: string
+  cleanSlug?: string
 }
 
 export interface ProjectListItem {

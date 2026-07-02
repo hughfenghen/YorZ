@@ -12,6 +12,7 @@ import {
   resolveGlobalConfigDir,
   resolveGlobalConfigPath,
   saveGlobalConfig,
+  setProjectWorktree,
   touchProjectActivity,
 } from '../global-config.js'
 
@@ -159,5 +160,44 @@ describe('prepareProjectDir', () => {
     const abs = await prepareProjectDir(base)
     expect(abs).toBe(base)
     expect(existsSync(join(base, '.yorz', 'specs'))).toBe(true)
+  })
+})
+
+describe('WorktreeMeta cleanSlug normalization', () => {
+  it('preserves cleanSlug when present', async () => {
+    const fp = await tmpConfigPath()
+    const { entry } = await addProject('/tmp/wt-test', fp)
+    await setProjectWorktree(
+      entry.id,
+      {
+        mainProjectId: 'main-abc',
+        mainPath: '/tmp/main',
+        branch: 'wt/260630-feat-some-task',
+        specId: '',
+        createdAt: '2026-06-30T00:00:00Z',
+        cleanSlug: 'some-task',
+      },
+      fp,
+    )
+    const cfg = await loadGlobalConfig(fp)
+    expect(cfg.projects[0]!.worktree?.cleanSlug).toBe('some-task')
+  })
+
+  it('cleanSlug is undefined when absent (backward compatible)', async () => {
+    const fp = await tmpConfigPath()
+    const { entry } = await addProject('/tmp/wt-old', fp)
+    await setProjectWorktree(
+      entry.id,
+      {
+        mainProjectId: 'main-abc',
+        mainPath: '/tmp/main',
+        branch: 'wt/260630-feat-some-task',
+        specId: '',
+        createdAt: '2026-06-30T00:00:00Z',
+      },
+      fp,
+    )
+    const cfg = await loadGlobalConfig(fp)
+    expect(cfg.projects[0]!.worktree?.cleanSlug).toBeUndefined()
   })
 })

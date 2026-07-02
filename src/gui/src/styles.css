@@ -322,6 +322,87 @@ body.is-resizing {
   z-index: 200;
 }
 
+.delete-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 199;
+  background: transparent;
+}
+
+.delete-project-popover {
+  position: fixed;
+  z-index: 200;
+  width: 280px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 6px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.delete-project-popover header {
+  display: flex;
+  align-items: center;
+}
+
+.delete-project-name {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.95rem;
+  word-break: break-all;
+}
+
+.delete-project-desc {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted, #888);
+}
+
+.delete-files-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: #c0392b;
+  cursor: pointer;
+  user-select: none;
+}
+
+.delete-files-check input {
+  cursor: pointer;
+}
+
+.delete-project-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.2rem;
+}
+
+.delete-project-actions button {
+  font: inherit;
+  border-radius: var(--radius, 6px);
+  border: 1px solid var(--border);
+  background: var(--bg, #fff);
+  color: var(--text, #333);
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+}
+
+.delete-project-actions button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.delete-project-actions .delete-confirm-btn {
+  background: #c0392b;
+  color: #fff;
+  border-color: transparent;
+}
+
 .project-config-backdrop {
   position: fixed;
   inset: 0;

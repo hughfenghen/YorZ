@@ -3,8 +3,13 @@ import { basename, isAbsolute, resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import type { ProjectRegistry } from '../project-registry.js'
+import type { WorktreeManager } from '../worktree-manager.js'
+import { GitError } from '../git.js'
 
-export function createProjectRoutes(registry: ProjectRegistry): Hono {
+export function createProjectRoutes(
+  registry: ProjectRegistry,
+  worktreeManager: WorktreeManager,
+): Hono {
   const app = new Hono()
 
   app.get('/projects', async (c) => {
@@ -53,6 +58,26 @@ export function createProjectRoutes(registry: ProjectRegistry): Hono {
 
   app.delete('/projects/:projectId', async (c) => {
     const id = c.req.param('projectId')
+    const deleteFiles = c.req.query('deleteFiles') === 'true'
+    if (deleteFiles) {
+      const entry = await registry.findEntry(id)
+      if (!entry) return c.json({ ok: false, error: 'project not found' }, 404)
+      if (!entry.worktree) {
+        return c.json(
+          { ok: false, error: 'deleteFiles is only supported for worktree projects' },
+          400,
+        )
+      }
+      try {
+        await worktreeManager.removeWorktree(id)
+        return c.json({ ok: true })
+      } catch (err) {
+        if (err instanceof GitError && err.code === 'dirty') {
+          return c.json({ ok: false, error: '存在未提交 git 的变更', dirty: true }, 409)
+        }
+        return c.json({ ok: false, error: (err as Error).message }, 400)
+      }
+    }
     const ok = await registry.remove(id)
     return c.json({ ok }, ok ? 200 : 404)
   })
