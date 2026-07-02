@@ -1,81 +1,39 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
-  "version": 1,
+  "version": 2,
   "modules": [
     {
-      "module": "conventions",
-      "file": "conventions.md",
+      "module": "SKILL",
+      "file": "SKILL.md",
       "keyRules": [
         "frontmatter 字段顺序固定为 stage/last_action/updated_at/summary",
-        "summary 必填、长度 ≤ 200 字符",
-        "时间字段使用 YYYY-MM-DD",
-        "二/三级标题按 ## N. / ### N.M 重排编号"
-      ],
-      "relatedCases": []
-    },
-    {
-      "module": "routing",
-      "file": "routing.md",
-      "keyRules": [
-        "判定严格按 1-8 顺序，命中即停",
-        "## 追加任务 中存在 [open] 视为新输入，进入 plan 重开",
-        "待确认问题存在任一 ### 三级标题子节（非空态 _暂无_）时禁止进入 execute"
-      ],
-      "relatedCases": ["reopen-on-new-requirement", "append-task-state"]
-    },
-    {
-      "module": "plan",
-      "file": "plan.md",
-      "keyRules": [
-        "问题使用三级标题 ### N.M、候选使用一级有序列表，空态整章仅一行 _暂无_",
-        "候选项硬约束：给出候选项的问题必须恰 1 个 (推荐)（半/全角括号皆可）",
-        "无可枚举候选时在问题正文末尾追加 （自由文本） 后缀",
-        "禁止新增以推荐项为名的额外条目",
-        "写回前逐条核对产出前自检 checklist"
-      ],
-      "relatedCases": ["plan-candidates"]
-    },
-    {
-      "module": "tasks",
-      "file": "tasks.md",
-      "keyRules": [
-        "消费 ！！！ 批注后必须删除对应文本",
-        "消费完所有 ！！！ 后整段删除 ## 用户批注 章节",
-        "任务清单仅使用单层 - [ ]，每项含动作+对象+验收点"
-      ],
-      "relatedCases": ["tasks-consume-annotations"]
-    },
-    {
-      "module": "execute",
-      "file": "execute.md",
-      "keyRules": [
-        "完成一项立即把 - [ ] 改为 - [x]",
-        "在 ## 执行记录 追加一条结果",
-        "起因为追加任务时，把 [open] 改为 [fixed] 并保留历史条目"
-      ],
-      "relatedCases": ["execute-checkbox-flip", "append-task-state"]
-    },
-    {
-      "module": "new-spec",
-      "file": "new-spec.md",
-      "keyRules": [
-        "id 格式 YYMMDD.<type>.<summary-name>",
-        "id 冲突追加 -2/-3 后缀",
-        "type 取自 feat|refct|fix，明确给出时不再询问",
-        "初始化后同一轮继续进入 plan 阶段"
-      ],
-      "relatedCases": ["new-spec-skeleton"]
-    },
-    {
-      "module": "rewrite-rules",
-      "file": "rewrite-rules.md",
-      "keyRules": [
-        "必备章节：现状分析/技术实现方案/待确认问题/任务清单/执行记录",
-        "## 追加任务 为可选章节：由用户触发追加时懒插入，位置固定在 ## 任务清单 与 ## 执行记录 之间",
+        "summary 必填、长度 ≤ 200 字符、updated_at 秒级带单引号",
+        "二/三级标题按 ## N. / ### N.M 重排编号",
+        "自动模式判定严格按 1-8 顺序，命中即停",
         "新增需求/新增 bug 触发变更重开，stage 切回 plan",
-        "每次写回 spec 必须同时更新 frontmatter"
+        "lint errorCount=0 才可继续；连续失败 3 次写入待确认问题后退出"
       ],
       "relatedCases": ["reopen-on-new-requirement", "append-task-state"]
+    },
+    {
+      "module": "stages",
+      "file": "stages.md",
+      "keyRules": [
+        "plan: 输出现状分析/技术实现方案/待确认问题，禁止输出任务清单",
+        "待确认问题：三级标题 ### N.M + 有序候选列表 + 恰 1 个 (推荐)；空态 _暂无_",
+        "tasks: 消费 ！！！ 批注后删除文本 + 整段删除 ## 用户批注",
+        "tasks: 任务清单单层 - [ ]，每项含动作+对象+验收点",
+        "execute: 完成一项立即 - [ ] → - [x] + 执行记录追加",
+        "execute: 追加任务 [open] → [fixed] 保留历史",
+        "new-spec: id 格式 YYMMDD.<type>.<summary-name>，冲突追加 -2/-3"
+      ],
+      "relatedCases": [
+        "plan-candidates",
+        "tasks-consume-annotations",
+        "execute-checkbox-flip",
+        "append-task-state",
+        "new-spec-skeleton"
+      ]
     },
     {
       "module": "mermaid",
@@ -86,7 +44,7 @@
         "节制原则：只在信息复杂、图形能显著提升可读性时输出",
         "语法细节查阅 references/ 目录下对应文档"
       ],
-      "relatedCases": ["mermaid-output-in-spec"]
+      "relatedCases": []
     },
     {
       "module": "review",

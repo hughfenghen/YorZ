@@ -1,5 +1,3 @@
----
-name: aisd
 description: Drive markdown specs through plan/tasks/execute stages with deterministic state updates.
 ---
 

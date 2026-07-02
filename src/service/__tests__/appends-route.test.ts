@@ -52,7 +52,7 @@ describe('POST /api/specs/:id/appends', () => {
     expect(body.ok).toBe(true)
     expect(body.runId).toBeTruthy()
     const raw = await readFile(join(cwd, '.yorz', 'specs', id, 'spec.md'), 'utf8')
-    expect(raw).toContain('## 追加任务')
+    expect(raw).toMatch(/## \d+\.\s+追加任务/)
     expect(raw).toContain('[open] [fix]')
     expect(raw).toContain('登录失败无反馈')
     expect(raw).toContain('last_action: 追加任务（fix）')

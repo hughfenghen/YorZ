@@ -49,14 +49,14 @@ describe('SpecStore.create', () => {
     expect(lines[4]).toBe('summary: 修复登录 bug')
     expect(lines[5]).toBe('---')
     expect(raw).toContain('# My Spec')
-    expect(raw).toContain('## 背景')
+    expect(raw).toContain('## 1. 背景')
     expect(raw).toContain('用户登录失败时无反馈')
-    expect(raw).toContain('## 需求')
-    expect(raw).toContain('## 现状分析')
-    expect(raw).toContain('## 技术实现方案')
-    expect(raw).toContain('## 待确认问题')
-    expect(raw).toContain('## 任务清单')
-    expect(raw).toContain('## 执行记录')
+    expect(raw).toContain('## 2. 需求')
+    expect(raw).toContain('## 3. 现状分析')
+    expect(raw).toContain('## 4. 技术实现方案')
+    expect(raw).toContain('## 5. 待确认问题')
+    expect(raw).toContain('## 6. 任务清单')
+    expect(raw).toContain('## 7. 执行记录')
   })
 
   it('uses placeholder title/summary when caller omits them', async () => {
@@ -122,6 +122,7 @@ describe('SpecStore.list / read / appendAnnotation', () => {
     expect(headerLines[3]).toBe('summary: x summary')
     expect(raw).toContain('> 2.1 GUI 现状 中 "底部存在追加批注表单"')
     expect(raw).toContain('> ！！！改为顶部按钮')
+    expect(raw).toMatch(/## \d+\.\s+用户批注/)
   })
 
   it('appendAnnotation rejects empty quote/note', async () => {

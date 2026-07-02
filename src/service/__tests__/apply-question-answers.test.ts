@@ -33,7 +33,7 @@ describe('SpecStore.applyQuestionAnswers', () => {
       ],
     })
     const raw = await readFile(path, 'utf8')
-    expect(raw).toContain('## 用户批注')
+    expect(raw).toMatch(/## \d+\.\s+用户批注/)
     expect(raw).toContain('> 待确认问题："候选答案的展现形式应采用哪种？"')
     expect(raw).toContain('> ！！！选择：表格；备注：保留候选项 (推荐) 后缀')
     expect(raw).toContain('> 3. 现状分析 中 "GUI 现有批注链路"')
@@ -60,7 +60,7 @@ describe('SpecStore.applyQuestionAnswers', () => {
       freeformAnnotations: [],
     })
     const raw = await readFile(path, 'utf8')
-    const occurrences = raw.match(/^##\s+用户批注\s*$/gm) ?? []
+    const occurrences = raw.match(/^##\s+\d+\.\s+用户批注\s*$/gm) ?? []
     expect(occurrences).toHaveLength(1)
     expect(raw).toContain('> 待确认问题："Q1"')
     expect(raw).toContain('> 待确认问题："Q2"')

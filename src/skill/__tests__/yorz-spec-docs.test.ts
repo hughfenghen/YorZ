@@ -19,14 +19,14 @@ describe('yorz-spec skill 文档关键词存在性（持续推进硬约束）', 
     expect(body).toMatch(/副作用/)
   })
 
-  it('tasks.md 的「自动衔接」补齐了「任务量不构成暂停理由」与禁止追问硬约束', () => {
-    const body = read('tasks.md')
+  it('stages.md 的「自动衔接」补齐了「任务量不构成暂停理由」与禁止追问硬约束', () => {
+    const body = read('stages.md')
     expect(body).toMatch(/任务量不构成暂停理由/)
     expect(body).toMatch(/同一轮衔接 execute 前后不得/)
   })
 
-  it('execute.md 的「顺序执行」补齐了「中段元确认」硬约束', () => {
-    const body = read('execute.md')
+  it('stages.md 的「顺序执行」补齐了「中段元确认」硬约束', () => {
+    const body = read('stages.md')
     expect(body).toMatch(/中段元确认/)
     expect(body).toMatch(/整批\/中段元确认/)
   })

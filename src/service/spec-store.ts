@@ -281,8 +281,9 @@ export class SpecStore {
       updated_at: this.nowDateTime(),
       summary: existing.summary,
     }
-    const block = `\n\n> ${sectionPath} 中 "${quote}"\n>\n> ！！！${note}\n`
-    const next = serializeSpec(fm, parsed.content.replace(/\n+$/, '') + block)
+    const block = `> ${sectionPath} 中 "${quote}"\n>\n> ！！！${note}`
+    const merged = mergeUserAnnotations(parsed.content, [block])
+    const next = serializeSpec(fm, merged)
     await this.write(filePath, next)
   }
 
@@ -389,9 +390,9 @@ function dateString(value: unknown): string {
   return ''
 }
 
-const USER_ANNOTATION_HEADING_RE = /^##\s+(?:\d+(?:\.\d+)*\s+)?用户批注\s*$/m
-const APPEND_TASKS_HEADING_RE = /^##\s+(?:\d+(?:\.\d+)*\s+)?追加任务\s*$/m
-const EXEC_RECORD_HEADING_RE = /^##\s+(?:\d+(?:\.\d+)*\s+)?执行记录\s*$/m
+const USER_ANNOTATION_HEADING_RE = /^##\s+(?:\d+(?:\.\d+)*\.?\s+)?用户批注\s*$/m
+const APPEND_TASKS_HEADING_RE = /^##\s+(?:\d+(?:\.\d+)*\.?\s+)?追加任务\s*$/m
+const EXEC_RECORD_HEADING_RE = /^##\s+(?:\d+(?:\.\d+)*\.?\s+)?执行记录\s*$/m
 
 function mergeAppendTasksEntry(content: string, entry: string): string {
   const body = content.replace(/^\n+/, '').replace(/\n+$/, '')
@@ -451,6 +452,23 @@ function mergeUserAnnotations(content: string, blocks: string[]): string {
   return `${before}\n\n${joined}${tail ? `\n${tail}` : '\n'}`
 }
 
+function renumberHeadings(body: string): string {
+  let h2 = 0
+  let h3 = 0
+  return body.replace(
+    /^(#{2,3})\s+(?:\d+(?:\.\d+)*\.?\s+)?(.+)$/gm,
+    (_full, hashes: string, title: string) => {
+      if (hashes === '##') {
+        h2++
+        h3 = 0
+        return `## ${h2}. ${title.trim()}`
+      }
+      h3++
+      return `### ${h2}.${h3} ${title.trim()}`
+    },
+  )
+}
+
 function serializeSpec(fm: SpecFrontmatter, body: string): string {
   const head = [
     '---',
@@ -461,7 +479,8 @@ function serializeSpec(fm: SpecFrontmatter, body: string): string {
     '---',
     '',
   ].join('\n')
-  return `${head}${body.startsWith('\n') ? '' : '\n'}${body}${body.endsWith('\n') ? '' : '\n'}`
+  const out = renumberHeadings(body)
+  return `${head}${out.startsWith('\n') ? '' : '\n'}${out}${out.endsWith('\n') ? '' : '\n'}`
 }
 
 function formatUpdatedAtForYaml(value: string): string {

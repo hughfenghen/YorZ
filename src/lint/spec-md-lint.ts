@@ -5,7 +5,7 @@ import { frontmatterRules } from './rules/frontmatter.js'
 import { headingRules } from './rules/headings.js'
 import { mermaidRules } from './rules/mermaid.js'
 import { pendingQuestionsRules } from './rules/pending-questions.js'
-import { sectionsRules } from './rules/sections.js'
+
 import { taskListRules } from './rules/task-list.js'
 import type { LintFinding, LintReport, LintRule } from './types.js'
 
@@ -17,7 +17,6 @@ export interface SpecLintOptions {
 export const SPEC_RULES: LintRule[] = [
   ...frontmatterRules,
   ...headingRules,
-  ...sectionsRules,
   ...pendingQuestionsRules,
   ...taskListRules,
   ...appendTasksRules,

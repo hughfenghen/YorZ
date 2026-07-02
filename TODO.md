@@ -5,6 +5,7 @@
   - [ ] 方案的影响范围、变更范围；spec review 都可能用到（差异是预估和实际影响）
   - [ ] Skill 的可测试性、效果评估
   - [ ] spec 格式检测机制：图形语法，待确认问题格式（是否能解析通过）
+  - [ ] 简化版工作流（skill），处理简单小问题
 - [ ] review 模式
   - [ ] 图形化差异变更表达
 - [ ] 不建立 spec 的沟通
@@ -35,14 +36,29 @@
   - [ ] 优化 Agent 输出效果，终端渲染库
 
 - Agent 任务内的卡片，点击 header 展开/折叠
+- review 简化 git 提交
+- @ 关联模块、文件
 
 ## Bug
 
 - [ ] 图形化语法错误
 - [ ] 图形化区域显示纯代码文本，刷新后正常，可能是解析时机存在 bug
-- [ ] 待确认问题的结构不稳定，导致解析生成 UI 失败
 
 - 类型定义使用 类图，依赖图
 - 层级结构信息 使用 treemap
 - 代码逻辑使用流程图
 - 核心状态关系使用状态图
+
+请了解 yorz skill spec 驱动开发工作流， 分析是否可以优化；
+
+- @src/skill/yorz-spec/SKILL.md @src/skill/yorz-spec/plan.md
+- @src/skill/yorz-spec/conventions.md
+- @src/skill/yorz-spec/execute.md
+- @src/skill/yorz-spec/new-spec.md
+
+1. 我期望简化 skill、提升 Agent 推荐流程的速度、提升 Agent 实施质量；
+2. 是否可以简化 skill 对文档格式的描述与限制，使用简单正面示例 + yorz  
+   lint 避免 Agent 跑偏？ @src/lint/rules/
+3. 期望移除 rules 中对必填章节的校验，lint  
+   目的是确保关键格式符合期望，避免后续流程解析失败；如待确认问题解析成  
+   UI、mermaid 图形渲染

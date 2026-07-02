@@ -48,7 +48,7 @@ describe('POST /api/specs/:id/questions/answers', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ ok: true })
     const raw = await readFile(join(cwd, '.yorz', 'specs', id, 'spec.md'), 'utf8')
-    expect(raw).toContain('## 用户批注')
+    expect(raw).toMatch(/## \d+\.\s+用户批注/)
     expect(raw).toContain('> 待确认问题："Q1"')
     expect(raw).toContain('> ！！！选择：A；备注：nice')
     expect(raw).toContain('> 3 现状 中 "foo"')

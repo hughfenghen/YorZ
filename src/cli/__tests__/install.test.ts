@@ -21,14 +21,9 @@ afterEach(async () => {
 
 const EXPECTED_SUBDOCS = [
   'SKILL.md',
-  'conventions.md',
-  'execute.md',
   'index.json',
-  'new-spec.md',
-  'plan.md',
-  'rewrite-rules.md',
-  'routing.md',
-  'tasks.md',
+  'stages.md',
+  'review.md',
 ]
 
 async function walk(dir: string): Promise<string[]> {
