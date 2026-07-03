@@ -59,10 +59,6 @@ export const AppendTaskDialog: Component<Props> = (props) => {
       setError('描述不能为空')
       return
     }
-    if (desc.length > 4000) {
-      setError('描述过长（上限 4000 字符）')
-      return
-    }
     setBusy(true)
     setError(null)
     try {

@@ -94,17 +94,6 @@ describe('POST /api/specs/:id/appends', () => {
     expect(res.status).toBe(400)
   })
 
-  it('400 when description exceeds 4000 chars', async () => {
-    const { apiPrefix } = await startInTmp()
-    const id = await createSpec(apiPrefix)
-    const res = await fetch(`${apiPrefix}/specs/${id}/appends`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ kind: 'fix', description: 'x'.repeat(4001) }),
-    })
-    expect(res.status).toBe(400)
-  })
-
   it('404 when spec does not exist', async () => {
     const { apiPrefix } = await startInTmp()
     const res = await fetch(`${apiPrefix}/specs/does-not-exist/appends`, {

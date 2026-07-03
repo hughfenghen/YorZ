@@ -220,7 +220,6 @@ export class SpecStore {
     }
     const description = (input.description ?? '').trim()
     if (!description) throw new Error('description required')
-    if (description.length > 4000) throw new Error('description too long (max 4000)')
     const sectionPath = input.sectionPath?.trim() ?? ''
     const quote = input.quote?.trim() ?? ''
     if (quote.length > 500) throw new Error('quote too long (max 500)')

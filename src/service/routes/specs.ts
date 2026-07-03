@@ -366,7 +366,7 @@ function parseAppendBody(body: unknown): AppendInput | { error: string } {
   if (typeof obj.description !== 'string' || !obj.description.trim()) {
     return { error: 'description required' }
   }
-  if (obj.description.length > 4000) return { error: 'description too long (max 4000)' }
+
   const out: AppendInput = { kind, description: obj.description, autoRun: true }
   if (obj.sectionPath !== undefined) {
     if (typeof obj.sectionPath !== 'string') return { error: 'sectionPath must be a string' }
