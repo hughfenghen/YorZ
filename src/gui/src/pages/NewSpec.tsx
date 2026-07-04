@@ -67,12 +67,20 @@ export const NewSpec: Component = () => {
   const [useWorktree, setUseWorktree] = createSignal(false)
   const busy = () => phase() === 'creating'
 
+  const [mentionOpen, setMentionOpen] = createSignal(false)
+  const [mentionItems, setMentionItems] = createSignal<string[]>([])
+  const [mentionIndex, setMentionIndex] = createSignal(0)
+  let mentionStart = -1
+  let mentionQuery = ''
+  let mentionTimer: ReturnType<typeof setTimeout> | null = null
+
   let cleanupList: (() => void) | null = null
   let baselineIds: Set<string> = new Set()
   let targetProjectId: string = ''
   let activeRunId: string | null = null
   let navigated = false
   let fileInputEl: HTMLInputElement | undefined
+  let textareaEl: HTMLTextAreaElement | undefined
 
   onCleanup(() => {
     cleanupList?.()
@@ -201,6 +209,92 @@ export const NewSpec: Component = () => {
     // We intentionally do NOT preventDefault on non-image content, so text paste still flows into textarea.
     e.preventDefault()
     await addFiles(imgs)
+  }
+
+  function checkMention(el: HTMLTextAreaElement) {
+    const pos = el.selectionStart
+    const text = el.value.slice(0, pos)
+    const atIdx = text.lastIndexOf('@')
+    if (atIdx === -1) {
+      closeMention()
+      return
+    }
+    if (atIdx > 0 && !/\s/.test(text[atIdx - 1])) {
+      closeMention()
+      return
+    }
+    const afterAt = text.slice(atIdx + 1)
+    if (!/^[\w./@-]*$/.test(afterAt)) {
+      closeMention()
+      return
+    }
+    mentionStart = atIdx
+    mentionQuery = afterAt
+    if (!mentionOpen()) setMentionOpen(true)
+    debouncedSearch(afterAt)
+  }
+
+  function closeMention() {
+    setMentionOpen(false)
+    setMentionItems([])
+    setMentionIndex(0)
+    mentionStart = -1
+    mentionQuery = ''
+    if (mentionTimer) {
+      clearTimeout(mentionTimer)
+      mentionTimer = null
+    }
+  }
+
+  function debouncedSearch(query: string) {
+    if (mentionTimer) clearTimeout(mentionTimer)
+    mentionTimer = setTimeout(async () => {
+      const pid = projectId()
+      if (!pid) return
+      try {
+        const result = await api.listFiles(pid, query)
+        setMentionItems(result.items)
+        setMentionIndex(0)
+      } catch {
+        setMentionItems([])
+      }
+    }, 150)
+  }
+
+  function selectMention(path: string) {
+    const text = content()
+    const before = text.slice(0, mentionStart)
+    const after = text.slice(mentionStart + 1 + mentionQuery.length)
+    const replacement = '@' + path
+    const newText = before + replacement + after
+    setContent(newText)
+    closeMention()
+    if (textareaEl) {
+      const cursorPos = before.length + replacement.length
+      requestAnimationFrame(() => {
+        textareaEl!.focus()
+        textareaEl!.setSelectionRange(cursorPos, cursorPos)
+      })
+    }
+  }
+
+  function onTextareaKeyDown(e: KeyboardEvent) {
+    if (!mentionOpen()) return
+    const items = mentionItems()
+    if (items.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setMentionIndex((i) => (i + 1) % items.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setMentionIndex((i) => (i - 1 + items.length) % items.length)
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault()
+      selectMention(items[mentionIndex()])
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      closeMention()
+    }
   }
 
   async function removeAttachment(id: string) {
@@ -360,16 +454,45 @@ export const NewSpec: Component = () => {
         </label>
         <label>
           <span>需求内容</span>
-          <textarea
-            rows={10}
-            value={content()}
-            onInput={(e) => setContent(e.currentTarget.value)}
-            onPaste={onPaste}
-            placeholder="原始诉求、痛点、期望效果、关联文档/模块（可使用 @ 引用）"
-            required
-            autofocus
-            disabled={busy()}
-          />
+          <div class="mention-container">
+            <textarea
+              ref={textareaEl}
+              rows={10}
+              value={content()}
+              onInput={(e) => {
+                setContent(e.currentTarget.value)
+                checkMention(e.currentTarget)
+              }}
+              onKeyDown={onTextareaKeyDown}
+              onBlur={() => setTimeout(() => closeMention(), 150)}
+              onPaste={onPaste}
+              placeholder="原始诉求、痛点、期望效果、关联文档/模块（可使用 @ 引用）"
+              required
+              autofocus
+              disabled={busy()}
+            />
+            <Show when={mentionOpen() && mentionItems().length > 0}>
+              <ul class="mention-dropdown">
+                <For each={mentionItems()}>
+                  {(item, i) => (
+                    <li>
+                      <button
+                        type="button"
+                        class={`mention-item ${mentionIndex() === i() ? 'active' : ''}`}
+                        onMouseEnter={() => setMentionIndex(i())}
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          selectMention(item)
+                        }}
+                      >
+                        {item}
+                      </button>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
+          </div>
         </label>
         <section class="attachments" onPaste={onPaste}>
           <div class="attachments-head">

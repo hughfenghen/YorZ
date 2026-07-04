@@ -132,6 +132,10 @@ export interface ProjectConfig {
   specsDir: string
 }
 
+export interface FileCompletionResult {
+  items: string[]
+}
+
 function projectBase(pid: string): string {
   return `/api/projects/${encodeURIComponent(pid)}`
 }
@@ -297,5 +301,9 @@ export const api = {
   getAgentLog: (pid: string, specId: string, runId: string) =>
     request<AgentLogPayload>(
       `${projectBase(pid)}/specs/${encodeURIComponent(specId)}/agent-logs/${encodeURIComponent(runId)}`,
+    ),
+  listFiles: (pid: string, query: string, limit = 50) =>
+    request<FileCompletionResult>(
+      `${projectBase(pid)}/files?query=${encodeURIComponent(query)}&limit=${limit}`,
     ),
 }

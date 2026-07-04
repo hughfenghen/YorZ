@@ -766,10 +766,58 @@ body.is-resizing {
   background: var(--bg);
   color: var(--text);
   min-height: 44px;
+  width: 100%;
 }
 
 .form textarea {
   resize: vertical;
+}
+
+.mention-container {
+  position: relative;
+  width: 100%;
+}
+
+.mention-dropdown {
+  position: absolute;
+  z-index: 100;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.mention-dropdown li {
+  margin: 0;
+}
+
+.mention-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 0.35rem 0.75rem;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mention-item.active {
+  background: var(--primary);
+  color: var(--primary-fg);
 }
 
 .type-group {
