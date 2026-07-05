@@ -79,7 +79,9 @@ export const ProjectsSidebar: Component = () => {
   const [projects, { refetch }] = createResource<ProjectListItem[]>(() => api.listProjects())
   const [error, setError] = createSignal<string | null>(null)
   const [editing, setEditing] = createSignal<ProjectListItem | null>(null)
-  const [toast, setToast] = createSignal<string | null>(null)
+  const [toast, setToast] = createSignal<{ message: string; type: 'success' | 'error' } | null>(
+    null,
+  )
   const [deleting, setDeleting] = createSignal<ProjectListItem | null>(null)
   const [deleteFiles, setDeleteFiles] = createSignal(false)
   const [deleteBusy, setDeleteBusy] = createSignal(false)
@@ -151,10 +153,11 @@ export const ProjectsSidebar: Component = () => {
     setEditing(p)
   }
 
-  function showToast(message: string) {
-    setToast(message)
+  function showToast(message: string, type: 'success' | 'error' = 'success') {
+    const payload = { message, type }
+    setToast(payload)
     setTimeout(() => {
-      if (toast() === message) setToast(null)
+      if (toast() === payload) setToast(null)
     }, 4000)
   }
 
@@ -187,10 +190,11 @@ export const ProjectsSidebar: Component = () => {
     } catch (err) {
       const msg = (err as Error).message
       if (msg.includes('409')) {
-        showToast('存在未提交 git 的变更')
+        showToast('存在未提交 git 的变更', 'error')
         setDeleting(null)
       } else {
         setError(msg)
+        showToast(msg, 'error')
       }
     } finally {
       setDeleteBusy(false)
@@ -352,9 +356,14 @@ export const ProjectsSidebar: Component = () => {
       </Show>
 
       <Show when={toast()}>
-        <div class="projects-sidebar-toast" role="status">
-          {toast()}
-        </div>
+        {(t) => (
+          <div
+            class={`projects-sidebar-toast projects-sidebar-toast--${t().type}`}
+            role={t().type === 'error' ? 'alert' : 'status'}
+          >
+            {t().message}
+          </div>
+        )}
       </Show>
 
       <Show when={deleting()}>

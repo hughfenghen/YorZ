@@ -311,16 +311,34 @@ body.is-resizing {
 
 .projects-sidebar-toast {
   position: fixed;
-  bottom: 1rem;
+  top: 1rem;
   left: 50%;
   transform: translateX(-50%);
   background: var(--surface, #fff);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 0.4rem 0.8rem;
-  font-size: 0.85rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   z-index: 200;
+  animation: projects-sidebar-toast-in 180ms ease-out;
+}
+
+.projects-sidebar-toast--error {
+  border-color: #e03131;
+  color: #c92a2a;
+  background: #fff5f5;
+}
+
+@keyframes projects-sidebar-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
 
 .delete-popover-backdrop {
