@@ -14,6 +14,80 @@ interface SseEvent {
 
 export const HEARTBEAT_INTERVAL_MS = 5000
 
+// Shared per-project git-changes watcher.
+// Every open review SSE would otherwise fork its own `git status` each second,
+// which snowballs into a fork storm (N tabs × internal git helpers) that pins
+// macOS syspolicyd and stalls new process creation. We collapse all subscribers
+// of the same project into a single 1s poll and broadcast the result.
+interface ChangesWatcher {
+  subscribers: Set<(changes: unknown) => void>
+  timer: ReturnType<typeof setInterval> | null
+  lastSig: string
+  lastChanges: unknown
+  polling: boolean
+}
+const changesWatchers = new Map<string, ChangesWatcher>()
+
+function subscribeChanges(
+  path: string,
+  onChanges: (changes: unknown) => void,
+): { current: unknown; unsubscribe: () => void } {
+  let w = changesWatchers.get(path)
+  if (!w) {
+    w = {
+      subscribers: new Set(),
+      timer: null,
+      lastSig: '',
+      lastChanges: [],
+      polling: false,
+    }
+    changesWatchers.set(path, w)
+  }
+  const watcher = w
+  watcher.subscribers.add(onChanges)
+
+  const poll = async () => {
+    if (watcher.polling) return
+    watcher.polling = true
+    try {
+      const changes = await listChanges(path)
+      const sig = JSON.stringify(changes)
+      if (sig !== watcher.lastSig) {
+        watcher.lastSig = sig
+        watcher.lastChanges = changes
+        for (const cb of watcher.subscribers) {
+          try {
+            cb(changes)
+          } catch {
+            // subscriber errors must not break the poll loop
+          }
+        }
+      }
+    } catch {
+      // git errors are transient; keep polling
+    } finally {
+      watcher.polling = false
+    }
+  }
+
+  if (!watcher.timer) {
+    watcher.timer = setInterval(() => void poll(), 1000)
+    watcher.timer.unref?.()
+    void poll()
+  }
+
+  return {
+    current: watcher.lastChanges,
+    unsubscribe: () => {
+      watcher.subscribers.delete(onChanges)
+      if (watcher.subscribers.size === 0) {
+        if (watcher.timer) clearInterval(watcher.timer)
+        changesWatchers.delete(path)
+      }
+    },
+  }
+}
+
 // Periodically writes a `: keep-alive` SSE comment (for reverse-proxy idle
 // timeouts) plus a `server-heartbeat` named event (for the GUI watchdog to
 // refresh its lastEventAt). Returns a cleanup function that clears the timer.
@@ -279,34 +353,24 @@ export function createEventsRoutes(
       const stopHeartbeat = attachHeartbeat(stream)
 
       let closed = false
-      let lastSig = ''
-
-      const poll = async () => {
+      const send = (changes: unknown) => {
         if (closed) return
-        try {
-          const changes = await listChanges(project.path)
-          const sig = JSON.stringify(changes)
-          if (sig !== lastSig) {
-            lastSig = sig
-            await stream.writeSSE({
-              event: 'changes-updated',
-              data: JSON.stringify({ changes }),
-            })
-          }
-        } catch {
-          // git errors are transient; keep polling
-        }
+        void stream.writeSSE({
+          event: 'changes-updated',
+          data: JSON.stringify({ changes }),
+        })
       }
 
-      await poll()
+      const { current, unsubscribe } = subscribeChanges(project.path, send)
+      if (Array.isArray(current) ? current.length > 0 : current) send(current)
 
-      const timer = setInterval(() => void poll(), 1000)
-      timer.unref?.()
-
-      stream.onAbort(() => {
-        closed = true
-        stopHeartbeat()
-        clearInterval(timer)
+      await new Promise<void>((resolve) => {
+        stream.onAbort(() => {
+          closed = true
+          stopHeartbeat()
+          unsubscribe()
+          resolve()
+        })
       })
     })
   })
