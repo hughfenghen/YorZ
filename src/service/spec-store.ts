@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import matter from 'gray-matter'
@@ -288,6 +288,12 @@ export class SpecStore {
 
   specPath(id: string): string {
     return join(this.root, id, 'spec.md')
+  }
+
+  async delete(id: string): Promise<void> {
+    const dir = join(this.root, id)
+    if (!existsSync(dir)) return
+    await rm(dir, { recursive: true, force: true })
   }
 
   private async allocateId(type: SpecType, summary: string): Promise<string> {

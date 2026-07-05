@@ -38,6 +38,10 @@ export const Home: Component = () => {
   const [merging, setMerging] = createSignal(false)
   const [mergeError, setMergeError] = createSignal<string | null>(null)
   const [toast, setToast] = createSignal<string | null>(null)
+  const [menuSpecId, setMenuSpecId] = createSignal<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = createSignal<string | null>(null)
+  const [deleting, setDeleting] = createSignal(false)
+  const [deleteError, setDeleteError] = createSignal<string | null>(null)
 
   onMount(() => {
     const unsub = subscribeProjectsList(() => {
@@ -52,7 +56,19 @@ export const Home: Component = () => {
         if (previousMainId) navigate(`/${encodeURIComponent(previousMainId)}`)
       })()
     })
-    onCleanup(unsub)
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (target.closest('.card-menu') || target.closest('.card-menu-trigger')) return
+      if (menuSpecId()) {
+        setMenuSpecId(null)
+        setConfirmDeleteId(null)
+      }
+    }
+    document.addEventListener('click', onDocClick)
+    onCleanup(() => {
+      unsub()
+      document.removeEventListener('click', onDocClick)
+    })
   })
 
   async function onMerge() {
@@ -82,6 +98,23 @@ export const Home: Component = () => {
       setMergeError((err as Error).message)
     } finally {
       setMerging(false)
+    }
+  }
+
+  async function onDeleteSpec(specId: string) {
+    const pid = projectId()
+    if (!pid) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await api.deleteSpec(pid, specId)
+      setConfirmDeleteId(null)
+      setMenuSpecId(null)
+      await refetch()
+    } catch (err) {
+      setDeleteError((err as Error).message)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -147,6 +180,68 @@ export const Home: Component = () => {
                     <p class="summary">{spec.summary || '（待 Agent 补全）'}</p>
                     <code class="id">{spec.id}</code>
                   </A>
+                  <Show when={menuSpecId() === spec.id}>
+                    <div
+                      class="card-menu"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                      }}
+                    >
+                      <Show
+                        when={confirmDeleteId() === spec.id}
+                        fallback={
+                          <button
+                            type="button"
+                            class="card-menu-item danger"
+                            onClick={() => setConfirmDeleteId(spec.id)}
+                          >
+                            删除
+                          </button>
+                        }
+                      >
+                        <div class="card-menu-confirm">
+                          <p>确定删除此 spec？</p>
+                          <Show when={deleteError()}>
+                            <p class="error">{deleteError()}</p>
+                          </Show>
+                          <div class="card-menu-confirm-actions">
+                            <button
+                              type="button"
+                              class="ghost"
+                              disabled={deleting()}
+                              onClick={() => setConfirmDeleteId(null)}
+                            >
+                              取消
+                            </button>
+                            <button
+                              type="button"
+                              class="danger-btn"
+                              disabled={deleting()}
+                              onClick={() => void onDeleteSpec(spec.id)}
+                            >
+                              {deleting() ? '删除中…' : '确认删除'}
+                            </button>
+                          </div>
+                        </div>
+                      </Show>
+                    </div>
+                  </Show>
+                  <button
+                    type="button"
+                    class="card-menu-trigger"
+                    title="更多操作"
+                    aria-label="更多操作"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setMenuSpecId((cur) => (cur === spec.id ? null : spec.id))
+                      setConfirmDeleteId(null)
+                      setDeleteError(null)
+                    }}
+                  >
+                    ⋯
+                  </button>
                 </li>
               )}
             </For>

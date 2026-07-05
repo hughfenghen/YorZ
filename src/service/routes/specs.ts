@@ -201,6 +201,16 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     return c.json({ runId: handle.id })
   })
 
+  app.delete('/projects/:projectId/specs/:id', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    const specId = c.req.param('id')
+    const detail = await p.store.read(specId)
+    if (!detail) return c.json({ error: 'spec not found' }, 404)
+    await p.store.delete(specId)
+    return c.json({ ok: true })
+  })
+
   return app
 }
 
