@@ -3,8 +3,7 @@ import { Command, Option } from 'commander'
 import { install } from './install.js'
 import { uninstall } from './uninstall.js'
 import { runServe } from './serve.js'
-import { runAdd } from './add.js'
-import { runInit, InitAbortedError } from './init.js'
+import { runAdd, AddGitAbortedError } from './add.js'
 import { runLint } from './lint.js'
 import type { AgentName, InstallScope } from './adapters/types.js'
 import { INSTALL_SCOPE_DEFAULT, installScopeTip } from './defaults.js'
@@ -19,11 +18,6 @@ interface ServeOpts {
   open?: boolean
   cwd?: string
   noRegisterCwd?: boolean
-}
-
-interface InitOpts {
-  yes?: boolean
-  cwd?: string
 }
 
 const ALL_AGENTS: AgentName[] = ['claude', 'opencode']
@@ -41,32 +35,6 @@ function parseScope(value: string): InstallScope {
 
 const program = new Command()
 program.name('yorz').description('YorZ CLI — manage the yorz-spec skill.').version('0.0.1')
-
-program
-  .command('init')
-  .description('Initialize a YorZ project (create .yorz/, ensure .gitignore, guide git init).')
-  .option('-y, --yes', 'skip the git-init confirmation prompt', false)
-  .option('--cwd <path>', 'target directory (default: process.cwd())')
-  .action(async (opts: InitOpts) => {
-    try {
-      const result = await runInit({ cwd: opts.cwd, yes: opts.yes })
-      if (result.gitInitialized) {
-        console.log(`[git] initialized ${result.cwd}`)
-      }
-      console.log(`[yorz] ensured ${result.cwd}/.yorz`)
-      if (result.gitignore?.updated) {
-        console.log(`[gitignore] appended .yorz/tmp to ${result.gitignore.path}`)
-      } else if (result.gitignore && !result.gitignore.updated) {
-        console.log(`[gitignore] already ignored .yorz/tmp`)
-      }
-    } catch (err) {
-      if (err instanceof InitAbortedError) {
-        console.error(`error: ${err.message}`)
-        process.exit(1)
-      }
-      throw err
-    }
-  })
 
 const installCmd = program
   .command('install')
@@ -125,11 +93,29 @@ uninstallCmd
 
 program
   .command('add <path>')
-  .description('Register a directory as a YorZ project in the global config.')
-  .action(async (input: string) => {
-    const { entry, created } = await runAdd({ path: input })
-    if (created) console.log(`added project ${entry.id}: ${entry.path}`)
-    else console.log(`project already registered: ${entry.id} -> ${entry.path}`)
+  .description('Initialize and register a directory as a YorZ project.')
+  .option('-y, --yes', 'skip the git-init confirmation prompt', false)
+  .action(async (input: string, opts: { yes?: boolean }) => {
+    try {
+      const result = await runAdd({ path: input, yes: opts.yes })
+      if (result.gitInitialized) {
+        console.log(`[git] initialized ${result.entry.path}`)
+      }
+      if (result.gitignore?.updated) {
+        console.log(`[gitignore] appended .yorz/tmp to ${result.gitignore.path}`)
+      }
+      if (result.created) {
+        console.log(`added project ${result.entry.id}: ${result.entry.path}`)
+      } else {
+        console.log(`project already registered: ${result.entry.id} -> ${result.entry.path}`)
+      }
+    } catch (err) {
+      if (err instanceof AddGitAbortedError) {
+        console.error(`error: ${err.message}`)
+        process.exit(1)
+      }
+      throw err
+    }
   })
 
 program
