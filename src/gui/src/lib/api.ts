@@ -71,6 +71,14 @@ export interface AppendItemBody {
 
 export type GitOpsAction = 'commit' | 'discard' | 'stash'
 
+export interface GitChange {
+  path: string
+  index: string
+  worktree: string
+  status: string
+  renamedFrom?: string
+}
+
 export interface CreateWorktreeBody {
   specSlug: string
   branch?: string
@@ -164,6 +172,10 @@ export const api = {
   listSpecs: (pid: string) => request<SpecListItem[]>(`${projectBase(pid)}/specs`),
   getSpec: (pid: string, id: string) =>
     request<SpecDetail>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}`),
+  deleteSpec: (pid: string, id: string) =>
+    request<{ ok: true }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
   createSpec: (
     pid: string,
     body: CreateSpecBody,
@@ -223,6 +235,26 @@ export const api = {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action }),
+    }),
+  getChanges: (pid: string, id: string) =>
+    request<{ changes: GitChange[] }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/changes`),
+  directCommit: (pid: string, id: string, body: { message: string; paths: string[] }) =>
+    request<{ commit: string }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/commit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  directDiscard: (pid: string, id: string, body: { paths: string[] }) =>
+    request<{ ok: true }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/discard`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  directStash: (pid: string, id: string, body: { message: string; paths: string[] }) =>
+    request<{ ok: true }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/stash`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
     }),
   getReview: (pid: string, id: string) =>
     request<{ text: string }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/review`),

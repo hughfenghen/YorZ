@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Hono } from 'hono'
 import type { GitOpsAction } from '../agent.js'
+import { listChanges, commit as gitCommit, discard as gitDiscard, stash as gitStash, GitError } from '../git.js'
 import type { ProjectInstance } from '../project-registry.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
@@ -76,6 +77,96 @@ export function createSpecReviewRoutes(resolveProject: ResolveProject): Hono {
       return c.json({ text })
     } catch {
       return c.json({ text: '' })
+    }
+  })
+
+  app.get('/projects/:projectId/specs/:id/changes', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    const specId = c.req.param('id')
+    const detail = await p.store.read(specId)
+    if (!detail) return c.json({ error: 'spec not found' }, 404)
+    try {
+      const changes = await listChanges(p.path)
+      return c.json({ changes })
+    } catch (err) {
+      if (err instanceof GitError) return c.json({ error: err.message }, 400)
+      throw err
+    }
+  })
+
+  app.post('/projects/:projectId/specs/:id/commit', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    const specId = c.req.param('id')
+    const detail = await p.store.read(specId)
+    if (!detail) return c.json({ error: 'spec not found' }, 404)
+    let body: unknown
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400)
+    }
+    const obj = body && typeof body === 'object' ? (body as { message?: unknown; paths?: unknown }) : {}
+    const message = typeof obj.message === 'string' ? obj.message.trim() : ''
+    const paths = Array.isArray(obj.paths) ? (obj.paths as unknown[]).filter((v): v is string => typeof v === 'string') : []
+    if (!message) return c.json({ error: 'message must not be empty' }, 400)
+    if (paths.length === 0) return c.json({ error: 'paths must not be empty' }, 400)
+    try {
+      const result = await gitCommit(p.path, { message, paths })
+      return c.json(result)
+    } catch (err) {
+      if (err instanceof GitError) return c.json({ error: err.message }, 400)
+      throw err
+    }
+  })
+
+  app.post('/projects/:projectId/specs/:id/discard', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    const specId = c.req.param('id')
+    const detail = await p.store.read(specId)
+    if (!detail) return c.json({ error: 'spec not found' }, 404)
+    let body: unknown
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400)
+    }
+    const obj = body && typeof body === 'object' ? (body as { paths?: unknown }) : {}
+    const paths = Array.isArray(obj.paths) ? (obj.paths as unknown[]).filter((v): v is string => typeof v === 'string') : []
+    if (paths.length === 0) return c.json({ error: 'paths must not be empty' }, 400)
+    try {
+      await gitDiscard(p.path, { paths })
+      return c.json({ ok: true })
+    } catch (err) {
+      if (err instanceof GitError) return c.json({ error: err.message }, 400)
+      throw err
+    }
+  })
+
+  app.post('/projects/:projectId/specs/:id/stash', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    const specId = c.req.param('id')
+    const detail = await p.store.read(specId)
+    if (!detail) return c.json({ error: 'spec not found' }, 404)
+    let body: unknown
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400)
+    }
+    const obj = body && typeof body === 'object' ? (body as { message?: unknown; paths?: unknown }) : {}
+    const message = typeof obj.message === 'string' ? obj.message.trim() : ''
+    const paths = Array.isArray(obj.paths) ? (obj.paths as unknown[]).filter((v): v is string => typeof v === 'string') : []
+    if (paths.length === 0) return c.json({ error: 'paths must not be empty' }, 400)
+    try {
+      await gitStash(p.path, { message: message || `yorz:${specId}`, paths })
+      return c.json({ ok: true })
+    } catch (err) {
+      if (err instanceof GitError) return c.json({ error: err.message }, 400)
+      throw err
     }
   })
 

@@ -223,3 +223,34 @@ export function subscribeProjectsList(onChange: () => void): () => void {
     source.close()
   }
 }
+
+import type { GitChange } from './api.js'
+
+export function subscribeChanges(
+  pid: string,
+  id: string,
+  onUpdate: (changes: GitChange[]) => void,
+): SseSubscription {
+  if (!pid) return noopSubscription()
+  const source = new EventSource(
+    `${projectBase(pid)}/specs/${encodeURIComponent(id)}/changes/events`,
+  )
+  const handler = (e: MessageEvent) => {
+    try {
+      const data = JSON.parse(e.data) as { changes: GitChange[] }
+      onUpdate(data.changes)
+    } catch {
+      // ignore
+    }
+  }
+  source.addEventListener('changes-updated', handler)
+  source.addEventListener('error', () => {
+    // EventSource auto-reconnects; no-op
+  })
+  const unsubscribe = (() => {
+    source.removeEventListener('changes-updated', handler)
+    source.close()
+  }) as SseSubscription
+  unsubscribe.readyState = () => source.readyState
+  return unsubscribe
+}

@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { streamSSE, type SSEStreamingApi } from 'hono/streaming'
 import type { AgentRunHandle } from '../agent.js'
+import { listChanges } from '../git.js'
 import type { ProjectInstance, ProjectRegistry } from '../project-registry.js'
 import type { RegistryEventBus } from '../registry-events.js'
 
@@ -251,6 +252,62 @@ export function createEventsRoutes(
         const payload = queue.shift()!
         await stream.writeSSE(payload)
       }
+    })
+  })
+
+  app.get('/projects/:projectId/specs/:id/changes/events', (c) => {
+    const projectId = c.req.param('projectId')
+    const id = c.req.param('id')
+    return streamSSE(c, async (stream) => {
+      const project = await resolveProject(projectId)
+      if (!project) {
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({ error: 'project not found' }),
+        })
+        return
+      }
+      const exists = await project.store.read(id)
+      if (!exists) {
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({ error: 'spec not found' }),
+        })
+        return
+      }
+      await stream.writeSSE({ event: 'ready', data: '{}' })
+      const stopHeartbeat = attachHeartbeat(stream)
+
+      let closed = false
+      let lastSig = ''
+
+      const poll = async () => {
+        if (closed) return
+        try {
+          const changes = await listChanges(project.path)
+          const sig = JSON.stringify(changes)
+          if (sig !== lastSig) {
+            lastSig = sig
+            await stream.writeSSE({
+              event: 'changes-updated',
+              data: JSON.stringify({ changes }),
+            })
+          }
+        } catch {
+          // git errors are transient; keep polling
+        }
+      }
+
+      await poll()
+
+      const timer = setInterval(() => void poll(), 1000)
+      timer.unref?.()
+
+      stream.onAbort(() => {
+        closed = true
+        stopHeartbeat()
+        clearInterval(timer)
+      })
     })
   })
 

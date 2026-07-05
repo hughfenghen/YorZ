@@ -17,6 +17,15 @@ export interface CommitOptions {
   paths: string[]
 }
 
+export interface DiscardOptions {
+  paths: string[]
+}
+
+export interface StashOptions {
+  message: string
+  paths: string[]
+}
+
 export class GitError extends Error {
   readonly code: string
   readonly stderr: string
@@ -177,4 +186,22 @@ export async function commit(cwd: string, opts: CommitOptions): Promise<{ commit
   await runGit(cwd, ['commit', '-m', message, '--', ...opts.paths])
   const { stdout } = await runGit(cwd, ['rev-parse', 'HEAD'])
   return { commit: stdout.trim() }
+}
+
+export async function discard(cwd: string, opts: DiscardOptions): Promise<void> {
+  if (!Array.isArray(opts.paths) || opts.paths.length === 0) {
+    throw new GitError('no_paths', 'discard requires at least one path')
+  }
+  for (const p of opts.paths) assertSafeRelativePath(cwd, p)
+  await runGit(cwd, ['restore', '--staged', '--worktree', '--', ...opts.paths])
+  await runGit(cwd, ['clean', '-fd', '--', ...opts.paths])
+}
+
+export async function stash(cwd: string, opts: StashOptions): Promise<void> {
+  if (!Array.isArray(opts.paths) || opts.paths.length === 0) {
+    throw new GitError('no_paths', 'stash requires at least one path')
+  }
+  for (const p of opts.paths) assertSafeRelativePath(cwd, p)
+  const message = opts.message?.trim() || 'yorz:stash'
+  await runGit(cwd, ['stash', 'push', '-m', message, '--', ...opts.paths])
 }
