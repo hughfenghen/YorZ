@@ -91,3 +91,42 @@ describe('renderMarkdown GFM task lists', () => {
     expect(html).toContain('- [ ] not a task')
   })
 })
+
+describe('renderMarkdown controlled HTML (details folding)', () => {
+  it('passes through details/summary tags as real HTML', () => {
+    const html = renderMarkdown('<details>\n<summary>精确层</summary>\n\ninner text\n\n</details>')
+    expect(html).toContain('<details>')
+    expect(html).toContain('<summary>精确层</summary>')
+    expect(html).toContain('</details>')
+  })
+
+  it('parses markdown inside a details block', () => {
+    const html = renderMarkdown('<details>\n\n- item one\n\n</details>')
+    expect(html).toContain('<details>')
+    expect(html).toContain('<li>item one</li>')
+  })
+
+  it('allows <details open>', () => {
+    const html = renderMarkdown('<details open>\n\ncontent\n\n</details>')
+    expect(html).toContain('<details open>')
+  })
+
+  it('escapes script tags instead of rendering them', () => {
+    const html = renderMarkdown('<script>alert(1)</script>')
+    expect(html).not.toContain('<script>')
+    expect(html).toContain('&lt;script&gt;')
+  })
+
+  it('escapes disallowed tags like div and img', () => {
+    const html = renderMarkdown('<div>x</div>\n\n<img src=x onerror=alert(1)>')
+    expect(html).not.toMatch(/<div>|<img/)
+    expect(html).toContain('&lt;div&gt;')
+    expect(html).toContain('&lt;img')
+  })
+
+  it('escapes details/summary carrying attributes (blocks event-handler injection)', () => {
+    const html = renderMarkdown('<details onclick="evil()">\n\nx\n\n</details>')
+    expect(html).not.toContain('<details onclick')
+    expect(html).toContain('&lt;details onclick')
+  })
+})

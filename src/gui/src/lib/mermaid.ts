@@ -29,7 +29,9 @@ export async function renderMermaidIn(container: HTMLElement): Promise<RenderMer
       const source = node.getAttribute('data-mermaid-source')
       if (source) {
         node.removeAttribute('data-processed')
-        node.innerHTML = source
+        // 用 textContent 写入原始源码，避免浏览器把 `<x>` 等标签形 token
+        // 当作 HTML 二次解码，保证 mermaid 读到的 textContent 与 lint 一致。
+        node.textContent = source
       }
     })
 

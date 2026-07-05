@@ -15,7 +15,7 @@ description: Drive YorZ spec docs through plan / tasks / execute stages with det
 2. **[stages.md](./stages.md)**：plan / tasks / execute / new-spec 四阶段流程与正面示例。
 3. **[review.md](./review.md)**：Review / Git Ops 阶段（独立路径，低频使用）。
 
-[mermaid.md](./mermaid.md) 与 `references/` 目录**仅按需 Read**：只有在判断当前阶段需要输出 mermaid 图表「升维」时才加载，纯状态推进任务不必读取，以节省 context。**plan 阶段的「图形化补充」收尾子步骤**（见 stages.md）会针对 `现状分析`/`技术方案` 两节强制加载 mermaid.md 补图。
+[mermaid.md](./mermaid.md) 与 `references/` 目录**仅按需 Read**：只有在判断当前阶段需要输出 mermaid 图表「升维」时才加载，纯状态推进任务不必读取，以节省 context。**plan 阶段的「图形化补充」收尾子步骤**（见 stages.md）会针对 `现状分析`/`技术方案` 两节强制加载 mermaid.md 补图；补图须遵循其核心原则**「图优先、精确信息折叠」**——表层给图，精确细节折叠进 `<details>` 精确层。
 
 > 当 Agent 以 `mode=review` / `mode=git-ops` 启动时，按 [review.md](./review.md) 执行；该路径不进入 plan/tasks/execute 状态机，也不修改 spec.md 的 frontmatter。
 

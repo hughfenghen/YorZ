@@ -585,7 +585,6 @@ body.is-resizing {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
 }
 
 .page-head h1 {
@@ -863,6 +862,7 @@ body.is-resizing {
   appearance: none;
   -webkit-appearance: none;
   padding-right: 1.4rem;
+  height: 24px;
   background-image:
     linear-gradient(45deg, transparent 50%, white 50%),
     linear-gradient(135deg, white 50%, transparent 50%);

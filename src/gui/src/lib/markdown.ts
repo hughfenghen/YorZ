@@ -2,10 +2,42 @@ import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
 
 const md = new MarkdownIt({
-  html: false,
+  // 开启原始 HTML 解析，但仅放行 details/summary 折叠标签（见下方 sanitizeRawHtml），
+  // 其余原始 HTML 一律转义为文本，杜绝 script/事件属性等 XSS 面。
+  html: true,
   linkify: true,
   breaks: false,
 })
+
+// 受控 HTML 白名单：仅允许无属性的 details/summary，以及 <details open>。
+const ALLOWED_TAG = /^<\/?(?:details|summary)>$/i
+const ALLOWED_DETAILS_OPEN = /^<details\s+open\s*>$/i
+// markdown-it-task-lists 通过 html_inline token 注入的禁用复选框（惰性、安全）。
+const ALLOWED_TASK_CHECKBOX =
+  /^<input class="task-list-item-checkbox"(?: checked="")? disabled="" type="checkbox">$/
+
+function isAllowedTag(tag: string): boolean {
+  return ALLOWED_TAG.test(tag) || ALLOWED_DETAILS_OPEN.test(tag) || ALLOWED_TASK_CHECKBOX.test(tag)
+}
+
+function sanitizeRawHtml(raw: string): string {
+  const escape = md.utils.escapeHtml
+  let out = ''
+  let last = 0
+  const re = /<[^>]*>/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(raw)) !== null) {
+    out += escape(raw.slice(last, m.index))
+    const tag = m[0]
+    out += isAllowedTag(tag) ? tag : escape(tag)
+    last = m.index + tag.length
+  }
+  out += escape(raw.slice(last))
+  return out
+}
+
+md.renderer.rules.html_block = (tokens, idx) => sanitizeRawHtml(tokens[idx]!.content)
+md.renderer.rules.html_inline = (tokens, idx) => sanitizeRawHtml(tokens[idx]!.content)
 
 export interface RenderOptions {
   /**

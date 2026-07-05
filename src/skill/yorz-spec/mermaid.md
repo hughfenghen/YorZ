@@ -2,6 +2,28 @@
 
 本模块指导 Agent 在 spec 文档的各个阶段（plan / tasks / execute）按需输出 mermaid 图表，对信息进行"升维"，提升可读性与决策效率。
 
+## 核心原则：图优先、精确信息折叠
+
+一切图形化决策先服从这条贯穿性原则：**spec 表层图形优先，精确信息折叠收纳**。
+
+- **图形目标**：让读者快速建立三类认知——核心逻辑流程、模块结构、模块间交互。图是「认知层」。
+- **图形边界**：图中**不写**文件路径、代码行号、源码/伪代码全文、精确函数签名；这些属于「精确层」，不该塞进节点标签。
+- **分层表达**：章节表层先给图（认知层），再把 Agent 实施所需的精确信息折叠进「精确层」承载物（见[精确信息折叠](#精确信息折叠)）；图与折叠块**互补而非重复**。
+
+```mermaid
+flowchart TD
+    A[章节含复杂信息] --> B{信息属性}
+    B -->|流程 分支 循环| C[flowchart]
+    B -->|类型 接口 关系| D[classDiagram]
+    B -->|模块交互 时序| E[sequenceDiagram]
+    B -->|模块结构 影响面| F[结构图 + 语义配色]
+    C --> G[表层放图 认知层]
+    D --> G
+    E --> G
+    F --> G
+    G --> H[路径 行号 源码 类型全文 折叠进精确层]
+```
+
 ## 图表选型表
 
 根据信息特征选择最合适的图表类型。**优先选择最能清晰传达信息的类型**，而非最复杂的类型。每行"替代什么"列提示：该场景下应**用图替代**的低效文本形式。
@@ -33,9 +55,13 @@
 以下场景**必须**使用对应图表替代纯文字描述：
 
 1. **类型定义与关系** → `classDiagram`：展示接口/类型的属性、方法、继承与组合关系。不要用 TS 代码块替代——类图能直观展现关系拓扑。
+   - **可判定触发词**：见到「接口/类型/entry 结构的定义」「一段 TS interface / type / class 全文」「数据模型字段罗列」——必须出 classDiagram。
 2. **核心业务流程/算法逻辑** → `flowchart`：包含分支判断、循环、并行路径的逻辑。不要用 md 列表 + 文字逐步描述——flowchart 的分支视觉远比缩进列表清晰。
+   - **可判定触发词**：见到「分步/编号叙述 + 分支策略」「命令/函数的实现流程散文」「先…再…否则…」这类流程散文——必须出 flowchart，别退回有序列表。
 3. **状态机与生命周期** → `stateDiagram`：实体在不同状态间的流转与触发条件。不要用文字列举状态——状态图能展现并发状态与守卫条件。
 4. **层级逻辑与数据结构** → `treeView-beta`：模块/文件/目录的层级关系、AST 结构等。不要用 ASCII 字符树——treeView 更清晰且可渲染（mermaid fence 首行须写 `treeView-beta`，与 lint 白名单一致）。
+
+> **代码/类型全文折叠配套（强约束）**：类型定义、实现源码、伪代码在图中**只表达结构与关系**；其**全文**移入[精确信息折叠](#精确信息折叠)承载，**严禁** classDiagram 与等价 TS 代码块并列重复贴出。
 
 ### 推荐用图（中优先级）
 
@@ -64,6 +90,41 @@
 
 - **## 现状分析**：用 **architecture** 图描述现有系统结构与组件依赖；用 **flowchart** 描述当前业务流程或数据流。
 - **## 技术实现方案**：用 **flowchart** 描述方案逻辑与决策分支；用 **sequenceDiagram** 描述模块间交互与时序；用 **architecture** 图描述改造后的总体架构。
+- **## 技术实现方案 · 兼容性/影响范围**：凡方案含「被变更模块的现有组成结构 + 影响面」，必须出**结构图**（classDiagram 或 flowchart）展示现有模块组成，并按下方[影响面语义配色](#影响面语义配色强约定)标注 breaking / affected 区域。此落点属 plan 技术方案（非 review），plan 收尾补图工序必须覆盖。
+
+#### 影响面语义配色（强约定）
+
+统一语义色，用 `classDef` 承载——**红 = breaking change 区域，黄 = 受影响区域**；classDiagram 与 flowchart 均按下列范式上色。
+
+flowchart 范式：
+
+```mermaid
+flowchart TB
+    subgraph 现有模块结构
+      A[模块 A 不变]
+      B[模块 B breaking]
+      C[模块 C 受影响]
+    end
+    classDef breaking fill:#ffdddd,stroke:#e03131,color:#c92a2a
+    classDef affected fill:#fff3bf,stroke:#f08c00,color:#e67700
+    class B breaking
+    class C affected
+```
+
+classDiagram 范式：
+
+```mermaid
+classDiagram
+    class ModuleA { +stable() }
+    class ModuleB { +changed() }
+    class ModuleC { +touched() }
+    ModuleA --> ModuleB
+    ModuleB --> ModuleC
+    classDef breaking fill:#ffdddd,stroke:#e03131,color:#c92a2a
+    classDef affected fill:#fff3bf,stroke:#f08c00,color:#e67700
+    class ModuleB:::breaking
+    class ModuleC:::affected
+```
 
 ### review 阶段
 
@@ -88,6 +149,28 @@ flowchart LR
     C --> D[fence rule 识别]
     D --> E[异步渲染图形]
 ```
+
+## 精确信息折叠
+
+「图优先、精确信息折叠」的落地承载。GUI 渲染器已开启**受控 HTML**：仅放行 `<details>` / `<summary>`，故用原生 `<details>` 折叠精确层。
+
+**该折叠的信息（精确层）**：文件路径与行号、接口/类型/类的全文定义、实现源码或伪代码、精确函数签名、逐字段配置清单、冗长的命令样例。这些是 Agent 实施所需、但会干扰认知的细节。
+
+**不该折叠的信息（认知层）**：章节表层的图、方案要点、决策结论——保持直接可见。
+
+写法（`<details>` 前后留空行，内部 markdown 正常解析）：
+
+```markdown
+<details>
+<summary>精确层：add.ts 类型定义与实现细节</summary>
+
+- `src/cli/add.ts:42` 新增 `interface AddOptions { path: string; force?: boolean }`
+- 具体源码 / 逐字段说明 …
+
+</details>
+```
+
+> 注意：`<details>`/`<summary>` 之外的原始 HTML（如 `<div>`、`<script>`）会被 GUI 转义为文本，不要依赖其它标签。
 
 ## 节制原则
 
