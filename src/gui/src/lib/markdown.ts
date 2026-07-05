@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
+import hljs from 'highlight.js/lib/common'
 
 const md = new MarkdownIt({
   // 开启原始 HTML 解析，但仅放行 details/summary 折叠标签（见下方 sanitizeRawHtml），
@@ -7,6 +8,17 @@ const md = new MarkdownIt({
   html: true,
   linkify: true,
   breaks: false,
+  highlight(str, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        const value = hljs.highlight(str, { language: lang }).value
+        return `<pre><code class="hljs language-${lang}">${value}</code></pre>`
+      } catch {
+        /* fallthrough to default escape */
+      }
+    }
+    return ''
+  },
 })
 
 // 受控 HTML 白名单：仅允许无属性的 details/summary，以及 <details open>。
