@@ -60,6 +60,28 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     return c.json(detail)
   })
 
+  app.patch('/projects/:projectId/specs/:id/stage', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    const specId = c.req.param('id')
+    let body: unknown
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400)
+    }
+    const stage = body && typeof body === 'object' ? (body as { stage?: unknown }).stage : undefined
+    if (stage !== 'plan' && stage !== 'tasks' && stage !== 'execute' && stage !== 'done') {
+      return c.json({ error: 'stage must be plan | tasks | execute | done' }, 400)
+    }
+    try {
+      await p.store.setStage(specId, stage)
+      return c.json({ ok: true })
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 404)
+    }
+  })
+
   app.get('/projects/:projectId/specs/:id/attachments/:name', async (c) => {
     const p = await need(c)
     if (p instanceof Response) return p

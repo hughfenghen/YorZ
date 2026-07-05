@@ -2,10 +2,12 @@ import type { ProjectListItem, WorktreeMeta } from './project.js'
 
 export type SpecType = 'feat' | 'refct' | 'fix'
 
+export type SpecStage = 'plan' | 'tasks' | 'execute' | 'done'
+
 export interface SpecListItem {
   id: string
   title: string
-  stage: 'plan' | 'tasks' | 'execute'
+  stage: SpecStage
   updated_at: string
   summary: string
   mtime: number
@@ -14,7 +16,7 @@ export interface SpecListItem {
 export interface SpecDetail {
   id: string
   frontmatter: {
-    stage: 'plan' | 'tasks' | 'execute'
+    stage: SpecStage
     last_action: string
     updated_at: string
     summary: string
@@ -176,6 +178,12 @@ export const api = {
     request<{ ok: true }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     }),
+  setStage: (pid: string, id: string, stage: SpecStage) =>
+    request<{ ok: true }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/stage`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ stage }),
+    }),
   createSpec: (
     pid: string,
     body: CreateSpecBody,
@@ -237,7 +245,9 @@ export const api = {
       body: JSON.stringify({ action }),
     }),
   getChanges: (pid: string, id: string) =>
-    request<{ changes: GitChange[] }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/changes`),
+    request<{ changes: GitChange[] }>(
+      `${projectBase(pid)}/specs/${encodeURIComponent(id)}/changes`,
+    ),
   directCommit: (pid: string, id: string, body: { message: string; paths: string[] }) =>
     request<{ commit: string }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/commit`, {
       method: 'POST',

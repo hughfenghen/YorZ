@@ -6,7 +6,7 @@ import matter from 'gray-matter'
 export type SpecType = 'feat' | 'refct' | 'fix'
 
 export interface SpecFrontmatter {
-  stage: 'plan' | 'tasks' | 'execute'
+  stage: 'plan' | 'tasks' | 'execute' | 'done'
   last_action: string
   updated_at: string
   summary: string
@@ -286,6 +286,22 @@ export class SpecStore {
     await this.write(filePath, next)
   }
 
+  async setStage(id: string, stage: SpecFrontmatter['stage']): Promise<void> {
+    const filePath = this.specPath(id)
+    if (!existsSync(filePath)) throw new Error(`spec not found: ${id}`)
+    const raw = await readFile(filePath, 'utf8')
+    const parsed = matter(raw)
+    const existing = normalizeFrontmatter(parsed.data)
+    const fm: SpecFrontmatter = {
+      stage,
+      last_action: `用户手动置为 ${stage}`,
+      updated_at: this.nowDateTime(),
+      summary: existing.summary,
+    }
+    const next = serializeSpec(fm, parsed.content)
+    await this.write(filePath, next)
+  }
+
   specPath(id: string): string {
     return join(this.root, id, 'spec.md')
   }
@@ -378,7 +394,7 @@ function normalizeFrontmatter(data: Record<string, unknown>): SpecFrontmatter {
   const updated_at = data.updated_at
   const summary = data.summary
   return {
-    stage: stage === 'tasks' || stage === 'execute' ? stage : 'plan',
+    stage: stage === 'tasks' || stage === 'execute' || stage === 'done' ? stage : 'plan',
     last_action: typeof last_action === 'string' ? last_action : '',
     updated_at: dateString(updated_at),
     summary: typeof summary === 'string' ? summary : '',

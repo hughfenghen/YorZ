@@ -41,6 +41,45 @@ describe('frontmatter/required-fields', () => {
     expect(findings).toEqual([])
   })
 
+  it('accepts stage: done as a terminal state', async () => {
+    const raw = [
+      '---',
+      'stage: done',
+      'last_action: 任务全部完成，标记 done',
+      "updated_at: '2026-07-05 12:00:00'",
+      'summary: valid summary',
+      '---',
+      '',
+      '# T',
+      '',
+    ].join('\n')
+    const report = await lintSpecMd(raw, OPTS)
+    const findings = report.findings.filter((f) => f.ruleId.startsWith('frontmatter/'))
+    expect(findings).toEqual([])
+  })
+
+  it('flags an unknown stage value', async () => {
+    const raw = [
+      '---',
+      'stage: shipped',
+      'last_action: init',
+      "updated_at: '2026-07-05 12:00:00'",
+      'summary: s',
+      '---',
+      '',
+      '# T',
+      '',
+    ].join('\n')
+    const report = await lintSpecMd(raw, OPTS)
+    expect(
+      report.findings.some(
+        (f) =>
+          f.ruleId === 'frontmatter/required-fields' &&
+          f.message.includes('plan | tasks | execute | done'),
+      ),
+    ).toBe(true)
+  })
+
   it('flags missing frontmatter', async () => {
     const raw = '# hello\n\n## 1. 背景\n'
     const report = await lintSpecMd(raw, OPTS)

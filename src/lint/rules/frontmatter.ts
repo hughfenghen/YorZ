@@ -1,11 +1,12 @@
 import type { LintContext, LintFinding, LintRule } from '../types.js'
 
 const REQUIRED = ['stage', 'last_action', 'updated_at', 'summary'] as const
-const STAGES = new Set(['plan', 'tasks', 'execute'])
+const STAGES = new Set(['plan', 'tasks', 'execute', 'done'])
 
 export const frontmatterRequiredFields: LintRule = {
   id: 'frontmatter/required-fields',
-  description: 'frontmatter 必须存在，且 stage/last_action/updated_at/summary 齐全、顺序固定，无额外字段。',
+  description:
+    'frontmatter 必须存在，且 stage/last_action/updated_at/summary 齐全、顺序固定，无额外字段。',
   check(ctx: LintContext): LintFinding[] {
     const findings: LintFinding[] = []
     const fm = ctx.frontmatter
@@ -65,7 +66,7 @@ export const frontmatterRequiredFields: LintRule = {
       findings.push({
         ruleId: this.id,
         severity: 'error',
-        message: `frontmatter.stage 必须是 plan | tasks | execute，当前为 ${stage}`,
+        message: `frontmatter.stage 必须是 plan | tasks | execute | done，当前为 ${stage}`,
         line: fm.startLine + 1,
       })
     }

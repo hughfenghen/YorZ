@@ -11,6 +11,7 @@
   --plan: #6366f1;
   --tasks: #f59e0b;
   --execute: #10b981;
+  --done: #16a34a;
   --error: #dc2626;
   --radius: 10px;
 }
@@ -852,6 +853,26 @@ body.is-resizing {
 }
 .badge.stage-execute {
   background: var(--execute);
+}
+.badge.stage-done {
+  background: var(--done);
+}
+.badge.stage-select {
+  cursor: pointer;
+  border: none;
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 1.4rem;
+  background-image:
+    linear-gradient(45deg, transparent 50%, white 50%),
+    linear-gradient(135deg, white 50%, transparent 50%);
+  background-position:
+    right 0.7rem center,
+    right 0.45rem center;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
 }
 
 /* Form */

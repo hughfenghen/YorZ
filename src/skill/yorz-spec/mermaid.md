@@ -14,8 +14,8 @@
 | 类结构、类型定义、继承关系 | [**classDiagram**](references/classDiagram.md)           | TS/代码片段            | 数据模型、模块结构、类型设计 |
 | 数据库表、实体关系         | [**erDiagram**](references/entityRelationshipDiagram.md) | 建表 SQL 或文字描述    | 数据模型设计                 |
 | 系统架构、组件依赖         | [**architecture**](references/architecture.md)           | 文字描述系统组成       | 现状分析架构、总体架构       |
-| 层级逻辑、数据结构         | [**treeView**](references/treeView.md)                   | ASCII 字符树、嵌套列表 | 模块层级、文件结构、AST 结构 |
-| 层级结构 + 占比分布        | [**treemap**](references/treemap.md)                     | ASCII 字符树、嵌套列表 | 模块层级量级、文件结构占比   |
+| 层级逻辑、数据结构         | [**treeView-beta**](references/treeView.md)              | ASCII 字符树、嵌套列表 | 模块层级、文件结构、AST 结构 |
+| 层级结构 + 占比分布        | [**treemap-beta**](references/treemap.md)                | ASCII 字符树、嵌套列表 | 模块层级量级、文件结构占比   |
 | 层级关系、知识结构         | [**mindmap**](references/mindmap.md)                     | 缩进列表               | 需求拆解、影响面分析         |
 | 历史事件、变更时间线       | [**timeline**](references/timeline.md)                   | 文字按日期罗列         | 执行记录、变更历史           |
 | Git 分支、合并策略         | [**gitgraph**](references/gitgraph.md)                   | 文字描述分支操作       | Git 工作流设计               |
@@ -35,7 +35,7 @@
 1. **类型定义与关系** → `classDiagram`：展示接口/类型的属性、方法、继承与组合关系。不要用 TS 代码块替代——类图能直观展现关系拓扑。
 2. **核心业务流程/算法逻辑** → `flowchart`：包含分支判断、循环、并行路径的逻辑。不要用 md 列表 + 文字逐步描述——flowchart 的分支视觉远比缩进列表清晰。
 3. **状态机与生命周期** → `stateDiagram`：实体在不同状态间的流转与触发条件。不要用文字列举状态——状态图能展现并发状态与守卫条件。
-4. **层级逻辑与数据结构** → `treeView`：模块/文件/目录的层级关系、AST 结构等。不要用 ASCII 字符树——treeView 更清晰且可渲染。
+4. **层级逻辑与数据结构** → `treeView-beta`：模块/文件/目录的层级关系、AST 结构等。不要用 ASCII 字符树——treeView 更清晰且可渲染（mermaid fence 首行须写 `treeView-beta`，与 lint 白名单一致）。
 
 ### 推荐用图（中优先级）
 
@@ -49,7 +49,7 @@
 
 10. **变更历史** → `timeline`：执行记录中按时间排列关键事件。
 11. **Git 工作流** → `gitgraph`：描述分支策略与合并流程。
-12. **层级占比** → `treemap`：需要同时展示层级结构与各部分量级/占比时。
+12. **层级占比** → `treemap-beta`：需要同时展示层级结构与各部分量级/占比时（mermaid fence 首行须写 `treemap-beta`）。
 13. **方案候选决策** → `quadrantChart`：Review/方案选择时做象限分析。
 14. **多方案能力对比** → `radar`：架构选型时做多维度能力雷达对比。
 15. **统计数据** → `xyChart`：日志/变更影响/性能数据等统计可视化。
@@ -58,14 +58,12 @@
 
 ## 各阶段落点指导
 
-### plan 阶段
+### plan 阶段（收尾「图形化补充」子步骤）
+
+> 出图作为 plan 的**独立收尾子步骤**执行（见 [stages.md](./stages.md) 的「图形化补充」）：方案文字定稿后，专门回看下列两节补图，**仅覆盖 `现状分析` / `技术方案` 两节**，不扩展到其它章节。
 
 - **## 现状分析**：用 **architecture** 图描述现有系统结构与组件依赖；用 **flowchart** 描述当前业务流程或数据流。
 - **## 技术实现方案**：用 **flowchart** 描述方案逻辑与决策分支；用 **sequenceDiagram** 描述模块间交互与时序；用 **architecture** 图描述改造后的总体架构。
-
-### tasks 阶段
-
-- **## 任务清单**：当任务间存在依赖关系时，可用 **flowchart** 绘制任务依赖图辅助理解执行顺序。
 
 ### review 阶段
 

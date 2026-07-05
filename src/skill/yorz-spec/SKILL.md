@@ -5,7 +5,7 @@ description: Drive YorZ spec docs through plan / tasks / execute stages with det
 
 # YorZ Spec Drive Skill
 
-将单个 YorZ spec 文档作为状态机执行，围绕 `plan` / `tasks` / `execute` 三阶段推进，把状态持续写回文档。md 是单一真相；Agent 持续推进直至阻塞（待确认问题、决策、Review）才退出。
+将单个 YorZ spec 文档作为状态机执行，围绕 `plan` / `tasks` / `execute` 三阶段推进，全部任务完成后进入终止态 `done`，把状态持续写回文档。md 是单一真相；Agent 持续推进直至阻塞（待确认问题、决策、Review）或收尾为 `done` 才退出。
 
 ## 如何使用本 skill
 
@@ -15,7 +15,7 @@ description: Drive YorZ spec docs through plan / tasks / execute stages with det
 2. **[stages.md](./stages.md)**：plan / tasks / execute / new-spec 四阶段流程与正面示例。
 3. **[review.md](./review.md)**：Review / Git Ops 阶段（独立路径，低频使用）。
 
-各阶段输出 mermaid 图表时参考 [mermaid 图表输出指南](./mermaid.md)；语法细节查阅 `references/` 目录。
+[mermaid.md](./mermaid.md) 与 `references/` 目录**仅按需 Read**：只有在判断当前阶段需要输出 mermaid 图表「升维」时才加载，纯状态推进任务不必读取，以节省 context。**plan 阶段的「图形化补充」收尾子步骤**（见 stages.md）会针对 `现状分析`/`技术方案` 两节强制加载 mermaid.md 补图。
 
 > 当 Agent 以 `mode=review` / `mode=git-ops` 启动时，按 [review.md](./review.md) 执行；该路径不进入 plan/tasks/execute 状态机，也不修改 spec.md 的 frontmatter。
 
@@ -36,7 +36,7 @@ description: Drive YorZ spec docs through plan / tasks / execute stages with det
 
 ```yaml
 ---
-stage: plan # plan | tasks | execute
+stage: plan # plan | tasks | execute | done
 last_action: 简述上一次动作
 updated_at: '2026-06-14 15:42:07' # 秒级 + 单引号
 summary: 一句话概要，≤ 200 字符
@@ -66,11 +66,15 @@ summary: 一句话概要，≤ 200 字符
 3. 若识别到新增/扩展需求或新增 bug，进入 `plan`（重开流程）。
 4. 若文档存在任意 `！！！` 批注，进入 [tasks](./stages.md#tasks)。
 5. 若 `## 待确认问题` 下存在有效条目（非空态 `_暂无_`），停止推进并等待人工批注。
-6. 若存在未完成任务（`- [ ]`），进入 [execute](./stages.md#execute)。
-7. 若 `## 技术实现方案` 为空或明显不完整，进入 [plan](./stages.md#plan)。
-8. 进入 [tasks](./stages.md#tasks) 生成或刷新详细任务清单。
+6. 若 `stage` 已是 `done` 且上述 1–5 均未命中（无新输入/批注/待确认问题），直接停止：终止态不再自动推进。
+7. 若存在未完成的**非 `[manual]`** 任务（`- [ ]` 且非 `- [ ] [manual]`），进入 [execute](./stages.md#execute)。
+8. 若任务清单已就绪且不存在未完成的非 manual 任务（走到此处已排除 `[open]`/新需求/批注/待确认问题）：将 `stage` 置为 `done` 并停止推进（终止态）。
+9. 若 `## 技术实现方案` 为空或明显不完整，进入 [plan](./stages.md#plan)。
+10. 进入 [tasks](./stages.md#tasks) 生成或刷新详细任务清单。
 
 > 待确认问题判定：章节内存在任一 `### ` 三级标题即视为未决；仅有 `_暂无_` 或整章为空即视为无未决条目；存在未决条目时禁止进入 execute。
+>
+> `done` 判定忽略 `- [ ] [manual]` 人工确认项：即使 manual 项仍未勾选，只要其余任务全部完成、且无待确认问题/批注/`[open]`，即可收尾为 `done`。
 
 ## 全局硬约束
 

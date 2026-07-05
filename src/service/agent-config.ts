@@ -44,6 +44,8 @@ const BUILTIN: Record<AgentName, AgentCmd> = {
       'bypassPermissions',
       '--output-format',
       'stream-json',
+      '--model',
+      'claude-opus-4-8',
       '--verbose',
       '-p',
       prompt,

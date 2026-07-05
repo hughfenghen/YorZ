@@ -125,6 +125,23 @@ describe('SpecStore.list / read / appendAnnotation', () => {
     expect(raw).toMatch(/## \d+\.\s+用户批注/)
   })
 
+  it('setStage writes done and round-trips without downgrade', async () => {
+    const dateA = new Date('2026-06-14T10:00:00Z')
+    const dateB = new Date('2026-06-16T10:00:00Z')
+    const { store, cwd } = await makeStore(dateA)
+    const { id } = await store.create({ title: 'X', type: 'feat', summary: 'x summary' })
+    const store2 = new SpecStore({ cwd, now: () => dateB })
+    await store2.setStage(id, 'done')
+    const detail = await store2.read(id)
+    expect(detail?.frontmatter.stage).toBe('done')
+    expect(detail?.frontmatter.last_action).toBe('用户手动置为 done')
+  })
+
+  it('setStage rejects an unknown spec id', async () => {
+    const { store } = await makeStore()
+    await expect(store.setStage('nope', 'done')).rejects.toThrow(/spec not found/)
+  })
+
   it('appendAnnotation rejects empty quote/note', async () => {
     const { store } = await makeStore()
     const { id } = await store.create({ title: 'X', type: 'feat', summary: 'x' })

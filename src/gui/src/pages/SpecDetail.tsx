@@ -9,7 +9,7 @@ import {
   type Component,
 } from 'solid-js'
 import { A, useParams, useSearchParams } from '@solidjs/router'
-import { api, type AppendItemBody, type QuestionAnswersBody } from '../lib/api.js'
+import { api, type AppendItemBody, type QuestionAnswersBody, type SpecStage } from '../lib/api.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { renderMermaidIn } from '../lib/mermaid.js'
@@ -124,6 +124,16 @@ export const SpecDetail: Component = () => {
     }
   }
 
+  async function changeStage(stage: SpecStage) {
+    setRunError(null)
+    try {
+      await api.setStage(projectId(), params.id, stage)
+      setRefreshTick((t) => t + 1)
+    } catch (err) {
+      setRunError((err as Error).message)
+    }
+  }
+
   function openAnnotate(s: SelectionSnapshot) {
     setPopoverSnap(s)
     setPopoverOpen(true)
@@ -214,14 +224,25 @@ export const SpecDetail: Component = () => {
                     <p class="summary">{s().frontmatter.summary || '（待 Agent 补全）'}</p>
                   </div>
                   <div class="meta">
-                    <span class={`badge stage-${s().frontmatter.stage}`}>
-                      {s().frontmatter.stage}
-                    </span>
+                    <select
+                      class={`badge stage-select stage-${s().frontmatter.stage}`}
+                      value={s().frontmatter.stage}
+                      onChange={(e) => changeStage(e.currentTarget.value as SpecStage)}
+                      title="强制设置 spec 状态"
+                    >
+                      <option value="plan">plan</option>
+                      <option value="tasks">tasks</option>
+                      <option value="execute">execute</option>
+                      <option value="done">done</option>
+                    </select>
                     <time>{formatSpecUpdatedAt(s().frontmatter.updated_at)}</time>
                     <button type="button" class="append-btn" ref={appendBtnEl} onClick={openAppend}>
                       追加任务
                     </button>
-                    <A class="ghost agent-logs-link" href={projectHref(`specs/${s().id}/agent-logs`)}>
+                    <A
+                      class="ghost agent-logs-link"
+                      href={projectHref(`specs/${s().id}/agent-logs`)}
+                    >
                       执行日志
                     </A>
                     <A class="ghost review-link" href={projectHref(`specs/${s().id}/review`)}>
