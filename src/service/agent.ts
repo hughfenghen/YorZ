@@ -222,6 +222,7 @@ export class AgentRunner {
     try {
       child = spawn(cmd.cmd, cmd.args(input.prompt), {
         cwd: this.cwd,
+        env: { ...process.env, ...(cmd.env?.(this.cwd) ?? {}) },
         stdio: ['ignore', 'pipe', 'pipe'],
         // Run the child as the leader of its own process group so kill() can
         // signal the whole tree (claude may spawn tool sub-processes).
