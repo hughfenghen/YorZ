@@ -73,6 +73,7 @@ export const NewSpec: Component = () => {
   let mentionStart = -1
   let mentionQuery = ''
   let mentionTimer: ReturnType<typeof setTimeout> | null = null
+  let itemRefs: (HTMLLIElement | null)[] = []
 
   let cleanupList: (() => void) | null = null
   let baselineIds: Set<string> = new Set()
@@ -240,6 +241,7 @@ export const NewSpec: Component = () => {
     setMentionIndex(0)
     mentionStart = -1
     mentionQuery = ''
+    itemRefs = []
     if (mentionTimer) {
       clearTimeout(mentionTimer)
       mentionTimer = null
@@ -253,6 +255,7 @@ export const NewSpec: Component = () => {
       if (!pid) return
       try {
         const result = await api.listFiles(pid, query)
+        itemRefs = []
         setMentionItems(result.items)
         setMentionIndex(0)
       } catch {
@@ -278,6 +281,11 @@ export const NewSpec: Component = () => {
     }
   }
 
+  function scrollActiveIntoView() {
+    const el = itemRefs[mentionIndex()]
+    if (el) el.scrollIntoView({ block: 'nearest' })
+  }
+
   function onTextareaKeyDown(e: KeyboardEvent) {
     if (!mentionOpen()) return
     const items = mentionItems()
@@ -285,9 +293,11 @@ export const NewSpec: Component = () => {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       setMentionIndex((i) => (i + 1) % items.length)
+      requestAnimationFrame(scrollActiveIntoView)
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setMentionIndex((i) => (i - 1 + items.length) % items.length)
+      requestAnimationFrame(scrollActiveIntoView)
     } else if (e.key === 'Enter' || e.key === 'Tab') {
       e.preventDefault()
       selectMention(items[mentionIndex()])
@@ -475,7 +485,7 @@ export const NewSpec: Component = () => {
               <ul class="mention-dropdown">
                 <For each={mentionItems()}>
                   {(item, i) => (
-                    <li>
+                    <li ref={(el) => (itemRefs[i()] = el)}>
                       <button
                         type="button"
                         class={`mention-item ${mentionIndex() === i() ? 'active' : ''}`}
