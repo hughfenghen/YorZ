@@ -1,378 +1,74 @@
 import { Hono } from 'hono'
-import { streamSSE, type SSEStreamingApi } from 'hono/streaming'
-import type { AgentRunHandle } from '../agent.js'
-import { listChanges } from '../git.js'
-import type { ProjectInstance, ProjectRegistry } from '../project-registry.js'
+import { streamSSE } from 'hono/streaming'
+import {
+  EventsHub,
+  HEARTBEAT_INTERVAL_MS,
+  attachHeartbeat,
+  type ResolveProject,
+} from '../events-hub.js'
+import type { ProjectRegistry } from '../project-registry.js'
 import type { RegistryEventBus } from '../registry-events.js'
 
-export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
+export { HEARTBEAT_INTERVAL_MS, attachHeartbeat }
+export type { ResolveProject }
 
-interface SseEvent {
-  event: string
-  data: string
-}
-
-export const HEARTBEAT_INTERVAL_MS = 5000
-
-// Shared per-project git-changes watcher.
-// Every open review SSE would otherwise fork its own `git status` each second,
-// which snowballs into a fork storm (N tabs × internal git helpers) that pins
-// macOS syspolicyd and stalls new process creation. We collapse all subscribers
-// of the same project into a single 1s poll and broadcast the result.
-interface ChangesWatcher {
-  subscribers: Set<(changes: unknown) => void>
-  timer: ReturnType<typeof setInterval> | null
-  lastSig: string
-  lastChanges: unknown
-  polling: boolean
-}
-const changesWatchers = new Map<string, ChangesWatcher>()
-
-function subscribeChanges(
-  path: string,
-  onChanges: (changes: unknown) => void,
-): { current: unknown; unsubscribe: () => void } {
-  let w = changesWatchers.get(path)
-  if (!w) {
-    w = {
-      subscribers: new Set(),
-      timer: null,
-      lastSig: '',
-      lastChanges: [],
-      polling: false,
-    }
-    changesWatchers.set(path, w)
-  }
-  const watcher = w
-  watcher.subscribers.add(onChanges)
-
-  const poll = async () => {
-    if (watcher.polling) return
-    watcher.polling = true
-    try {
-      const changes = await listChanges(path)
-      const sig = JSON.stringify(changes)
-      if (sig !== watcher.lastSig) {
-        watcher.lastSig = sig
-        watcher.lastChanges = changes
-        for (const cb of watcher.subscribers) {
-          try {
-            cb(changes)
-          } catch {
-            // subscriber errors must not break the poll loop
-          }
-        }
-      }
-    } catch {
-      // git errors are transient; keep polling
-    } finally {
-      watcher.polling = false
-    }
-  }
-
-  if (!watcher.timer) {
-    watcher.timer = setInterval(() => void poll(), 1000)
-    watcher.timer.unref?.()
-    void poll()
-  }
-
-  return {
-    current: watcher.lastChanges,
-    unsubscribe: () => {
-      watcher.subscribers.delete(onChanges)
-      if (watcher.subscribers.size === 0) {
-        if (watcher.timer) clearInterval(watcher.timer)
-        changesWatchers.delete(path)
-      }
-    },
-  }
-}
-
-// Periodically writes a `: keep-alive` SSE comment (for reverse-proxy idle
-// timeouts) plus a `server-heartbeat` named event (for the GUI watchdog to
-// refresh its lastEventAt). Returns a cleanup function that clears the timer.
-export function attachHeartbeat(
-  stream: SSEStreamingApi,
-  intervalMs: number = HEARTBEAT_INTERVAL_MS,
-): () => void {
-  const timer = setInterval(() => {
-    void (async () => {
-      try {
-        await stream.write(': keep-alive\n\n')
-        await stream.writeSSE({
-          event: 'server-heartbeat',
-          data: JSON.stringify({ ts: Date.now() }),
-        })
-      } catch {
-        // stream may have closed between writes; onAbort cleanup handles it
-      }
-    })()
-  }, intervalMs)
-  timer.unref?.()
-  return () => clearInterval(timer)
-}
-
+// All realtime events (project list, spec list, spec detail + agent output, git
+// changes, individual run) flow through ONE multiplexed SSE per browser tab.
+// The client opens `/api/events/stream?clientId=<uuid>` once and POSTs
+// `/api/events/subscribe` to declare which topics it wants. Topic strings:
+//
+//   projects
+//   project:<pid>:specs
+//   project:<pid>:spec:<specId>
+//   project:<pid>:spec:<specId>:changes
+//   project:<pid>:run:<runId>
+//
+// Wire frames:
+//   event: ready            data: { clientId }                 (once, on connect)
+//   event: server-heartbeat data: { ts }                       (every 5s)
+//   event: msg              data: { topic, event, data }       (topic payload)
+//
+// Motivation: browsers cap same-origin HTTP/1.1 connections at 6. Before this
+// change, opening ~5 tabs / opening several review/spec pages saturated the
+// budget and left later `fetch` calls perpetually pending. One SSE per tab
+// keeps the budget wide open.
 export function createEventsRoutes(
   resolveProject: ResolveProject,
-  _registry?: ProjectRegistry,
+  registry?: ProjectRegistry,
   projectsBus?: RegistryEventBus,
 ): Hono {
   const app = new Hono()
+  const hub = new EventsHub({ resolveProject, registry, projectsBus })
 
-  // Project-list SSE: fired whenever the global registry changes (worktree
-  // merged + cleaned up, project added/removed, etc). Sits at a top-level path
-  // because it isn't scoped to any one project.
-  app.get('/events/projects', (c) => {
+  app.get('/events/stream', (c) => {
+    const clientId = c.req.query('clientId')?.trim()
+    if (!clientId) {
+      return c.json({ error: 'clientId query parameter required' }, 400)
+    }
     return streamSSE(c, async (stream) => {
-      await stream.writeSSE({ event: 'ready', data: '{}' })
-      const stopHeartbeat = attachHeartbeat(stream)
-
-      const queue: SseEvent[] = []
-      let resolve: (() => void) | null = null
-      let closed = false
-      const nudge = () => {
-        resolve?.()
-        resolve = null
-      }
-
-      const unsub = projectsBus
-        ? projectsBus.subscribe(() => {
-            queue.push({ event: 'projects-changed', data: '{}' })
-            nudge()
-          })
-        : () => {}
-
-      stream.onAbort(() => {
-        closed = true
-        stopHeartbeat()
-        unsub()
-        nudge()
-      })
-
-      while (!closed) {
-        if (queue.length === 0) {
-          await new Promise<void>((r) => {
-            resolve = r
-          })
-          continue
-        }
-        const payload = queue.shift()!
-        await stream.writeSSE(payload)
-      }
-    })
-  })
-
-  // Use a distinct path (not /specs/events) to avoid colliding with the
-  // dynamic /specs/:id/events route in Hono's router.
-  app.get('/projects/:projectId/events/specs', (c) => {
-    const projectId = c.req.param('projectId')
-    return streamSSE(c, async (stream) => {
-      const project = await resolveProject(projectId)
-      if (!project) {
-        await stream.writeSSE({
-          event: 'error',
-          data: JSON.stringify({ error: 'project not found' }),
-        })
-        return
-      }
-      await stream.writeSSE({ event: 'ready', data: '{}' })
-      const stopHeartbeat = attachHeartbeat(stream)
-
-      const queue: SseEvent[] = []
-      let resolve: (() => void) | null = null
-      let closed = false
-      const nudge = () => {
-        resolve?.()
-        resolve = null
-      }
-
-      const unsub = project.watcher.subscribeList(() => {
-        queue.push({ event: 'list-updated', data: '{}' })
-        nudge()
-      })
-
-      stream.onAbort(() => {
-        closed = true
-        stopHeartbeat()
-        unsub()
-        nudge()
-      })
-
-      while (!closed) {
-        if (queue.length === 0) {
-          await new Promise<void>((r) => {
-            resolve = r
-          })
-          continue
-        }
-        const payload = queue.shift()!
-        await stream.writeSSE(payload)
-      }
-    })
-  })
-
-  app.get('/projects/:projectId/specs/:id/events', (c) => {
-    const projectId = c.req.param('projectId')
-    const id = c.req.param('id')
-    return streamSSE(c, async (stream) => {
-      const project = await resolveProject(projectId)
-      if (!project) {
-        await stream.writeSSE({
-          event: 'error',
-          data: JSON.stringify({ error: 'project not found' }),
-        })
-        return
-      }
-      const exists = await project.store.read(id)
-      if (!exists) {
-        await stream.writeSSE({
-          event: 'error',
-          data: JSON.stringify({ error: 'spec not found' }),
-        })
-        return
-      }
-      await stream.writeSSE({
-        event: 'ready',
-        data: JSON.stringify({ id, mtime: exists.mtime }),
-      })
-      const stopHeartbeat = attachHeartbeat(stream)
-
-      const queue: SseEvent[] = []
-      let resolve: (() => void) | null = null
-      let closed = false
-      const nudge = () => {
-        resolve?.()
-        resolve = null
-      }
-
-      const unsubFile = project.watcher.subscribe(id, (kind, mtime) => {
-        queue.push({ event: 'updated', data: JSON.stringify({ type: kind, mtime }) })
-        nudge()
-      })
-
-      const agentUnsubs: Array<() => void> = []
-      const attachAgent = (handle: AgentRunHandle) => {
-        const buf = handle.buffer()
-        if (buf) {
-          queue.push({
-            event: 'agent-stdout',
-            data: JSON.stringify({
-              runId: handle.id,
-              mode: handle.mode,
-              specId: handle.specId,
-              chunk: buf,
-            }),
-          })
-        }
-        const u1 = handle.onStdout((chunk) => {
-          queue.push({
-            event: 'agent-stdout',
-            data: JSON.stringify({
-              runId: handle.id,
-              mode: handle.mode,
-              specId: handle.specId,
-              chunk,
-            }),
-          })
-          nudge()
-        })
-        const u2 = handle.onError((message) => {
-          queue.push({
-            event: 'agent-error',
-            data: JSON.stringify({
-              runId: handle.id,
-              mode: handle.mode,
-              specId: handle.specId,
-              message,
-            }),
-          })
-          nudge()
-        })
-        const u3 = handle.onExit((code) => {
-          queue.push({
-            event: 'agent-exit',
-            data: JSON.stringify({
-              runId: handle.id,
-              mode: handle.mode,
-              specId: handle.specId,
-              code,
-            }),
-          })
-          nudge()
-        })
-        agentUnsubs.push(u1, u2, u3)
-      }
-
-      for (const h of project.runner.active(id)) attachAgent(h)
-      const unsubAgent = project.runner.subscribe(id, attachAgent)
-
-      stream.onAbort(() => {
-        closed = true
-        stopHeartbeat()
-        unsubFile()
-        unsubAgent()
-        for (const u of agentUnsubs) u()
-        nudge()
-      })
-
-      nudge()
-      while (!closed) {
-        if (queue.length === 0) {
-          await new Promise<void>((r) => {
-            resolve = r
-          })
-          continue
-        }
-        const payload = queue.shift()!
-        await stream.writeSSE(payload)
-      }
-    })
-  })
-
-  app.get('/projects/:projectId/specs/:id/changes/events', (c) => {
-    const projectId = c.req.param('projectId')
-    const id = c.req.param('id')
-    return streamSSE(c, async (stream) => {
-      const project = await resolveProject(projectId)
-      if (!project) {
-        await stream.writeSSE({
-          event: 'error',
-          data: JSON.stringify({ error: 'project not found' }),
-        })
-        return
-      }
-      const exists = await project.store.read(id)
-      if (!exists) {
-        await stream.writeSSE({
-          event: 'error',
-          data: JSON.stringify({ error: 'spec not found' }),
-        })
-        return
-      }
-      await stream.writeSSE({ event: 'ready', data: '{}' })
-      const stopHeartbeat = attachHeartbeat(stream)
-
-      let closed = false
-      const send = (changes: unknown) => {
-        if (closed) return
-        void stream.writeSSE({
-          event: 'changes-updated',
-          data: JSON.stringify({ changes }),
-        })
-      }
-
-      const { current, unsubscribe } = subscribeChanges(project.path, send)
-      if (Array.isArray(current) ? current.length > 0 : current) send(current)
-
+      hub.attachStream(clientId, stream)
+      await stream.writeSSE({ event: 'ready', data: JSON.stringify({ clientId }) })
       await new Promise<void>((resolve) => {
         stream.onAbort(() => {
-          closed = true
-          stopHeartbeat()
-          unsubscribe()
+          hub.detach(clientId)
           resolve()
         })
       })
     })
+  })
+
+  app.post('/events/subscribe', async (c) => {
+    let body: { clientId?: string; topics?: string[] }
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400)
+    }
+    const clientId = body.clientId?.trim()
+    if (!clientId) return c.json({ error: 'clientId required' }, 400)
+    const topics = Array.isArray(body.topics) ? body.topics.filter((t) => typeof t === 'string') : []
+    const result = await hub.syncTopics(clientId, topics)
+    return c.json(result)
   })
 
   app.get('/projects/:projectId/runs', async (c) => {
@@ -386,92 +82,6 @@ export function createEventsRoutes(
     if (!project) return c.json({ error: 'project not found' }, 404)
     const ok = project.runner.cancel(c.req.param('runId'))
     return c.json({ ok }, ok ? 200 : 404)
-  })
-
-  app.get('/projects/:projectId/runs/:runId/events', (c) => {
-    const projectId = c.req.param('projectId')
-    const runId = c.req.param('runId')
-    return streamSSE(c, async (stream) => {
-      const project = await resolveProject(projectId)
-      if (!project) {
-        await stream.writeSSE({
-          event: 'error',
-          data: JSON.stringify({ error: 'project not found' }),
-        })
-        return
-      }
-      const handle = project.runner.get(runId)
-      if (!handle) {
-        await stream.writeSSE({
-          event: 'error',
-          data: JSON.stringify({ error: 'run not found or already ended' }),
-        })
-        return
-      }
-      await stream.writeSSE({
-        event: 'ready',
-        data: JSON.stringify({ runId, mode: handle.mode, specId: handle.specId }),
-      })
-      const stopHeartbeat = attachHeartbeat(stream)
-
-      const queue: SseEvent[] = []
-      let resolve: (() => void) | null = null
-      let closed = false
-      const nudge = () => {
-        resolve?.()
-        resolve = null
-      }
-
-      const buf = handle.buffer()
-      if (buf) {
-        queue.push({
-          event: 'agent-stdout',
-          data: JSON.stringify({ runId, mode: handle.mode, specId: handle.specId, chunk: buf }),
-        })
-      }
-      const u1 = handle.onStdout((chunk) => {
-        queue.push({
-          event: 'agent-stdout',
-          data: JSON.stringify({ runId, mode: handle.mode, specId: handle.specId, chunk }),
-        })
-        nudge()
-      })
-      const u2 = handle.onError((message) => {
-        queue.push({
-          event: 'agent-error',
-          data: JSON.stringify({ runId, mode: handle.mode, specId: handle.specId, message }),
-        })
-        nudge()
-      })
-      const u3 = handle.onExit((code) => {
-        queue.push({
-          event: 'agent-exit',
-          data: JSON.stringify({ runId, mode: handle.mode, specId: handle.specId, code }),
-        })
-        nudge()
-      })
-
-      stream.onAbort(() => {
-        closed = true
-        stopHeartbeat()
-        u1()
-        u2()
-        u3()
-        nudge()
-      })
-
-      nudge()
-      while (!closed) {
-        if (queue.length === 0) {
-          await new Promise<void>((r) => {
-            resolve = r
-          })
-          continue
-        }
-        const payload = queue.shift()!
-        await stream.writeSSE(payload)
-      }
-    })
   })
 
   return app

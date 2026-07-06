@@ -142,3 +142,21 @@ Story 编辑页支持在左侧 NarrativeTreeView 与右侧 SceneScriptView 并�
 - `editor/app/components/NarrativeTreeView.tsx` / `NarrativeTreeViewWrapper.tsx`：不改 props；单击/双击回调保持不变。
 - 相关测试：`editor/app/components/__tests__/SceneScriptView*.test.*` 与 `editor/app/console/story/[story_id]/__tests__/viewScene.test.ts` 覆盖回归。
 ```
+
+目前已经做了一次 mermaid 优化：@.yorz/specs/260705.refct.done-stage-and-mermaid-step/spec.md
+现在针对性分析案例： @.yorz/specs/260705.refct.merge-init-into-add/spec.md 文档，不要变更和处理该示例文档；
+
+1. yorz lint 该 spec 没有报错，但实际@.yorz/specs/260705.refct.merge-init-into-add/spec.md:L193-L206 在 GUI 页面选入失败; error message: "Parse error on line 13:\n...[\"返回 RunAddResult\"]</path>\n----------------------^\nExpecting 'SEMI', 'NEWLINE', 'SPACE', 'EOF', 'subgraph', 'end', 'acc_title', 'acc_descr', 'acc_descr_multiline_value', 'AMP', 'COLON', 'STYLE', 'LINKSTYLE', 'CLASSDEF', 'CLASS', 'CLICK', 'DOWN', 'DEFAULT', 'NUM', 'COMMA', 'NODE_STRING', 'BRKT', 'MINUS', 'MULT', 'UNICODE_TEXT', 'direction_tb', 'direction_bt', 'direction_rl', 'direction_lr', 'direction_td', got 'TAGSTART'"
+2. "3.1 init 命令实现" 典型的流程说明文字，没有使用流程图；
+3. “4.1 add.ts 增强” 大量类型定义代码，没有使用 类图，新的实现流程逻辑没有使用 流程图
+4. “4.5 兼容性与影响范围” 我期望使用某类型图展示被变更模块的现有组成结构，然时候使用 红色标识 breaking change 区域，使用黄色标识受影响区域
+
+---
+
+分析图形化 skill 未达预期的原因，如何优化 skill ？
+我建议的优化方向：
+
+1. spec 文档图形表达的目标是让用户快速建立认知，即：核心逻辑流程、模块结构、模块间的交互；
+2. 图形不需要表达极度精确的信息，如文件路径、具体的代码行，具体的实现源码或者伪代码
+3. 我建议 spec 文档表层使用图形优先，具体而精确的信息可以折叠起来，比如使用 <details /> 标签
+   - 具体而精确的信息在文档中是有必要的，因为 Agent 也需要阅读文档来实施代码；

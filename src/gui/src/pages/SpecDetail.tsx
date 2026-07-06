@@ -67,8 +67,8 @@ export const SpecDetail: Component = () => {
   })
 
   // If we arrived from NewSpec, the draft run that just authored this spec is
-  // streaming via /runs/<runId>/events. Re-register it with the global store
-  // under the real specId so the dock keeps showing the output.
+  // streaming via the run topic. Re-register it with the global store under
+  // the real specId so the dock keeps showing the output.
   createEffect(() => {
     const rid = search.runId
     if (!rid) return

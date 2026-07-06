@@ -45,7 +45,41 @@ async function startInTmp(opts?: { fakeAgent?: boolean }) {
   handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'projects.json') })
   const list = await handle.registry.list()
   const projectId = list[0]!.id
-  return { cwd, url: handle.url, port: handle.port, projectId, apiPrefix: `${handle.url}api/projects/${projectId}` }
+  return {
+    cwd,
+    url: handle.url,
+    port: handle.port,
+    projectId,
+    apiPrefix: `${handle.url}api/projects/${projectId}`,
+    apiRoot: `${handle.url}api`,
+  }
+}
+
+// Opens the multiplexed SSE stream, waits for the connection-level ready frame,
+// then POSTs the subscribe body. Returns the reader positioned right after the
+// initial ready frame so callers can search for topic-scoped `msg` frames.
+async function openMultiplex(
+  apiRoot: string,
+  topics: string[],
+): Promise<{
+  reader: ReadableStreamDefaultReader<Uint8Array>
+  decoder: TextDecoder
+  clientId: string
+}> {
+  const clientId = `test-${Math.random().toString(36).slice(2)}`
+  const sseRes = await fetch(`${apiRoot}/events/stream?clientId=${clientId}`, {
+    headers: { accept: 'text/event-stream' },
+  })
+  const reader = sseRes.body!.getReader()
+  const decoder = new TextDecoder()
+  await readUntil(reader, decoder, (t) => t.includes(`"clientId":"${clientId}"`))
+  const subRes = await fetch(`${apiRoot}/events/subscribe`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ clientId, topics }),
+  })
+  if (!subRes.ok) throw new Error(`subscribe failed: ${subRes.status}`)
+  return { reader, decoder, clientId }
 }
 
 describe('YorZ Service HTTP', () => {
@@ -90,8 +124,8 @@ describe('YorZ Service HTTP', () => {
     expect(body.runId).toBeTruthy()
   })
 
-  it('GET /api/runs/:runId/events streams stdout for a draft run', async () => {
-    const { apiPrefix } = await startInTmp({ fakeAgent: true })
+  it('run-scoped topic streams stdout for a draft run', async () => {
+    const { apiPrefix, apiRoot, projectId } = await startInTmp({ fakeAgent: true })
     const created = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -100,25 +134,25 @@ describe('YorZ Service HTTP', () => {
     expect(created.status).toBe(202)
     const { runId } = (await created.json()) as { runId: string }
 
-    const sseRes = await fetch(`${apiPrefix}/runs/${runId}/events`, {
-      headers: { accept: 'text/event-stream' },
-    })
-    expect(sseRes.body).not.toBeNull()
-    const reader = sseRes.body!.getReader()
-    const decoder = new TextDecoder()
-    const stdout = await readUntil(reader, decoder, (t) => t.includes('event: agent-stdout'), 4000)
+    const { reader, decoder } = await openMultiplex(apiRoot, [
+      `project:${projectId}:run:${runId}`,
+    ])
+    const stdout = await readUntil(
+      reader,
+      decoder,
+      (t) => t.includes('"event":"agent-stdout"'),
+      4000,
+    )
     expect(stdout).toContain('received prompt')
     await reader.cancel()
   })
 
-  it('GET /api/events/specs emits list-updated when a new spec lands externally', async () => {
-    const { cwd, apiPrefix } = await startInTmp()
-    const sseRes = await fetch(`${apiPrefix}/events/specs`, {
-      headers: { accept: 'text/event-stream' },
-    })
-    const reader = sseRes.body!.getReader()
-    const decoder = new TextDecoder()
-    await readUntil(reader, decoder, (t) => t.includes('event: ready'))
+  it('specs-list topic emits list-updated when a new spec lands externally', async () => {
+    const { cwd, apiRoot, projectId } = await startInTmp()
+    const { reader, decoder } = await openMultiplex(apiRoot, [`project:${projectId}:specs`])
+    // Wait for the topic ready ack before triggering the filesystem write to
+    // ensure the watcher is fully attached.
+    await readUntil(reader, decoder, (t) => t.includes('"event":"ready"'), 2000)
 
     // Self-writes via the SpecStore are suppressed by the watcher's echo guard;
     // simulate the real flow (Agent writes the file directly) by using fs.
@@ -142,7 +176,12 @@ describe('YorZ Service HTTP', () => {
       'utf8',
     )
 
-    const evt = await readUntil(reader, decoder, (t) => t.includes('event: list-updated'), 4000)
+    const evt = await readUntil(
+      reader,
+      decoder,
+      (t) => t.includes('"event":"list-updated"'),
+      4000,
+    )
     expect(evt).toContain('list-updated')
     await reader.cancel()
   })
@@ -172,8 +211,8 @@ describe('YorZ Service HTTP', () => {
     expect(raw).toContain('stage: plan')
   })
 
-  it('SSE pushes updated event when underlying file changes', async () => {
-    const { cwd, apiPrefix } = await startInTmp()
+  it('spec topic pushes updated event when underlying file changes', async () => {
+    const { cwd, apiPrefix, apiRoot, projectId } = await startInTmp()
     const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -181,29 +220,25 @@ describe('YorZ Service HTTP', () => {
     })
     const { id } = (await create.json()) as { id: string }
 
-    const sseRes = await fetch(`${apiPrefix}/specs/${id}/events`, {
-      headers: { accept: 'text/event-stream' },
-    })
-    expect(sseRes.body).not.toBeNull()
-    const reader = sseRes.body!.getReader()
-    const decoder = new TextDecoder()
-
-    const ready = await readUntil(reader, decoder, (txt) => txt.includes('event: ready'))
-    expect(ready).toContain('event: ready')
+    const { reader, decoder } = await openMultiplex(apiRoot, [
+      `project:${projectId}:spec:${id}`,
+    ])
+    const ready = await readUntil(reader, decoder, (t) => t.includes('"event":"ready"'))
+    expect(ready).toContain('"event":"ready"')
 
     await new Promise((r) => setTimeout(r, 200))
     const specPath = join(cwd, '.yorz', 'specs', id, 'spec.md')
     const original = await readFile(specPath, 'utf8')
     await writeFile(specPath, original + '\n\nedited externally\n', 'utf8')
 
-    const updated = await readUntil(reader, decoder, (txt) => txt.includes('event: updated'), 3000)
-    expect(updated).toContain('event: updated')
+    const updated = await readUntil(reader, decoder, (t) => t.includes('"event":"updated"'), 3000)
+    expect(updated).toContain('"event":"updated"')
 
     await reader.cancel()
   })
 
-  it('POST /api/specs/:id/run + SSE delivers agent-stdout and agent-exit', async () => {
-    const { apiPrefix } = await startInTmp({ fakeAgent: true })
+  it('POST /api/specs/:id/run + spec topic delivers agent-stdout and agent-exit', async () => {
+    const { apiPrefix, apiRoot, projectId } = await startInTmp({ fakeAgent: true })
     const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -211,28 +246,31 @@ describe('YorZ Service HTTP', () => {
     })
     const { id } = (await create.json()) as { id: string }
 
-    const sseRes = await fetch(`${apiPrefix}/specs/${id}/events`, {
-      headers: { accept: 'text/event-stream' },
-    })
-    const reader = sseRes.body!.getReader()
-    const decoder = new TextDecoder()
-    await readUntil(reader, decoder, (t) => t.includes('event: ready'))
+    const { reader, decoder } = await openMultiplex(apiRoot, [
+      `project:${projectId}:spec:${id}`,
+    ])
+    await readUntil(reader, decoder, (t) => t.includes('"event":"ready"'))
 
     const runRes = await fetch(`${apiPrefix}/specs/${id}/run`, { method: 'POST' })
     expect(runRes.status).toBe(200)
     const { runId } = (await runRes.json()) as { runId: string }
     expect(runId).toBeTruthy()
 
-    const stdout = await readUntil(reader, decoder, (t) => t.includes('event: agent-stdout'), 4000)
+    const stdout = await readUntil(
+      reader,
+      decoder,
+      (t) => t.includes('"event":"agent-stdout"'),
+      4000,
+    )
     expect(stdout).toContain('received prompt')
-    const exit = await readUntil(reader, decoder, (t) => t.includes('event: agent-exit'), 4000)
+    const exit = await readUntil(reader, decoder, (t) => t.includes('"event":"agent-exit"'), 4000)
     expect(exit).toContain('agent-exit')
 
     await reader.cancel()
   })
 
   it('POST /api/specs/:id/explain returns runId and streams stdout', async () => {
-    const { apiPrefix } = await startInTmp({ fakeAgent: true })
+    const { apiPrefix, apiRoot, projectId } = await startInTmp({ fakeAgent: true })
     const create = await fetch(`${apiPrefix}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -240,12 +278,10 @@ describe('YorZ Service HTTP', () => {
     })
     const { id } = (await create.json()) as { id: string }
 
-    const sseRes = await fetch(`${apiPrefix}/specs/${id}/events`, {
-      headers: { accept: 'text/event-stream' },
-    })
-    const reader = sseRes.body!.getReader()
-    const decoder = new TextDecoder()
-    await readUntil(reader, decoder, (t) => t.includes('event: ready'))
+    const { reader, decoder } = await openMultiplex(apiRoot, [
+      `project:${projectId}:spec:${id}`,
+    ])
+    await readUntil(reader, decoder, (t) => t.includes('"event":"ready"'))
 
     const res = await fetch(`${apiPrefix}/specs/${id}/explain`, {
       method: 'POST',
@@ -253,7 +289,12 @@ describe('YorZ Service HTTP', () => {
       body: JSON.stringify({ text: '解释这一段' }),
     })
     expect(res.status).toBe(200)
-    const evt = await readUntil(reader, decoder, (t) => t.includes('event: agent-stdout'), 4000)
+    const evt = await readUntil(
+      reader,
+      decoder,
+      (t) => t.includes('"event":"agent-stdout"'),
+      4000,
+    )
     expect(evt).toContain('"mode":"explain"')
     await reader.cancel()
   })

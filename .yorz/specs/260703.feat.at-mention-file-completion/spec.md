@@ -1,7 +1,7 @@
 ---
-stage: execute
-last_action: 追加 fix 全部完成（textarea 占满宽度 + 模糊匹配）
-updated_at: '2026-07-04 21:26:33'
+stage: done
+last_action: 任务全部完成，标记 done
+updated_at: '2026-07-06 20:27:25'
 summary: NewSpec 需求输入框支持通过 @ 符号触发文件路径补全；后端新增项目文件检索接口，按 @ 后输入的前缀返回匹配文件列表
 ---
 
@@ -169,3 +169,4 @@ _暂无_
 9. **追加 fix 1 — textarea 占满宽度** `src/gui/src/styles.css`：在 `.mention-container` 添加 `width: 100%`，在 `.form input[type='text'], .form textarea` 添加 `width: 100%`，使需求内容输入框占满 form 宽度（验证：tsc 通过）。
 10. **追加 fix 2 — 模糊子序列匹配** `src/service/routes/project-files.ts`：新增 `fuzzyMatch(query, target)` 函数，按 query 字符逐个在 target 中顺序查找（大小写不敏感）；将 `walk` 中 `relPath.toLowerCase().includes(query.toLowerCase())` 替换为 `fuzzyMatch(query, relPath)`，从而支持 `ace` → `abcdefg` 的模糊匹配（验证：tsc 通过）。
 11. **全量验证**：`tsc --noEmit` 零错误；`vitest run` 全部 264 个测试通过。
+12. **收尾**：任务清单全部完成、追加任务已 `[fixed]`、无待确认问题/批注/`[open]` 条目，`stage` 置为 `done`。
