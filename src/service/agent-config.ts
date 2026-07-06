@@ -9,6 +9,13 @@ export interface AgentCmd {
   cmd: string
   args(prompt: string): string[]
   streamFormat: AgentStreamFormat
+  /**
+   * Extra environment variables to merge on top of `process.env` when the
+   * runner spawns this backend. Optional — only backends that need to force
+   * a working-directory signal (e.g. opencode reading `PWD` instead of the
+   * child's `process.cwd()`) implement it.
+   */
+  env?(cwd: string): Record<string, string>
 }
 
 export interface ResolveAgentCmdOptions {
@@ -56,6 +63,13 @@ const BUILTIN: Record<AgentName, AgentCmd> = {
     // `--dangerously-skip-permissions` 对齐 claude 的 bypassPermissions，保证无人值守。
     args: (prompt) => ['run', '--dangerously-skip-permissions', prompt],
     streamFormat: 'text',
+    // opencode 不遵循 spawn 传入的 cwd，而是走 process.env.PWD 定位项目根：
+    // 若不覆盖，worktree 项目下拉起的 opencode 会锚定到 `yorz serve` 启动时的
+    // shell 目录。GIT_DIR / GIT_WORK_TREE 是保险项，用于兜住 opencode 内部若
+    // 走 git CLI 探测项目的路径。claude 后端不需要此覆盖，保留默认行为。
+    env: (cwd) => ({
+      PWD: cwd,
+    }),
   },
 }
 
