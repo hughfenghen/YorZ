@@ -56,7 +56,10 @@ export const Home: Component = () => {
         if (previousMainId) navigate(`/${encodeURIComponent(previousMainId)}`)
       })()
     })
-    const onDocClick = (e: MouseEvent) => {
+    // 用 mousedown 而非 click：Show 会在删除按钮 onClick 触发的 setSignal
+    // 后同步卸载该按钮，若在 click 冒泡到 document 时再判断，e.target 已分离
+    // 出 DOM，closest('.card-menu') 会返回 null，反而误关菜单。
+    const onDocMouseDown = (e: MouseEvent) => {
       const target = e.target as HTMLElement
       if (target.closest('.card-menu') || target.closest('.card-menu-trigger')) return
       if (menuSpecId()) {
@@ -64,10 +67,10 @@ export const Home: Component = () => {
         setConfirmDeleteId(null)
       }
     }
-    document.addEventListener('click', onDocClick)
+    document.addEventListener('mousedown', onDocMouseDown)
     onCleanup(() => {
       unsub()
-      document.removeEventListener('click', onDocClick)
+      document.removeEventListener('mousedown', onDocMouseDown)
     })
   })
 
