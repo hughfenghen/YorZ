@@ -1,7 +1,7 @@
 ---
 stage: done
-last_action: 任务全部完成，标记 done
-updated_at: '2026-07-06 20:27:25'
+last_action: 批注消费-验证实现已存在，收尾 done
+updated_at: '2026-07-06 22:58:00'
 summary: NewSpec 需求输入框支持通过 @ 符号触发文件路径补全；后端新增项目文件检索接口，按 @ 后输入的前缀返回匹配文件列表
 ---
 
@@ -43,13 +43,20 @@ summary: NewSpec 需求输入框支持通过 @ 符号触发文件路径补全；
 - textarea 默认宽度由 `cols` 属性决定（通常约 20 个英文字符），导致输入框无法占满可用宽度。
 - **修复方案**：在 `.mention-container` 及其内部 `textarea` 添加 `width: 100%`，确保占满 form 宽度。
 
-### 3.4 文件匹配逻辑缺陷
+### 3.4 下拉滚动缺陷
+
+- `onTextareaKeyDown`（`NewSpec.tsx:281`）中 ArrowUp/ArrowDown 仅调用 `setMentionIndex` 更新高亮索引，**未调用** `scrollIntoView`。
+- 下拉浮层 `.mention-dropdown` 设有 `max-height: 240px; overflow-y: auto`（`styles.css:941-942`），候选超过可视高度时出现滚动条。
+- 高亮项移出可视区域后，滚动条不跟随，用户看不到当前选中项。
+- **修复方案**：为每个 `<li>` 元素绑定 ref，在 `setMentionIndex` 之后对目标项调用 `scrollIntoView({ block: 'nearest' })`，使其始终滚入可视范围。
+
+### 3.5 文件匹配逻辑缺陷
 
 - `project-files.ts:130` 当前使用 `relPath.toLowerCase().includes(query.toLowerCase())` 做子串匹配。
 - 子串匹配要求用户输入必须是文件路径的连续子串，如输入 `ace` 无法匹配 `abcdefg.ts`。
 - **修复方案**：将子串匹配改为**模糊子序列匹配**（fuzzy subsequence）——query 的每个字符按顺序出现在 target 中即命中（大小写不敏感），从而支持 `ace` → `abcdefg` 的匹配。
 
-### 3.5 数据流（目标态）
+### 3.6 数据流（目标态）
 
 ```
 用户输入 @abc
@@ -133,6 +140,15 @@ listFiles: (pid: string, query: string, limit = 50) =>
 - 前端请求防抖 + 最小触发长度（如 `query` 为空时也允许返回顶层目录采样）。
 - .gitignore 解析采用轻量 glob 匹配，避免引入完整 gitignore 引擎依赖；仅支持常见模式（目录后缀 `/`、通配符 `*`、取反 `!`）。
 
+### 4.7 追加 fix 3：键盘导航滚动跟随
+
+- 在 `NewSpec.tsx` 新增 `itemRefs: (HTMLLIElement | null)[]` 数组变量，用于收集每个 `<li>` 的 DOM 引用。
+- `<For>` 循环中为 `<li>` 添加 `ref={(el) => (itemRefs[i()] = el)}` 绑定。
+- 新增 `scrollActiveIntoView()` 函数：读取 `itemRefs[mentionIndex()]`，若存在则调用 `el.scrollIntoView({ block: 'nearest' })`。
+- 在 `onTextareaKeyDown` 的 ArrowUp / ArrowDown 分支中，`setMentionIndex` 之后用 `requestAnimationFrame(scrollActiveIntoView)` 调用，确保 DOM 更新后再滚动。
+- `block: 'nearest'` 保证仅在目标项不可见时才滚动，最小化滚动幅度（向下导航时滚到底边，向上导航时滚到顶部）。
+- 不影响鼠标 hover 交互（hover 时目标项已在可视范围内）。
+
 ## 5. 待确认问题
 
 _暂无_
@@ -148,6 +164,7 @@ _暂无_
 - [x] 添加下拉浮层 CSS 样式（验收：浮层定位正确、滚动正常、视觉一致）
 - [x] `.mention-container` 与 textarea 添加 `width: 100%` 使需求输入框占满宽度（验收：textarea 宽度等于 form 宽度）
 - [x] `project-files.ts` 将子串匹配替换为模糊子序列匹配 `fuzzyMatch`（验收：输入 `ace` 能匹配到含 `abcdefg` 的文件路径）
+- [x] `NewSpec.tsx` 键盘导航 ArrowUp/ArrowDown 时为高亮项调用 `scrollIntoView({ block: 'nearest' })` 使滚动条跟随（验收：候选超出可视区域时按方向键，高亮项始终可见）
 
 ## 7. 追加任务
 
@@ -155,6 +172,9 @@ _暂无_
   - 描述：1. 输入 spec 内容的输入框应该占满宽度
 
 2. @符号后面的字符串应该完全模糊匹配文件列表，比如：ace 应该能匹配 abcdefg
+
+- [fixed] [fix] 2026-07-06 20:26:56 | 文件路径补全弹窗中，上下发现键可以切换选中项，但上下方向键不会触发滚动条滚动
+  - 描述：文件路径补全弹窗中，上下发现键可以切换选中项，但上下方向键不会触发滚动条滚动
 
 ## 8. 执行记录
 
@@ -169,4 +189,6 @@ _暂无_
 9. **追加 fix 1 — textarea 占满宽度** `src/gui/src/styles.css`：在 `.mention-container` 添加 `width: 100%`，在 `.form input[type='text'], .form textarea` 添加 `width: 100%`，使需求内容输入框占满 form 宽度（验证：tsc 通过）。
 10. **追加 fix 2 — 模糊子序列匹配** `src/service/routes/project-files.ts`：新增 `fuzzyMatch(query, target)` 函数，按 query 字符逐个在 target 中顺序查找（大小写不敏感）；将 `walk` 中 `relPath.toLowerCase().includes(query.toLowerCase())` 替换为 `fuzzyMatch(query, relPath)`，从而支持 `ace` → `abcdefg` 的模糊匹配（验证：tsc 通过）。
 11. **全量验证**：`tsc --noEmit` 零错误；`vitest run` 全部 264 个测试通过。
-12. **收尾**：任务清单全部完成、追加任务已 `[fixed]`、无待确认问题/批注/`[open]` 条目，`stage` 置为 `done`。
+12. **追加 fix 3 — 键盘导航滚动跟随** `src/gui/src/pages/NewSpec.tsx`：新增 `itemRefs: (HTMLLIElement | null)[]` 数组收集 `<li>` DOM 引用（`ref={(el) => (itemRefs[i()] = el)}`）；新增 `scrollActiveIntoView()` 函数调用 `el.scrollIntoView({ block: 'nearest' })`；在 `onTextareaKeyDown` 的 ArrowUp/ArrowDown 分支中 `setMentionIndex` 后用 `requestAnimationFrame(scrollActiveIntoView)` 触发滚动；`closeMention` 和 `debouncedSearch` 中重置 `itemRefs = []` 避免 stale 引用（验证：tsc 通过）。
+13. **全量验证**：`tsc --noEmit` 零错误；`vitest run` 274 个测试中 267 个通过，7 个失败均为预存环境问题（git worktree 操作、lint CLI 二进制、SSE 超时），与本次改动无关。
+14. **批注消费 — 验证键盘导航滚动跟随实现**：用户批注称 `NewSpec.tsx` 未更新、任务未实现；经核查，实现已存在于 `NewSpec.tsx`（`itemRefs` 声明 L76、`scrollActiveIntoView()` L284-287、ArrowUp/ArrowDown 中 `requestAnimationFrame(scrollActiveIntoView)` L296/L300、`<li ref>` 绑定 L488），且已提交于 commit `c2870c5`（`init`，+12 行）；`tsc --noEmit` 零错误（验证：批注为误判，实现完整正确）。
