@@ -32,9 +32,6 @@ export default defineConfig({
         'mermaid',
         'jsdom',
         'trash',
-        'globby',
-        'is-path-inside',
-        'is-gitignored',
       ],
       output: {
         banner: SHEBANG,

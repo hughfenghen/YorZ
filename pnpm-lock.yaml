@@ -23,6 +23,15 @@ importers:
       hono:
         specifier: ^4.12.25
         version: 4.12.25
+      jsdom:
+        specifier: ^25.0.1
+        version: 25.0.1
+      markdown-it:
+        specifier: ^14.2.0
+        version: 14.2.0
+      mermaid:
+        specifier: ^11.0.0
+        version: 11.16.0
       trash:
         specifier: ^10.1.1
         version: 10.1.1
@@ -48,18 +57,9 @@ importers:
       highlight.js:
         specifier: ^11.11.1
         version: 11.11.1
-      jsdom:
-        specifier: ^25.0.1
-        version: 25.0.1
-      markdown-it:
-        specifier: ^14.2.0
-        version: 14.2.0
       markdown-it-task-lists:
         specifier: ^2.1.1
         version: 2.1.1
-      mermaid:
-        specifier: ^11.0.0
-        version: 11.16.0
       prettier:
         specifier: ^3.4.0
         version: 3.8.4
