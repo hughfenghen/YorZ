@@ -26,6 +26,12 @@ export interface StashOptions {
   paths: string[]
 }
 
+export interface PartitionedPaths {
+  tracked: string[]
+  untracked: string[]
+  renamed: Array<{ path: string; renamedFrom: string }>
+}
+
 export class GitError extends Error {
   readonly code: string
   readonly stderr: string
@@ -174,6 +180,27 @@ function parsePorcelain(raw: string): GitChange[] {
   return out
 }
 
+async function partitionPathsByStatus(
+  cwd: string,
+  paths: string[],
+): Promise<PartitionedPaths> {
+  const all = await listChanges(cwd)
+  const byPath = new Map(all.map((c) => [c.path, c]))
+  const result: PartitionedPaths = { tracked: [], untracked: [], renamed: [] }
+  for (const p of paths) {
+    const change = byPath.get(p)
+    if (!change) continue
+    if (change.status === '??') {
+      result.untracked.push(p)
+    } else if (change.renamedFrom) {
+      result.renamed.push({ path: p, renamedFrom: change.renamedFrom })
+    } else {
+      result.tracked.push(p)
+    }
+  }
+  return result
+}
+
 export async function commit(cwd: string, opts: CommitOptions): Promise<{ commit: string }> {
   const message = opts.message?.trim() ?? ''
   if (!message) throw new GitError('invalid_message', 'commit message must not be empty')
@@ -182,8 +209,12 @@ export async function commit(cwd: string, opts: CommitOptions): Promise<{ commit
   }
   for (const p of opts.paths) assertSafeRelativePath(cwd, p)
 
-  await runGit(cwd, ['add', '--', ...opts.paths])
-  await runGit(cwd, ['commit', '-m', message, '--', ...opts.paths])
+  const { renamed } = await partitionPathsByStatus(cwd, opts.paths)
+  const extraPaths = renamed.map((r) => r.renamedFrom)
+  const allPaths = [...opts.paths, ...extraPaths]
+
+  await runGit(cwd, ['add', '--', ...allPaths])
+  await runGit(cwd, ['commit', '-m', message, '--', ...allPaths])
   const { stdout } = await runGit(cwd, ['rev-parse', 'HEAD'])
   return { commit: stdout.trim() }
 }
@@ -193,8 +224,20 @@ export async function discard(cwd: string, opts: DiscardOptions): Promise<void> 
     throw new GitError('no_paths', 'discard requires at least one path')
   }
   for (const p of opts.paths) assertSafeRelativePath(cwd, p)
-  await runGit(cwd, ['restore', '--staged', '--worktree', '--', ...opts.paths])
-  await runGit(cwd, ['clean', '-fd', '--', ...opts.paths])
+
+  const { tracked, untracked, renamed } = await partitionPathsByStatus(cwd, opts.paths)
+
+  if (tracked.length) {
+    await runGit(cwd, ['restore', '--staged', '--worktree', '--', ...tracked])
+  }
+  if (untracked.length) {
+    await runGit(cwd, ['clean', '-fd', '--', ...untracked])
+  }
+  for (const r of renamed) {
+    await runGitRaw(cwd, ['reset', '-q', 'HEAD', '--', r.renamedFrom, r.path])
+    await runGit(cwd, ['restore', '--worktree', '--', r.renamedFrom])
+    await runGit(cwd, ['clean', '-fd', '--', r.path])
+  }
 }
 
 export async function stash(cwd: string, opts: StashOptions): Promise<void> {
@@ -202,6 +245,11 @@ export async function stash(cwd: string, opts: StashOptions): Promise<void> {
     throw new GitError('no_paths', 'stash requires at least one path')
   }
   for (const p of opts.paths) assertSafeRelativePath(cwd, p)
+
+  const { renamed } = await partitionPathsByStatus(cwd, opts.paths)
+  const extraPaths = renamed.map((r) => r.renamedFrom)
+  const allPaths = [...opts.paths, ...extraPaths]
+
   const message = opts.message?.trim() || 'yorz:stash'
-  await runGit(cwd, ['stash', 'push', '-m', message, '--', ...opts.paths])
+  await runGit(cwd, ['stash', 'push', '--include-untracked', '-m', message, '--', ...allPaths])
 }
