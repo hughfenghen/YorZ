@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { describe, expect, it } from 'vitest'
-import { GitError, assertSafeRelativePath, commit, listChanges } from '../git.js'
+import { GitError, assertSafeRelativePath, commit, discard, stash, listChanges } from '../git.js'
 
 const execFileP = promisify(execFile)
 
@@ -101,5 +101,85 @@ describe('assertSafeRelativePath', () => {
 
   it('rejects parent traversal', () => {
     expect(() => assertSafeRelativePath('/tmp', '../etc/passwd')).toThrow(GitError)
+  })
+})
+
+describe('git.discard', () => {
+  it('discards mixed tracked + untracked files without error', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'tracked.txt'), 'orig\n', 'utf8')
+    await git(cwd, ['add', 'tracked.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'seed'])
+
+    await writeFile(join(cwd, 'tracked.txt'), 'changed\n', 'utf8')
+    await writeFile(join(cwd, 'untracked.txt'), 'new\n', 'utf8')
+
+    await discard(cwd, { paths: ['tracked.txt', 'untracked.txt'] })
+
+    const status = await listChanges(cwd)
+    expect(status.find((c) => c.path === 'tracked.txt')).toBeUndefined()
+    expect(status.find((c) => c.path === 'untracked.txt')).toBeUndefined()
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('discards only untracked files', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'untracked.txt'), 'new\n', 'utf8')
+
+    await discard(cwd, { paths: ['untracked.txt'] })
+
+    const status = await listChanges(cwd)
+    expect(status.find((c) => c.path === 'untracked.txt')).toBeUndefined()
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+})
+
+describe('git.stash', () => {
+  it('stashes mixed tracked + untracked files', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'tracked.txt'), 'orig\n', 'utf8')
+    await git(cwd, ['add', 'tracked.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'seed'])
+
+    await writeFile(join(cwd, 'tracked.txt'), 'changed\n', 'utf8')
+    await writeFile(join(cwd, 'untracked.txt'), 'new\n', 'utf8')
+
+    await stash(cwd, { message: 'test-stash', paths: ['tracked.txt', 'untracked.txt'] })
+
+    const status = await listChanges(cwd)
+    expect(status.find((c) => c.path === 'tracked.txt')).toBeUndefined()
+    expect(status.find((c) => c.path === 'untracked.txt')).toBeUndefined()
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+})
+
+describe('git.commit mixed states', () => {
+  it('commits untracked + unstaged + staged files together', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'existing.txt'), 'orig\n', 'utf8')
+    await git(cwd, ['add', 'existing.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'seed'])
+
+    await writeFile(join(cwd, 'staged.txt'), 'staged\n', 'utf8')
+    await git(cwd, ['add', 'staged.txt'])
+
+    await writeFile(join(cwd, 'existing.txt'), 'modified\n', 'utf8')
+    await writeFile(join(cwd, 'untracked.txt'), 'new\n', 'utf8')
+
+    const { commit: sha } = await commit(cwd, {
+      message: 'mixed commit',
+      paths: ['staged.txt', 'existing.txt', 'untracked.txt'],
+    })
+    expect(sha).toMatch(/^[0-9a-f]{40}$/)
+
+    const status = await listChanges(cwd)
+    expect(status.find((c) => c.path === 'staged.txt')).toBeUndefined()
+    expect(status.find((c) => c.path === 'existing.txt')).toBeUndefined()
+    expect(status.find((c) => c.path === 'untracked.txt')).toBeUndefined()
+
+    await rm(cwd, { recursive: true, force: true })
   })
 })
