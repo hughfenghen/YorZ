@@ -1,14 +1,36 @@
 {
   "name": "@yorz/cli",
-  "version": "0.0.1",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
-  "description": "YorZ CLI — install/uninstall the yorz-spec skill into Claude Code / OpenCode.",
+  "description": "",
   "bin": {
     "yorz": "./dist/cli/index.js"
   },
   "engines": {
     "node": ">=20"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "ai",
+    "agent",
+    "spec-driven",
+    "decision-os",
+    "claude-code",
+    "opencode",
+    "workflow",
+    "cli"
+  ],
+  "license": "LGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anomalyco/YorZ.git"
+  },
+  "homepage": "https://github.com/anomalyco/YorZ#readme",
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "pnpm run build:cli && pnpm run build:gui",
@@ -21,7 +43,8 @@
     "test": "vitest run",
     "test:agent": "node scripts/test-agent.mjs",
     "test:e2e": "playwright test",
-    "format": "prettier --write \"src/**/*.{ts,tsx,md,css}\""
+    "format": "prettier --write \"src/**/*.{ts,tsx,md,css}\"",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@hono/node-server": "^2.0.4",
