@@ -1,5 +1,6 @@
 import { homedir } from 'node:os'
 import { Command, Option } from 'commander'
+import pkg from '../../package.json' with { type: 'json' }
 import { install } from './install.js'
 import { uninstall } from './uninstall.js'
 import { runServe } from './serve.js'
@@ -34,7 +35,7 @@ function parseScope(value: string): InstallScope {
 }
 
 const program = new Command()
-program.name('yorz').description('YorZ CLI — manage the yorz-spec skill.').version('0.0.1')
+program.name('yorz').description('YorZ CLI — manage the yorz-spec skill.').version(pkg.version)
 
 const installCmd = program
   .command('install')
