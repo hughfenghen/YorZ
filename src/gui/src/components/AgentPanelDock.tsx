@@ -18,6 +18,7 @@ const STATUS_LABEL: Record<AgentTask['status'], string> = {
 
 const COLLAPSE_THRESHOLD = 3
 const COLLAPSED_KEY = 'yorz.agentDock.collapsed'
+const SCROLL_STICK_THRESHOLD = 32
 
 let hasPersisted = false
 
@@ -148,11 +149,22 @@ const AgentTaskCard: Component<{ task: AgentTask }> = (props) => {
     preEl = el
   }
 
-  // Auto-scroll the output region on each new chunk.
+  // Whether the output region is currently stuck to the bottom; only then do we
+  // auto-scroll on new chunks, so manual upward scrolling is not interrupted.
+  const [stickToBottom, setStickToBottom] = createSignal(true)
+
+  const handleScroll = () => {
+    if (!preEl) return
+    const distance = preEl.scrollHeight - preEl.scrollTop - preEl.clientHeight
+    setStickToBottom(distance < SCROLL_STICK_THRESHOLD)
+  }
+
+  // Auto-scroll the output region on each new chunk, but only when the user is
+  // already near the bottom — otherwise let them browse freely.
   createMemo(() => {
     void props.task.output
     queueMicrotask(() => {
-      if (preEl) preEl.scrollTop = preEl.scrollHeight
+      if (preEl && stickToBottom()) preEl.scrollTop = preEl.scrollHeight
     })
   })
 
@@ -208,7 +220,7 @@ const AgentTaskCard: Component<{ task: AgentTask }> = (props) => {
         </button>
       </header>
       <Show when={props.task.expanded}>
-        <pre ref={setPreRef} class="agent-task-output">
+        <pre ref={setPreRef} class="agent-task-output" onScroll={handleScroll}>
           {props.task.output || '（等待输出…）'}
         </pre>
         <Show when={props.task.error}>
