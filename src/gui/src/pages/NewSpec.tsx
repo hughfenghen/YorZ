@@ -299,6 +299,7 @@ export const NewSpec: Component = () => {
       setMentionIndex((i) => (i - 1 + items.length) % items.length)
       requestAnimationFrame(scrollActiveIntoView)
     } else if (e.key === 'Enter' || e.key === 'Tab') {
+      if (e.key === 'Enter' && e.isComposing) return
       e.preventDefault()
       selectMention(items[mentionIndex()])
     } else if (e.key === 'Escape') {
