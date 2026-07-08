@@ -36,7 +36,7 @@
     "build": "pnpm run build:cli && pnpm run build:gui",
     "build:cli": "vite build",
     "build:gui": "vite build --config vite.gui.config.ts",
-    "dev": "pnpm run build && concurrently -k -n cli,gui,serve \"vite build --watch\" \"vite build --config vite.gui.config.ts --watch\" \"node dist/cli/index.js serve\"",
+    "dev": "pnpm run build && concurrently -k -n cli,gui,serve \"vite build --watch\" \"vite build --config vite.gui.config.ts --watch\" \"node dist/cli/index.js serve --foreground\"",
     "dev:cli": "vite build --watch",
     "dev:gui-build": "vite build --config vite.gui.config.ts --watch",
     "dev:gui": "vite --config vite.gui.config.ts",

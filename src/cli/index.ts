@@ -3,7 +3,7 @@ import { Command, Option } from 'commander'
 import pkg from '../../package.json' with { type: 'json' }
 import { install } from './install.js'
 import { uninstall } from './uninstall.js'
-import { runServe } from './serve.js'
+import { runServe, runStopServe } from './serve.js'
 import { runAdd, AddGitAbortedError } from './add.js'
 import { runLint } from './lint.js'
 import type { AgentName, InstallScope } from './adapters/types.js'
@@ -18,7 +18,9 @@ interface ServeOpts {
   port?: string
   open?: boolean
   cwd?: string
-  noRegisterCwd?: boolean
+  registerCwd?: boolean
+  foreground?: boolean
+  background?: boolean
 }
 
 const ALL_AGENTS: AgentName[] = ['claude', 'opencode', 'codex']
@@ -138,17 +140,22 @@ program
     if (result.exitCode !== 0) process.exit(result.exitCode)
   })
 
-program
+const serveCmd = program
   .command('serve')
   .description('Start the YorZ Service (HTTP + SSE + static GUI; multi-project).')
   .option('-p, --port <port>', 'port to listen on', '7423')
   .option('--open', 'open the GUI in the default browser', false)
+  .option('--foreground', 'run the service in the foreground', false)
+  .option('--background', 'run the service in the background (default)', false)
   .option(
     '--cwd <path>',
     'directory to auto-register when it contains .yorz/ (default: process.cwd())',
   )
   .option('--no-register-cwd', 'do not auto-register the current directory')
   .action(async (opts: ServeOpts) => {
+    if (opts.foreground && opts.background) {
+      throw new Error('Use either --foreground or --background, not both')
+    }
     const port = opts.port === undefined ? undefined : Number.parseInt(opts.port, 10)
     if (port !== undefined && (!Number.isFinite(port) || port < 0)) {
       throw new Error(`Invalid --port: ${opts.port}`)
@@ -157,8 +164,17 @@ program
       port,
       open: opts.open,
       cwd: opts.cwd,
-      noRegisterCwd: opts.noRegisterCwd === false ? true : false,
+      noRegisterCwd: opts.registerCwd === false,
+      foreground: opts.foreground === true,
     })
+  })
+
+serveCmd
+  .command('stop')
+  .description('Stop the background YorZ Service.')
+  .action(async () => {
+    const result = await runStopServe()
+    console.log(result.message)
   })
 
 program.parseAsync(process.argv).catch((err: Error) => {

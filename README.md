@@ -34,13 +34,15 @@ npx -p @yorz/cli yorz <command>
 yorz serve
 ```
 
-This launches the YorZ Service (HTTP + SSE + static GUI). Open `http://localhost:7423` in your browser to access the dashboard.
+This launches the YorZ Service (HTTP + SSE + static GUI) in the background by default. Open `http://localhost:7423` in your browser to access the dashboard.
 
 Options:
 
 ```bash
 yorz serve --port 8080    # custom port
 yorz serve --open          # auto-open browser
+yorz serve --foreground    # run in foreground
+yorz serve stop            # stop the background service
 ```
 
 ### Step 2 — Add a Project
@@ -75,7 +77,8 @@ Then ask your agent (Claude Code / OpenCode) to process it. The skill handles th
 
 | Command                 | Description                                                      |
 | ----------------------- | ---------------------------------------------------------------- |
-| `yorz serve`            | Start the YorZ Service (HTTP + SSE + static GUI). Multi-project. |
+| `yorz serve`            | Start or reuse the YorZ Service in the background. Multi-project. |
+| `yorz serve stop`        | Stop the background YorZ Service.                                |
 | `yorz add <path>`       | Initialize and register a directory as a YorZ project.           |
 | `yorz install skills`   | Install the yorz-spec skill into Claude Code / OpenCode.         |
 | `yorz uninstall skills` | Remove the yorz-spec skill from agents.                          |
