@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 export type AgentConfig =
   | { kind: 'claude' }
   | { kind: 'opencode' }
+  | { kind: 'codex' }
   | { kind: 'custom'; cmd: string; args: string[] }
 
 export interface ProjectConfig {
@@ -87,15 +88,17 @@ function normalizeConfig(value: unknown): ProjectConfig {
 }
 
 function normalizeAgent(value: unknown): AgentConfig {
-  // Legacy schema: `{ agent: 'claude' | 'opencode' }` as a bare string.
+  // Legacy schema: `{ agent: 'claude' | 'opencode' | 'codex' }` as a bare string.
   if (typeof value === 'string') {
     if (value === 'opencode') return { kind: 'opencode' }
+    if (value === 'codex') return { kind: 'codex' }
     return { kind: 'claude' }
   }
   if (!value || typeof value !== 'object') return { kind: 'claude' }
   const obj = value as Record<string, unknown>
   const kind = obj.kind
   if (kind === 'opencode') return { kind: 'opencode' }
+  if (kind === 'codex') return { kind: 'codex' }
   if (kind === 'custom') {
     const cmd = typeof obj.cmd === 'string' ? obj.cmd.trim() : ''
     if (!cmd) return { kind: 'claude' }

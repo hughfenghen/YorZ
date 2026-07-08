@@ -21,12 +21,12 @@ interface ServeOpts {
   noRegisterCwd?: boolean
 }
 
-const ALL_AGENTS: AgentName[] = ['claude', 'opencode']
+const ALL_AGENTS: AgentName[] = ['claude', 'opencode', 'codex']
 
 function parseAgents(value: string): AgentName[] {
   if (value === 'all') return ALL_AGENTS
-  if (value === 'claude' || value === 'opencode') return [value]
-  throw new Error(`Invalid --agent: ${value}. Use 'claude' | 'opencode' | 'all'.`)
+  if (value === 'claude' || value === 'opencode' || value === 'codex') return [value]
+  throw new Error(`Invalid --agent: ${value}. Use 'claude' | 'opencode' | 'codex' | 'all'.`)
 }
 
 function parseScope(value: string): InstallScope {
@@ -47,7 +47,7 @@ installCmd.action(() => {
 installCmd
   .command('skills')
   .description('Install the yorz-spec skill into the target agent(s).')
-  .option('-a, --agent <agent>', 'target agent: claude | opencode | all', 'all')
+  .option('-a, --agent <agent>', 'target agent: claude | opencode | codex | all', 'all')
   .addOption(
     new Option('-s, --scope <scope>', 'install scope: user | project').default(
       INSTALL_SCOPE_DEFAULT,
@@ -80,7 +80,7 @@ uninstallCmd.action(() => {
 uninstallCmd
   .command('skills')
   .description('Remove the yorz-spec skill from the target agent(s).')
-  .option('-a, --agent <agent>', 'target agent: claude | opencode | all', 'all')
+  .option('-a, --agent <agent>', 'target agent: claude | opencode | codex | all', 'all')
   .option('-s, --scope <scope>', 'uninstall scope: user | project', INSTALL_SCOPE_DEFAULT)
   .action(async (opts: CliOpts) => {
     const agents = parseAgents(opts.agent)

@@ -87,6 +87,7 @@ function parseAgent(value: unknown): { value: AgentConfig } | { error: string } 
   const kind = obj.kind
   if (kind === 'claude') return { value: { kind: 'claude' } }
   if (kind === 'opencode') return { value: { kind: 'opencode' } }
+  if (kind === 'codex') return { value: { kind: 'codex' } }
   if (kind === 'custom') {
     const cmd = obj.cmd
     if (typeof cmd !== 'string' || !cmd.trim()) {
@@ -107,7 +108,7 @@ function parseAgent(value: unknown): { value: AgentConfig } | { error: string } 
     }
     return { value: { kind: 'custom', cmd: cmd.trim(), args } }
   }
-  return { error: 'agent.kind must be claude | opencode | custom' }
+  return { error: 'agent.kind must be claude | opencode | codex | custom' }
 }
 
 function parseSpecsDir(value: unknown): { value: string } | { error: string } {

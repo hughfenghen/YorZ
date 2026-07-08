@@ -10,11 +10,12 @@ interface Props {
   onSaved?: (message: string) => void
 }
 
-type AgentKind = 'claude' | 'opencode' | 'custom'
+type AgentKind = 'claude' | 'opencode' | 'codex' | 'custom'
 
 const KIND_LABEL: Record<AgentKind, string> = {
   claude: 'ClaudeCode',
   opencode: 'OpenCode',
+  codex: 'Codex',
   custom: '自定义',
 }
 
@@ -83,6 +84,7 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
     const k = kind()
     if (k === 'claude') return { kind: 'claude' }
     if (k === 'opencode') return { kind: 'opencode' }
+    if (k === 'codex') return { kind: 'codex' }
     const cmd = customCmd().trim()
     if (!cmd) return { error: '自定义命令的 cmd 不能为空' }
     return { kind: 'custom', cmd, args: parseArgs(customArgs()) }
@@ -134,7 +136,7 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
             <form onSubmit={submit}>
               <fieldset class="kind-group">
                 <legend>Agent</legend>
-                {(['claude', 'opencode', 'custom'] as const).map((k) => (
+                {(['claude', 'opencode', 'codex', 'custom'] as const).map((k) => (
                   <label class="kind-option">
                     <input
                       type="radio"

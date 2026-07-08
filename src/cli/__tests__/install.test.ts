@@ -88,6 +88,11 @@ describe('install', () => {
     const res = await install({ agent: 'opencode', scope: 'user', home, cwd })
     expect(res.path).toBe(join(home, '.config', 'opencode', 'skills', SKILL_DIR_NAME, 'SKILL.md'))
   })
+
+  it('writes to codex user dir', async () => {
+    const res = await install({ agent: 'codex', scope: 'user', home, cwd })
+    expect(res.path).toBe(join(home, '.codex', 'skills', SKILL_DIR_NAME, 'SKILL.md'))
+  })
 })
 
 describe('install · .gitignore handling', () => {
@@ -167,6 +172,15 @@ describe('uninstall', () => {
     await writeFile(join(dir, 'nested', 'extra.txt'), 'x', 'utf8')
 
     const res = await uninstall({ agent: 'opencode', scope: 'project', home, cwd })
+    expect(res.removed).toBe(true)
+    await expect(stat(dir)).rejects.toThrow()
+  })
+
+  it('removes an installed codex project skill dir', async () => {
+    await install({ agent: 'codex', scope: 'project', home, cwd })
+    const dir = join(cwd, '.codex', 'skills', SKILL_DIR_NAME)
+
+    const res = await uninstall({ agent: 'codex', scope: 'project', home, cwd })
     expect(res.removed).toBe(true)
     await expect(stat(dir)).rejects.toThrow()
   })

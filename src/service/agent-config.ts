@@ -1,13 +1,13 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-export type AgentName = 'claude' | 'opencode'
+export type AgentName = 'claude' | 'opencode' | 'codex'
 
 export type AgentStreamFormat = 'json' | 'text'
 
 export interface AgentCmd {
   cmd: string
-  args(prompt: string): string[]
+  args(prompt: string, cwd?: string): string[]
   streamFormat: AgentStreamFormat
   /**
    * Extra environment variables to merge on top of `process.env` when the
@@ -71,6 +71,22 @@ const BUILTIN: Record<AgentName, AgentCmd> = {
       PWD: cwd,
     }),
   },
+  codex: {
+    cmd: 'codex',
+    // Codex CLI 的无人值守入口是 `codex exec <prompt>`。这里显式传入目标 cwd，
+    // 并用 exec 支持的 bypass 参数关闭审批/沙箱，以对齐 claude bypassPermissions
+    // 与 opencode skip-permissions 的后台执行语义；服务端 spawn 的 cwd 也会设置
+    // 为同一个目录，作为进程工作目录兜底。
+    args: (prompt, cwd) => [
+      'exec',
+      '--cd',
+      cwd ?? '.',
+      '--skip-git-repo-check',
+      '--dangerously-bypass-approvals-and-sandbox',
+      prompt,
+    ],
+    streamFormat: 'text',
+  },
 }
 
 export function resolveAgentCmd(opts: ResolveAgentCmdOptions): AgentCmd {
@@ -113,11 +129,13 @@ function readAgentCmd(cwd: string): AgentCmd {
   // Legacy schema: bare string.
   if (typeof agent === 'string') {
     if (agent === 'opencode') return BUILTIN.opencode
+    if (agent === 'codex') return BUILTIN.codex
     return BUILTIN.claude
   }
   if (!agent || typeof agent !== 'object') return BUILTIN.claude
   const kind = (agent as { kind?: unknown }).kind
   if (kind === 'opencode') return BUILTIN.opencode
+  if (kind === 'codex') return BUILTIN.codex
   if (kind === 'custom') {
     const cmd = (agent as { cmd?: unknown }).cmd
     const argsRaw = (agent as { args?: unknown }).args
