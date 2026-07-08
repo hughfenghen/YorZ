@@ -25,7 +25,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `node dist/cli/index.js serve --port ${E2E_PORT} --cwd ${E2E_CWD}`,
+    command: `node dist/cli/index.js serve --foreground --port ${E2E_PORT} --cwd ${E2E_CWD}`,
     url: `http://localhost:${E2E_PORT}/`,
     reuseExistingServer: false,
     timeout: 30_000,

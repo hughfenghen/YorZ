@@ -132,7 +132,7 @@ User 在终端与 Agent 自由对话
    → 对话中 Agent 判断当前需要走 YorZ 工作流（或用户显式触发 skill）
    → Skill 执行：
        │ 1. 探活 Service（读 ~/.yorz/runtime.json）
-       │ 2. 未运行则 `yorz serve --background` 拉起
+       │ 2. 未运行则 `yorz serve` 后台拉起
        │ 3. 在 .yorz/specs/<id>/spec.md 写入分析 / 方案
        │ 4. 写入 await 标记
        │ 5. 终端输出: "请打开 http://localhost:7423/specs/<id> 进行决策"
@@ -166,9 +166,9 @@ User 在浏览器 / 手机打开链接 → GUI 加载该 spec.md
 |------|------|
 | `yorz init` | 在当前项目创建 `.yorz/` 目录骨架（默认 **不**写入 `.gitignore`，由用户决定是否提交） |
 | `yorz install [--agent claude\|opencode] [--scope project\|user]`（默认 scope=project） | 把 YorZ 内置 skills 复制到目标 Agent 的 skills 目录；**重复执行时直接覆盖** |
-| `yorz serve [--port 7423] [--background] [--open]` | 启动 Service；后台模式时写入 `~/.yorz/runtime.json` 供其他进程探活 |
+| `yorz serve [--port 7423] [--foreground] [--open]` | 启动 Service；默认后台运行并复用已有进程，传 `--foreground` 时留在前台 |
 | `yorz status` | 显示运行中的 Service / 端口 / 项目路径 |
-| `yorz stop` | 优雅停止 Service |
+| `yorz serve stop` | 停止后台 Service |
 | `yorz resume <spec-id>` | 手动续跑：构造 prompt 并 spawn Agent 继续指定 spec（模式 B 备选） |
 
 **Skill 安装目标路径**（MVP 阶段）：
@@ -447,7 +447,7 @@ updatedAt: 2026-06-11T10:30:00Z
 
 ### v0.1（必须）
 
-- [ ] CLI：`init` / `install` / `serve` / `status` / `stop` / `resume`
+- [ ] CLI：`init` / `install` / `serve` / `serve stop` / `status` / `resume`
 - [ ] Service：HTTP + SSE + FS Watcher + Input Merger + Agent Relauncher
 - [ ] Skills（Claude Code 版）：6 个 yorz-spec-* skill
 - [ ] GUI：需求编辑、需求详情时间线、决策审阅（信息卡片）、执行记录、Review

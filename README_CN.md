@@ -34,13 +34,15 @@ npx -p @yorz/cli yorz <command>
 yorz serve
 ```
 
-启动 YorZ Service（HTTP + SSE + 静态 GUI）。在浏览器打开 `http://localhost:7423` 即可访问仪表盘。
+启动 YorZ Service（HTTP + SSE + 静态 GUI），默认在后台运行。在浏览器打开 `http://localhost:7423` 即可访问仪表盘。
 
 可选参数：
 
 ```bash
 yorz serve --port 8080    # 自定义端口
 yorz serve --open          # 自动打开浏览器
+yorz serve --foreground    # 前台运行
+yorz serve stop            # 停止后台服务
 ```
 
 ### 第二步 — 添加项目
@@ -75,7 +77,8 @@ yorz install skills --agent opencode # 仅 OpenCode
 
 | 命令                    | 说明                                                         |
 | ----------------------- | ------------------------------------------------------------ |
-| `yorz serve`            | 启动 YorZ Service（HTTP + SSE + 静态 GUI），支持多项目管理。 |
+| `yorz serve`            | 后台启动或复用 YorZ Service，支持多项目管理。                |
+| `yorz serve stop`        | 停止后台 YorZ Service。                                      |
 | `yorz add <path>`       | 初始化并注册一个目录为 YorZ 项目。                           |
 | `yorz install skills`   | 安装 yorz-spec skill 到 Claude Code / OpenCode。             |
 | `yorz uninstall skills` | 从 Agent 卸载 skill。                                        |
