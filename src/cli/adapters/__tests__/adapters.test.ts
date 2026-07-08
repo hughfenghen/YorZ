@@ -37,6 +37,22 @@ describe('opencode adapter', () => {
   })
 })
 
+describe('codex adapter', () => {
+  const a = getAdapter('codex')
+
+  it('resolves user scope to ~/.codex/skills', () => {
+    expect(a.resolveSkillsDir('user', { home: HOME, cwd: CWD })).toBe(
+      join(HOME, '.codex', 'skills'),
+    )
+  })
+
+  it('resolves project scope to <cwd>/.codex/skills', () => {
+    expect(a.resolveSkillsDir('project', { home: HOME, cwd: CWD })).toBe(
+      join(CWD, '.codex', 'skills'),
+    )
+  })
+})
+
 describe('getAdapter', () => {
   it('throws on unknown agent', () => {
     expect(() => getAdapter('cursor')).toThrow(/Unknown agent/)

@@ -220,7 +220,7 @@ export class AgentRunner {
     const cmd = this.resolveCmd()
     let child: ChildProcess
     try {
-      child = spawn(cmd.cmd, cmd.args(input.prompt), {
+      child = spawn(cmd.cmd, cmd.args(input.prompt, this.cwd), {
         cwd: this.cwd,
         env: { ...process.env, ...(cmd.env?.(this.cwd) ?? {}) },
         stdio: ['ignore', 'pipe', 'pipe'],

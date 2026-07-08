@@ -46,6 +46,22 @@ describe('resolveAgentCmd', () => {
     expect(result.streamFormat).toBe('text')
   })
 
+  it('picks codex when config sets agent=codex', async () => {
+    const cwd = await tempCwd()
+    await writeConfig(cwd, 'codex')
+    const result = resolveAgentCmd({ cwd, env: {} })
+    expect(result.cmd).toBe('codex')
+    expect(result.args('x', cwd)).toEqual([
+      'exec',
+      '--cd',
+      cwd,
+      '--skip-git-repo-check',
+      '--dangerously-bypass-approvals-and-sandbox',
+      'x',
+    ])
+    expect(result.streamFormat).toBe('text')
+  })
+
   it('falls back to claude when config has an unknown agent value', async () => {
     const cwd = await tempCwd()
     await writeConfig(cwd, 'gemini')
@@ -60,6 +76,22 @@ describe('resolveAgentCmd', () => {
     expect(result.cmd).toBe('opencode')
     expect(result.streamFormat).toBe('text')
     expect(result.args('hi')).toEqual(['run', '--dangerously-skip-permissions', 'hi'])
+  })
+
+  it('honors explicit opts.agent=codex over .yorz/config.json', async () => {
+    const cwd = await tempCwd()
+    await writeConfig(cwd, 'claude')
+    const result = resolveAgentCmd({ cwd, env: {}, agent: 'codex' })
+    expect(result.cmd).toBe('codex')
+    expect(result.streamFormat).toBe('text')
+    expect(result.args('hi', cwd)).toEqual([
+      'exec',
+      '--cd',
+      cwd,
+      '--skip-git-repo-check',
+      '--dangerously-bypass-approvals-and-sandbox',
+      'hi',
+    ])
   })
 
   it('honors YORZ_AGENT_CMD env override for tests', async () => {

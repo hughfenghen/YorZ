@@ -60,7 +60,7 @@ export interface AgentCaseResult {
 export function resolveTestAgent(explicit?: AgentName): AgentName {
   if (explicit) return explicit
   const fromEnv = process.env.YORZ_TEST_AGENT
-  if (fromEnv === 'opencode' || fromEnv === 'claude') return fromEnv
+  if (fromEnv === 'opencode' || fromEnv === 'claude' || fromEnv === 'codex') return fromEnv
   return 'claude'
 }
 
@@ -142,7 +142,7 @@ export async function runAgentCase(opts: AgentCaseOptions): Promise<AgentCaseRes
   }
 
   const cmd = resolveAgentCmd({ cwd: tmpDir, agent, env: process.env })
-  const { code, spawnError } = await spawnAgent(cmd.cmd, cmd.args(prompt), tmpDir)
+  const { code, spawnError } = await spawnAgent(cmd.cmd, cmd.args(prompt, tmpDir), tmpDir)
 
   let outputSpec = ''
   let parsedFrontmatter: Record<string, unknown> = {}

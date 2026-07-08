@@ -1,4 +1,4 @@
-export type AgentName = 'claude' | 'opencode'
+export type AgentName = 'claude' | 'opencode' | 'codex'
 export type InstallScope = 'user' | 'project'
 
 export interface AdapterContext {
