@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { appendFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { networkInterfaces } from 'node:os'
 import { serve } from '@hono/node-server'
@@ -6,6 +7,7 @@ import type { AddressInfo } from 'node:net'
 import { createApp } from './server.js'
 import { ProjectRegistry } from './project-registry.js'
 import { HEARTBEAT_INTERVAL_MS } from './routes/events.js'
+import { resolveGlobalConfigDir } from './global-config.js'
 
 export interface ServeOptions {
   port?: number
@@ -54,6 +56,8 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
     console.log(`  - ${p.name} -> ${p.path}`)
   }
   console.log(`agent heartbeat enabled (interval=${HEARTBEAT_INTERVAL_MS / 1000}s)`)
+
+  installGlobalErrorHandlers()
 
   if (opts.open) await tryOpenBrowser(url)
 
@@ -126,4 +130,35 @@ async function tryOpenBrowser(url: string): Promise<void> {
   } catch {
     // best-effort, ignore failures
   }
+}
+
+let errorLogReady = false
+
+async function ensureErrorLogDir(): Promise<string> {
+  const dir = join(resolveGlobalConfigDir(), 'logs')
+  if (!errorLogReady) {
+    await mkdir(dir, { recursive: true })
+    errorLogReady = true
+  }
+  return join(dir, 'serve-errors.log')
+}
+
+function logCrash(kind: string, payload: unknown): void {
+  const ts = new Date().toISOString()
+  const body = payload instanceof Error ? payload.stack ?? payload.message : String(payload)
+  const line = `[${ts}] [${kind}] ${body}\n`
+  console.error(`[yorz] ${kind}:`, payload)
+  void ensureErrorLogDir()
+    .then((fp) => appendFile(fp, line, 'utf8'))
+    .catch(() => {})
+}
+
+export function installGlobalErrorHandlers(): void {
+  if (process.listenerCount('uncaughtException') > 0) return
+  process.on('uncaughtException', (err) => {
+    logCrash('uncaughtException', err)
+  })
+  process.on('unhandledRejection', (reason) => {
+    logCrash('unhandledRejection', reason)
+  })
 }

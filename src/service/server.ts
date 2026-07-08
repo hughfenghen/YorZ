@@ -57,5 +57,10 @@ export function createApp(opts: CreateAppOptions): Hono {
 
   app.route('/', createStaticRoutes(opts.guiRoot))
 
+  app.onError((err, c) => {
+    console.error('[yorz] route error:', err)
+    return c.json({ error: 'Internal Server Error', message: err.message }, 500)
+  })
+
   return app
 }
