@@ -218,14 +218,18 @@ export class EventsHub {
   }
 
   private emit(s: Session, topic: string, event: string, data: unknown): void {
-    const frame: SseFrame = {
-      event: 'msg',
-      data: JSON.stringify({ topic, event, data }),
-    }
-    if (s.stream && !s.closed) {
-      void s.stream.writeSSE(frame).catch(() => {})
-    } else {
-      s.queue.push(frame)
+    try {
+      const frame: SseFrame = {
+        event: 'msg',
+        data: JSON.stringify({ topic, event, data }),
+      }
+      if (s.stream && !s.closed) {
+        void s.stream.writeSSE(frame).catch(() => {})
+      } else {
+        s.queue.push(frame)
+      }
+    } catch (err) {
+      console.error('[yorz] SSE emit error:', err)
     }
   }
 

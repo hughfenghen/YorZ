@@ -211,10 +211,14 @@ export class AgentRunner {
       void run()
     }
     const pushStdout = (text: string) => {
-      if (!text) return
-      append(text)
-      writeToLog(text)
-      emitter.emit('stdout', text)
+      try {
+        if (!text) return
+        append(text)
+        writeToLog(text)
+        emitter.emit('stdout', text)
+      } catch (err) {
+        console.error('[yorz] pushStdout error:', err)
+      }
     }
 
     const cmd = this.resolveCmd()
