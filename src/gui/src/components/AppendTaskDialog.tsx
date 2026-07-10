@@ -78,7 +78,6 @@ export const AppendTaskDialog: Component<Props> = (props) => {
   }
 
   function cancel() {
-    reset()
     props.onCancel()
   }
 
