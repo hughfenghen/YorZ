@@ -1,6 +1,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, extname, join, normalize, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { Hono } from 'hono'
 
 const MIME: Record<string, string> = {
@@ -33,12 +34,19 @@ export function createStaticRoutes(guiRoot?: string): Hono {
 }
 
 function defaultGuiRoot(): string {
-  // The CLI script lives at dist/cli/index.js; the GUI bundle sits at dist/gui.
-  // We compute the path from process.argv[1] so the resolution survives Vite's
-  // lib-mode bundling (which would otherwise inline import.meta.url as a data: URL).
-  const entry = process.argv[1]
-  if (entry) return resolve(dirname(entry), '..', 'gui')
-  return resolve(process.cwd(), 'dist', 'gui')
+  // The CLI bundle lives at dist/cli/index.js; the GUI sits at dist/gui (sibling).
+  // Resolve from the module's own location, not process.argv[1]: under a global
+  // install the bin is a symlink and argv[1] points at the bin dir (Node does not
+  // realpath argv[1]), which would send us looking for gui/ outside the package.
+  // import.meta.url is realpath'd by Node for ESM, so it survives the symlink.
+  try {
+    const here = dirname(fileURLToPath(import.meta.url))
+    return resolve(here, '..', 'gui')
+  } catch {
+    const entry = process.argv[1]
+    if (entry) return resolve(dirname(entry), '..', 'gui')
+    return resolve(process.cwd(), 'dist', 'gui')
+  }
 }
 
 function resolveStaticFile(root: string, urlPath: string): string | null {
