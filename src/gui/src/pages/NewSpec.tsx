@@ -1,4 +1,4 @@
-import { For, Show, createSignal, onCleanup, type Component } from 'solid-js'
+import { For, Show, createEffect, createSignal, onCleanup, type Component } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
 import { api, type AttachmentKind, type AttachmentMeta, type CreateSpecBody } from '../lib/api.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
@@ -78,7 +78,7 @@ export const NewSpec: Component = () => {
   let cleanupList: (() => void) | null = null
   let baselineIds: Set<string> = new Set()
   let targetProjectId: string = ''
-  let activeRunId: string | null = null
+  const [activeRunId, setActiveRunId] = createSignal<string | null>(null)
   let navigated = false
   let fileInputEl: HTMLInputElement | undefined
   let textareaEl: HTMLTextAreaElement | undefined
@@ -87,6 +87,19 @@ export const NewSpec: Component = () => {
     cleanupList?.()
     for (const att of attachments()) {
       if (att.previewUrl) URL.revokeObjectURL(att.previewUrl)
+    }
+  })
+
+  createEffect(() => {
+    const rid = activeRunId()
+    if (!rid) return
+    const task = agentTasks.state.tasks[rid]
+    if (!task) return
+    if (task.status === 'failed') {
+      setPhase('failed')
+      setError(task.error ?? 'Agent 运行失败')
+      cleanupList?.()
+      cleanupList = null
     }
   })
 
@@ -348,7 +361,7 @@ export const NewSpec: Component = () => {
       const fresh = list.find((s) => !baselineIds.has(s.id))
       if (fresh) {
         navigated = true
-        const runId = activeRunId
+        const runId = activeRunId()
         cleanupList?.()
         cleanupList = null
         const base = pid
@@ -401,7 +414,7 @@ export const NewSpec: Component = () => {
 
       const resp = await api.createSpec(pid, body)
       if ('draft' in resp && resp.draft) {
-        activeRunId = resp.runId
+        setActiveRunId(resp.runId)
         agentTasks.start({
           runId: resp.runId,
           projectId: pid,
