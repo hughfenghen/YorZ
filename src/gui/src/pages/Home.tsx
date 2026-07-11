@@ -5,16 +5,41 @@ import {
   createMemo,
   createResource,
   createSignal,
-  onCleanup,
   onMount,
+  onCleanup,
   type Component,
 } from 'solid-js'
 import { A, useNavigate } from '@solidjs/router'
+import { Plus, MoreHorizontal, GitMerge } from 'lucide-solid'
 import { api, type SpecListItem } from '../lib/api.js'
 import type { ProjectListItem } from '../lib/project.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
 import { subscribeProjectsList } from '../lib/sse.js'
 import { formatSpecUpdatedAt } from '../lib/time.js'
+import { Button } from '../components/ui/button.jsx'
+import { Badge } from '../components/ui/badge.jsx'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '../components/ui/dropdown-menu.jsx'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '../components/ui/dialog.jsx'
+import { toast } from '../components/ui/sonner.jsx'
+import { t } from '../i18n/index.js'
+
+const STAGE_BG: Record<string, string> = {
+  plan: 'bg-stage-plan',
+  tasks: 'bg-stage-tasks',
+  execute: 'bg-stage-execute',
+  done: 'bg-stage-done',
+}
 
 export const Home: Component = () => {
   const navigate = useNavigate()
@@ -37,8 +62,6 @@ export const Home: Component = () => {
 
   const [merging, setMerging] = createSignal(false)
   const [mergeError, setMergeError] = createSignal<string | null>(null)
-  const [toast, setToast] = createSignal<string | null>(null)
-  const [menuSpecId, setMenuSpecId] = createSignal<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = createSignal<string | null>(null)
   const [deleting, setDeleting] = createSignal(false)
   const [deleteError, setDeleteError] = createSignal<string | null>(null)
@@ -52,26 +75,10 @@ export const Home: Component = () => {
         if (!pid) return
         const stillExists = (projects() ?? []).some((p) => p.id === pid)
         if (stillExists) return
-        // Worktree we were viewing got cleaned up — fall back to its main project.
         if (previousMainId) navigate(`/${encodeURIComponent(previousMainId)}`)
       })()
     })
-    // 用 mousedown 而非 click：Show 会在删除按钮 onClick 触发的 setSignal
-    // 后同步卸载该按钮，若在 click 冒泡到 document 时再判断，e.target 已分离
-    // 出 DOM，closest('.card-menu') 会返回 null，反而误关菜单。
-    const onDocMouseDown = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (target.closest('.card-menu') || target.closest('.card-menu-trigger')) return
-      if (menuSpecId()) {
-        setMenuSpecId(null)
-        setConfirmDeleteId(null)
-      }
-    }
-    document.addEventListener('mousedown', onDocMouseDown)
-    onCleanup(() => {
-      unsub()
-      document.removeEventListener('mousedown', onDocMouseDown)
-    })
+    onCleanup(unsub)
   })
 
   async function onMerge() {
@@ -79,7 +86,7 @@ export const Home: Component = () => {
     if (!cur?.worktree) return
     if (!mainReachable()) return
     const defaultMsg = `feat(${cur.worktree.branch}): merge from worktree`
-    const msg = window.prompt('合入主项目的 commit message', defaultMsg)
+    const msg = window.prompt(t('home.mergeHint'), defaultMsg)
     if (msg == null) return
     const message = msg.trim() || defaultMsg
     setMerging(true)
@@ -87,11 +94,11 @@ export const Home: Component = () => {
     try {
       const result = await api.mergeWorktreeToMain(cur.id, { commitMessage: message })
       if (result.status === 'merged') {
-        setToast('已合入主项目，正在跳转…')
+        toast.success(t('home.merged'))
         await refetchProjects()
         navigate(`/${encodeURIComponent(result.mainProjectId)}`)
       } else {
-        setToast('冲突 spec 已自动派给 Agent 处理，列表会在合并完成后自动刷新')
+        toast.info(t('home.conflictDispatched'))
         await refetchProjects()
         navigate(
           `/${encodeURIComponent(result.mainProjectId)}/specs/${encodeURIComponent(result.conflictSpecId)}`,
@@ -112,7 +119,6 @@ export const Home: Component = () => {
     try {
       await api.deleteSpec(pid, specId)
       setConfirmDeleteId(null)
-      setMenuSpecId(null)
       await refetch()
     } catch (err) {
       setDeleteError((err as Error).message)
@@ -122,135 +128,145 @@ export const Home: Component = () => {
   }
 
   return (
-    <section class="page home-page">
-      <header class="page-head">
-        <h1>需求列表</h1>
-        <button class="ghost" onClick={() => refetch()}>
-          刷新
-        </button>
+    <section class="overflow-y-auto p-4">
+      <header class="flex items-center justify-between">
+        <h1 class="m-0 text-xl">{t('home.specList')}</h1>
+        <Button as={A} href={projectHref('specs/new')} variant="default" size="sm">
+          <Plus class="mr-1 h-4 w-4" />
+          {t('shell.newSpec')}
+        </Button>
       </header>
+
       <Show when={current()?.worktree}>
-        <div class="worktree-bar">
-          <div class="worktree-bar-info">
-            <span class="muted">
-              主项目：
+        <div class="mt-2 flex flex-wrap items-center gap-3">
+          <div class="flex items-center gap-2">
+            <span class="text-sm text-muted-foreground">
+              {t('home.mainProject')}
               {current()!.worktree!.mainPath.split('/').filter(Boolean).pop() ??
                 current()!.worktree!.mainPath}
             </span>
           </div>
-          <button
-            type="button"
-            class="primary-action"
+          <Button
+            variant="default"
+            size="sm"
             onClick={() => void onMerge()}
             disabled={merging() || !mainReachable()}
-            title={mainReachable() ? '提交 worktree 改动并合入主项目' : '主项目不可达'}
+            title={mainReachable() ? t('home.mergeHint') : t('home.mainUnreachable')}
           >
-            {merging() ? '合并中…' : '⇧ 合入主项目'}
-          </button>
+            <GitMerge class="mr-1 h-3.5 w-3.5" />
+            {merging() ? t('home.merging') : t('home.mergeToMain')}
+          </Button>
           <Show when={!mainReachable()}>
-            <span class="muted">主项目不可达</span>
+            <span class="text-sm text-muted-foreground">{t('home.mainUnreachable')}</span>
           </Show>
           <Show when={mergeError()}>
-            <span class="error">{mergeError()}</span>
-          </Show>
-          <Show when={toast()}>
-            <span class="muted">{toast()}</span>
+            <span class="text-sm text-destructive">{mergeError()}</span>
           </Show>
         </div>
       </Show>
-      <Suspense fallback={<p class="muted">加载中…</p>}>
+
+      <Suspense
+        fallback={<p class="text-sm text-muted-foreground">{t('common.loading')}</p>}
+      >
         <Show
           when={(specs() ?? []).length > 0}
           fallback={
-            <div class="empty">
-              <p>还没有 spec。</p>
-              <A href={projectHref('specs/new')} class="primary-action">
-                ＋ 新建第一个 spec
-              </A>
+            <div class="mt-4 flex flex-col items-center gap-3 rounded-xl border border-dashed bg-card p-12">
+              <p>{t('home.noSpecs')}</p>
+              <Button as={A} href={projectHref('specs/new')} variant="default" size="sm">
+                <Plus class="mr-1 h-4 w-4" />
+                {t('home.createFirst')}
+              </Button>
             </div>
           }
         >
-          <ul class="spec-grid">
+          <ul class="mt-4 grid list-none gap-3 p-0 [grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr))]">
             <For each={specs() ?? []}>
               {(spec) => (
-                <li class="spec-card">
-                  <A href={projectHref(`specs/${encodeURIComponent(spec.id)}`)}>
-                    <div class="spec-card-head">
-                      <span class={`badge stage-${spec.stage}`}>{spec.stage}</span>
+                <li class="group relative rounded-xl border bg-card shadow transition-transform hover:-translate-y-px">
+                  <A
+                    href={projectHref(`specs/${encodeURIComponent(spec.id)}`)}
+                    class="block p-4"
+                  >
+                    <div class="flex items-center justify-between text-xs text-muted-foreground">
+                      <Badge
+                        class={`border-transparent ${STAGE_BG[spec.stage] ?? 'bg-muted'} text-white uppercase`}
+                      >
+                        {spec.stage}
+                      </Badge>
                       <time>{formatSpecUpdatedAt(spec.updated_at)}</time>
                     </div>
-                    <h2>{spec.title || '（待 Agent 补全）'}</h2>
-                    <p class="summary">{spec.summary || '（待 Agent 补全）'}</p>
-                    <code class="id">{spec.id}</code>
+                    <h2 class="my-1.5 text-base font-semibold">
+                      {spec.title || t('common.pendingAgent')}
+                    </h2>
+                    <p class="m-0 mb-2 text-sm text-muted-foreground">
+                      {spec.summary || t('common.pendingAgent')}
+                    </p>
+                    <code class="font-mono text-xs text-muted-foreground">{spec.id}</code>
                   </A>
-                  <Show when={menuSpecId() === spec.id}>
-                    <div
-                      class="card-menu"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                      }}
-                    >
-                      <Show
-                        when={confirmDeleteId() === spec.id}
-                        fallback={
-                          <button
-                            type="button"
-                            class="card-menu-item danger"
-                            onClick={() => setConfirmDeleteId(spec.id)}
-                          >
-                            删除
-                          </button>
-                        }
+
+                  <div class="absolute right-1.5 top-1.5 z-[2] opacity-0 transition-opacity group-hover:opacity-100">
+                    <DropdownMenu placement="bottom-end">
+                      <DropdownMenuTrigger
+                        as={Button}
+                        variant="ghost"
+                        size="icon"
+                        class="h-7 w-7"
+                        title={t('home.moreActions')}
                       >
-                        <div class="card-menu-confirm">
-                          <p>确定删除此 spec？</p>
-                          <Show when={deleteError()}>
-                            <p class="error">{deleteError()}</p>
-                          </Show>
-                          <div class="card-menu-confirm-actions">
-                            <button
-                              type="button"
-                              class="ghost"
-                              disabled={deleting()}
-                              onClick={() => setConfirmDeleteId(null)}
-                            >
-                              取消
-                            </button>
-                            <button
-                              type="button"
-                              class="danger-btn"
-                              disabled={deleting()}
-                              onClick={() => void onDeleteSpec(spec.id)}
-                            >
-                              {deleting() ? '删除中…' : '确认删除'}
-                            </button>
-                          </div>
-                        </div>
-                      </Show>
-                    </div>
-                  </Show>
-                  <button
-                    type="button"
-                    class="card-menu-trigger"
-                    title="更多操作"
-                    aria-label="更多操作"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      setMenuSpecId((cur) => (cur === spec.id ? null : spec.id))
-                      setConfirmDeleteId(null)
-                      setDeleteError(null)
-                    }}
-                  >
-                    ⋯
-                  </button>
+                        <MoreHorizontal class="h-4 w-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem
+                          class="text-destructive focus:text-destructive"
+                          onSelect={() => setConfirmDeleteId(spec.id)}
+                        >
+                          {t('common.delete')}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </li>
               )}
             </For>
           </ul>
         </Show>
       </Suspense>
+
+      <Dialog
+        open={confirmDeleteId() !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setConfirmDeleteId(null)
+            setDeleteError(null)
+          }
+        }}
+      >
+        <DialogContent class="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('home.confirmDeleteSpec')}</DialogTitle>
+          </DialogHeader>
+          <Show when={deleteError()}>
+            <p class="text-sm text-destructive">{deleteError()}</p>
+          </Show>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeleteId(null)}
+              disabled={deleting()}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => confirmDeleteId() && void onDeleteSpec(confirmDeleteId()!)}
+              disabled={deleting()}
+            >
+              {deleting() ? t('common.deleting') : t('common.confirmDelete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

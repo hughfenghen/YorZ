@@ -1,6 +1,7 @@
 /* @refresh reload */
 import { render } from 'solid-js/web'
 import { Router, Route } from '@solidjs/router'
+import './i18n/config.js'
 import { Home } from './pages/Home.jsx'
 import { NewSpec } from './pages/NewSpec.jsx'
 import { SpecDetail } from './pages/SpecDetail.jsx'

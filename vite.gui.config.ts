@@ -6,6 +6,11 @@ export default defineConfig({
   root: resolve(__dirname, 'src/gui'),
   base: '/',
   plugins: [solid()],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src/gui/src'),
+    },
+  },
   build: {
     outDir: resolve(__dirname, 'dist/gui'),
     emptyOutDir: true,

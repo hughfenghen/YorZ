@@ -12,43 +12,48 @@ import {
   type Component,
 } from 'solid-js'
 import { A, useParams } from '@solidjs/router'
+import { ArrowLeft, Loader2 } from 'lucide-solid'
 import { api, type GitOpsAction, type GitChange } from '../lib/api.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { agentTasks } from '../lib/agent-tasks.js'
 import { subscribeChanges } from '../lib/sse.js'
+import { Button } from '../components/ui/button.jsx'
+import { Textarea } from '../components/ui/textarea.jsx'
+import { Separator } from '../components/ui/separator.jsx'
+import { t } from '../i18n/index.js'
 
 type ActionKind = 'review' | GitOpsAction
 type FileSelectMode = 'manual' | 'agent'
 
-const ACTION_LABEL: Record<GitOpsAction, string> = {
-  commit: '提交',
-  discard: '丢弃',
-  stash: '暂存',
+const ACTION_LABEL_KEY: Record<GitOpsAction, string> = {
+  commit: 'review.commit',
+  discard: 'review.discard',
+  stash: 'review.stash',
 }
 
-const LOADING_LABEL: Record<ActionKind, string> = {
-  review: 'Review 中…',
-  commit: '提交中…',
-  discard: '丢弃中…',
-  stash: '暂存中…',
+const LOADING_LABEL_KEY: Record<ActionKind, string> = {
+  review: 'review.reviewing',
+  commit: 'review.committing',
+  discard: 'review.discarding',
+  stash: 'review.stashing',
 }
 
-const IDLE_LABEL: Record<ActionKind, string> = {
-  review: 'Review 变更',
-  commit: ACTION_LABEL.commit,
-  discard: ACTION_LABEL.discard,
-  stash: ACTION_LABEL.stash,
+const IDLE_LABEL_KEY: Record<ActionKind, string> = {
+  review: 'review.reviewChanges',
+  commit: 'review.commit',
+  discard: 'review.discard',
+  stash: 'review.stash',
 }
 
 const ALL_KINDS: ActionKind[] = ['review', 'commit', 'discard', 'stash']
 
-const STATUS_CLASS: Record<string, string> = {
-  M: 'st-modified',
-  A: 'st-added',
-  D: 'st-deleted',
-  '??': 'st-untracked',
-  R: 'st-renamed',
+const STATUS_COLOR: Record<string, string> = {
+  M: 'text-yellow-600',
+  A: 'text-green-600',
+  D: 'text-red-600',
+  '??': 'text-blue-600',
+  R: 'text-purple-600',
 }
 
 export const SpecReview: Component = () => {
@@ -129,9 +134,9 @@ export const SpecReview: Component = () => {
   function isKindRunning(kind: ActionKind): boolean {
     const runId = activeRuns()[kind]
     if (!runId) return false
-    const t = agentTasks.state.tasks[runId]
-    if (!t) return false
-    return t.status === 'pending' || t.status === 'streaming'
+    const task = agentTasks.state.tasks[runId]
+    if (!task) return false
+    return task.status === 'pending' || task.status === 'streaming'
   }
   const runningKind = createMemo<ActionKind | null>(() => {
     for (const k of ALL_KINDS) if (isKindRunning(k)) return k
@@ -149,7 +154,7 @@ export const SpecReview: Component = () => {
       (prev === 'pending' || prev === 'streaming') &&
       (status === 'done' || status === 'failed')
     ) {
-      setRefreshTick((t) => t + 1)
+      setRefreshTick((tick) => tick + 1)
     }
     return status
   }, undefined)
@@ -164,11 +169,11 @@ export const SpecReview: Component = () => {
     setError(null)
     const paths = getPaths()
     if (paths.length === 0) {
-      setError('请至少选择一个文件')
+      setError(t('review.selectAtLeastOne'))
       return
     }
     if (kind === 'discard') {
-      const ok = window.confirm('确定要丢弃选中的变更吗？此操作不可撤销。')
+      const ok = window.confirm(t('review.confirmDiscard'))
       if (!ok) return
     }
     setDirectAction(kind)
@@ -176,7 +181,7 @@ export const SpecReview: Component = () => {
       if (kind === 'commit') {
         const message = commitMessage().trim()
         if (!message) {
-          setError('请输入 commit message')
+          setError(t('review.enterCommitMsg'))
           return
         }
         await api.directCommit(projectId(), params.id, { message, paths })
@@ -199,7 +204,7 @@ export const SpecReview: Component = () => {
     if (isAnyRunning()) return
     setError(null)
     if (kind === 'discard') {
-      const ok = window.confirm('确定要丢弃当前 spec 相关的所有未提交变更吗？此操作不可撤销。')
+      const ok = window.confirm(t('review.confirmDiscardAll'))
       if (!ok) return
     }
     setBusy(kind)
@@ -260,78 +265,92 @@ export const SpecReview: Component = () => {
   )
 
   return (
-    <section class="page spec-review">
-      <Suspense fallback={<p class="muted">加载中…</p>}>
-        <header class="page-head detail-head">
+    <section class="flex min-h-0 flex-1 flex-col gap-4 p-4">
+      <Suspense fallback={<p class="text-muted-foreground">{t('common.loading')}</p>}>
+        <header class="flex items-start justify-between">
           <div>
-            <A class="ghost" href={projectHref(`specs/${params.id}`)}>
-              ← 返回 spec
+            <A
+              class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+              href={projectHref(`specs/${params.id}`)}
+            >
+              <ArrowLeft class="h-4 w-4" />
+              {t('review.backToSpec')}
             </A>
-            <h1>Review · {params.id}</h1>
-            <p class="summary">{spec()?.frontmatter.summary || '（待 Agent 补全）'}</p>
+            <h1 class="m-0 text-xl">{t('review.heading', { id: params.id })}</h1>
+            <p class="text-sm text-muted-foreground">
+              {spec()?.frontmatter.summary || t('common.pendingAgent')}
+            </p>
           </div>
-          <div class="meta">
+          <div class="text-sm text-muted-foreground">
             <Show when={lastReviewTime()}>
-              <span class="muted">最近一次 review：{lastReviewTime()}</span>
+              <span>{t('review.lastReview', { time: lastReviewTime() })}</span>
             </Show>
           </div>
         </header>
 
-        <div class="review-split">
-          <section class="review-ops-panel">
-            <section class="review-actions">
-              <button
-                type="button"
-                class="primary-action"
+        <div class="flex min-h-0 flex-1 gap-4">
+          <section class="flex min-h-0 flex-[4] min-w-0 flex-col gap-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <Button
+                variant="default"
+                size="sm"
                 disabled={isAnyRunning() || manualNoSelection()}
                 onClick={() => triggerGit('commit')}
               >
                 <Show when={buttonLoading('commit')}>
-                  <span class="review-action-spinner" aria-hidden="true" />
+                  <Loader2 class="mr-1 h-3 w-3 animate-spin" />
                 </Show>
-                {buttonLoading('commit') ? LOADING_LABEL.commit : IDLE_LABEL.commit}
-              </button>
-              <button
-                type="button"
-                class="ghost danger"
+                {buttonLoading('commit')
+                  ? t(LOADING_LABEL_KEY.commit)
+                  : t(IDLE_LABEL_KEY.commit)}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="text-destructive"
                 disabled={isAnyRunning() || manualNoSelection()}
                 onClick={() => triggerGit('discard')}
               >
                 <Show when={buttonLoading('discard')}>
-                  <span class="review-action-spinner" aria-hidden="true" />
+                  <Loader2 class="mr-1 h-3 w-3 animate-spin" />
                 </Show>
-                {buttonLoading('discard') ? LOADING_LABEL.discard : IDLE_LABEL.discard}
-              </button>
-              <button
-                type="button"
-                class="ghost"
+                {buttonLoading('discard')
+                  ? t(LOADING_LABEL_KEY.discard)
+                  : t(IDLE_LABEL_KEY.discard)}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 disabled={isAnyRunning() || manualNoSelection()}
                 onClick={() => triggerGit('stash')}
               >
                 <Show when={buttonLoading('stash')}>
-                  <span class="review-action-spinner" aria-hidden="true" />
+                  <Loader2 class="mr-1 h-3 w-3 animate-spin" />
                 </Show>
-                {buttonLoading('stash') ? LOADING_LABEL.stash : IDLE_LABEL.stash}
-              </button>
-              <span class="actions-separator" />
-              <button
-                type="button"
-                class="ghost"
-                title="Review 下方变更文件，生成报告"
+                {buttonLoading('stash')
+                  ? t(LOADING_LABEL_KEY.stash)
+                  : t(IDLE_LABEL_KEY.stash)}
+              </Button>
+              <Separator orientation="vertical" class="h-6" />
+              <Button
+                variant="ghost"
+                size="sm"
+                title={t('review.reviewHint')}
                 disabled={isAnyRunning() || changes().length === 0}
                 onClick={() => triggerAgent('review')}
               >
                 <Show when={buttonLoading('review')}>
-                  <span class="review-action-spinner" aria-hidden="true" />
+                  <Loader2 class="mr-1 h-3 w-3 animate-spin" />
                 </Show>
-                {buttonLoading('review') ? LOADING_LABEL.review : IDLE_LABEL.review}
-              </button>
-            </section>
+                {buttonLoading('review')
+                  ? t(LOADING_LABEL_KEY.review)
+                  : t(IDLE_LABEL_KEY.review)}
+              </Button>
+            </div>
 
-            <textarea
+            <Textarea
               ref={commitMsgRef}
-              class="commit-message-input"
-              placeholder="commit message…"
+              placeholder={t('review.commitPlaceholder')}
               value={commitMessage()}
               onInput={(e) => {
                 setUserEditedMsg(true)
@@ -340,10 +359,11 @@ export const SpecReview: Component = () => {
               }}
               disabled={isAnyRunning()}
               rows={2}
+              class="resize-none"
             />
 
-            <div class="file-mode-group">
-              <label class="file-mode-label">
+            <div class="flex gap-4">
+              <label class="flex cursor-pointer items-center gap-1.5 text-sm">
                 <input
                   type="radio"
                   name="fileMode"
@@ -351,9 +371,9 @@ export const SpecReview: Component = () => {
                   onChange={() => setFileSelectMode('manual')}
                   disabled={isAnyRunning()}
                 />
-                手动选择
+                {t('review.manualSelect')}
               </label>
-              <label class="file-mode-label">
+              <label class="flex cursor-pointer items-center gap-1.5 text-sm">
                 <input
                   type="radio"
                   name="fileMode"
@@ -361,76 +381,86 @@ export const SpecReview: Component = () => {
                   onChange={() => setFileSelectMode('agent')}
                   disabled={isAnyRunning()}
                 />
-                Agent 智能判定
+                {t('review.agentSelect')}
               </label>
             </div>
 
             <Show when={fileSelectMode() === 'manual' && changes().length > 0}>
-              <div class="changes-list">
-                <div class="changes-list-head">
-                  <button
-                    type="button"
-                    class="ghost small"
+              <div class="flex min-h-0 flex-1 flex-col gap-1 overflow-auto rounded-xl border">
+                <div class="sticky top-0 flex items-center gap-2 border-b bg-card px-2 py-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={toggleAll}
                     disabled={isAnyRunning()}
                   >
-                    {allSelected() ? '全部取消' : '全选'}
-                  </button>
-                  <span class="muted">
-                    {selectedPaths().size}/{changes().length} 个文件
+                    {allSelected() ? t('review.deselectAll') : t('review.selectAll')}
+                  </Button>
+                  <span class="text-sm text-muted-foreground">
+                    {t('review.fileCount', {
+                      selected: selectedPaths().size,
+                      total: changes().length,
+                    })}
                   </span>
                 </div>
                 <For each={changes()}>
                   {(change) => (
-                    <label class="change-item">
+                    <label class="flex cursor-pointer items-center gap-2 px-2 py-0.5 text-sm">
                       <input
                         type="checkbox"
                         checked={selectedPaths().has(change.path)}
                         onChange={() => togglePath(change.path)}
                         disabled={isAnyRunning()}
                       />
-                      <span class={`change-status ${STATUS_CLASS[change.status] ?? ''}`}>
+                      <span
+                        class={`inline-block w-6 text-xs font-bold ${STATUS_COLOR[change.status] ?? ''}`}
+                      >
                         {change.status}
                       </span>
-                      <span class="change-path">{change.path}</span>
+                      <span class="truncate font-mono text-xs">{change.path}</span>
                     </label>
                   )}
                 </For>
               </div>
             </Show>
             <Show when={fileSelectMode() === 'manual' && changes().length === 0}>
-              <p class="muted">暂无变更文件</p>
+              <p class="text-sm text-muted-foreground">{t('review.noChanges')}</p>
             </Show>
 
             <Show when={error()}>
-              <p class="error">{error()}</p>
+              <p class="text-destructive text-sm">{error()}</p>
             </Show>
             <Show when={lastRun()}>
-              <p class="muted">
-                已派发：
+              <p class="text-sm text-muted-foreground">
+                {t('review.dispatched')}
                 {lastRun()!.kind === 'review'
-                  ? 'Review 变更'
-                  : ACTION_LABEL[lastRun()!.kind as GitOpsAction]}
+                  ? t('review.reviewChanges')
+                  : t(ACTION_LABEL_KEY[lastRun()!.kind as GitOpsAction])}
                 （runId: <code>{lastRun()!.runId.slice(0, 8)}</code>）
               </p>
             </Show>
           </section>
 
-          <section class="review-body">
+          <section class="flex min-h-0 min-w-0 flex-[6] flex-col gap-2">
             <Show
               when={review.loading}
               fallback={
                 <Show
                   when={reviewHtml()}
                   fallback={
-                    <p class="muted">尚无 review 报告。点击「Review 变更」让 Agent 生成。</p>
+                    <div class="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+                      {t('review.noReport')}
+                    </div>
                   }
                 >
-                  <article class="markdown review-md" innerHTML={reviewHtml()} />
+                  <article
+                    class="markdown review-md flex-1 overflow-auto rounded-xl border bg-card p-4 shadow"
+                    innerHTML={reviewHtml()}
+                  />
                 </Show>
               }
             >
-              <p class="muted">加载中…</p>
+              <p class="text-muted-foreground">{t('common.loading')}</p>
             </Show>
           </section>
         </div>

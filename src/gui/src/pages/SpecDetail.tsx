@@ -22,6 +22,16 @@ import { SelectionMenu } from '../components/SelectionMenu.jsx'
 import { AnnotatePopover } from '../components/AnnotatePopover.jsx'
 import { AppendTaskDialog } from '../components/AppendTaskDialog.jsx'
 import { QuestionConfirmPanel, type FreeformDraft } from '../components/QuestionConfirmPanel.jsx'
+import { Button } from '../components/ui/button.jsx'
+import { Badge } from '../components/ui/badge.jsx'
+import { t } from '../i18n/index.js'
+
+const STAGE_BG: Record<string, string> = {
+  plan: 'bg-stage-plan',
+  tasks: 'bg-stage-tasks',
+  execute: 'bg-stage-execute',
+  done: 'bg-stage-done',
+}
 
 export const SpecDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -66,9 +76,6 @@ export const SpecDetail: Component = () => {
     onCleanup(unsub)
   })
 
-  // If we arrived from NewSpec, the draft run that just authored this spec is
-  // streaming via the run topic. Re-register it with the global store under
-  // the real specId so the dock keeps showing the output.
   createEffect(() => {
     const rid = search.runId
     if (!rid) return
@@ -210,25 +217,34 @@ export const SpecDetail: Component = () => {
   }
 
   return (
-    <section class="page">
-      <Suspense fallback={<p class="muted">加载中…</p>}>
-        <Show when={spec()} fallback={<p class="muted">spec 不存在或已删除</p>}>
+    <section class="flex min-h-0 flex-1 flex-col gap-4 p-4">
+      <Suspense fallback={<p class="text-muted-foreground">{t('common.loading')}</p>}>
+        <Show
+          when={spec()}
+          fallback={<p class="text-muted-foreground">{t('specDetail.notFound')}</p>}
+        >
           {(s) => {
             const running = () => agentTasks.hasRunningSkillRun(params.id)
             return (
               <>
-                <header class="page-head detail-head">
+                <header class="flex flex-col items-start justify-between">
                   <div>
-                    <code class="id">{s().id}</code>
-                    <h1>{titleFromBody(s().body) ?? '（待 Agent 补全）'}</h1>
-                    <p class="summary">{s().frontmatter.summary || '（待 Agent 补全）'}</p>
+                    <code class="font-mono text-xs text-muted-foreground">{s().id}</code>
+                    <h1 class="m-0 text-xl">
+                      {titleFromBody(s().body) ?? t('common.pendingAgent')}
+                    </h1>
+                    <p class="text-sm text-muted-foreground">
+                      {s().frontmatter.summary || t('common.pendingAgent')}
+                    </p>
                   </div>
-                  <div class="meta">
+                  <div class="flex items-center gap-2 text-sm text-muted-foreground">
                     <select
-                      class={`badge stage-select stage-${s().frontmatter.stage}`}
+                      class={`cursor-pointer appearance-none rounded-full border-0 px-2.5 py-0.5 text-xs font-semibold uppercase text-white ${
+                        STAGE_BG[s().frontmatter.stage] ?? 'bg-muted'
+                      }`}
                       value={s().frontmatter.stage}
                       onChange={(e) => changeStage(e.currentTarget.value as SpecStage)}
-                      title="强制设置 spec 状态"
+                      title={t('specDetail.forceStage')}
                     >
                       <option value="plan">plan</option>
                       <option value="tasks">tasks</option>
@@ -236,34 +252,44 @@ export const SpecDetail: Component = () => {
                       <option value="done">done</option>
                     </select>
                     <time>{formatSpecUpdatedAt(s().frontmatter.updated_at)}</time>
-                    <button type="button" class="append-btn" ref={appendBtnEl} onClick={openAppend}>
-                      追加任务
-                    </button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      class="append-btn"
+                      ref={appendBtnEl}
+                      onClick={openAppend}
+                    >
+                      {t('specDetail.appendTask')}
+                    </Button>
                     <A
-                      class="ghost agent-logs-link"
+                      class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
                       href={projectHref(`specs/${s().id}/agent-logs`)}
                     >
-                      执行日志
+                      {t('specDetail.agentLogs')}
                     </A>
-                    <A class="ghost review-link" href={projectHref(`specs/${s().id}/review`)}>
-                      Review
+                    <A
+                      class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+                      href={projectHref(`specs/${s().id}/review`)}
+                    >
+                      {t('specDetail.review')}
                     </A>
-                    <button
-                      type="button"
-                      class={`primary-action run-btn ${running() ? 'run-running' : 'run-idle'}`}
+                    <Button
+                      variant="default"
+                      size="sm"
                       onClick={runAgent}
                       disabled={running()}
+                      class={running() ? 'opacity-85' : ''}
                     >
-                      {running() ? '运行中…' : '运行 Agent'}
-                    </button>
+                      {running() ? t('specDetail.running') : t('specDetail.runAgent')}
+                    </Button>
                   </div>
                 </header>
 
                 <Show when={runError()}>
-                  <p class="error">{runError()}</p>
+                  <p class="text-destructive text-sm">{runError()}</p>
                 </Show>
 
-                <div class="spec-split">
+                <div class="flex min-h-0 flex-1 items-stretch gap-4">
                   <Show when={showPanel()}>
                     <QuestionConfirmPanel
                       questions={questions()}
@@ -274,7 +300,7 @@ export const SpecDetail: Component = () => {
                     />
                   </Show>
                   <article
-                    class="markdown spec-main"
+                    class="markdown spec-main flex-[6] min-w-0 overflow-auto rounded-xl border bg-card p-4 shadow"
                     ref={setArticleEl}
                     innerHTML={renderMarkdown(s().body, {
                       specId: s().id,

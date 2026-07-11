@@ -1,0 +1,17 @@
+{
+  "$schema": "https://shadcn-solid.com/schema.json",
+  "tailwind": {
+    "config": "tailwind.config.cjs",
+    "css": {
+      "path": "src/gui/src/app.css",
+      "baseColor": "neutral"
+    },
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "alias": {
+    "components": "@/components",
+    "utils": "@/lib/cn"
+  },
+  "typescript": true
+}

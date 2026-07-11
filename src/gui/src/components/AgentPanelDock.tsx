@@ -2,18 +2,35 @@ import { A } from '@solidjs/router'
 import { For, Show, createMemo, createSignal, onCleanup, type Component } from 'solid-js'
 import { agentTasks, type AgentTask } from '../lib/agent-tasks.js'
 import { projectHref } from '../lib/project.js'
+import { Button } from './ui/button.jsx'
+import { Badge } from './ui/badge.jsx'
+import { ChevronUp, ChevronDown, ChevronRight, X, Loader2 } from 'lucide-solid'
+import { t } from '../i18n/index.js'
 
-const SOURCE_LABEL: Record<AgentTask['source'], string> = {
-  run: '执行 spec',
-  explain: '解释',
-  draft: '新建 spec',
+const SOURCE_KEY: Record<AgentTask['source'], string> = {
+  run: 'agentDock.sourceRun',
+  explain: 'agentDock.sourceExplain',
+  draft: 'agentDock.sourceDraft',
 }
 
-const STATUS_LABEL: Record<AgentTask['status'], string> = {
-  pending: '等待…',
-  streaming: '运行中',
-  done: '已完成',
-  failed: '失败',
+const STATUS_KEY: Record<AgentTask['status'], string> = {
+  pending: 'agentDock.statusPending',
+  streaming: 'agentDock.statusStreaming',
+  done: 'agentDock.statusDone',
+  failed: 'agentDock.statusFailed',
+}
+
+const STATUS_COLOR: Record<AgentTask['status'], string> = {
+  pending: 'text-muted-foreground',
+  streaming: 'text-primary',
+  done: 'text-green-600',
+  failed: 'text-destructive',
+}
+
+const SOURCE_COLOR: Record<AgentTask['source'], string> = {
+  run: 'text-primary',
+  explain: 'text-accent-foreground',
+  draft: 'text-purple-600',
 }
 
 const COLLAPSE_THRESHOLD = 3
@@ -46,6 +63,125 @@ function writeCollapsed(value: boolean): void {
   }
 }
 
+const AgentTaskCard: Component<{ task: AgentTask }> = (props) => {
+  const [expanded, setExpanded] = createSignal(props.task.status !== 'done')
+  const [stick, setStick] = createSignal(false)
+  let bodyRef: HTMLPreElement | undefined
+
+  const onScroll = () => {
+    const el = bodyRef
+    if (!el) return
+    setStick(el.scrollTop + el.clientHeight >= el.scrollHeight - SCROLL_STICK_THRESHOLD)
+  }
+
+  const scrollToBottom = () => {
+    const el = bodyRef
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  }
+
+  createMemo(() => {
+    props.task.output
+    if (!expanded() || !stick()) return
+    queueMicrotask(scrollToBottom)
+  })
+
+  createMemo(() => {
+    props.task.status
+    if (props.task.status === 'streaming' && !stick()) {
+      queueMicrotask(scrollToBottom)
+    }
+  })
+
+  onCleanup(() => {
+    window.removeEventListener('resize', onScroll)
+  })
+
+  const handleClose = (e: MouseEvent) => {
+    e.stopPropagation()
+    agentTasks.dismiss(props.task.runId)
+  }
+
+  const isDraft = () => props.task.specId.startsWith('__draft__')
+  const toggleExpand = () => setExpanded((v) => !v)
+
+  return (
+    <div class="flex flex-col border rounded-md bg-background">
+      <div class="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-muted/50" onClick={toggleExpand}>
+        <Show
+          when={expanded()}
+          fallback={<ChevronRight class="h-4 w-4 shrink-0 text-muted-foreground" />}
+        >
+          <ChevronDown class="h-4 w-4 shrink-0 text-muted-foreground" />
+        </Show>
+        <span class={`text-xs font-medium ${SOURCE_COLOR[props.task.source]}`}>
+          {t(SOURCE_KEY[props.task.source])}
+        </span>
+        <span class="flex-1 truncate text-sm">
+          <Show
+            when={!isDraft()}
+            fallback={
+              <em class="text-muted-foreground">
+                {props.task.specTitle ?? t('common.pendingAgent')}
+              </em>
+            }
+          >
+            <A
+              href={projectHref(`specs/${encodeURIComponent(props.task.specId)}`)}
+              class="hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {props.task.specTitle ?? props.task.specId}
+            </A>
+          </Show>
+        </span>
+        <span class={`text-xs font-medium ${STATUS_COLOR[props.task.status]}`}>
+          {t(STATUS_KEY[props.task.status])}
+        </span>
+        <Show when={props.task.status === 'streaming' || props.task.status === 'pending'}>
+          <Loader2 class="h-3.5 w-3.5 animate-spin text-primary" />
+        </Show>
+        <Button
+          variant="ghost"
+          size="icon"
+          class="h-6 w-6"
+          onClick={handleClose}
+        >
+          <X class="h-3.5 w-3.5" />
+        </Button>
+      </div>
+      <Show when={expanded()}>
+        <pre
+          ref={bodyRef}
+          onScroll={onScroll}
+          class="m-0 max-h-48 overflow-auto bg-background p-2 font-mono text-xs whitespace-pre-wrap border-t"
+        >
+          <Show
+            when={props.task.output}
+            fallback={
+              <span class="text-muted-foreground">
+                {t('agentDock.waitingOutput')}
+              </span>
+            }
+          >
+            {props.task.output}
+          </Show>
+        </pre>
+        <Show when={props.task.status === 'pending'}>
+          <div class="px-2 py-1 text-xs text-muted-foreground">
+            {t('agentDock.creatingNew')}
+          </div>
+        </Show>
+        <Show when={props.task.status === 'failed' && props.task.error}>
+          <div class="px-2 py-1 text-xs text-destructive">
+            {props.task.error}
+          </div>
+        </Show>
+      </Show>
+    </div>
+  )
+}
+
 export const AgentPanelDock: Component = () => {
   const [collapsed, setCollapsed] = createSignal(readCollapsed())
 
@@ -65,8 +201,6 @@ export const AgentPanelDock: Component = () => {
   const doneCount = createMemo(() => visibleTasks().filter((t) => t.status === 'done').length)
   const failedCount = createMemo(() => visibleTasks().filter((t) => t.status === 'failed').length)
 
-  // When list grows large, auto-collapse the dock once on next mount; user can re-expand.
-  // Skip if the user has already persisted a choice — respect their intent over the heuristic.
   createMemo(() => {
     if (!hasPersisted && visibleTasks().length > COLLAPSE_THRESHOLD && !collapsed()) {
       setCollapsed(true)
@@ -75,158 +209,62 @@ export const AgentPanelDock: Component = () => {
     }
   })
 
+  const toggleCollapse = () => {
+    setCollapsed((v) => {
+      const next = !v
+      writeCollapsed(next)
+      return next
+    })
+  }
+
+  const clearFinished = () => {
+    agentTasks.clearFinished()
+  }
+
   return (
     <Show when={visibleTasks().length > 0}>
-      <aside
-        class={`agent-dock${collapsed() ? ' agent-dock--collapsed' : ''}`}
-        aria-label="Agent 任务面板"
-      >
-        <header class="agent-dock-head">
+      <div class="flex flex-col border-t bg-card shadow-lg" aria-label={t('agentDock.panelLabel')}>
+        <div class="flex items-center justify-between border-b px-3 py-1.5">
           <button
             type="button"
-            class="agent-dock-toggle"
-            onClick={() => {
-              const next = !collapsed()
-              setCollapsed(next)
-              writeCollapsed(next)
-              hasPersisted = true
-            }}
+            class="flex items-center gap-2 bg-transparent border-0 cursor-pointer"
+            onClick={toggleCollapse}
             aria-expanded={!collapsed()}
+            aria-label={t('agentDock.title')}
           >
-            <span class="agent-dock-title">Agent 任务</span>
-            <span
-              class="agent-dock-progress"
-              aria-label={`进行中 ${runningCount()} / 已完成 ${doneCount()} / 失败 ${failedCount()}`}
+            <Show
+              when={collapsed()}
+              fallback={<ChevronDown class="h-4 w-4 text-muted-foreground" />}
             >
-              <span class="agent-dock-progress-running">{runningCount()}</span>
-              <span class="agent-dock-progress-sep">/</span>
-              <span class="agent-dock-progress-done">{doneCount()}</span>
-              <span class="agent-dock-progress-sep">/</span>
-              <span class="agent-dock-progress-failed">{failedCount()}</span>
-            </span>
-            <span class="agent-dock-chevron">{collapsed() ? '▲' : '▼'}</span>
+              <ChevronUp class="h-4 w-4 text-muted-foreground" />
+            </Show>
+            <span class="text-sm font-semibold">{t('agentDock.title')}</span>
           </button>
-          <Show when={hasFinished()}>
-            <button
-              type="button"
-              class="agent-dock-clear"
-              onClick={() => agentTasks.clearFinished()}
-            >
-              清理已完成
-            </button>
-          </Show>
-        </header>
+
+          <div class="flex items-center gap-2">
+            <div class="flex items-center gap-0.5 text-xs text-muted-foreground">
+              <span class="font-semibold text-primary">{runningCount()}</span>
+              <span class="text-muted-foreground/50">/</span>
+              <span class="text-green-600">{doneCount()}</span>
+              <span class="text-muted-foreground/50">/</span>
+              <span class="text-destructive">{failedCount()}</span>
+            </div>
+            <Show when={hasFinished()}>
+              <Button variant="ghost" size="sm" onClick={clearFinished}>
+                {t('agentDock.clearFinished')}
+              </Button>
+            </Show>
+          </div>
+        </div>
+
         <Show when={!collapsed()}>
-          <ul class="agent-dock-list">
-            <For each={visibleTasks()}>{(task) => <AgentTaskCard task={task} />}</For>
-          </ul>
+          <div class="flex max-h-64 flex-col-reverse gap-1 overflow-y-auto p-1.5">
+            <For each={visibleTasks()}>
+              {(task) => <AgentTaskCard task={task} />}
+            </For>
+          </div>
         </Show>
-      </aside>
+      </div>
     </Show>
-  )
-}
-
-const AgentTaskCard: Component<{ task: AgentTask }> = (props) => {
-  const isDraft = () => props.task.specId.startsWith('__draft__')
-  const [tick, setTick] = createSignal(0)
-
-  // Tick once per second while the task is active, to refresh the timer display.
-  const interval = setInterval(() => {
-    if (props.task.status === 'pending' || props.task.status === 'streaming') {
-      setTick((t) => t + 1)
-    }
-  }, 1000)
-  onCleanup(() => clearInterval(interval))
-
-  const elapsed = createMemo(() => {
-    void tick()
-    const end = props.task.endedAt ?? Date.now()
-    return Math.max(0, Math.floor((end - props.task.startedAt) / 1000))
-  })
-
-  let preEl: HTMLPreElement | undefined
-  const setPreRef = (el: HTMLPreElement) => {
-    preEl = el
-  }
-
-  // Whether the output region is currently stuck to the bottom; only then do we
-  // auto-scroll on new chunks, so manual upward scrolling is not interrupted.
-  const [stickToBottom, setStickToBottom] = createSignal(true)
-
-  const handleScroll = () => {
-    if (!preEl) return
-    const distance = preEl.scrollHeight - preEl.scrollTop - preEl.clientHeight
-    setStickToBottom(distance < SCROLL_STICK_THRESHOLD)
-  }
-
-  // Auto-scroll the output region on each new chunk, but only when the user is
-  // already near the bottom — otherwise let them browse freely.
-  createMemo(() => {
-    void props.task.output
-    queueMicrotask(() => {
-      if (preEl && stickToBottom()) preEl.scrollTop = preEl.scrollHeight
-    })
-  })
-
-  return (
-    <li class={`agent-task agent-task-${props.task.status}`}>
-      <header
-        class="agent-task-head"
-        role="button"
-        tabIndex={0}
-        aria-expanded={props.task.expanded}
-        onClick={() => agentTasks.toggleExpand(props.task.runId)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            agentTasks.toggleExpand(props.task.runId)
-          }
-        }}
-      >
-        <span class="agent-task-chevron" aria-hidden="true">
-          {props.task.expanded ? '▾' : '▸'}
-        </span>
-        <span class={`agent-task-source source-${props.task.source}`}>
-          {SOURCE_LABEL[props.task.source]}
-        </span>
-        <span class="agent-task-spec">
-          <Show
-            when={!isDraft()}
-            fallback={<em class="muted">{props.task.specTitle ?? '（新建中）'}</em>}
-          >
-            <A
-              href={projectHref(`specs/${encodeURIComponent(props.task.specId)}`)}
-              class="agent-task-link"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {props.task.specTitle ?? props.task.specId}
-            </A>
-          </Show>
-        </span>
-        <span class={`agent-task-status status-${props.task.status}`}>
-          {STATUS_LABEL[props.task.status]}
-        </span>
-        <span class="agent-task-timer">{elapsed()}s</span>
-        <button
-          type="button"
-          class="agent-task-close"
-          aria-label="关闭"
-          onClick={(e) => {
-            e.stopPropagation()
-            agentTasks.dismiss(props.task.runId)
-          }}
-        >
-          ×
-        </button>
-      </header>
-      <Show when={props.task.expanded}>
-        <pre ref={setPreRef} class="agent-task-output" onScroll={handleScroll}>
-          {props.task.output || '（等待输出…）'}
-        </pre>
-        <Show when={props.task.error}>
-          <p class="agent-task-error">{props.task.error}</p>
-        </Show>
-      </Show>
-    </li>
   )
 }

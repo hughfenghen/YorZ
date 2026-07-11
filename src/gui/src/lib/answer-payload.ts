@@ -1,6 +1,5 @@
 import type { QuestionAnswerBody } from './api.js'
 
-export const FREEFORM_OPTION_LABEL = '其他（自由批注）'
 export const FREEFORM_SENTINEL = '__freeform__'
 
 export interface AnswerDraftLike {

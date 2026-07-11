@@ -1,3 +1,5 @@
+import { t } from '../i18n/index.js'
+
 export interface SelectionSnapshot {
   text: string
   rect: DOMRect
@@ -71,7 +73,8 @@ export function observeSelection(
       }
       const rect = range.getBoundingClientRect()
       const heading = findSectionHeading(range.startContainer, container)
-      const sectionPath = heading ? heading.textContent?.trim() || '(无章节)' : '(无章节)'
+      const noSection = t('selection.noSection')
+      const sectionPath = heading ? heading.textContent?.trim() || noSection : noSection
       lastText = text
       cb({ text, rect, sectionPath })
     }, throttleMs)

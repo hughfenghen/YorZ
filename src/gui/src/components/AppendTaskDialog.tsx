@@ -1,5 +1,9 @@
 import { createEffect, createSignal, onCleanup, Show, type Component } from 'solid-js'
+import { X } from 'lucide-solid'
 import type { AppendItemBody, AppendItemKind } from '../lib/api.js'
+import { Button } from './ui/button.jsx'
+import { Textarea } from './ui/textarea.jsx'
+import { t } from '../i18n/index.js'
 
 interface Props {
   open: boolean
@@ -10,10 +14,10 @@ interface Props {
   onSubmit: (body: AppendItemBody) => Promise<void>
 }
 
-const KIND_LABEL: Record<AppendItemKind, string> = {
-  feat: 'feat 新增/扩展需求',
-  refct: 'refct 重构/重写/抽取',
-  fix: 'fix 修复缺陷',
+const KIND_KEY: Record<AppendItemKind, string> = {
+  feat: 'appendTask.kindFeat',
+  refct: 'appendTask.kindRefct',
+  fix: 'appendTask.kindFix',
 }
 
 export const AppendTaskDialog: Component<Props> = (props) => {
@@ -56,7 +60,7 @@ export const AppendTaskDialog: Component<Props> = (props) => {
     e.preventDefault()
     const desc = description().trim()
     if (!desc) {
-      setError('描述不能为空')
+      setError(t('appendTask.descRequired'))
       return
     }
     setBusy(true)
@@ -83,11 +87,11 @@ export const AppendTaskDialog: Component<Props> = (props) => {
 
   return (
     <Show when={props.open}>
-      <div class="append-dialog-backdrop" onMouseDown={cancel}>
+      <div class="append-dialog-backdrop fixed inset-0 z-50" onMouseDown={cancel}>
         <div
-          class="append-dialog"
+          class="append-dialog fixed z-50 flex w-96 max-w-[calc(100vw-2rem)] flex-col gap-3 rounded-xl border bg-card p-4 shadow-lg"
           role="dialog"
-          aria-label="追加任务"
+          aria-label={t('appendTask.title')}
           style={
             pos()
               ? { top: `${pos()!.top}px`, right: `calc(100vw - ${pos()!.left}px)` }
@@ -95,15 +99,15 @@ export const AppendTaskDialog: Component<Props> = (props) => {
           }
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <header>
-            <strong>追加任务</strong>
-            <span class="muted">提交后将自动重开 plan 阶段，Agent 会续跑处理新增项</span>
+          <header class="flex flex-col gap-0.5">
+            <strong class="text-sm">{t('appendTask.title')}</strong>
+            <span class="text-xs text-muted-foreground">{t('appendTask.hint')}</span>
           </header>
-          <form onSubmit={submit}>
-            <fieldset class="kind-group">
-              <legend>类型</legend>
+          <form class="flex flex-col gap-3" onSubmit={submit}>
+            <fieldset class="m-0 flex flex-col gap-1.5 border-0 p-0" disabled={busy()}>
+              <legend class="mb-1 font-medium">{t('appendTask.type')}</legend>
               {(['feat', 'refct', 'fix'] as const).map((k) => (
-                <label class="kind-option">
+                <label class="flex cursor-pointer items-center gap-1.5 text-sm">
                   <input
                     type="radio"
                     name="append-kind"
@@ -112,46 +116,51 @@ export const AppendTaskDialog: Component<Props> = (props) => {
                     onChange={() => setKind(k)}
                     disabled={busy()}
                   />
-                  <span>{KIND_LABEL[k]}</span>
+                  <span>{t(KIND_KEY[k])}</span>
                 </label>
               ))}
             </fieldset>
 
-            <label class="field">
-              <span>描述</span>
-              <textarea
+            <label class="flex flex-col gap-1 text-sm">
+              <span>{t('appendTask.description')}</span>
+              <Textarea
                 rows={5}
                 value={description()}
                 onInput={(e) => setDescription(e.currentTarget.value)}
-                placeholder="详细描述新增需求 / 重构意图 / 缺陷复现…"
+                placeholder={t('appendTask.descPlaceholder')}
                 autofocus
                 disabled={busy()}
               />
             </label>
 
             <Show when={props.sectionPath || props.quote}>
-              <div class="reference">
+              <div class="flex flex-col gap-1 text-xs">
                 <Show when={props.sectionPath}>
                   <div>
-                    <span class="muted">引用章节：</span>
-                    <code>{props.sectionPath}</code>
+                    <span class="text-muted-foreground">{t('appendTask.refSection')}</span>
+                    <code class="font-mono">{props.sectionPath}</code>
                   </div>
                 </Show>
                 <Show when={props.quote}>
-                  <blockquote class="quote">{props.quote?.slice(0, 200)}</blockquote>
+                  <blockquote class="m-0 border-l-2 border-border pl-2 text-muted-foreground">
+                    {props.quote?.slice(0, 200)}
+                  </blockquote>
                 </Show>
               </div>
             </Show>
 
-            {error() && <p class="error">{error()}</p>}
+            <Show when={error()}>
+              <p class="text-destructive text-sm">{error()}</p>
+            </Show>
 
-            <div class="actions">
-              <button type="button" onClick={cancel} disabled={busy()}>
-                取消
-              </button>
-              <button type="submit" class="primary-action" disabled={busy()}>
-                {busy() ? '提交中…' : '提交并触发 Agent'}
-              </button>
+            <div class="flex items-center justify-end gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={cancel} disabled={busy()}>
+                <X class="mr-1 h-3.5 w-3.5" />
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit" variant="default" size="sm" disabled={busy()}>
+                {busy() ? t('common.submitting') : t('appendTask.submit')}
+              </Button>
             </div>
           </form>
         </div>

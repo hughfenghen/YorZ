@@ -8,6 +8,7 @@ import {
   type AgentMode,
   type SseSubscription,
 } from './sse.js'
+import { t as tr } from '../i18n/index.js'
 
 export type AgentTaskStatus = 'pending' | 'streaming' | 'done' | 'failed'
 export type AgentTaskSource = 'run' | 'explain' | 'draft'
@@ -96,7 +97,7 @@ export function createAgentTasks() {
           const x = s.tasks[id]
           if (!x) return
           x.status = 'failed'
-          x.error = 'Server 失联，任务可能已终止'
+          x.error = tr('errors.serverDisconnected')
           x.endedAt = Date.now()
         }),
       )
@@ -228,7 +229,7 @@ export function createAgentTasks() {
           const x = s.tasks[id]
           if (!x) return
           x.status = 'failed'
-          x.error = 'Server 已重启，原任务未恢复'
+          x.error = tr('errors.serverRestarted')
           x.endedAt = Date.now()
           x.lastEventAt = Date.now()
         }),

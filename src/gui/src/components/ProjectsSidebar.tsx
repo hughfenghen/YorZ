@@ -8,18 +8,36 @@ import {
   type Component,
 } from 'solid-js'
 import { A, useLocation, useNavigate } from '@solidjs/router'
+import {
+  ChevronsRight,
+  ChevronsLeft,
+  RefreshCw,
+  Pencil,
+  X,
+  GitBranch,
+  HelpCircle,
+} from 'lucide-solid'
 import { api } from '../lib/api.js'
 import type { ProjectListItem } from '../lib/project.js'
 import { ProjectConfigDialog } from './ProjectConfigDialog.js'
+import { Button } from './ui/button.jsx'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from './ui/dialog.jsx'
+import { Checkbox, CheckboxControl, CheckboxLabel } from './ui/checkbox.jsx'
+import { toast } from './ui/sonner.jsx'
+import { t } from '../i18n/index.js'
 
 const COLLAPSED_KEY = 'yorz.projectsSidebar.collapsed'
 const WIDTH_KEY = 'yorz.projectsSidebar.width'
 const DEFAULT_WIDTH = 220
 const MIN_WIDTH = 160
 const MAX_WIDTH = 480
-
-const ADD_HINT_TEXT = '添加项目请在终端执行：'
-const ADD_HINT_CMD = 'yorz add <path>'
 
 function readCollapsed(): boolean {
   try {
@@ -79,16 +97,9 @@ export const ProjectsSidebar: Component = () => {
   const [projects, { refetch }] = createResource<ProjectListItem[]>(() => api.listProjects())
   const [error, setError] = createSignal<string | null>(null)
   const [editing, setEditing] = createSignal<ProjectListItem | null>(null)
-  const [toast, setToast] = createSignal<{ message: string; type: 'success' | 'error' } | null>(
-    null,
-  )
   const [deleting, setDeleting] = createSignal<ProjectListItem | null>(null)
   const [deleteFiles, setDeleteFiles] = createSignal(false)
   const [deleteBusy, setDeleteBusy] = createSignal(false)
-  const [deletePopoverPos, setDeletePopoverPos] = createSignal<{ top: number; left: number }>({
-    top: 0,
-    left: 0,
-  })
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -103,8 +114,6 @@ export const ProjectsSidebar: Component = () => {
     writeCollapsed(next)
   }
 
-  // Drag-to-resize: install document-level listeners only while dragging so we
-  // don't leak handlers between mousedowns.
   let dragState: { startX: number; startW: number; raf: number | null } | null = null
   let docMouseMove: ((e: MouseEvent) => void) | null = null
   let docMouseUp: (() => void) | null = null
@@ -154,22 +163,13 @@ export const ProjectsSidebar: Component = () => {
   }
 
   function showToast(message: string, type: 'success' | 'error' = 'success') {
-    const payload = { message, type }
-    setToast(payload)
-    setTimeout(() => {
-      if (toast() === payload) setToast(null)
-    }, 4000)
+    if (type === 'error') toast.error(message)
+    else toast.success(message)
   }
 
   function onRemove(p: ProjectListItem, ev: Event) {
     ev.preventDefault()
     ev.stopPropagation()
-    const btn = ev.currentTarget as HTMLElement
-    const rect = btn.getBoundingClientRect()
-    const popoverWidth = 280
-    let left = rect.right - popoverWidth
-    if (left < 8) left = 8
-    setDeletePopoverPos({ top: rect.bottom + 8, left })
     setDeleteFiles(false)
     setDeleting(p)
   }
@@ -190,11 +190,11 @@ export const ProjectsSidebar: Component = () => {
     } catch (err) {
       const msg = (err as Error).message
       if (msg.includes('409')) {
-        showToast('存在未提交 git 的变更', 'error')
+        toast.error(t('sidebar.uncommittedChanges'))
         setDeleting(null)
       } else {
         setError(msg)
-        showToast(msg, 'error')
+        toast.error(msg)
       }
     } finally {
       setDeleteBusy(false)
@@ -209,74 +209,92 @@ export const ProjectsSidebar: Component = () => {
 
   return (
     <aside
-      class={`projects-sidebar ${collapsed() ? 'collapsed' : 'expanded'}`}
+      class={`relative flex flex-col border-r bg-card shrink-0 ${
+        collapsed() ? 'w-9 transition-[width] duration-150' : ''
+      }`}
       style={asideStyle()}
     >
-      <header class="projects-sidebar-head">
+      <header
+        class={`flex items-center border-b ${
+          collapsed() ? 'justify-center py-2' : 'justify-between px-2.5 py-2'
+        }`}
+      >
         <Show
           when={!collapsed()}
           fallback={
-            <button
-              type="button"
-              class="projects-sidebar-toggle"
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-7 w-7 p-0"
               onClick={toggle}
-              title="展开项目面板"
-              aria-label="展开项目面板"
+              title={t('sidebar.expand')}
             >
-              »
-            </button>
+              <ChevronsRight class="h-4 w-4" />
+            </Button>
           }
         >
-          <span class="projects-sidebar-title">项目</span>
-          <div class="projects-sidebar-head-actions">
-            <button
-              type="button"
-              class="projects-sidebar-refresh"
+          <span class="text-sm font-semibold tracking-wide">{t('sidebar.title')}</span>
+          <div class="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-7 w-7 p-0"
               onClick={onRefresh}
               disabled={projects.loading}
-              title="刷新项目列表"
-              aria-label="刷新项目列表"
+              title={t('sidebar.refreshList')}
             >
-              <span class={`projects-sidebar-refresh-icon ${projects.loading ? 'spinning' : ''}`}>
-                ⟳
-              </span>
-            </button>
-            <button
-              type="button"
-              class="projects-sidebar-toggle"
+              <RefreshCw class={`h-3.5 w-3.5 ${projects.loading ? 'animate-spin' : ''}`} />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-7 w-7 p-0"
               onClick={toggle}
-              title="折叠"
-              aria-label="折叠项目面板"
+              title={t('sidebar.collapse')}
             >
-              «
-            </button>
+              <ChevronsLeft class="h-4 w-4" />
+            </Button>
           </div>
         </Show>
       </header>
 
       <Show
         when={projects() !== undefined}
-        fallback={<p class="muted projects-sidebar-loading">加载中…</p>}
+        fallback={
+          <p class="px-2.5 py-2 text-sm text-muted-foreground">{t('common.loading')}</p>
+        }
       >
-        <ul class="projects-sidebar-list">
+        <ul class="m-0 flex-1 list-none overflow-y-auto py-1.5">
           <For each={projects() ?? []}>
             {(p) => {
               const isActive = () => activeProjectId() === p.id
               return (
-                <li class={`projects-sidebar-item ${isActive() ? 'active' : ''}`}>
+                <li class="group relative flex items-center">
                   <A
                     href={`/${encodeURIComponent(p.id)}`}
-                    class="projects-sidebar-link"
+                    class={`flex-1 truncate px-2.5 py-1.5 text-sm no-underline ${
+                      isActive()
+                        ? 'bg-background font-semibold'
+                        : 'hover:bg-background'
+                    } ${collapsed() ? 'px-0 text-center' : ''}`}
                     title={p.path}
                   >
                     <Show
                       when={!collapsed()}
-                      fallback={<span class="initial">{(p.name[0] ?? '?').toUpperCase()}</span>}
+                      fallback={
+                        <span class="inline-block font-semibold">
+                          {(p.name[0] ?? '?').toUpperCase()}
+                        </span>
+                      }
                     >
-                      <span class="name">{displayProjectName(p)}</span>
+                      <span class="block truncate">{displayProjectName(p)}</span>
                       <Show when={p.worktree}>
-                        <span class="worktree-badge" title={`worktree of ${p.worktree!.mainPath}`}>
-                          ⎇ main
+                        <span
+                          class="ml-1 inline-flex items-center gap-0.5 text-xs text-muted-foreground"
+                          title={`worktree of ${p.worktree!.mainPath}`}
+                        >
+                          <GitBranch class="h-3 w-3" />
+                          {t('sidebar.worktreeBadge')}
                         </span>
                       </Show>
                     </Show>
@@ -284,21 +302,21 @@ export const ProjectsSidebar: Component = () => {
                   <Show when={!collapsed()}>
                     <button
                       type="button"
-                      class="projects-sidebar-edit"
-                      aria-label={`配置 ${p.name}`}
-                      title="项目配置"
+                      class="absolute right-6 top-1/2 -translate-y-1/2 p-1 text-muted-foreground opacity-0 transition-opacity hover:text-accent-foreground group-hover:opacity-100"
+                      aria-label={t('sidebar.configure', { name: p.name })}
+                      title={t('sidebar.projectConfig')}
                       onClick={(e) => onEdit(p, e)}
                     >
-                      ✎
+                      <Pencil class="h-3.5 w-3.5" />
                     </button>
                     <button
                       type="button"
-                      class="projects-sidebar-remove"
-                      aria-label={`移除 ${p.name}`}
-                      title="删除项目"
+                      class="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                      aria-label={t('sidebar.removeProject', { name: p.name })}
+                      title={t('sidebar.deleteProject')}
                       onClick={(e) => void onRemove(p, e)}
                     >
-                      ✕
+                      <X class="h-3.5 w-3.5" />
                     </button>
                   </Show>
                 </li>
@@ -308,26 +326,32 @@ export const ProjectsSidebar: Component = () => {
         </ul>
       </Show>
 
-      <footer class="projects-sidebar-foot">
+      <footer
+        class={`border-t ${collapsed() ? 'flex justify-center py-2' : 'p-2'}`}
+      >
         <Show
           when={!collapsed()}
           fallback={
             <span
-              class="projects-sidebar-hint-icon"
-              title={`${ADD_HINT_TEXT}${ADD_HINT_CMD}`}
-              aria-label={`${ADD_HINT_TEXT}${ADD_HINT_CMD}`}
+              class="flex h-5 w-5 items-center justify-center rounded bg-muted text-muted-foreground"
+              title={`${t('sidebar.addHint')}${t('sidebar.addCmd')}`}
             >
-              ?
+              <HelpCircle class="h-3.5 w-3.5" />
             </span>
           }
         >
-          <p class="projects-sidebar-hint">
-            {ADD_HINT_TEXT}
-            <code>{ADD_HINT_CMD}</code>
+          <p class="m-0 text-xs leading-relaxed text-muted-foreground break-words">
+            {t('sidebar.addHint')}
+            <code class="mt-0.5 inline-block rounded bg-muted px-1 py-0.5 font-mono text-[0.85em] break-all">
+              {t('sidebar.addCmd')}
+            </code>
           </p>
         </Show>
         {error() && (
-          <p class="error projects-sidebar-error" title={error()!}>
+          <p
+            class="mt-1 text-xs text-destructive break-words"
+            title={error()!}
+          >
             {error()}
           </p>
         )}
@@ -335,10 +359,10 @@ export const ProjectsSidebar: Component = () => {
 
       <Show when={!collapsed()}>
         <div
-          class="projects-sidebar-resizer"
+          class="absolute right-0 top-0 z-[2] h-full w-1 cursor-col-resize bg-transparent hover:bg-accent/40"
           role="separator"
           aria-orientation="vertical"
-          aria-label="拖动调整项目面板宽度"
+          aria-label={t('sidebar.resizeHint')}
           onMouseDown={beginResize}
         />
       </Show>
@@ -355,64 +379,47 @@ export const ProjectsSidebar: Component = () => {
         )}
       </Show>
 
-      <Show when={toast()}>
-        {(t) => (
-          <div
-            class={`projects-sidebar-toast projects-sidebar-toast--${t().type}`}
-            role={t().type === 'error' ? 'alert' : 'status'}
-          >
-            {t().message}
-          </div>
-        )}
-      </Show>
-
-      <Show when={deleting()}>
-        {(p) => (
-          <>
-            <div
-              class="delete-popover-backdrop"
-              onClick={() => !deleteBusy() && setDeleting(null)}
-            />
-            <div
-              class="delete-project-popover"
-              style={{
-                top: `${deletePopoverPos().top}px`,
-                left: `${deletePopoverPos().left}px`,
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <header>
-                <strong>删除项目</strong>
-              </header>
-              <p class="delete-project-name">{displayProjectName(p())}</p>
-              <p class="delete-project-desc">此操作将从 YorZ 项目列表中移除该项目。</p>
-              <Show when={p().worktree}>
-                <label class="delete-files-check">
-                  <input
-                    type="checkbox"
+      <Dialog open={deleting() !== null} onOpenChange={(o) => !o && !deleteBusy() && setDeleting(null)}>
+        <DialogContent class="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('sidebar.deleteProject')}</DialogTitle>
+            <DialogDescription>{t('sidebar.deleteDesc')}</DialogDescription>
+          </DialogHeader>
+          <Show when={deleting()}>
+            {(p) => (
+              <>
+                <p class="break-all font-semibold">{displayProjectName(p())}</p>
+                <Show when={p().worktree}>
+                  <Checkbox
                     checked={deleteFiles()}
-                    onChange={(e) => setDeleteFiles(e.currentTarget.checked)}
-                  />
-                  同时删除文件目录
-                </label>
-              </Show>
-              <div class="delete-project-actions">
-                <button type="button" onClick={() => setDeleting(null)} disabled={deleteBusy()}>
-                  取消
-                </button>
-                <button
-                  type="button"
-                  class="delete-confirm-btn"
-                  onClick={() => void confirmDelete()}
-                  disabled={deleteBusy()}
-                >
-                  {deleteBusy() ? '删除中…' : '确认删除'}
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </Show>
+                    onChange={(v) => setDeleteFiles(v)}
+                    class="flex items-center gap-2 text-sm text-destructive"
+                  >
+                    <CheckboxControl />
+                    <CheckboxLabel>{t('sidebar.deleteFiles')}</CheckboxLabel>
+                  </Checkbox>
+                </Show>
+              </>
+            )}
+          </Show>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleting(null)}
+              disabled={deleteBusy()}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmDelete()}
+              disabled={deleteBusy()}
+            >
+              {deleteBusy() ? t('common.deleting') : t('common.confirmDelete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   )
 }
