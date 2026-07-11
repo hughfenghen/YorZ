@@ -14,6 +14,10 @@ export const en = {
     remove: 'Remove',
     error: 'Error',
   },
+  breadcrumb: {
+    specList: 'Spec List',
+    newSpec: 'New Spec',
+  },
   shell: {
     newSpec: 'New Spec',
     languageSwitch: 'Switch Language',

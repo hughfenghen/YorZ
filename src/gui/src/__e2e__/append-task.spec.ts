@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { SPEC_ID } from './fixtures/setup.js'
 
 test.describe.serial('append task popover', () => {
-  test('点击「追加任务」按钮应弹出 popover 并锚定到按钮右下方', async ({ page }) => {
+  test('点击「追加任务」按钮应弹出 popover 并落在按钮正下方且不越界', async ({ page }) => {
     await page.goto(`/specs/${SPEC_ID}`)
 
     const btn = page.locator('button.append-btn')
@@ -13,14 +13,20 @@ test.describe.serial('append task popover', () => {
     const dialog = page.locator('.append-dialog')
     await expect(dialog).toBeVisible()
 
+    const viewport = page.viewportSize()
     const [btnBox, dialogBox] = await Promise.all([btn.boundingBox(), dialog.boundingBox()])
     expect(btnBox).not.toBeNull()
     expect(dialogBox).not.toBeNull()
     if (!btnBox || !dialogBox) return
+    // 弹窗在按钮下方
     expect(dialogBox.y).toBeGreaterThan(btnBox.y + btnBox.height - 1)
-    const btnRight = btnBox.x + btnBox.width
-    const dialogRight = dialogBox.x + dialogBox.width
-    expect(Math.abs(dialogRight - btnRight)).toBeLessThanOrEqual(4)
+    // 左缘对齐按钮左缘（视口足够时），或因夹取而更靠左，绝不在按钮右侧
+    expect(dialogBox.x).toBeLessThanOrEqual(btnBox.x + 4)
+    // 两侧均不越出视口
+    expect(dialogBox.x).toBeGreaterThanOrEqual(0)
+    if (viewport) {
+      expect(dialogBox.x + dialogBox.width).toBeLessThanOrEqual(viewport.width)
+    }
   })
 
   test('按 ESC 关闭 popover', async ({ page }) => {

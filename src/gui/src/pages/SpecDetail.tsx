@@ -22,6 +22,7 @@ import { SelectionMenu } from '../components/SelectionMenu.jsx'
 import { AnnotatePopover } from '../components/AnnotatePopover.jsx'
 import { AppendTaskDialog } from '../components/AppendTaskDialog.jsx'
 import { QuestionConfirmPanel, type FreeformDraft } from '../components/QuestionConfirmPanel.jsx'
+import { Breadcrumb } from '../components/Breadcrumb.jsx'
 import { Button } from '../components/ui/button.jsx'
 import { Badge } from '../components/ui/badge.jsx'
 import { t } from '../i18n/index.js'
@@ -227,19 +228,21 @@ export const SpecDetail: Component = () => {
             const running = () => agentTasks.hasRunningSkillRun(params.id)
             return (
               <>
-                <header class="flex flex-col items-start justify-between">
+                <header class="flex flex-col items-start justify-between gap-2">
+                  <Breadcrumb
+                    items={[
+                      { label: t('breadcrumb.specList'), href: projectHref('') },
+                      { label: s().id },
+                    ]}
+                  />
                   <div>
-                    <code class="font-mono text-xs text-muted-foreground">{s().id}</code>
-                    <h1 class="m-0 text-xl">
-                      {titleFromBody(s().body) ?? t('common.pendingAgent')}
-                    </h1>
-                    <p class="text-sm text-muted-foreground">
+                    <p class=" text-muted-foreground">
                       {s().frontmatter.summary || t('common.pendingAgent')}
                     </p>
                   </div>
-                  <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div class="flex items-center gap-2 text-muted-foreground">
                     <select
-                      class={`cursor-pointer appearance-none rounded-full border-0 px-2.5 py-0.5 text-xs font-semibold uppercase text-white ${
+                      class={`cursor-pointer appearance-none rounded-full border-0 px-2.5 py-0.5 text-sm font-semibold uppercase text-white ${
                         STAGE_BG[s().frontmatter.stage] ?? 'bg-muted'
                       }`}
                       value={s().frontmatter.stage}
@@ -262,13 +265,13 @@ export const SpecDetail: Component = () => {
                       {t('specDetail.appendTask')}
                     </Button>
                     <A
-                      class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+                      class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 font-medium hover:bg-accent hover:text-accent-foreground"
                       href={projectHref(`specs/${s().id}/agent-logs`)}
                     >
                       {t('specDetail.agentLogs')}
                     </A>
                     <A
-                      class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+                      class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 font-medium hover:bg-accent hover:text-accent-foreground"
                       href={projectHref(`specs/${s().id}/review`)}
                     >
                       {t('specDetail.review')}
@@ -286,7 +289,7 @@ export const SpecDetail: Component = () => {
                 </header>
 
                 <Show when={runError()}>
-                  <p class="text-destructive text-sm">{runError()}</p>
+                  <p class="text-destructive ">{runError()}</p>
                 </Show>
 
                 <div class="flex min-h-0 flex-1 items-stretch gap-4">

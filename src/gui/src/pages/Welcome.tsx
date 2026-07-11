@@ -8,9 +8,9 @@ export const WelcomePage: Component = () => {
         <h1 class="text-2xl font-bold">{t('welcome.title')}</h1>
       </header>
       <p class="text-muted-foreground">{t('welcome.description')}</p>
-      <p class="mt-4 text-sm text-muted-foreground">
+      <p class="mt-4 text-muted-foreground">
         {t('welcome.addHint')}
-        <code class="ml-1 rounded bg-muted px-1.5 py-0.5 font-mono text-xs">yorz add &lt;path&gt;</code>
+        <code class="ml-1 rounded bg-muted px-1.5 py-0.5 font-mono text-sm">yorz add &lt;path&gt;</code>
       </p>
     </section>
   )

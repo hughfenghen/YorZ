@@ -35,7 +35,9 @@ export const AppendTaskDialog: Component<Props> = (props) => {
     const anchor = props.anchorEl
     if (!anchor) return
     const rect = anchor.getBoundingClientRect()
-    setPos({ top: rect.bottom + 8, left: rect.right })
+    const width = 384
+    const left = Math.max(16, Math.min(rect.left, window.innerWidth - width - 16))
+    setPos({ top: rect.bottom + 8, left })
   })
 
   createEffect(() => {
@@ -93,21 +95,19 @@ export const AppendTaskDialog: Component<Props> = (props) => {
           role="dialog"
           aria-label={t('appendTask.title')}
           style={
-            pos()
-              ? { top: `${pos()!.top}px`, right: `calc(100vw - ${pos()!.left}px)` }
-              : undefined
+            pos() ? { top: `${pos()!.top}px`, left: `${pos()!.left}px` } : undefined
           }
           onMouseDown={(e) => e.stopPropagation()}
         >
           <header class="flex flex-col gap-0.5">
-            <strong class="text-sm">{t('appendTask.title')}</strong>
-            <span class="text-xs text-muted-foreground">{t('appendTask.hint')}</span>
+            <strong class=" ">{t('appendTask.title')}</strong>
+            <span class="text-sm text-muted-foreground">{t('appendTask.hint')}</span>
           </header>
           <form class="flex flex-col gap-3" onSubmit={submit}>
             <fieldset class="m-0 flex flex-col gap-1.5 border-0 p-0" disabled={busy()}>
               <legend class="mb-1 font-medium">{t('appendTask.type')}</legend>
               {(['feat', 'refct', 'fix'] as const).map((k) => (
-                <label class="flex cursor-pointer items-center gap-1.5 text-sm">
+                <label class="flex cursor-pointer items-center gap-1.5 ">
                   <input
                     type="radio"
                     name="append-kind"
@@ -121,7 +121,7 @@ export const AppendTaskDialog: Component<Props> = (props) => {
               ))}
             </fieldset>
 
-            <label class="flex flex-col gap-1 text-sm">
+            <label class="flex flex-col gap-1 ">
               <span>{t('appendTask.description')}</span>
               <Textarea
                 rows={5}
@@ -134,7 +134,7 @@ export const AppendTaskDialog: Component<Props> = (props) => {
             </label>
 
             <Show when={props.sectionPath || props.quote}>
-              <div class="flex flex-col gap-1 text-xs">
+              <div class="flex flex-col gap-1 text-sm">
                 <Show when={props.sectionPath}>
                   <div>
                     <span class="text-muted-foreground">{t('appendTask.refSection')}</span>
@@ -150,7 +150,7 @@ export const AppendTaskDialog: Component<Props> = (props) => {
             </Show>
 
             <Show when={error()}>
-              <p class="text-destructive text-sm">{error()}</p>
+              <p class="text-destructive ">{error()}</p>
             </Show>
 
             <div class="flex items-center justify-end gap-2">

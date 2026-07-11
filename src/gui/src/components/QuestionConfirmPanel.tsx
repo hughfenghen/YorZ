@@ -128,7 +128,7 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
         </div>
       </header>
       <Show when={error()}>
-        <p class="text-destructive mx-3 mt-1 text-sm">{error()}</p>
+        <p class="text-destructive mx-3 mt-1 ">{error()}</p>
       </Show>
       <ul class="m-0 flex min-h-0 min-w-0 list-none flex-1 flex-col gap-2 overflow-auto p-2">
         <For each={props.questions}>
@@ -137,13 +137,13 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
             const showNote = () => q.isFreeform || draft().selectedOptionLabel === FREEFORM_SENTINEL
             return (
               <li class="flex min-w-0 flex-col gap-2 rounded-lg border bg-background p-2.5">
-                <p class="qcp-question m-0 text-sm font-medium break-words">{q.text}</p>
+                <p class="qcp-question m-0 font-medium break-words">{q.text}</p>
                 <Show when={!q.isFreeform}>
                   <ul class="m-0 flex list-none flex-col gap-1 p-0">
                     <For each={q.options}>
                       {(opt) => (
                         <li>
-                          <label class="flex cursor-pointer items-start gap-1.5 px-1 py-0.5 text-sm rounded-md hover:bg-primary/5">
+                          <label class="flex cursor-pointer items-start gap-1.5 px-1 py-0.5 rounded-md hover:bg-primary/5">
                             <input
                               type="radio"
                               name={`q-${q.id}`}
@@ -153,7 +153,7 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
                             <span class="min-w-0 break-words">
                               {opt.label}
                               <Show when={opt.recommended}>
-                                <em class="text-accent text-xs not-italic"> {t('questionConfirm.recommended')}</em>
+                                <em class="text-accent text-sm not-italic"> {t('questionConfirm.recommended')}</em>
                               </Show>
                             </span>
                           </label>
@@ -161,7 +161,7 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
                       )}
                     </For>
                     <li>
-                      <label class="qcp-option-freeform flex cursor-pointer items-start gap-1.5 px-1 py-0.5 text-sm rounded-md hover:bg-primary/5">
+                      <label class="qcp-option-freeform flex cursor-pointer items-start gap-1.5 px-1 py-0.5 rounded-md hover:bg-primary/5">
                         <input
                           type="radio"
                           name={`q-${q.id}`}
@@ -189,7 +189,7 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
         <For each={props.freeforms}>
           {(f) => (
             <li class="flex min-w-0 flex-col gap-2 rounded-lg border border-accent/60 bg-background p-2.5">
-              <header class="text-muted-foreground flex items-center justify-between text-xs">
+              <header class="text-muted-foreground flex items-center justify-between text-sm">
                 <strong>{t('questionConfirm.selectionAnnotation')}</strong>
                 <Button
                   variant="ghost"
@@ -201,10 +201,10 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
                   <X class="h-4 w-4" />
                 </Button>
               </header>
-              <blockquote class="border-border bg-card m-0 border-l-2 px-2 py-1 text-xs text-muted-foreground break-words">
+              <blockquote class="border-border bg-card m-0 border-l-2 px-2 py-1 text-sm text-muted-foreground break-words">
                 <em>{f.sectionPath}</em> {t('questionConfirm.quoteConnector')} "{f.quote.slice(0, 200)}"
               </blockquote>
-              <p class="m-0 text-sm whitespace-pre-wrap break-words">！！！{f.note}</p>
+              <p class="m-0 whitespace-pre-wrap break-words">！！！{f.note}</p>
             </li>
           )}
         </For>

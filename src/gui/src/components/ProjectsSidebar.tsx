@@ -233,7 +233,7 @@ export const ProjectsSidebar: Component = () => {
             </Button>
           }
         >
-          <span class="text-sm font-semibold tracking-wide">{t('sidebar.title')}</span>
+          <span class=" font-semibold tracking-wide">{t('sidebar.title')}</span>
           <div class="flex items-center gap-1">
             <Button
               variant="outline"
@@ -261,7 +261,7 @@ export const ProjectsSidebar: Component = () => {
       <Show
         when={projects() !== undefined}
         fallback={
-          <p class="px-2.5 py-2 text-sm text-muted-foreground">{t('common.loading')}</p>
+          <p class="px-2.5 py-2 text-muted-foreground">{t('common.loading')}</p>
         }
       >
         <ul class="m-0 flex-1 list-none overflow-y-auto py-1.5">
@@ -272,7 +272,7 @@ export const ProjectsSidebar: Component = () => {
                 <li class="group relative flex items-center">
                   <A
                     href={`/${encodeURIComponent(p.id)}`}
-                    class={`flex-1 truncate px-2.5 py-1.5 text-sm no-underline ${
+                    class={`flex-1 truncate px-2.5 py-1.5 no-underline ${
                       isActive()
                         ? 'bg-background font-semibold'
                         : 'hover:bg-background'
@@ -290,7 +290,7 @@ export const ProjectsSidebar: Component = () => {
                       <span class="block truncate">{displayProjectName(p)}</span>
                       <Show when={p.worktree}>
                         <span
-                          class="ml-1 inline-flex items-center gap-0.5 text-xs text-muted-foreground"
+                          class="ml-1 inline-flex items-center gap-0.5 text-sm text-muted-foreground"
                           title={`worktree of ${p.worktree!.mainPath}`}
                         >
                           <GitBranch class="h-3 w-3" />
@@ -340,7 +340,7 @@ export const ProjectsSidebar: Component = () => {
             </span>
           }
         >
-          <p class="m-0 text-xs leading-relaxed text-muted-foreground break-words">
+          <p class="m-0 text-sm leading-relaxed text-muted-foreground break-words">
             {t('sidebar.addHint')}
             <code class="mt-0.5 inline-block rounded bg-muted px-1 py-0.5 font-mono text-[0.85em] break-all">
               {t('sidebar.addCmd')}
@@ -349,7 +349,7 @@ export const ProjectsSidebar: Component = () => {
         </Show>
         {error() && (
           <p
-            class="mt-1 text-xs text-destructive break-words"
+            class="mt-1 text-sm text-destructive break-words"
             title={error()!}
           >
             {error()}
@@ -393,7 +393,7 @@ export const ProjectsSidebar: Component = () => {
                   <Checkbox
                     checked={deleteFiles()}
                     onChange={(v) => setDeleteFiles(v)}
-                    class="flex items-center gap-2 text-sm text-destructive"
+                    class="flex items-center gap-2 text-destructive"
                   >
                     <CheckboxControl />
                     <CheckboxLabel>{t('sidebar.deleteFiles')}</CheckboxLabel>

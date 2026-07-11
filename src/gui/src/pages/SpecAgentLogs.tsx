@@ -7,11 +7,12 @@ import {
   createSignal,
   type Component,
 } from 'solid-js'
-import { A, useParams } from '@solidjs/router'
+import { useParams } from '@solidjs/router'
 import { ChevronRight, ChevronDown, RefreshCw } from 'lucide-solid'
 import { api, type AgentLogMeta } from '../lib/api.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
 import { Button } from '../components/ui/button.jsx'
+import { Breadcrumb } from '../components/Breadcrumb.jsx'
 import { t } from '../i18n/index.js'
 
 export const SpecAgentLogs: Component = () => {
@@ -35,15 +36,18 @@ export const SpecAgentLogs: Component = () => {
       <Suspense fallback={<p class="text-muted-foreground">{t('common.loading')}</p>}>
         <header class="flex flex-col items-start justify-between gap-4">
           <div class="flex flex-col gap-1">
-            <A class="text-sm text-muted-foreground hover:text-foreground" href={projectHref(`specs/${params.id}`)}>
-              {t('agentLogs.backToSpec')}
-            </A>
-            <h1 class="m-0 text-xl">{t('agentLogs.title', { id: params.id })}</h1>
-            <p class="text-sm text-muted-foreground">
+            <Breadcrumb
+              items={[
+                { label: t('breadcrumb.specList'), href: projectHref('') },
+                { label: params.id, href: projectHref(`specs/${params.id}`) },
+                { label: t('specDetail.agentLogs') },
+              ]}
+            />
+            <p class=" text-muted-foreground">
               {spec()?.frontmatter.summary || t('common.pendingAgent')}
             </p>
           </div>
-          <div class="flex items-center gap-2 text-sm text-muted-foreground">
+          <div class="flex items-center gap-2 text-muted-foreground">
             <Button
               variant="ghost"
               size="sm"
@@ -116,30 +120,30 @@ const LogCard: Component<{ meta: AgentLogMeta }> = (props) => {
     <li class="overflow-hidden rounded-lg border bg-card">
       <button
         type="button"
-        class="flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left text-sm hover:bg-muted/50"
+        class="flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left hover:bg-muted/50"
         onClick={toggle}
         aria-expanded={open()}
       >
         {open() ? <ChevronDown class="h-3 w-3" /> : <ChevronRight class="h-3 w-3" />}
-        <time class="text-xs text-muted-foreground">{formatTime(props.meta.startedAt)}</time>
-        <span class="rounded bg-muted px-1.5 py-0.5 text-xs font-medium">{agentTagLabel(props.meta)}</span>
-        <span class={`text-xs font-medium ${statusColorClass(props.meta)}`}>{statusLabel(props.meta)}</span>
-        <span class="text-xs">{formatDuration(props.meta)}</span>
-        <span class="text-xs text-muted-foreground">{formatSize(props.meta.sizeBytes)}</span>
+        <time class="text-sm text-muted-foreground">{formatTime(props.meta.startedAt)}</time>
+        <span class="rounded bg-muted px-1.5 py-0.5 text-sm font-medium">{agentTagLabel(props.meta)}</span>
+        <span class={`text-sm font-medium ${statusColorClass(props.meta)}`}>{statusLabel(props.meta)}</span>
+        <span class="text-sm">{formatDuration(props.meta)}</span>
+        <span class="text-sm text-muted-foreground">{formatSize(props.meta.sizeBytes)}</span>
       </button>
       <Show when={open()}>
         <div class="border-t p-3">
           <Show when={state().truncated}>
-            <p class="text-xs text-muted-foreground">{t('agentLogs.truncated')}</p>
+            <p class="text-sm text-muted-foreground">{t('agentLogs.truncated')}</p>
           </Show>
           <Show when={state().loading}>
             <p class="text-muted-foreground">{t('common.loading')}</p>
           </Show>
           <Show when={state().error}>
-            <p class="text-sm text-destructive">{state().error}</p>
+            <p class=" text-destructive">{state().error}</p>
           </Show>
           <Show when={!state().loading && !state().error && state().content}>
-            <pre class="m-0 max-h-60 overflow-auto whitespace-pre-wrap bg-background p-3 font-mono text-xs">
+            <pre class="m-0 max-h-60 overflow-auto whitespace-pre-wrap bg-background p-3 font-mono text-sm">
               {state().content}
             </pre>
           </Show>
