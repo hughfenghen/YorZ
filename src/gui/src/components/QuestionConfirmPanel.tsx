@@ -1,7 +1,11 @@
 import { For, Show, createMemo, createSignal, type Component } from 'solid-js'
 import type { ConfirmQuestion } from '../lib/question-parse.js'
 import type { AnnotationBody, QuestionAnswerBody, QuestionAnswersBody } from '../lib/api.js'
-import { buildAnswerItem, FREEFORM_OPTION_LABEL, FREEFORM_SENTINEL } from '../lib/answer-payload.js'
+import { buildAnswerItem, FREEFORM_SENTINEL } from '../lib/answer-payload.js'
+import { Button } from './ui/button.jsx'
+import { Textarea } from './ui/textarea.jsx'
+import { X } from 'lucide-solid'
+import { t } from '../i18n/index.js'
 
 export interface FreeformDraft {
   id: string
@@ -93,7 +97,7 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
         ),
       }
       if (payload.answers.length === 0 && payload.freeformAnnotations.length === 0) {
-        setError('没有可提交的答复')
+        setError(t('questionConfirm.noAnswers'))
         return
       }
       await props.onSubmit(payload)
@@ -105,50 +109,51 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
   }
 
   return (
-    <aside class="question-confirm-panel" data-testid="question-confirm-panel">
-      <header class="qcp-head">
-        <strong>待确认问题</strong>
-        <span class="muted">
-          未答题 <span class="qcp-count">{unanswered()}</span> / {props.questions.length}
+    <aside
+      class="flex min-w-0 flex-[4] flex-col overflow-hidden rounded-lg border bg-card shadow-lg"
+      data-testid="question-confirm-panel"
+    >
+      <header class="grid [grid-template-columns:auto_1fr] gap-x-2 gap-y-1.5 border-b bg-background px-3 py-2.5">
+        <strong class="font-semibold">{t('questionConfirm.title')}</strong>
+        <span class="text-muted-foreground text-right">
+          {t('questionConfirm.unanswered')} <span class="font-semibold text-accent">{unanswered()}</span> / {props.questions.length}
         </span>
-        <div class="qcp-head-actions">
-          <button
-            type="button"
-            class="primary-action"
+        <div class="col-span-full flex gap-1.5">
+          <Button
             disabled={busy() || props.running}
             onClick={submit}
           >
-            {busy() ? '提交中…' : props.running ? '运行中…' : '提交全部'}
-          </button>
+            {busy() ? t('common.submitting') : props.running ? t('questionConfirm.running') : t('questionConfirm.submitAll')}
+          </Button>
         </div>
       </header>
       <Show when={error()}>
-        <p class="error qcp-error">{error()}</p>
+        <p class="text-destructive mx-3 mt-1 text-sm">{error()}</p>
       </Show>
-      <ul class="qcp-list">
+      <ul class="m-0 flex min-h-0 min-w-0 list-none flex-1 flex-col gap-2 overflow-auto p-2">
         <For each={props.questions}>
           {(q) => {
             const draft = () => answers()[q.id] ?? { note: '' }
             const showNote = () => q.isFreeform || draft().selectedOptionLabel === FREEFORM_SENTINEL
             return (
-              <li class="qcp-card">
-                <p class="qcp-question">{q.text}</p>
+              <li class="flex min-w-0 flex-col gap-2 rounded-lg border bg-background p-2.5">
+                <p class="qcp-question m-0 text-sm font-medium break-words">{q.text}</p>
                 <Show when={!q.isFreeform}>
-                  <ul class="qcp-options">
+                  <ul class="m-0 flex list-none flex-col gap-1 p-0">
                     <For each={q.options}>
                       {(opt) => (
                         <li>
-                          <label class="qcp-option">
+                          <label class="flex cursor-pointer items-start gap-1.5 px-1 py-0.5 text-sm rounded-md hover:bg-primary/5">
                             <input
                               type="radio"
                               name={`q-${q.id}`}
                               checked={draft().selectedOptionLabel === opt.label}
                               onChange={() => setChoice(q.id, opt.label)}
                             />
-                            <span>
+                            <span class="min-w-0 break-words">
                               {opt.label}
                               <Show when={opt.recommended}>
-                                <em class="qcp-recommended"> (推荐)</em>
+                                <em class="text-accent text-xs not-italic"> {t('questionConfirm.recommended')}</em>
                               </Show>
                             </span>
                           </label>
@@ -156,23 +161,23 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
                       )}
                     </For>
                     <li>
-                      <label class="qcp-option qcp-option-freeform">
+                      <label class="qcp-option-freeform flex cursor-pointer items-start gap-1.5 px-1 py-0.5 text-sm rounded-md hover:bg-primary/5">
                         <input
                           type="radio"
                           name={`q-${q.id}`}
                           checked={draft().selectedOptionLabel === FREEFORM_SENTINEL}
                           onChange={() => setChoice(q.id, FREEFORM_SENTINEL)}
                         />
-                        <span>{FREEFORM_OPTION_LABEL}</span>
+                        <span>{t('questionConfirm.freeformLabel')}</span>
                       </label>
                     </li>
                   </ul>
                 </Show>
                 <Show when={showNote()}>
-                  <textarea
+                  <Textarea
                     class="qcp-note"
                     rows={2}
-                    placeholder="写下你的答复…"
+                    placeholder={t('questionConfirm.notePlaceholder')}
                     value={draft().note}
                     onInput={(e) => setNote(q.id, e.currentTarget.value)}
                   />
@@ -183,22 +188,23 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
         </For>
         <For each={props.freeforms}>
           {(f) => (
-            <li class="qcp-card qcp-card-freeform">
-              <header class="qcp-card-head">
-                <strong>选区批注</strong>
-                <button
-                  type="button"
-                  class="qcp-remove"
+            <li class="flex min-w-0 flex-col gap-2 rounded-lg border border-accent/60 bg-background p-2.5">
+              <header class="text-muted-foreground flex items-center justify-between text-xs">
+                <strong>{t('questionConfirm.selectionAnnotation')}</strong>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="h-6 w-6"
                   onClick={() => props.onRemoveFreeform(f.id)}
-                  aria-label="移除"
+                  aria-label="remove"
                 >
-                  ×
-                </button>
+                  <X class="h-4 w-4" />
+                </Button>
               </header>
-              <blockquote class="qcp-quote">
-                <em>{f.sectionPath}</em> 中 “{f.quote.slice(0, 200)}”
+              <blockquote class="border-border bg-card m-0 border-l-2 px-2 py-1 text-xs text-muted-foreground break-words">
+                <em>{f.sectionPath}</em> {t('questionConfirm.quoteConnector')} "{f.quote.slice(0, 200)}"
               </blockquote>
-              <p class="qcp-freeform-note">！！！{f.note}</p>
+              <p class="m-0 text-sm whitespace-pre-wrap break-words">！！！{f.note}</p>
             </li>
           )}
         </For>

@@ -1,5 +1,9 @@
-import { createEffect, createSignal, onCleanup, Show, type Component } from 'solid-js'
+import { createEffect, createSignal, Show, type Component } from 'solid-js'
 import { api, type AgentConfig, type ProjectConfig } from '../lib/api.js'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog.jsx'
+import { Button } from './ui/button.jsx'
+import { Input } from './ui/input.jsx'
+import { t } from '../i18n/index.js'
 
 interface Props {
   open: boolean
@@ -16,7 +20,7 @@ const KIND_LABEL: Record<AgentKind, string> = {
   claude: 'ClaudeCode',
   opencode: 'OpenCode',
   codex: 'Codex',
-  custom: '自定义',
+  custom: t('projectConfig.custom'),
 }
 
 const DEFAULT_SPECS_DIR = '.yorz/specs'
@@ -47,18 +51,6 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
     })()
   })
 
-  createEffect(() => {
-    if (!props.open) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        props.onClose()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    onCleanup(() => window.removeEventListener('keydown', handler))
-  })
-
   function applyConfig(cfg: ProjectConfig) {
     setKind(cfg.agent.kind)
     if (cfg.agent.kind === 'custom') {
@@ -86,7 +78,7 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
     if (k === 'opencode') return { kind: 'opencode' }
     if (k === 'codex') return { kind: 'codex' }
     const cmd = customCmd().trim()
-    if (!cmd) return { error: '自定义命令的 cmd 不能为空' }
+    if (!cmd) return { error: t('projectConfig.cmdRequired') }
     return { kind: 'custom', cmd, args: parseArgs(customArgs()) }
   }
 
@@ -100,15 +92,15 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
     }
     const dir = specsDir().trim() || DEFAULT_SPECS_DIR
     if (dir.split(/[\\/]/).some((seg) => seg === '..')) {
-      setError('spec 目录不能包含 ".." 段')
+      setError(t('projectConfig.invalidPath'))
       return
     }
     setBusy(true)
     try {
       await api.updateProjectConfig(props.projectId, { agent, specsDir: dir })
-      let msg = '配置已保存'
+      let msg = t('projectConfig.saved')
       if (dir !== initialSpecsDir()) {
-        msg += '。旧 spec 仍在原目录，请手工迁移'
+        msg += t('projectConfig.oldSpecsHint')
       }
       props.onSaved?.(msg)
       props.onClose()
@@ -120,86 +112,84 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
   }
 
   return (
-    <Show when={props.open}>
-      <div class="project-config-backdrop" onMouseDown={props.onClose}>
-        <div
-          class="project-config-dialog"
-          role="dialog"
-          aria-label={`项目配置 · ${props.projectName}`}
-          onMouseDown={(e) => e.stopPropagation()}
+    <Dialog open={props.open} onOpenChange={(o) => !o && props.onClose()}>
+      <DialogContent class="max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>
+            {t('projectConfig.title')} · {props.projectName}
+          </DialogTitle>
+        </DialogHeader>
+
+        <Show
+          when={!loading()}
+          fallback={<p class="text-sm text-muted-foreground">{t('common.loading')}</p>}
         >
-          <header>
-            <strong>项目配置 · {props.projectName}</strong>
-          </header>
-
-          <Show when={!loading()} fallback={<p class="muted">加载中…</p>}>
-            <form onSubmit={submit}>
-              <fieldset class="kind-group">
-                <legend>Agent</legend>
-                {(['claude', 'opencode', 'codex', 'custom'] as const).map((k) => (
-                  <label class="kind-option">
-                    <input
-                      type="radio"
-                      name="project-config-agent"
-                      value={k}
-                      checked={kind() === k}
-                      onChange={() => setKind(k)}
-                      disabled={busy()}
-                    />
-                    <span>{KIND_LABEL[k]}</span>
-                  </label>
-                ))}
-              </fieldset>
-
-              <Show when={kind() === 'custom'}>
-                <label class="field">
-                  <span>命令 (cmd)</span>
+          <form onSubmit={submit} class="flex flex-col gap-4">
+            <fieldset class="m-0 flex flex-wrap gap-2 border-0 p-0">
+              <legend class="mb-1.5 text-sm font-medium">{t('projectConfig.agent')}</legend>
+              {(['claude', 'opencode', 'codex', 'custom'] as const).map((k) => (
+                <label class="flex cursor-pointer items-center gap-1.5 text-sm">
                   <input
-                    type="text"
-                    value={customCmd()}
-                    onInput={(e) => setCustomCmd(e.currentTarget.value)}
-                    placeholder="例如：/usr/local/bin/my-agent"
+                    type="radio"
+                    name="project-config-agent"
+                    value={k}
+                    checked={kind() === k}
+                    onChange={() => setKind(k)}
                     disabled={busy()}
                   />
+                  <span>{KIND_LABEL[k]}</span>
                 </label>
-                <label class="field">
-                  <span>参数 (args，空格分隔)</span>
-                  <input
-                    type="text"
-                    value={customArgs()}
-                    onInput={(e) => setCustomArgs(e.currentTarget.value)}
-                    placeholder="--flag value"
-                    disabled={busy()}
-                  />
-                </label>
-              </Show>
+              ))}
+            </fieldset>
 
-              <label class="field">
-                <span>spec 文档目录</span>
-                <input
+            <Show when={kind() === 'custom'}>
+              <label class="flex flex-col gap-1 text-sm font-medium">
+                <span>{t('projectConfig.cmd')}</span>
+                <Input
                   type="text"
-                  value={specsDir()}
-                  onInput={(e) => setSpecsDir(e.currentTarget.value)}
-                  placeholder={DEFAULT_SPECS_DIR}
+                  value={customCmd()}
+                  onInput={(e) => setCustomCmd(e.currentTarget.value)}
+                  placeholder={t('projectConfig.cmdPlaceholder')}
                   disabled={busy()}
                 />
-                <small class="muted">相对项目根路径，不存在时会自动创建</small>
               </label>
+              <label class="flex flex-col gap-1 text-sm font-medium">
+                <span>{t('projectConfig.args')}</span>
+                <Input
+                  type="text"
+                  value={customArgs()}
+                  onInput={(e) => setCustomArgs(e.currentTarget.value)}
+                  placeholder="--flag value"
+                  disabled={busy()}
+                />
+              </label>
+            </Show>
 
-              {error() && <p class="error">{error()}</p>}
+            <label class="flex flex-col gap-1 text-sm font-medium">
+              <span>{t('projectConfig.specsDir')}</span>
+              <Input
+                type="text"
+                value={specsDir()}
+                onInput={(e) => setSpecsDir(e.currentTarget.value)}
+                placeholder={DEFAULT_SPECS_DIR}
+                disabled={busy()}
+              />
+              <span class="text-xs text-muted-foreground">{t('projectConfig.specsDirHint')}</span>
+            </label>
 
-              <div class="actions">
-                <button type="button" onClick={props.onClose} disabled={busy()}>
-                  取消
-                </button>
-                <button type="submit" class="primary-action" disabled={busy()}>
-                  {busy() ? '保存中…' : '保存'}
-                </button>
-              </div>
-            </form>
-          </Show>
-        </div>
-      </div>
-    </Show>
+            {error() && <p class="text-sm text-destructive">{error()}</p>}
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={props.onClose} disabled={busy()}>
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit" disabled={busy()}>
+                {busy() ? t('common.saving') : t('projectConfig.save')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Show>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -1,5 +1,7 @@
 import { Show, type Component } from 'solid-js'
 import type { SelectionSnapshot } from '../lib/selection.js'
+import { Button } from './ui/button.jsx'
+import { t } from '../i18n/index.js'
 
 interface Props {
   snap: SelectionSnapshot | null
@@ -27,19 +29,19 @@ export const SelectionMenu: Component<Props> = (props) => {
         const p = position()
         return (
           <div
-            class="selection-menu"
+            class="selection-menu fixed z-50 flex gap-1 rounded-md border bg-popover p-1 shadow-md"
             style={{
               top: `${p.top}px`,
               left: `${p.left}px`,
             }}
             onMouseDown={(e) => e.preventDefault()}
           >
-            <button type="button" onClick={() => props.onAnnotate(snap())}>
-              批注
-            </button>
-            <button type="button" onClick={() => props.onExplain(snap())}>
-              解释
-            </button>
+            <Button variant="ghost" size="sm" onClick={() => props.onAnnotate(snap())}>
+              {t('selectionMenu.annotate')}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => props.onExplain(snap())}>
+              {t('selectionMenu.explain')}
+            </Button>
           </div>
         )
       }}

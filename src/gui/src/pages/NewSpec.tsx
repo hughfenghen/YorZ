@@ -1,15 +1,15 @@
 import { For, Show, createEffect, createSignal, onCleanup, type Component } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
+import { X, Upload, Loader2 } from 'lucide-solid'
 import { api, type AttachmentKind, type AttachmentMeta, type CreateSpecBody } from '../lib/api.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
 import { subscribeSpecsList } from '../lib/sse.js'
 import { agentTasks } from '../lib/agent-tasks.js'
-
-const TYPES: { value: CreateSpecBody['type']; label: string; hint: string }[] = [
-  { value: 'feat', label: 'feat', hint: '新功能' },
-  { value: 'refct', label: 'refct', hint: '重构 / 抽取' },
-  { value: 'fix', label: 'fix', hint: '修复缺陷' },
-]
+import { Button } from '../components/ui/button.jsx'
+import { Textarea } from '../components/ui/textarea.jsx'
+import { Input } from '../components/ui/input.jsx'
+import { Checkbox, CheckboxControl, CheckboxLabel } from '../components/ui/checkbox.jsx'
+import { t } from '../i18n/index.js'
 
 const ACCEPT_MIME = 'image/*,application/pdf,text/plain,text/markdown,.md,.txt,.markdown'
 const MAX_FILE_SIZE = 5 * 1024 * 1024
@@ -52,6 +52,12 @@ function inferMimeIfMissing(file: File): File {
 function uid(): string {
   return Math.random().toString(36).slice(2, 8)
 }
+
+const TYPES: { value: CreateSpecBody['type']; labelKey: string; hintKey: string }[] = [
+  { value: 'feat', labelKey: 'newSpec.typeFeat', hintKey: 'newSpec.typeFeatHint' },
+  { value: 'refct', labelKey: 'newSpec.typeRefct', hintKey: 'newSpec.typeRefctHint' },
+  { value: 'fix', labelKey: 'newSpec.typeFix', hintKey: 'newSpec.typeFixHint' },
+]
 
 export const NewSpec: Component = () => {
   const navigate = useNavigate()
@@ -97,7 +103,7 @@ export const NewSpec: Component = () => {
     if (!task) return
     if (task.status === 'failed') {
       setPhase('failed')
-      setError(task.error ?? 'Agent 运行失败')
+      setError(task.error ?? t('newSpec.agentRunFailed'))
       cleanupList?.()
       cleanupList = null
     }
@@ -138,7 +144,7 @@ export const NewSpec: Component = () => {
     const current = attachments()
     const room = MAX_COUNT - current.length
     if (room <= 0) {
-      setError(`附件总数不能超过 ${MAX_COUNT} 个`)
+      setError(t('newSpec.attachmentLimit', { max: MAX_COUNT }))
       return
     }
     const accepted: DraftAttachment[] = []
@@ -146,15 +152,15 @@ export const NewSpec: Component = () => {
       const file = inferMimeIfMissing(rawFile)
       const kind = classifyFile(file)
       if (!kind) {
-        setError(`不支持的文件类型：${file.name}`)
+        setError(t('newSpec.unsupportedType', { name: file.name }))
         continue
       }
       if (kind !== 'image' && !ALLOWED_MIMES.has(file.type)) {
-        setError(`不支持的 MIME：${file.type || '(未知)'}`)
+        setError(t('newSpec.unsupportedMime', { mime: file.type || '(unknown)' }))
         continue
       }
       if (file.size > MAX_FILE_SIZE) {
-        setError(`${file.name} 超过 5 MB 限制`)
+        setError(t('newSpec.fileTooLarge', { name: file.name }))
         continue
       }
       const id = `att-${Date.now()}-${uid()}`
@@ -170,7 +176,9 @@ export const NewSpec: Component = () => {
     }
     if (accepted.length === 0) return
     if (files.length > room) {
-      setError(`只能再添加 ${room} 个附件（当前 ${current.length}/${MAX_COUNT}）`)
+      setError(
+        t('newSpec.attachmentRoomLimit', { room, current: current.length, max: MAX_COUNT }),
+      )
     }
     for (const att of accepted) pushAttachment(att)
     try {
@@ -213,14 +221,10 @@ export const NewSpec: Component = () => {
     for (const item of Array.from(items)) {
       if (item.kind === 'file' && item.type.startsWith('image/')) {
         const f = item.getAsFile()
-        if (f) {
-          // Some browsers name the pasted file "image.png"; keep that — backend rewrites placeholders.
-          imgs.push(f)
-        }
+        if (f) imgs.push(f)
       }
     }
     if (imgs.length === 0) return
-    // We intentionally do NOT preventDefault on non-image content, so text paste still flows into textarea.
     e.preventDefault()
     await addFiles(imgs)
   }
@@ -329,7 +333,6 @@ export const NewSpec: Component = () => {
         await api.deleteAttachment(projectId(), draftId()!, att.storedName)
       } catch (err) {
         setError((err as Error).message)
-        // Even on backend failure, remove from UI so the user is not stuck.
       }
     }
     removeAttachmentLocal(id)
@@ -381,17 +384,17 @@ export const NewSpec: Component = () => {
     setError(null)
     const text = content().trim()
     if (text.length < 5) {
-      setError('请至少输入 5 个字符的需求描述')
+      setError(t('newSpec.descTooShort'))
       return
     }
     const failed = attachments().filter((a) => a.status === 'failed')
     if (failed.length > 0) {
-      setError(`有 ${failed.length} 个附件上传失败，请先移除或重试`)
+      setError(t('newSpec.attachmentFailedCount', { count: failed.length }))
       return
     }
     const pending = attachments().filter((a) => a.status === 'pending')
     if (pending.length > 0) {
-      setError('附件仍在上传中，请稍候')
+      setError(t('newSpec.attachmentUploading'))
       return
     }
     setPhase('creating')
@@ -420,7 +423,7 @@ export const NewSpec: Component = () => {
           projectId: pid,
           mode: 'skill-run',
           specId: `__draft__-${resp.runId}`,
-          specTitle: '（新建 spec 中）',
+          specTitle: t('newSpec.creatingSpec'),
           source: 'draft',
         })
         cleanupList = subscribeSpecsList(pid, () => {
@@ -437,49 +440,60 @@ export const NewSpec: Component = () => {
   }
 
   return (
-    <section class="page">
-      <header class="page-head">
-        <h1>新建 spec</h1>
-        <p class="muted">
-          只需选择类型与录入需求内容；文件名、概要、初始骨架由 Agent 根据需求生成，Agent
-          创建完文档后会自动进入 plan 阶段。
-        </p>
+    <section class="flex min-h-0 flex-1 flex-col gap-4 p-4">
+      <header class="flex items-center justify-between">
+        <h1 class="m-0 text-xl">{t('newSpec.title')}</h1>
       </header>
-      <form class="form" onSubmit={submit}>
-        <fieldset class="type-group" disabled={busy()}>
-          <legend>类型</legend>
-          {TYPES.map((t) => (
-            <label class={`type-pill ${type() === t.value ? 'active' : ''}`}>
+      <p class="text-sm text-muted-foreground">{t('newSpec.description')}</p>
+
+      <form class="flex flex-col gap-4 rounded-xl border bg-card p-4" onSubmit={submit}>
+        <fieldset
+          class="m-0 flex flex-wrap gap-2 border-0 p-0"
+          disabled={busy()}
+        >
+          <legend class="mb-1.5 font-medium">{t('newSpec.type')}</legend>
+          {TYPES.map((tp) => (
+            <label
+              class={`flex min-h-[44px] flex-1 cursor-pointer flex-col items-start gap-0.5 rounded-lg border p-3 transition-colors ${
+                type() === tp.value
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border bg-background'
+              }`}
+            >
               <input
                 type="radio"
                 name="type"
-                value={t.value}
-                checked={type() === t.value}
-                onChange={() => setType(t.value)}
+                value={tp.value}
+                checked={type() === tp.value}
+                onChange={() => setType(tp.value)}
                 disabled={busy()}
+                class="hidden"
               />
-              <strong>{t.label}</strong>
-              <span class="muted">{t.hint}</span>
+              <strong class="text-sm">{t(tp.labelKey)}</strong>
+              <span class="text-xs text-muted-foreground">{t(tp.hintKey)}</span>
             </label>
           ))}
         </fieldset>
-        <label class="worktree-toggle">
-          <input
-            type="checkbox"
-            checked={useWorktree()}
-            onChange={(e) => setUseWorktree(e.currentTarget.checked)}
-            disabled={busy()}
-          />
-          <span>新开项目并行</span>
-          <span class="muted">
-            以 git worktree
-            形式开新分支并行开发，避免与主项目互相干扰；合并将通过列表页『合入主项目』按钮一键完成。
+
+        <Checkbox
+          checked={useWorktree()}
+          onChange={(v) => setUseWorktree(v)}
+          disabled={busy()}
+          class="flex flex-wrap items-center gap-2"
+        >
+          <CheckboxControl />
+          <CheckboxLabel class="text-sm font-medium">
+            {t('newSpec.parallelWorktree')}
+          </CheckboxLabel>
+          <span class="text-xs text-muted-foreground">
+            {t('newSpec.parallelWorktreeDesc')}
           </span>
-        </label>
-        <label>
-          <span>需求内容</span>
-          <div class="mention-container">
-            <textarea
+        </Checkbox>
+
+        <label class="flex flex-col gap-1.5 font-medium">
+          <span>{t('newSpec.requirement')}</span>
+          <div class="relative w-full">
+            <Textarea
               ref={textareaEl}
               rows={10}
               value={content()}
@@ -490,19 +504,24 @@ export const NewSpec: Component = () => {
               onKeyDown={onTextareaKeyDown}
               onBlur={() => setTimeout(() => closeMention(), 150)}
               onPaste={onPaste}
-              placeholder="原始诉求、痛点、期望效果、关联文档/模块（可使用 @ 引用）"
+              placeholder={t('newSpec.requirementPlaceholder')}
               required
               autofocus
               disabled={busy()}
+              class="resize-y"
             />
             <Show when={mentionOpen() && mentionItems().length > 0}>
-              <ul class="mention-dropdown">
+              <ul class="absolute bottom-full left-0 right-0 z-[100] m-0 max-h-60 list-none overflow-y-auto rounded-lg border bg-card py-1 shadow-lg">
                 <For each={mentionItems()}>
                   {(item, i) => (
                     <li ref={(el) => (itemRefs[i()] = el)}>
                       <button
                         type="button"
-                        class={`mention-item ${mentionIndex() === i() ? 'active' : ''}`}
+                        class={`block w-full overflow-hidden whitespace-nowrap border-0 bg-transparent px-3 py-1.5 text-left text-sm text-ellipsis ${
+                          mentionIndex() === i()
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-foreground'
+                        }`}
                         onMouseEnter={() => setMentionIndex(i())}
                         onMouseDown={(e) => {
                           e.preventDefault()
@@ -518,20 +537,23 @@ export const NewSpec: Component = () => {
             </Show>
           </div>
         </label>
-        <section class="attachments" onPaste={onPaste}>
-          <div class="attachments-head">
-            <span class="attachments-title">附件</span>
-            <span class="muted">
-              共 {attachments().length}/{MAX_COUNT}，单文件 ≤ 5 MB；图片支持 Cmd/Ctrl-V 粘贴
+
+        <section class="flex flex-col gap-2.5 rounded-lg border border-dashed bg-card p-3" onPaste={onPaste}>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <span class="font-semibold">{t('newSpec.attachments')}</span>
+            <span class="text-xs text-muted-foreground">
+              {t('newSpec.attachmentsHint', { count: attachments().length, max: MAX_COUNT })}
             </span>
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               type="button"
-              class="ghost"
               onClick={() => fileInputEl?.click()}
               disabled={busy() || attachments().length >= MAX_COUNT}
             >
-              导入附件
-            </button>
+              <Upload class="mr-1 h-3.5 w-3.5" />
+              {t('newSpec.importAttachment')}
+            </Button>
             <input
               ref={fileInputEl}
               type="file"
@@ -542,40 +564,47 @@ export const NewSpec: Component = () => {
             />
           </div>
           <Show when={attachments().length > 0}>
-            <ul class="attachment-list">
+            <ul class="m-0 grid list-none gap-2 [grid-template-columns:repeat(auto-fill,minmax(180px,1fr))]">
               <For each={attachments()}>
                 {(att) => (
-                  <li class={`attachment-item kind-${att.kind} status-${att.status}`}>
-                    <div class="attachment-thumb">
+                  <li
+                    class={`grid items-center gap-2 rounded-lg border bg-background p-2 [grid-template-columns:56px_1fr_auto] ${
+                      att.status === 'pending' ? 'opacity-75' : ''
+                    } ${att.status === 'failed' ? 'border-destructive' : ''}`}
+                  >
+                    <div class="flex h-14 w-14 items-center justify-center overflow-hidden rounded-md bg-card">
                       <Show
                         when={att.kind === 'image' && att.previewUrl}
                         fallback={
-                          <span class="attachment-icon" aria-hidden="true">
+                          <span class="rounded border border-border bg-background px-1 py-0.5 text-xs font-bold text-muted-foreground">
                             {att.kind === 'pdf' ? 'PDF' : 'TXT'}
                           </span>
                         }
                       >
-                        <img src={att.previewUrl} alt={att.name} />
+                        <img
+                          src={att.previewUrl}
+                          alt={att.name}
+                          class="h-full w-full object-cover"
+                        />
                       </Show>
                     </div>
-                    <div class="attachment-meta">
+                    <div class="flex min-w-0 flex-col">
                       <Show
                         when={renamingId() === att.id}
                         fallback={
                           <button
                             type="button"
-                            class="attachment-name"
+                            class="cursor-pointer overflow-hidden whitespace-nowrap border-0 bg-transparent p-0 text-left text-ellipsis hover:underline disabled:cursor-default"
                             onClick={() => beginRename(att)}
                             disabled={busy() || att.status !== 'uploaded'}
-                            title="点击重命名"
+                            title={t('newSpec.clickToRename')}
                           >
                             {att.name}
                           </button>
                         }
                       >
-                        <input
+                        <Input
                           type="text"
-                          class="attachment-rename"
                           value={renameDraft()}
                           autofocus
                           onInput={(e) => setRenameDraft(e.currentTarget.value)}
@@ -588,39 +617,48 @@ export const NewSpec: Component = () => {
                               setRenamingId(null)
                             }
                           }}
+                          class="h-7 py-0.5 text-xs"
                         />
                       </Show>
-                      <span class="attachment-status muted">
-                        <Show when={att.status === 'pending'}>上传中…</Show>
-                        <Show when={att.status === 'failed'}>失败：{att.error}</Show>
+                      <span class="text-xs text-muted-foreground">
+                        <Show when={att.status === 'pending'}>
+                          <Loader2 class="mr-0.5 inline h-3 w-3 animate-spin" />
+                          {t('newSpec.uploading')}
+                        </Show>
+                        <Show when={att.status === 'failed'}>
+                          {t('newSpec.uploadFailed', { error: att.error })}
+                        </Show>
                         <Show when={att.status === 'uploaded'}>
                           {Math.round(att.file.size / 1024)} KB · {att.kind}
                         </Show>
                       </span>
                     </div>
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       type="button"
-                      class="attachment-remove ghost"
+                      class="h-7 w-7"
                       onClick={() => void removeAttachment(att.id)}
                       disabled={busy()}
-                      aria-label={`删除 ${att.name}`}
+                      aria-label={t('newSpec.deleteAttachment', { name: att.name })}
                     >
-                      ×
-                    </button>
+                      <X class="h-3.5 w-3.5" />
+                    </Button>
                   </li>
                 )}
               </For>
             </ul>
           </Show>
         </section>
-        {error() && <p class="error">{error()}</p>}
-        <button type="submit" class="primary-action" disabled={busy()}>
-          {busy() ? 'Agent 创建中…' : '创建并启动 Agent'}
-        </button>
+
+        {error() && <p class="text-sm text-destructive">{error()}</p>}
+
+        <Button type="submit" variant="default" disabled={busy()}>
+          {busy() ? t('newSpec.creating') : t('newSpec.createAndStart')}
+        </Button>
+
         {busy() && (
-          <p class="muted">
-            Agent 正在创建 spec 文档…可在右下角 Agent 面板查看流式输出，文档落地后将自动跳转。
-          </p>
+          <p class="text-sm text-muted-foreground">{t('newSpec.creatingHint')}</p>
         )}
       </form>
     </section>

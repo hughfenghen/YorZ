@@ -1,5 +1,8 @@
 import { createSignal, Show, type Component } from 'solid-js'
 import type { SelectionSnapshot } from '../lib/selection.js'
+import { Button } from './ui/button.jsx'
+import { Textarea } from './ui/textarea.jsx'
+import { t } from '../i18n/index.js'
 
 interface Props {
   open: boolean
@@ -65,7 +68,7 @@ export const AnnotatePopover: Component<Props> = (props) => {
             }
           })
         }}
-        class="annotate-popover"
+        class="fixed z-[60] flex max-h-[calc(100vh-16px)] flex-col gap-2.5 overflow-auto rounded-lg border bg-card p-3.5 shadow-xl"
         style={{
           top: `${position().top}px`,
           left: `${position().left}px`,
@@ -73,28 +76,29 @@ export const AnnotatePopover: Component<Props> = (props) => {
         }}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <header>
-          <strong>批注</strong>
+        <header class="flex flex-col gap-0.5">
+          <strong>{t('annotate.title')}</strong>
         </header>
-        <blockquote class="quote">
-          <em>{props.snap?.sectionPath}</em> 中 “{(props.snap?.text ?? '').slice(0, 200)}”
+        <blockquote class="m-0 border-l-2 border-border bg-background px-2.5 py-1.5 text-[0.9em] text-muted-foreground">
+          <em>{props.snap?.sectionPath}</em> {t('annotate.inSection')} "{(props.snap?.text ?? '').slice(0, 200)}"
         </blockquote>
         <form onSubmit={submit}>
-          <textarea
+          <Textarea
             rows={3}
             value={note()}
             onInput={(e) => setNote(e.currentTarget.value)}
-            placeholder="写下你对这段文本的批注…"
+            placeholder={t('annotate.placeholder')}
+            class="resize-y min-h-[64px]"
             autofocus
           />
-          {error() && <p class="error">{error()}</p>}
-          <div class="actions">
-            <button type="button" onClick={props.onCancel}>
-              取消
-            </button>
-            <button type="submit" class="primary-action" disabled={busy()}>
-              {busy() ? '提交中…' : '提交批注'}
-            </button>
+          {error() && <p class="text-destructive text-sm">{error()}</p>}
+          <div class="flex justify-end gap-2">
+            <Button variant="outline" type="button" onClick={props.onCancel}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="default" type="submit" disabled={busy()}>
+              {busy() ? t('common.submitting') : t('annotate.submit')}
+            </Button>
           </div>
         </form>
       </div>
