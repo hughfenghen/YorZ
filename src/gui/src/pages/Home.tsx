@@ -140,7 +140,7 @@ export const Home: Component = () => {
       <Show when={current()?.worktree}>
         <div class="mt-2 flex flex-wrap items-center gap-3">
           <div class="flex items-center gap-2">
-            <span class="text-sm text-muted-foreground">
+            <span class=" text-muted-foreground">
               {t('home.mainProject')}
               {current()!.worktree!.mainPath.split('/').filter(Boolean).pop() ??
                 current()!.worktree!.mainPath}
@@ -157,16 +157,16 @@ export const Home: Component = () => {
             {merging() ? t('home.merging') : t('home.mergeToMain')}
           </Button>
           <Show when={!mainReachable()}>
-            <span class="text-sm text-muted-foreground">{t('home.mainUnreachable')}</span>
+            <span class=" text-muted-foreground">{t('home.mainUnreachable')}</span>
           </Show>
           <Show when={mergeError()}>
-            <span class="text-sm text-destructive">{mergeError()}</span>
+            <span class=" text-destructive">{mergeError()}</span>
           </Show>
         </div>
       </Show>
 
       <Suspense
-        fallback={<p class="text-sm text-muted-foreground">{t('common.loading')}</p>}
+        fallback={<p class=" text-muted-foreground">{t('common.loading')}</p>}
       >
         <Show
           when={(specs() ?? []).length > 0}
@@ -188,7 +188,7 @@ export const Home: Component = () => {
                     href={projectHref(`specs/${encodeURIComponent(spec.id)}`)}
                     class="block p-4"
                   >
-                    <div class="flex items-center justify-between text-xs text-muted-foreground">
+                    <div class="flex items-center justify-between text-sm text-muted-foreground">
                       <Badge
                         class={`border-transparent ${STAGE_BG[spec.stage] ?? 'bg-muted'} text-white uppercase`}
                       >
@@ -199,10 +199,10 @@ export const Home: Component = () => {
                     <h2 class="my-1.5 text-base font-semibold">
                       {spec.title || t('common.pendingAgent')}
                     </h2>
-                    <p class="m-0 mb-2 text-sm text-muted-foreground">
+                    <p class="m-0 mb-2 text-muted-foreground">
                       {spec.summary || t('common.pendingAgent')}
                     </p>
-                    <code class="font-mono text-xs text-muted-foreground">{spec.id}</code>
+                    <code class="font-mono text-sm text-muted-foreground">{spec.id}</code>
                   </A>
 
                   <div class="absolute right-1.5 top-1.5 z-[2] opacity-0 transition-opacity group-hover:opacity-100">
@@ -247,7 +247,7 @@ export const Home: Component = () => {
             <DialogTitle>{t('home.confirmDeleteSpec')}</DialogTitle>
           </DialogHeader>
           <Show when={deleteError()}>
-            <p class="text-sm text-destructive">{deleteError()}</p>
+            <p class=" text-destructive">{deleteError()}</p>
           </Show>
           <DialogFooter>
             <Button

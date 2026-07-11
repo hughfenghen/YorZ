@@ -73,7 +73,7 @@ export const DialogDescription = <T extends ValidComponent = 'p'>(
 ) => {
   const [local, rest] = splitProps(props as dialogDescriptionProps, ['class'])
   return (
-    <DialogPrimitive.Description class={cn('text-sm text-muted-foreground', local.class)} {...rest} />
+    <DialogPrimitive.Description class={cn(' text-muted-foreground', local.class)} {...rest} />
   )
 }
 

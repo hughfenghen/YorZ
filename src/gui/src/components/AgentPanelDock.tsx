@@ -114,10 +114,10 @@ const AgentTaskCard: Component<{ task: AgentTask }> = (props) => {
         >
           <ChevronDown class="h-4 w-4 shrink-0 text-muted-foreground" />
         </Show>
-        <span class={`text-xs font-medium ${SOURCE_COLOR[props.task.source]}`}>
+        <span class={`text-sm font-medium ${SOURCE_COLOR[props.task.source]}`}>
           {t(SOURCE_KEY[props.task.source])}
         </span>
-        <span class="flex-1 truncate text-sm">
+        <span class="flex-1 truncate ">
           <Show
             when={!isDraft()}
             fallback={
@@ -135,7 +135,7 @@ const AgentTaskCard: Component<{ task: AgentTask }> = (props) => {
             </A>
           </Show>
         </span>
-        <span class={`text-xs font-medium ${STATUS_COLOR[props.task.status]}`}>
+        <span class={`text-sm font-medium ${STATUS_COLOR[props.task.status]}`}>
           {t(STATUS_KEY[props.task.status])}
         </span>
         <Show when={props.task.status === 'streaming' || props.task.status === 'pending'}>
@@ -154,7 +154,7 @@ const AgentTaskCard: Component<{ task: AgentTask }> = (props) => {
         <pre
           ref={bodyRef}
           onScroll={onScroll}
-          class="m-0 max-h-48 overflow-auto bg-background p-2 font-mono text-xs whitespace-pre-wrap border-t"
+          class="m-0 max-h-48 overflow-auto bg-background p-2 font-mono text-sm whitespace-pre-wrap border-t"
         >
           <Show
             when={props.task.output}
@@ -168,12 +168,12 @@ const AgentTaskCard: Component<{ task: AgentTask }> = (props) => {
           </Show>
         </pre>
         <Show when={props.task.status === 'pending'}>
-          <div class="px-2 py-1 text-xs text-muted-foreground">
+          <div class="px-2 py-1 text-sm text-muted-foreground">
             {t('agentDock.creatingNew')}
           </div>
         </Show>
         <Show when={props.task.status === 'failed' && props.task.error}>
-          <div class="px-2 py-1 text-xs text-destructive">
+          <div class="px-2 py-1 text-sm text-destructive">
             {props.task.error}
           </div>
         </Show>
@@ -238,11 +238,11 @@ export const AgentPanelDock: Component = () => {
             >
               <ChevronUp class="h-4 w-4 text-muted-foreground" />
             </Show>
-            <span class="text-sm font-semibold">{t('agentDock.title')}</span>
+            <span class=" font-semibold">{t('agentDock.title')}</span>
           </button>
 
           <div class="flex items-center gap-2">
-            <div class="flex items-center gap-0.5 text-xs text-muted-foreground">
+            <div class="flex items-center gap-0.5 text-sm text-muted-foreground">
               <span class="font-semibold text-primary">{runningCount()}</span>
               <span class="text-muted-foreground/50">/</span>
               <span class="text-green-600">{doneCount()}</span>

@@ -11,8 +11,8 @@ import {
   onMount,
   type Component,
 } from 'solid-js'
-import { A, useParams } from '@solidjs/router'
-import { ArrowLeft, Loader2 } from 'lucide-solid'
+import { useParams } from '@solidjs/router'
+import { Loader2 } from 'lucide-solid'
 import { api, type GitOpsAction, type GitChange } from '../lib/api.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
 import { renderMarkdown } from '../lib/markdown.js'
@@ -21,6 +21,7 @@ import { subscribeChanges } from '../lib/sse.js'
 import { Button } from '../components/ui/button.jsx'
 import { Textarea } from '../components/ui/textarea.jsx'
 import { Separator } from '../components/ui/separator.jsx'
+import { Breadcrumb } from '../components/Breadcrumb.jsx'
 import { t } from '../i18n/index.js'
 
 type ActionKind = 'review' | GitOpsAction
@@ -268,20 +269,19 @@ export const SpecReview: Component = () => {
     <section class="flex min-h-0 flex-1 flex-col gap-4 p-4">
       <Suspense fallback={<p class="text-muted-foreground">{t('common.loading')}</p>}>
         <header class="flex items-start justify-between">
-          <div>
-            <A
-              class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-              href={projectHref(`specs/${params.id}`)}
-            >
-              <ArrowLeft class="h-4 w-4" />
-              {t('review.backToSpec')}
-            </A>
-            <h1 class="m-0 text-xl">{t('review.heading', { id: params.id })}</h1>
-            <p class="text-sm text-muted-foreground">
+          <div class="flex flex-col gap-1">
+            <Breadcrumb
+              items={[
+                { label: t('breadcrumb.specList'), href: projectHref('') },
+                { label: params.id, href: projectHref(`specs/${params.id}`) },
+                { label: t('specDetail.review') },
+              ]}
+            />
+            <p class=" text-muted-foreground">
               {spec()?.frontmatter.summary || t('common.pendingAgent')}
             </p>
           </div>
-          <div class="text-sm text-muted-foreground">
+          <div class=" text-muted-foreground">
             <Show when={lastReviewTime()}>
               <span>{t('review.lastReview', { time: lastReviewTime() })}</span>
             </Show>
@@ -300,9 +300,7 @@ export const SpecReview: Component = () => {
                 <Show when={buttonLoading('commit')}>
                   <Loader2 class="mr-1 h-3 w-3 animate-spin" />
                 </Show>
-                {buttonLoading('commit')
-                  ? t(LOADING_LABEL_KEY.commit)
-                  : t(IDLE_LABEL_KEY.commit)}
+                {buttonLoading('commit') ? t(LOADING_LABEL_KEY.commit) : t(IDLE_LABEL_KEY.commit)}
               </Button>
               <Button
                 variant="ghost"
@@ -327,9 +325,7 @@ export const SpecReview: Component = () => {
                 <Show when={buttonLoading('stash')}>
                   <Loader2 class="mr-1 h-3 w-3 animate-spin" />
                 </Show>
-                {buttonLoading('stash')
-                  ? t(LOADING_LABEL_KEY.stash)
-                  : t(IDLE_LABEL_KEY.stash)}
+                {buttonLoading('stash') ? t(LOADING_LABEL_KEY.stash) : t(IDLE_LABEL_KEY.stash)}
               </Button>
               <Separator orientation="vertical" class="h-6" />
               <Button
@@ -342,9 +338,7 @@ export const SpecReview: Component = () => {
                 <Show when={buttonLoading('review')}>
                   <Loader2 class="mr-1 h-3 w-3 animate-spin" />
                 </Show>
-                {buttonLoading('review')
-                  ? t(LOADING_LABEL_KEY.review)
-                  : t(IDLE_LABEL_KEY.review)}
+                {buttonLoading('review') ? t(LOADING_LABEL_KEY.review) : t(IDLE_LABEL_KEY.review)}
               </Button>
             </div>
 
@@ -363,7 +357,7 @@ export const SpecReview: Component = () => {
             />
 
             <div class="flex gap-4">
-              <label class="flex cursor-pointer items-center gap-1.5 text-sm">
+              <label class="flex cursor-pointer items-center gap-1.5 ">
                 <input
                   type="radio"
                   name="fileMode"
@@ -373,7 +367,7 @@ export const SpecReview: Component = () => {
                 />
                 {t('review.manualSelect')}
               </label>
-              <label class="flex cursor-pointer items-center gap-1.5 text-sm">
+              <label class="flex cursor-pointer items-center gap-1.5 ">
                 <input
                   type="radio"
                   name="fileMode"
@@ -388,15 +382,10 @@ export const SpecReview: Component = () => {
             <Show when={fileSelectMode() === 'manual' && changes().length > 0}>
               <div class="flex min-h-0 flex-1 flex-col gap-1 overflow-auto rounded-xl border">
                 <div class="sticky top-0 flex items-center gap-2 border-b bg-card px-2 py-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={toggleAll}
-                    disabled={isAnyRunning()}
-                  >
+                  <Button variant="ghost" size="sm" onClick={toggleAll} disabled={isAnyRunning()}>
                     {allSelected() ? t('review.deselectAll') : t('review.selectAll')}
                   </Button>
-                  <span class="text-sm text-muted-foreground">
+                  <span class=" text-muted-foreground">
                     {t('review.fileCount', {
                       selected: selectedPaths().size,
                       total: changes().length,
@@ -405,7 +394,7 @@ export const SpecReview: Component = () => {
                 </div>
                 <For each={changes()}>
                   {(change) => (
-                    <label class="flex cursor-pointer items-center gap-2 px-2 py-0.5 text-sm">
+                    <label class="flex cursor-pointer items-center gap-2 px-2 py-0.5 ">
                       <input
                         type="checkbox"
                         checked={selectedPaths().has(change.path)}
@@ -413,25 +402,25 @@ export const SpecReview: Component = () => {
                         disabled={isAnyRunning()}
                       />
                       <span
-                        class={`inline-block w-6 text-xs font-bold ${STATUS_COLOR[change.status] ?? ''}`}
+                        class={`inline-block w-6 text-center text-sm font-bold ${STATUS_COLOR[change.status] ?? ''}`}
                       >
                         {change.status}
                       </span>
-                      <span class="truncate font-mono text-xs">{change.path}</span>
+                      <span class="truncate font-mono text-sm">{change.path}</span>
                     </label>
                   )}
                 </For>
               </div>
             </Show>
             <Show when={fileSelectMode() === 'manual' && changes().length === 0}>
-              <p class="text-sm text-muted-foreground">{t('review.noChanges')}</p>
+              <p class=" text-muted-foreground">{t('review.noChanges')}</p>
             </Show>
 
             <Show when={error()}>
-              <p class="text-destructive text-sm">{error()}</p>
+              <p class="text-destructive ">{error()}</p>
             </Show>
             <Show when={lastRun()}>
-              <p class="text-sm text-muted-foreground">
+              <p class=" text-muted-foreground">
                 {t('review.dispatched')}
                 {lastRun()!.kind === 'review'
                   ? t('review.reviewChanges')
@@ -448,7 +437,7 @@ export const SpecReview: Component = () => {
                 <Show
                   when={reviewHtml()}
                   fallback={
-                    <div class="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+                    <div class="flex flex-1 items-center justify-center text-muted-foreground">
                       {t('review.noReport')}
                     </div>
                   }

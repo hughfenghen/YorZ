@@ -55,7 +55,7 @@ export const DropdownMenuItem = <T extends ValidComponent = 'div'>(
   return (
     <DropdownMenuPrimitive.Item
       class={cn(
-        'relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+        'relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         local.inset && 'pl-8',
         local.class,
       )}
@@ -77,5 +77,5 @@ export const DropdownMenuSeparator = <T extends ValidComponent = 'hr'>(
 
 export const DropdownMenuShortcut = (props: ComponentProps<'span'>) => {
   const [local, rest] = splitProps(props, ['class'])
-  return <span class={cn('ml-auto text-xs tracking-widest opacity-60', local.class)} {...rest} />
+  return <span class={cn('ml-auto text-sm tracking-widest opacity-60', local.class)} {...rest} />
 }

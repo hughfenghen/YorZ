@@ -73,7 +73,7 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
       </header>
       <div class="flex min-h-0 flex-1">
         <ProjectsSidebar />
-        <main class="min-w-0 flex-1 overflow-auto">{props.children}</main>
+        <main class="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">{props.children}</main>
       </div>
       <AgentPanelDock />
       <Toaster position="top-center" />

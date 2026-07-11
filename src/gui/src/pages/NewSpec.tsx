@@ -9,6 +9,7 @@ import { Button } from '../components/ui/button.jsx'
 import { Textarea } from '../components/ui/textarea.jsx'
 import { Input } from '../components/ui/input.jsx'
 import { Checkbox, CheckboxControl, CheckboxLabel } from '../components/ui/checkbox.jsx'
+import { Breadcrumb } from '../components/Breadcrumb.jsx'
 import { t } from '../i18n/index.js'
 
 const ACCEPT_MIME = 'image/*,application/pdf,text/plain,text/markdown,.md,.txt,.markdown'
@@ -176,9 +177,7 @@ export const NewSpec: Component = () => {
     }
     if (accepted.length === 0) return
     if (files.length > room) {
-      setError(
-        t('newSpec.attachmentRoomLimit', { room, current: current.length, max: MAX_COUNT }),
-      )
+      setError(t('newSpec.attachmentRoomLimit', { room, current: current.length, max: MAX_COUNT }))
     }
     for (const att of accepted) pushAttachment(att)
     try {
@@ -441,23 +440,23 @@ export const NewSpec: Component = () => {
 
   return (
     <section class="flex min-h-0 flex-1 flex-col gap-4 p-4">
-      <header class="flex items-center justify-between">
-        <h1 class="m-0 text-xl">{t('newSpec.title')}</h1>
+      <header class="flex flex-col gap-1">
+        <Breadcrumb
+          items={[
+            { label: t('breadcrumb.specList'), href: projectHref('') },
+            { label: t('breadcrumb.newSpec') },
+          ]}
+        />
       </header>
-      <p class="text-sm text-muted-foreground">{t('newSpec.description')}</p>
+      <p class=" text-muted-foreground">{t('newSpec.description')}</p>
 
       <form class="flex flex-col gap-4 rounded-xl border bg-card p-4" onSubmit={submit}>
-        <fieldset
-          class="m-0 flex flex-wrap gap-2 border-0 p-0"
-          disabled={busy()}
-        >
+        <fieldset class="m-0 flex flex-wrap gap-2 border-0 p-0" disabled={busy()}>
           <legend class="mb-1.5 font-medium">{t('newSpec.type')}</legend>
           {TYPES.map((tp) => (
             <label
               class={`flex min-h-[44px] flex-1 cursor-pointer flex-col items-start gap-0.5 rounded-lg border p-3 transition-colors ${
-                type() === tp.value
-                  ? 'border-primary bg-primary/10'
-                  : 'border-border bg-background'
+                type() === tp.value ? 'border-primary bg-primary/10' : 'border-border bg-background'
               }`}
             >
               <input
@@ -469,8 +468,8 @@ export const NewSpec: Component = () => {
                 disabled={busy()}
                 class="hidden"
               />
-              <strong class="text-sm">{t(tp.labelKey)}</strong>
-              <span class="text-xs text-muted-foreground">{t(tp.hintKey)}</span>
+              <strong class=" ">{t(tp.labelKey)}</strong>
+              <span class="text-sm text-muted-foreground">{t(tp.hintKey)}</span>
             </label>
           ))}
         </fieldset>
@@ -482,12 +481,10 @@ export const NewSpec: Component = () => {
           class="flex flex-wrap items-center gap-2"
         >
           <CheckboxControl />
-          <CheckboxLabel class="text-sm font-medium">
+          <CheckboxLabel class="cursor-pointer font-medium">
             {t('newSpec.parallelWorktree')}
           </CheckboxLabel>
-          <span class="text-xs text-muted-foreground">
-            {t('newSpec.parallelWorktreeDesc')}
-          </span>
+          <span class="text-sm text-muted-foreground">{t('newSpec.parallelWorktreeDesc')}</span>
         </Checkbox>
 
         <label class="flex flex-col gap-1.5 font-medium">
@@ -517,7 +514,7 @@ export const NewSpec: Component = () => {
                     <li ref={(el) => (itemRefs[i()] = el)}>
                       <button
                         type="button"
-                        class={`block w-full overflow-hidden whitespace-nowrap border-0 bg-transparent px-3 py-1.5 text-left text-sm text-ellipsis ${
+                        class={`block w-full overflow-hidden whitespace-nowrap border-0 bg-transparent px-3 py-1.5 text-left text-ellipsis ${
                           mentionIndex() === i()
                             ? 'bg-primary text-primary-foreground'
                             : 'text-foreground'
@@ -538,10 +535,13 @@ export const NewSpec: Component = () => {
           </div>
         </label>
 
-        <section class="flex flex-col gap-2.5 rounded-lg border border-dashed bg-card p-3" onPaste={onPaste}>
+        <section
+          class="flex flex-col gap-2.5 rounded-lg border border-dashed bg-card p-3"
+          onPaste={onPaste}
+        >
           <div class="flex flex-wrap items-center gap-2.5">
             <span class="font-semibold">{t('newSpec.attachments')}</span>
-            <span class="text-xs text-muted-foreground">
+            <span class="text-sm text-muted-foreground">
               {t('newSpec.attachmentsHint', { count: attachments().length, max: MAX_COUNT })}
             </span>
             <Button
@@ -576,7 +576,7 @@ export const NewSpec: Component = () => {
                       <Show
                         when={att.kind === 'image' && att.previewUrl}
                         fallback={
-                          <span class="rounded border border-border bg-background px-1 py-0.5 text-xs font-bold text-muted-foreground">
+                          <span class="rounded border border-border bg-background px-1 py-0.5 text-sm font-bold text-muted-foreground">
                             {att.kind === 'pdf' ? 'PDF' : 'TXT'}
                           </span>
                         }
@@ -617,10 +617,10 @@ export const NewSpec: Component = () => {
                               setRenamingId(null)
                             }
                           }}
-                          class="h-7 py-0.5 text-xs"
+                          class="h-7 py-0.5 text-sm"
                         />
                       </Show>
-                      <span class="text-xs text-muted-foreground">
+                      <span class="text-sm text-muted-foreground">
                         <Show when={att.status === 'pending'}>
                           <Loader2 class="mr-0.5 inline h-3 w-3 animate-spin" />
                           {t('newSpec.uploading')}
@@ -651,15 +651,13 @@ export const NewSpec: Component = () => {
           </Show>
         </section>
 
-        {error() && <p class="text-sm text-destructive">{error()}</p>}
+        {error() && <p class=" text-destructive">{error()}</p>}
 
         <Button type="submit" variant="default" disabled={busy()}>
           {busy() ? t('newSpec.creating') : t('newSpec.createAndStart')}
         </Button>
 
-        {busy() && (
-          <p class="text-sm text-muted-foreground">{t('newSpec.creatingHint')}</p>
-        )}
+        {busy() && <p class=" text-muted-foreground">{t('newSpec.creatingHint')}</p>}
       </form>
     </section>
   )

@@ -14,6 +14,10 @@ export const zhCN = {
     remove: '移除',
     error: '错误',
   },
+  breadcrumb: {
+    specList: '需求列表',
+    newSpec: '新建 spec',
+  },
   shell: {
     newSpec: '新建 spec',
     languageSwitch: '切换语言',

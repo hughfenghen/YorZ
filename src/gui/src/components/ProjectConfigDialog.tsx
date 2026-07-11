@@ -122,13 +122,13 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
 
         <Show
           when={!loading()}
-          fallback={<p class="text-sm text-muted-foreground">{t('common.loading')}</p>}
+          fallback={<p class=" text-muted-foreground">{t('common.loading')}</p>}
         >
           <form onSubmit={submit} class="flex flex-col gap-4">
             <fieldset class="m-0 flex flex-wrap gap-2 border-0 p-0">
-              <legend class="mb-1.5 text-sm font-medium">{t('projectConfig.agent')}</legend>
+              <legend class="mb-1.5 font-medium">{t('projectConfig.agent')}</legend>
               {(['claude', 'opencode', 'codex', 'custom'] as const).map((k) => (
-                <label class="flex cursor-pointer items-center gap-1.5 text-sm">
+                <label class="flex cursor-pointer items-center gap-1.5 ">
                   <input
                     type="radio"
                     name="project-config-agent"
@@ -143,7 +143,7 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
             </fieldset>
 
             <Show when={kind() === 'custom'}>
-              <label class="flex flex-col gap-1 text-sm font-medium">
+              <label class="flex flex-col gap-1 font-medium">
                 <span>{t('projectConfig.cmd')}</span>
                 <Input
                   type="text"
@@ -153,7 +153,7 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
                   disabled={busy()}
                 />
               </label>
-              <label class="flex flex-col gap-1 text-sm font-medium">
+              <label class="flex flex-col gap-1 font-medium">
                 <span>{t('projectConfig.args')}</span>
                 <Input
                   type="text"
@@ -165,7 +165,7 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
               </label>
             </Show>
 
-            <label class="flex flex-col gap-1 text-sm font-medium">
+            <label class="flex flex-col gap-1 font-medium">
               <span>{t('projectConfig.specsDir')}</span>
               <Input
                 type="text"
@@ -174,10 +174,10 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
                 placeholder={DEFAULT_SPECS_DIR}
                 disabled={busy()}
               />
-              <span class="text-xs text-muted-foreground">{t('projectConfig.specsDirHint')}</span>
+              <span class="text-sm text-muted-foreground">{t('projectConfig.specsDirHint')}</span>
             </label>
 
-            {error() && <p class="text-sm text-destructive">{error()}</p>}
+            {error() && <p class=" text-destructive">{error()}</p>}
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={props.onClose} disabled={busy()}>

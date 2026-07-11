@@ -91,7 +91,7 @@ export const AnnotatePopover: Component<Props> = (props) => {
             class="resize-y min-h-[64px]"
             autofocus
           />
-          {error() && <p class="text-destructive text-sm">{error()}</p>}
+          {error() && <p class="text-destructive ">{error()}</p>}
           <div class="flex justify-end gap-2">
             <Button variant="outline" type="button" onClick={props.onCancel}>
               {t('common.cancel')}
