@@ -36,6 +36,40 @@ export function resolveAgentByName(name: AgentName): AgentCmd {
   return BUILTIN[name]
 }
 
+export type AgentKind = 'claude' | 'codex' | 'opencode'
+
+/**
+ * Resolve which Agent SDK adapter a project uses, from `.yorz/config.json`'s
+ * `agent.kind` (or legacy bare-string `agent`). Defaults to `claude`. Unlike
+ * `resolveAgentCmd` (CLI-spawn, retained only for the test:agent harness), this
+ * feeds the SDK adapter registry used by the Service runtime.
+ */
+export function resolveAgentKind(cwd: string): AgentKind {
+  const path = join(cwd, '.yorz', 'config.json')
+  if (!existsSync(path)) return 'claude'
+  let raw: string
+  try {
+    raw = readFileSync(path, 'utf8')
+  } catch {
+    return 'claude'
+  }
+  if (!raw.trim()) return 'claude'
+  let data: unknown
+  try {
+    data = JSON.parse(raw)
+  } catch {
+    return 'claude'
+  }
+  if (!data || typeof data !== 'object') return 'claude'
+  const agent = (data as { agent?: unknown }).agent
+  if (typeof agent === 'string') {
+    return agent === 'codex' || agent === 'opencode' ? agent : 'claude'
+  }
+  if (!agent || typeof agent !== 'object') return 'claude'
+  const kind = (agent as { kind?: unknown }).kind
+  return kind === 'codex' || kind === 'opencode' ? kind : 'claude'
+}
+
 const BUILTIN: Record<AgentName, AgentCmd> = {
   claude: {
     cmd: 'claude',

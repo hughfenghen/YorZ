@@ -3,7 +3,6 @@ import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TextDecoder } from 'node:util'
-import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
 import { start, type ServeHandle } from '../index.js'
@@ -25,23 +24,17 @@ async function initGitRepoIn(cwd: string): Promise<void> {
   await gitInTmp(cwd, ['commit', '-q', '-m', 'init'])
 }
 
-const FAKE_CLAUDE = fileURLToPath(new URL('./fixtures/fake-claude.js', import.meta.url))
-
 let handle: ServeHandle | null = null
 
 afterEach(async () => {
   await handle?.close()
   handle = null
-  delete process.env.YORZ_AGENT_CMD
 })
 
-async function startInTmp(opts?: { fakeAgent?: boolean }) {
+async function startInTmp() {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-service-'))
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-service-cfg-'))
   await mkdir(join(cwd, '.yorz'), { recursive: true })
-  if (opts?.fakeAgent) {
-    process.env.YORZ_AGENT_CMD = `${process.execPath} ${FAKE_CLAUDE}`
-  }
   handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'projects.json') })
   const list = await handle.registry.list()
   const projectId = list[0]!.id
@@ -109,42 +102,6 @@ describe('YorZ Service HTTP', () => {
     const detail = (await detailRes.json()) as { frontmatter: { stage: string }; body: string }
     expect(detail.frontmatter.stage).toBe('plan')
     expect(detail.body).toContain('requirement body')
-  })
-
-  it('POST /api/specs with only type + requirement returns a draft runId (Agent-created)', async () => {
-    const { apiPrefix } = await startInTmp({ fakeAgent: true })
-    const res = await fetch(`${apiPrefix}/specs`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'feat', requirement: '加上手机号登录支持' }),
-    })
-    expect(res.status).toBe(202)
-    const body = (await res.json()) as { runId?: string; draft?: boolean }
-    expect(body.draft).toBe(true)
-    expect(body.runId).toBeTruthy()
-  })
-
-  it('run-scoped topic streams stdout for a draft run', async () => {
-    const { apiPrefix, apiRoot, projectId } = await startInTmp({ fakeAgent: true })
-    const created = await fetch(`${apiPrefix}/specs`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'feat', requirement: '加上手机号登录支持' }),
-    })
-    expect(created.status).toBe(202)
-    const { runId } = (await created.json()) as { runId: string }
-
-    const { reader, decoder } = await openMultiplex(apiRoot, [
-      `project:${projectId}:run:${runId}`,
-    ])
-    const stdout = await readUntil(
-      reader,
-      decoder,
-      (t) => t.includes('"event":"agent-stdout"'),
-      4000,
-    )
-    expect(stdout).toContain('received prompt')
-    await reader.cancel()
   })
 
   it('specs-list topic emits list-updated when a new spec lands externally', async () => {
@@ -235,130 +192,6 @@ describe('YorZ Service HTTP', () => {
     expect(updated).toContain('"event":"updated"')
 
     await reader.cancel()
-  })
-
-  it('POST /api/specs/:id/run + spec topic delivers agent-stdout and agent-exit', async () => {
-    const { apiPrefix, apiRoot, projectId } = await startInTmp({ fakeAgent: true })
-    const create = await fetch(`${apiPrefix}/specs`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'R', type: 'feat', summary: 'r' }),
-    })
-    const { id } = (await create.json()) as { id: string }
-
-    const { reader, decoder } = await openMultiplex(apiRoot, [
-      `project:${projectId}:spec:${id}`,
-    ])
-    await readUntil(reader, decoder, (t) => t.includes('"event":"ready"'))
-
-    const runRes = await fetch(`${apiPrefix}/specs/${id}/run`, { method: 'POST' })
-    expect(runRes.status).toBe(200)
-    const { runId } = (await runRes.json()) as { runId: string }
-    expect(runId).toBeTruthy()
-
-    const stdout = await readUntil(
-      reader,
-      decoder,
-      (t) => t.includes('"event":"agent-stdout"'),
-      4000,
-    )
-    expect(stdout).toContain('received prompt')
-    const exit = await readUntil(reader, decoder, (t) => t.includes('"event":"agent-exit"'), 4000)
-    expect(exit).toContain('agent-exit')
-
-    await reader.cancel()
-  })
-
-  it('POST /api/specs/:id/explain returns runId and streams stdout', async () => {
-    const { apiPrefix, apiRoot, projectId } = await startInTmp({ fakeAgent: true })
-    const create = await fetch(`${apiPrefix}/specs`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'E', type: 'feat', summary: 'e' }),
-    })
-    const { id } = (await create.json()) as { id: string }
-
-    const { reader, decoder } = await openMultiplex(apiRoot, [
-      `project:${projectId}:spec:${id}`,
-    ])
-    await readUntil(reader, decoder, (t) => t.includes('"event":"ready"'))
-
-    const res = await fetch(`${apiPrefix}/specs/${id}/explain`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text: '解释这一段' }),
-    })
-    expect(res.status).toBe(200)
-    const evt = await readUntil(
-      reader,
-      decoder,
-      (t) => t.includes('"event":"agent-stdout"'),
-      4000,
-    )
-    expect(evt).toContain('"mode":"explain"')
-    await reader.cancel()
-  })
-
-  it('GET /api/runs lists active agent runs and is empty when none active', async () => {
-    const { apiPrefix } = await startInTmp({ fakeAgent: true })
-    const empty = await fetch(`${apiPrefix}/runs`)
-    expect(empty.status).toBe(200)
-    expect(await empty.json()).toEqual([])
-
-    const create = await fetch(`${apiPrefix}/specs`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'L', type: 'feat', summary: 'l' }),
-    })
-    const { id } = (await create.json()) as { id: string }
-    const runRes = await fetch(`${apiPrefix}/specs/${id}/run`, { method: 'POST' })
-    const { runId } = (await runRes.json()) as { runId: string }
-
-    const listed = await fetch(`${apiPrefix}/runs`)
-    expect(listed.status).toBe(200)
-    const items = (await listed.json()) as Array<{
-      runId: string
-      mode: string
-      specId: string
-      startedAt: number
-    }>
-    const match = items.find((r) => r.runId === runId)
-    expect(match).toBeTruthy()
-    expect(match!.specId).toBe(id)
-    expect(match!.mode).toBe('skill-run')
-    expect(typeof match!.startedAt).toBe('number')
-  })
-
-  it('POST /api/runs/:runId/cancel returns 200 for active run and 404 otherwise', async () => {
-    const { apiPrefix } = await startInTmp({ fakeAgent: true })
-    const notFound = await fetch(`${apiPrefix}/runs/no-such-run/cancel`, { method: 'POST' })
-    expect(notFound.status).toBe(404)
-    expect(await notFound.json()).toEqual({ ok: false })
-
-    const create = await fetch(`${apiPrefix}/specs`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'C', type: 'feat', summary: 'c' }),
-    })
-    const { id } = (await create.json()) as { id: string }
-    const runRes = await fetch(`${apiPrefix}/specs/${id}/run`, { method: 'POST' })
-    const { runId } = (await runRes.json()) as { runId: string }
-
-    const cancelRes = await fetch(`${apiPrefix}/runs/${runId}/cancel`, { method: 'POST' })
-    expect(cancelRes.status).toBe(200)
-    expect(await cancelRes.json()).toEqual({ ok: true })
-
-    // The handle should be cleared after exit; subsequent cancel → 404.
-    // Give the child process a moment to actually exit.
-    for (let i = 0; i < 50; i++) {
-      const again = await fetch(`${apiPrefix}/runs/${runId}/cancel`, { method: 'POST' })
-      if (again.status === 404) {
-        expect(await again.json()).toEqual({ ok: false })
-        return
-      }
-      await new Promise((r) => setTimeout(r, 50))
-    }
-    throw new Error('run did not exit within 2.5s after cancel')
   })
 
   it('returns 404 for unknown spec', async () => {

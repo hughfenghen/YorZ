@@ -2,9 +2,10 @@ import { existsSync } from 'node:fs'
 import { isAbsolute, relative, resolve as resolvePath, sep } from 'node:path'
 import { SpecStore } from './spec-store.js'
 import { SpecWatcher } from './watcher.js'
-import { AgentRunner } from './agent.js'
-import { AgentLogStore } from './agent-log-store.js'
 import { AttachmentStore } from './attachment-store.js'
+import { SessionManager } from './session-manager.js'
+import { SessionStore } from './session-store.js'
+import { resolveAgentKind } from './agent-config.js'
 import { ensureSpecsDirExists, loadProjectConfig, resolveSpecsDir } from './project-config.js'
 import {
   addProject,
@@ -26,9 +27,8 @@ export interface ProjectInstance {
   specsDirRelative: string
   store: SpecStore
   watcher: SpecWatcher
-  runner: AgentRunner
+  sessions: SessionManager
   attachments: AttachmentStore
-  agentLogs: AgentLogStore
   /** Stop watchers + free resources. Idempotent. */
   close(): Promise<void>
 }
@@ -176,14 +176,9 @@ export class ProjectRegistry {
       specsDir,
       onWrite: (path, mtime) => watcher.markSelfWrite(path, mtime),
     })
-    const agentLogs = new AgentLogStore({ cwd: input.path })
-    const runner = new AgentRunner({
-      cwd: input.path,
-      projectId: input.id,
-      globalConfigPath: this.globalConfigPath,
-      logStore: agentLogs,
-    })
     const attachments = new AttachmentStore({ cwd: input.path })
+    const sessionStore = new SessionStore(input.path)
+    const sessions = new SessionManager(input.path, resolveAgentKind(input.path), sessionStore)
 
     let closed = false
     const instance: ProjectInstance = {
@@ -193,13 +188,13 @@ export class ProjectRegistry {
       specsDirRelative,
       store,
       watcher,
-      runner,
+      sessions,
       attachments,
-      agentLogs,
       async close() {
         if (closed) return
         closed = true
         await watcher.close()
+        await sessions.dispose().catch(() => {})
       },
     }
 
@@ -207,8 +202,6 @@ export class ProjectRegistry {
       await store.ensureRoot()
       await attachments.ensureRoot()
       void attachments.cleanupExpired().catch(() => {})
-      await agentLogs.ensureRoot()
-      void agentLogs.cleanupExpired().catch(() => {})
       await watcher.start()
     })()
 

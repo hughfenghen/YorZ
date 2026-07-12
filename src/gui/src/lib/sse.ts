@@ -1,37 +1,11 @@
 import type { GitChange } from './api.js'
 
-function projectBase(pid: string): string {
-  return `/api/projects/${encodeURIComponent(pid)}`
-}
-
-export type AgentMode = 'skill-run' | 'explain' | 'review' | 'git-ops'
-export type GitOpsAction = 'commit' | 'discard' | 'stash'
-
-export interface AgentStdoutEvent {
-  runId: string
-  mode: AgentMode
-  specId: string
-  chunk: string
-}
-export interface AgentExitEvent {
-  runId: string
-  mode: AgentMode
-  specId: string
-  code: number | null
-}
-export interface AgentErrorEvent {
-  runId: string
-  mode: AgentMode
-  specId: string
-  message: string
-}
 export interface ServerHeartbeatEvent {
   ts: number
 }
 
 // The unsubscribe function returned by subscribe*() also carries a `readyState`
-// probe so callers (e.g. the agent-tasks watchdog) can tell whether the
-// underlying EventSource is currently OPEN.
+// probe so callers can tell whether the underlying EventSource is currently OPEN.
 export interface SseSubscription {
   (): void
   readyState: () => number
@@ -190,9 +164,6 @@ function makeSubscription(unsubscribe: () => void): SseSubscription {
 
 export interface SpecSubscribeHandlers {
   onUpdated?: () => void
-  onAgentStdout?: (e: AgentStdoutEvent) => void
-  onAgentExit?: (e: AgentExitEvent) => void
-  onAgentError?: (e: AgentErrorEvent) => void
   onServerHeartbeat?: (e: ServerHeartbeatEvent) => void
 }
 
@@ -212,15 +183,6 @@ export function subscribeSpec(
       case 'updated':
         handlers.onUpdated?.()
         break
-      case 'agent-stdout':
-        handlers.onAgentStdout?.(data as AgentStdoutEvent)
-        break
-      case 'agent-exit':
-        handlers.onAgentExit?.(data as AgentExitEvent)
-        break
-      case 'agent-error':
-        handlers.onAgentError?.(data as AgentErrorEvent)
-        break
       case 'server-heartbeat':
         handlers.onServerHeartbeat?.(data as ServerHeartbeatEvent)
         break
@@ -229,39 +191,34 @@ export function subscribeSpec(
   return makeSubscription(unsub)
 }
 
-export interface RunSubscribeHandlers {
-  onAgentStdout?: (e: AgentStdoutEvent) => void
-  onAgentExit?: (e: AgentExitEvent) => void
-  onAgentError?: (e: AgentErrorEvent) => void
+export type SessionEvent =
+  | { type: 'session-started'; sessionId: string }
+  | { type: 'text'; delta: string }
+  | { type: 'tool-use'; name: string; input: unknown }
+  | { type: 'tool-result'; text: string }
+  | { type: 'turn-completed'; usage?: unknown }
+  | { type: 'error'; message: string }
+
+export interface SessionSubscribeHandlers {
+  onEvent?: (e: SessionEvent) => void
   onServerHeartbeat?: (e: ServerHeartbeatEvent) => void
 }
 
-export function subscribeRun(
+export function subscribeSession(
   pid: string,
-  runId: string,
-  handlers: RunSubscribeHandlers,
+  sid: string,
+  handlers: SessionSubscribeHandlers,
 ): SseSubscription {
   if (!pid) {
     const noop = (() => {}) as SseSubscription
     noop.readyState = () => 2
     return noop
   }
-  const topic = `project:${pid}:run:${runId}`
+  const topic = `project:${pid}:session:${sid}`
   const unsub = mux.subscribe(topic, (event, data) => {
-    switch (event) {
-      case 'agent-stdout':
-        handlers.onAgentStdout?.(data as AgentStdoutEvent)
-        break
-      case 'agent-exit':
-        handlers.onAgentExit?.(data as AgentExitEvent)
-        break
-      case 'agent-error':
-        handlers.onAgentError?.(data as AgentErrorEvent)
-        break
-      case 'server-heartbeat':
-        handlers.onServerHeartbeat?.(data as ServerHeartbeatEvent)
-        break
-    }
+    if (event === 'session-msg') handlers.onEvent?.(data as SessionEvent)
+    else if (event === 'server-heartbeat')
+      handlers.onServerHeartbeat?.(data as ServerHeartbeatEvent)
   })
   return makeSubscription(unsub)
 }
@@ -298,32 +255,4 @@ export function subscribeChanges(
     }
   })
   return makeSubscription(unsub)
-}
-
-export interface ActiveRunInfo {
-  runId: string
-  mode: AgentMode
-  specId: string
-  startedAt: number
-  action?: GitOpsAction
-}
-
-export async function fetchActiveRuns(pid: string): Promise<ActiveRunInfo[]> {
-  if (!pid) return []
-  const res = await fetch(`${projectBase(pid)}/runs`)
-  if (!res.ok) return []
-  try {
-    return (await res.json()) as ActiveRunInfo[]
-  } catch {
-    return []
-  }
-}
-
-export async function cancelRun(pid: string, runId: string): Promise<void> {
-  if (!pid) return
-  try {
-    await fetch(`${projectBase(pid)}/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
-  } catch {
-    // network errors / 404 (run already ended) are non-fatal
-  }
 }

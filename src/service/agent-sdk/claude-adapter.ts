@@ -1,0 +1,161 @@
+import { randomUUID } from 'node:crypto'
+import {
+  query,
+  listSessions,
+  getSessionMessages,
+  type Options,
+  type SDKMessage,
+} from '@anthropic-ai/claude-agent-sdk'
+import type {
+  AgentEvent,
+  AgentSdkAdapter,
+  AgentSession,
+  Capabilities,
+  MessagePart,
+  NormalizedMessage,
+  SendOptions,
+  SessionInfo,
+} from './types.js'
+
+interface ContentBlock {
+  type?: string
+  text?: unknown
+  name?: unknown
+  input?: unknown
+  content?: unknown
+}
+
+function blocksFrom(message: unknown): ContentBlock[] {
+  if (!message || typeof message !== 'object') return []
+  const content = (message as { content?: unknown }).content
+  return Array.isArray(content) ? (content as ContentBlock[]) : []
+}
+
+function toolResultText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    let acc = ''
+    for (const c of content) {
+      if (c && typeof c === 'object' && typeof (c as { text?: unknown }).text === 'string') {
+        acc += (c as { text: string }).text
+      } else {
+        acc += JSON.stringify(c)
+      }
+    }
+    return acc
+  }
+  return content == null ? '' : JSON.stringify(content)
+}
+
+class ClaudeSession implements AgentSession {
+  private started = false
+  private ctrl: AbortController | null = null
+  constructor(
+    public id: string,
+    private readonly cwd: string,
+    private readonly isNew: boolean,
+  ) {}
+
+  async *send(prompt: string, opts?: SendOptions): AsyncIterable<AgentEvent> {
+    const ctrl = new AbortController()
+    this.ctrl = ctrl
+    if (opts?.signal) {
+      if (opts.signal.aborted) ctrl.abort()
+      else opts.signal.addEventListener('abort', () => ctrl.abort(), { once: true })
+    }
+    const options: Options = {
+      cwd: this.cwd,
+      permissionMode: 'bypassPermissions',
+      abortController: ctrl,
+    }
+    if (this.isNew && !this.started) options.sessionId = this.id
+    else options.resume = this.id
+
+    try {
+      const q = query({ prompt, options })
+      for await (const msg of q as AsyncIterable<SDKMessage>) {
+        const m = msg as { type: string; session_id?: string; message?: unknown; usage?: unknown }
+        if (!this.started && typeof m.session_id === 'string') {
+          this.started = true
+          if (m.session_id !== this.id) this.id = m.session_id
+          yield { type: 'session-started', sessionId: this.id }
+        }
+        if (m.type === 'assistant') {
+          for (const b of blocksFrom(m.message)) {
+            if (b.type === 'text' && typeof b.text === 'string') {
+              yield { type: 'text', delta: b.text }
+            } else if (b.type === 'tool_use') {
+              yield { type: 'tool-use', name: String(b.name ?? '?'), input: b.input ?? {} }
+            }
+          }
+        } else if (m.type === 'user') {
+          for (const b of blocksFrom(m.message)) {
+            if (b.type === 'tool_result') {
+              yield { type: 'tool-result', text: toolResultText(b.content) }
+            }
+          }
+        } else if (m.type === 'result') {
+          yield { type: 'turn-completed', usage: m.usage }
+        }
+      }
+    } catch (err) {
+      if (ctrl.signal.aborted) return
+      yield { type: 'error', message: err instanceof Error ? err.message : String(err) }
+    } finally {
+      this.started = true
+      this.ctrl = null
+    }
+  }
+
+  abort(): void {
+    this.ctrl?.abort()
+  }
+}
+
+export class ClaudeAdapter implements AgentSdkAdapter {
+  readonly kind = 'claude' as const
+  constructor(private readonly cwd: string) {}
+
+  async createSession(): Promise<AgentSession> {
+    return new ClaudeSession(randomUUID(), this.cwd, true)
+  }
+
+  async resumeSession(id: string): Promise<AgentSession> {
+    return new ClaudeSession(id, this.cwd, false)
+  }
+
+  async listSessions(): Promise<SessionInfo[]> {
+    const infos = await listSessions({ dir: this.cwd })
+    return infos.map((s) => ({
+      id: s.sessionId,
+      title: s.customTitle ?? s.summary ?? s.firstPrompt ?? s.sessionId,
+      kind: this.kind,
+      createdAt: s.lastModified,
+      updatedAt: s.lastModified,
+    }))
+  }
+
+  async getMessages(id: string): Promise<NormalizedMessage[]> {
+    const raw = await getSessionMessages(id, { dir: this.cwd })
+    const out: NormalizedMessage[] = []
+    for (const entry of raw) {
+      if (entry.type !== 'user' && entry.type !== 'assistant') continue
+      const parts: MessagePart[] = []
+      for (const b of blocksFrom(entry.message)) {
+        if (b.type === 'text' && typeof b.text === 'string') {
+          parts.push({ type: 'text', text: b.text })
+        } else if (b.type === 'tool_use') {
+          parts.push({ type: 'tool-use', name: String(b.name ?? '?'), input: b.input ?? {} })
+        } else if (b.type === 'tool_result') {
+          parts.push({ type: 'tool-result', text: toolResultText(b.content) })
+        }
+      }
+      if (parts.length) out.push({ role: entry.type, parts })
+    }
+    return out
+  }
+
+  capabilities(): Capabilities {
+    return { listSessions: true, getMessages: true }
+  }
+}

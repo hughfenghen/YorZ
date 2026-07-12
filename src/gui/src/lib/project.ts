@@ -11,6 +11,15 @@ function initialProjectIdFromUrl(): string {
 
 export { activeProjectId, setActiveProjectId }
 
+// Cross-component request for the Chat panel to switch to a given session id.
+// Pages (spec detail / review / new) call requestChatSession() to make the Chat
+// panel select the spec's dedicated session and render its system rounds.
+const [requestedChatSessionId, setRequestedChatSessionId] = createSignal('')
+export { requestedChatSessionId }
+export function requestChatSession(sessionId: string): void {
+  if (sessionId) setRequestedChatSessionId(sessionId)
+}
+
 /**
  * 响应式取当前 pid：基于 useParams().projectId（SolidRouter 中唯一先于 pushState 同步更新的真相源）。
  * 命令式入口已废弃，所有 project-scoped api / sse 调用需显式传 pid。

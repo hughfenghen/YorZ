@@ -1,8 +1,8 @@
 import { A, useLocation } from '@solidjs/router'
 import { createEffect, type JSX, type ParentComponent } from 'solid-js'
 import { Languages, Check } from 'lucide-solid'
-import { AgentPanelDock } from './components/AgentPanelDock.jsx'
 import { ProjectsSidebar } from './components/ProjectsSidebar.jsx'
+import { ChatPanel } from './components/ChatPanel.jsx'
 import { Button } from './components/ui/button.jsx'
 import {
   DropdownMenu,
@@ -11,8 +11,7 @@ import {
   DropdownMenuItem,
 } from './components/ui/dropdown-menu.jsx'
 import { Toaster } from './components/ui/sonner.jsx'
-import { agentTasks } from './lib/agent-tasks.js'
-import { activeProjectId, setActiveProjectId } from './lib/project.js'
+import { setActiveProjectId } from './lib/project.js'
 import { t, useTranslation } from './i18n/index.js'
 
 export const AppShell: ParentComponent = (props): JSX.Element => {
@@ -28,14 +27,6 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
   createEffect(() => {
     const m = location.pathname.match(/^\/([^/]+)/)
     setActiveProjectId(m && m[1] !== 'api' ? m[1]! : '')
-  })
-
-  const hydratedFor = new Set<string>()
-  createEffect(() => {
-    const pid = activeProjectId()
-    if (!pid || hydratedFor.has(pid)) return
-    hydratedFor.add(pid)
-    void agentTasks.hydrateFromActiveRuns(pid)
   })
 
   return (
@@ -73,9 +64,9 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
       </header>
       <div class="flex min-h-0 flex-1">
         <ProjectsSidebar />
+        <ChatPanel />
         <main class="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">{props.children}</main>
       </div>
-      <AgentPanelDock />
       <Toaster position="top-center" />
     </div>
   )
