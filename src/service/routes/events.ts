@@ -21,7 +21,7 @@ export type { ResolveProject }
 //   project:<pid>:specs
 //   project:<pid>:spec:<specId>
 //   project:<pid>:spec:<specId>:changes
-//   project:<pid>:run:<runId>
+//   project:<pid>:session:<sid>
 //
 // Wire frames:
 //   event: ready            data: { clientId }                 (once, on connect)
@@ -69,19 +69,6 @@ export function createEventsRoutes(
     const topics = Array.isArray(body.topics) ? body.topics.filter((t) => typeof t === 'string') : []
     const result = await hub.syncTopics(clientId, topics)
     return c.json(result)
-  })
-
-  app.get('/projects/:projectId/runs', async (c) => {
-    const project = await resolveProject(c.req.param('projectId'))
-    if (!project) return c.json({ error: 'project not found' }, 404)
-    return c.json(project.runner.listActive())
-  })
-
-  app.post('/projects/:projectId/runs/:runId/cancel', async (c) => {
-    const project = await resolveProject(c.req.param('projectId'))
-    if (!project) return c.json({ error: 'project not found' }, 404)
-    const ok = project.runner.cancel(c.req.param('runId'))
-    return c.json({ ok }, ok ? 200 : 404)
   })
 
   return app

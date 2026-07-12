@@ -1,5 +1,4 @@
 import type { SSEStreamingApi } from 'hono/streaming'
-import type { AgentRunHandle } from './agent.js'
 import { listChanges } from './git.js'
 import type { ProjectInstance, ProjectRegistry } from './project-registry.js'
 import type { RegistryEventBus } from './registry-events.js'
@@ -259,8 +258,8 @@ export class EventsHub {
     if (sm) return this.attachSpecChanges(s, topic, project, sm[1])
     sm = /^spec:([^:]+)$/.exec(rest)
     if (sm) return this.attachSpec(s, topic, project, sm[1])
-    sm = /^run:(.+)$/.exec(rest)
-    if (sm) return this.attachRun(s, topic, project, sm[1])
+    sm = /^session:(.+)$/.exec(rest)
+    if (sm) return this.attachSession(s, topic, project, sm[1])
     throw new Error(`invalid topic: ${topic}`)
   }
 
@@ -290,56 +289,9 @@ export class EventsHub {
     if (!exists) throw new Error('spec not found')
     this.emit(s, topic, 'ready', { id: specId, mtime: exists.mtime })
 
-    const unsubFile = project.watcher.subscribe(specId, (kind, mtime) => {
+    return project.watcher.subscribe(specId, (kind, mtime) => {
       this.emit(s, topic, 'updated', { type: kind, mtime })
     })
-
-    const agentUnsubs: Array<() => void> = []
-    const attachAgent = (handle: AgentRunHandle) => {
-      const buf = handle.buffer()
-      if (buf) {
-        this.emit(s, topic, 'agent-stdout', {
-          runId: handle.id,
-          mode: handle.mode,
-          specId: handle.specId,
-          chunk: buf,
-        })
-      }
-      agentUnsubs.push(
-        handle.onStdout((chunk) => {
-          this.emit(s, topic, 'agent-stdout', {
-            runId: handle.id,
-            mode: handle.mode,
-            specId: handle.specId,
-            chunk,
-          })
-        }),
-        handle.onError((message) => {
-          this.emit(s, topic, 'agent-error', {
-            runId: handle.id,
-            mode: handle.mode,
-            specId: handle.specId,
-            message,
-          })
-        }),
-        handle.onExit((code) => {
-          this.emit(s, topic, 'agent-exit', {
-            runId: handle.id,
-            mode: handle.mode,
-            specId: handle.specId,
-            code,
-          })
-        }),
-      )
-    }
-    for (const h of project.runner.active(specId)) attachAgent(h)
-    const unsubAgent = project.runner.subscribe(specId, attachAgent)
-
-    return () => {
-      unsubFile()
-      unsubAgent()
-      for (const u of agentUnsubs) u()
-    }
   }
 
   private async attachSpecChanges(
@@ -360,42 +312,15 @@ export class EventsHub {
     return unsubscribe
   }
 
-  private attachRun(
+  private attachSession(
     s: Session,
     topic: string,
     project: ProjectInstance,
-    runId: string,
+    sid: string,
   ): () => void {
-    const handle = project.runner.get(runId)
-    if (!handle) throw new Error('run not found or already ended')
-    this.emit(s, topic, 'ready', { runId, mode: handle.mode, specId: handle.specId })
-    const buf = handle.buffer()
-    if (buf) {
-      this.emit(s, topic, 'agent-stdout', {
-        runId,
-        mode: handle.mode,
-        specId: handle.specId,
-        chunk: buf,
-      })
-    }
-    const u1 = handle.onStdout((chunk) => {
-      this.emit(s, topic, 'agent-stdout', { runId, mode: handle.mode, specId: handle.specId, chunk })
+    this.emit(s, topic, 'ready', { sessionId: sid })
+    return project.sessions.subscribe(sid, (ev) => {
+      this.emit(s, topic, 'session-msg', ev)
     })
-    const u2 = handle.onError((message) => {
-      this.emit(s, topic, 'agent-error', {
-        runId,
-        mode: handle.mode,
-        specId: handle.specId,
-        message,
-      })
-    })
-    const u3 = handle.onExit((code) => {
-      this.emit(s, topic, 'agent-exit', { runId, mode: handle.mode, specId: handle.specId, code })
-    })
-    return () => {
-      u1()
-      u2()
-      u3()
-    }
   }
 }

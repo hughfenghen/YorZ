@@ -14,10 +14,9 @@ import {
 import { useParams } from '@solidjs/router'
 import { Loader2 } from 'lucide-solid'
 import { api, type GitOpsAction, type GitChange } from '../lib/api.js'
-import { projectHref, useCurrentProjectId } from '../lib/project.js'
+import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/project.js'
 import { renderMarkdown } from '../lib/markdown.js'
-import { agentTasks } from '../lib/agent-tasks.js'
-import { subscribeChanges } from '../lib/sse.js'
+import { subscribeChanges, subscribeSession } from '../lib/sse.js'
 import { Button } from '../components/ui/button.jsx'
 import { Textarea } from '../components/ui/textarea.jsx'
 import { Separator } from '../components/ui/separator.jsx'
@@ -46,8 +45,6 @@ const IDLE_LABEL_KEY: Record<ActionKind, string> = {
   discard: 'review.discard',
   stash: 'review.stash',
 }
-
-const ALL_KINDS: ActionKind[] = ['review', 'commit', 'discard', 'stash']
 
 const STATUS_COLOR: Record<string, string> = {
   M: 'text-yellow-600',
@@ -80,9 +77,11 @@ export const SpecReview: Component = () => {
   const [busy, setBusy] = createSignal<ActionKind | null>(null)
   const [error, setError] = createSignal<string | null>(null)
   const [lastRun, setLastRun] = createSignal<{ kind: ActionKind; runId: string } | null>(null)
-  const [activeRuns, setActiveRuns] = createSignal<Partial<Record<ActionKind, string>>>({})
+  const [agentKind, setAgentKind] = createSignal<ActionKind | null>(null)
 
   let commitMsgRef: HTMLTextAreaElement | undefined
+  let roundUnsub: (() => void) | null = null
+  onCleanup(() => roundUnsub?.())
 
   function autoResize(el: HTMLTextAreaElement | undefined): void {
     if (!el) return
@@ -133,32 +132,29 @@ export const SpecReview: Component = () => {
   })
 
   function isKindRunning(kind: ActionKind): boolean {
-    const runId = activeRuns()[kind]
-    if (!runId) return false
-    const task = agentTasks.state.tasks[runId]
-    if (!task) return false
-    return task.status === 'pending' || task.status === 'streaming'
+    return agentKind() === kind
   }
-  const runningKind = createMemo<ActionKind | null>(() => {
-    for (const k of ALL_KINDS) if (isKindRunning(k)) return k
-    return null
-  })
+  const runningKind = createMemo<ActionKind | null>(() => agentKind())
   const isAnyRunning = createMemo(
     () => busy() !== null || runningKind() !== null || directAction() !== null,
   )
 
-  createEffect<'pending' | 'streaming' | 'done' | 'failed' | undefined>((prev) => {
-    const runId = activeRuns().review
-    if (!runId) return undefined
-    const status = agentTasks.state.tasks[runId]?.status
-    if (
-      (prev === 'pending' || prev === 'streaming') &&
-      (status === 'done' || status === 'failed')
-    ) {
-      setRefreshTick((tick) => tick + 1)
-    }
-    return status
-  }, undefined)
+  // Track a dispatched agent round on the spec session: clear the running kind
+  // when the turn completes, and refetch the review report after a review run.
+  function trackRound(kind: ActionKind, sessionId: string): void {
+    roundUnsub?.()
+    setAgentKind(kind)
+    roundUnsub = subscribeSession(projectId(), sessionId, {
+      onEvent: (ev) => {
+        if (ev.type === 'turn-completed' || ev.type === 'error') {
+          setAgentKind(null)
+          if (kind === 'review') setRefreshTick((tick) => tick + 1)
+          roundUnsub?.()
+          roundUnsub = null
+        }
+      },
+    })
+  }
 
   function getPaths(): string[] {
     if (fileSelectMode() === 'agent') return changes().map((c) => c.path)
@@ -215,15 +211,8 @@ export const SpecReview: Component = () => {
           ? await api.triggerReview(projectId(), params.id)
           : await api.gitOp(projectId(), params.id, kind)
       setLastRun({ kind, runId: res.runId })
-      setActiveRuns((prev) => ({ ...prev, [kind]: res.runId }))
-      agentTasks.start({
-        runId: res.runId,
-        projectId: projectId(),
-        mode: kind === 'review' ? 'review' : 'git-ops',
-        specId: params.id,
-        specTitle: spec()?.frontmatter.summary,
-        source: 'run',
-      })
+      requestChatSession(res.sessionId)
+      trackRound(kind, res.sessionId)
     } catch (err) {
       setError((err as Error).message)
     } finally {

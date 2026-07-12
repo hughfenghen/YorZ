@@ -2,11 +2,12 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Hono } from 'hono'
-import type { GitOpsAction } from '../agent.js'
 import { listChanges, commit as gitCommit, discard as gitDiscard, stash as gitStash, GitError } from '../git.js'
 import type { ProjectInstance } from '../project-registry.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
+
+export type GitOpsAction = 'commit' | 'discard' | 'stash'
 
 const VALID_ACTIONS: ReadonlySet<GitOpsAction> = new Set(['commit', 'discard', 'stash'])
 
@@ -35,8 +36,9 @@ export function createSpecReviewRoutes(resolveProject: ResolveProject): Hono {
       `- 输出文件：${reviewRel}（追加新二级标题条目，禁止覆盖历史）\n` +
       `- 必含 4 节：变更总结 / 影响范围 / 风险提醒 / 变更文件清单\n` +
       `- 触发时间使用本机当前时间，格式 \`YYYY-MM-DD HH:mm:ss\`\n`
-    const handle = p.runner.run({ specId, mode: 'review', prompt })
-    return c.json({ runId: handle.id })
+    const { sessionId } = await p.sessions.sessionForSpec(specId)
+    const handle = p.sessions.send(sessionId, prompt)
+    return c.json({ runId: handle.runId, sessionId })
   })
 
   app.post('/projects/:projectId/specs/:id/git', async (c) => {
@@ -60,8 +62,9 @@ export function createSpecReviewRoutes(resolveProject: ResolveProject): Hono {
     const specRel = `${p.specsDirRelative}/${specId}/spec.md`
     const reviewRel = `${p.specsDirRelative}/${specId}/review.md`
     const prompt = buildGitOpsPrompt(action as GitOpsAction, specId, specRel, reviewRel)
-    const handle = p.runner.run({ specId, mode: 'git-ops', prompt, action: action as GitOpsAction })
-    return c.json({ runId: handle.id })
+    const { sessionId } = await p.sessions.sessionForSpec(specId)
+    const handle = p.sessions.send(sessionId, prompt)
+    return c.json({ runId: handle.runId, sessionId })
   })
 
   app.get('/projects/:projectId/specs/:id/review', async (c) => {

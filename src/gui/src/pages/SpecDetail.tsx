@@ -8,13 +8,12 @@ import {
   onCleanup,
   type Component,
 } from 'solid-js'
-import { A, useParams, useSearchParams } from '@solidjs/router'
+import { A, useParams } from '@solidjs/router'
 import { api, type AppendItemBody, type QuestionAnswersBody, type SpecStage } from '../lib/api.js'
-import { projectHref, useCurrentProjectId } from '../lib/project.js'
+import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/project.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { renderMermaidIn } from '../lib/mermaid.js'
-import { subscribeSpec } from '../lib/sse.js'
-import { agentTasks } from '../lib/agent-tasks.js'
+import { subscribeSpec, subscribeSession } from '../lib/sse.js'
 import { observeSelection, type SelectionSnapshot } from '../lib/selection.js'
 import { formatSpecUpdatedAt } from '../lib/time.js'
 import { parseConfirmQuestions } from '../lib/question-parse.js'
@@ -37,8 +36,9 @@ const STAGE_BG: Record<string, string> = {
 export const SpecDetail: Component = () => {
   const params = useParams<{ id: string }>()
   const projectId = useCurrentProjectId()
-  const [search, setSearch] = useSearchParams<{ runId?: string }>()
   const [refreshTick, setRefreshTick] = createSignal(0)
+  const [running, setRunning] = createSignal(false)
+  const [specSid, setSpecSid] = createSignal('')
   const [spec] = createResource(
     () => [projectId(), params.id, refreshTick()] as const,
     async ([pid, id]) => api.getSpec(pid, id),
@@ -77,19 +77,32 @@ export const SpecDetail: Component = () => {
     onCleanup(unsub)
   })
 
+  // Resolve this spec's dedicated session and ask the Chat panel to switch to
+  // it, so system rounds (run / explain / review / git-ops) show up there.
   createEffect(() => {
-    const rid = search.runId
-    if (!rid) return
-    const title = spec()?.frontmatter.summary
-    agentTasks.start({
-      runId: rid,
-      projectId: projectId(),
-      mode: 'skill-run',
-      specId: params.id,
-      specTitle: title,
-      source: 'draft',
+    const id = params.id
+    const pid = projectId()
+    if (!id || !pid) return
+    void api
+      .getSpecSession(pid, id)
+      .then(({ sessionId }) => {
+        setSpecSid(sessionId)
+        requestChatSession(sessionId)
+      })
+      .catch(() => {})
+  })
+
+  // Drive the slim running indicator from the spec session's turn lifecycle.
+  createEffect(() => {
+    const pid = projectId()
+    const sid = specSid()
+    if (!pid || !sid) return
+    const unsub = subscribeSession(pid, sid, {
+      onEvent: (ev) => {
+        if (ev.type === 'turn-completed' || ev.type === 'error') setRunning(false)
+      },
     })
-    setSearch({ runId: undefined }, { replace: true })
+    onCleanup(unsub)
   })
 
   createEffect(() => {
@@ -116,18 +129,14 @@ export const SpecDetail: Component = () => {
 
   async function runAgent() {
     setRunError(null)
+    setRunning(true)
     try {
       const pid = projectId()
-      const { runId } = await api.runAgent(pid, params.id)
-      agentTasks.start({
-        runId,
-        projectId: pid,
-        mode: 'skill-run',
-        specId: params.id,
-        specTitle: spec()?.frontmatter.summary,
-        source: 'run',
-      })
+      const { sessionId } = await api.runAgent(pid, params.id)
+      setSpecSid(sessionId)
+      requestChatSession(sessionId)
     } catch (err) {
+      setRunning(false)
       setRunError((err as Error).message)
     }
   }
@@ -188,31 +197,22 @@ export const SpecDetail: Component = () => {
   async function submitAppend(body: AppendItemBody) {
     const pid = projectId()
     const res = await api.appendItem(pid, params.id, body)
-    if (res.runId) {
-      agentTasks.start({
-        runId: res.runId,
-        projectId: pid,
-        mode: 'skill-run',
-        specId: params.id,
-        specTitle: spec()?.frontmatter.summary,
-        source: 'run',
-      })
+    if (res.sessionId) {
+      setRunning(true)
+      setSpecSid(res.sessionId)
+      requestChatSession(res.sessionId)
     }
   }
 
   async function openExplain(s: SelectionSnapshot) {
+    setRunning(true)
     try {
       const pid = projectId()
-      const { runId } = await api.explain(pid, params.id, s.text)
-      agentTasks.start({
-        runId,
-        projectId: pid,
-        mode: 'explain',
-        specId: params.id,
-        specTitle: spec()?.frontmatter.summary,
-        source: 'explain',
-      })
+      const { sessionId } = await api.explain(pid, params.id, s.text)
+      setSpecSid(sessionId)
+      requestChatSession(sessionId)
     } catch (err) {
+      setRunning(false)
       setRunError((err as Error).message)
     }
   }
@@ -225,7 +225,6 @@ export const SpecDetail: Component = () => {
           fallback={<p class="text-muted-foreground">{t('specDetail.notFound')}</p>}
         >
           {(s) => {
-            const running = () => agentTasks.hasRunningSkillRun(params.id)
             return (
               <>
                 <header class="flex flex-col items-start justify-between gap-2">
@@ -264,12 +263,6 @@ export const SpecDetail: Component = () => {
                     >
                       {t('specDetail.appendTask')}
                     </Button>
-                    <A
-                      class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 font-medium hover:bg-accent hover:text-accent-foreground"
-                      href={projectHref(`specs/${s().id}/agent-logs`)}
-                    >
-                      {t('specDetail.agentLogs')}
-                    </A>
                     <A
                       class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 font-medium hover:bg-accent hover:text-accent-foreground"
                       href={projectHref(`specs/${s().id}/review`)}

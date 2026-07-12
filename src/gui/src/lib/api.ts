@@ -110,27 +110,6 @@ export type MergeWorktreeResponse =
       conflictFiles: string[]
     }
 
-export type AgentLogMode = 'skill-run' | 'explain' | 'review' | 'git-ops'
-
-export interface AgentLogMeta {
-  runId: string
-  specId: string
-  mode: AgentLogMode
-  /** Sub-action when mode === 'git-ops'. Absent for legacy modes. */
-  action?: GitOpsAction
-  startedAt: number
-  endedAt: number | null
-  exitCode: number | null
-  error?: string
-  sizeBytes: number
-}
-
-export interface AgentLogPayload {
-  meta: AgentLogMeta
-  content: string
-  truncated: boolean
-}
-
 export type AgentConfig =
   | { kind: 'claude' }
   | { kind: 'opencode' }
@@ -145,6 +124,27 @@ export interface ProjectConfig {
 
 export interface FileCompletionResult {
   items: string[]
+}
+
+export type AgentKind = 'claude' | 'codex' | 'opencode'
+
+export interface SessionInfo {
+  id: string
+  title: string
+  kind: AgentKind
+  createdAt: number
+  updatedAt: number
+}
+
+export type MessagePart =
+  | { type: 'text'; text: string }
+  | { type: 'tool-use'; name: string; input: unknown }
+  | { type: 'tool-result'; text: string }
+
+export interface SessionMessage {
+  role: 'user' | 'assistant'
+  parts: MessagePart[]
+  ts?: number
 }
 
 function projectBase(pid: string): string {
@@ -188,7 +188,9 @@ export const api = {
   createSpec: (
     pid: string,
     body: CreateSpecBody,
-  ): Promise<{ id: string; path: string; draft?: false } | { runId: string; draft: true }> =>
+  ): Promise<
+    { id: string; path: string; draft?: false } | { runId: string; sessionId: string; draft: true }
+  > =>
     fetch(`${projectBase(pid)}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -213,13 +215,16 @@ export const api = {
       body: JSON.stringify(body),
     }),
   runAgent: (pid: string, id: string) =>
-    request<{ runId: string }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/run`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: '{}',
-    }),
+    request<{ runId: string; sessionId: string }>(
+      `${projectBase(pid)}/specs/${encodeURIComponent(id)}/run`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      },
+    ),
   appendItem: (pid: string, id: string, body: AppendItemBody) =>
-    request<{ ok: true; runId?: string }>(
+    request<{ ok: true; runId?: string; sessionId?: string }>(
       `${projectBase(pid)}/specs/${encodeURIComponent(id)}/appends`,
       {
         method: 'POST',
@@ -228,23 +233,32 @@ export const api = {
       },
     ),
   explain: (pid: string, id: string, text: string) =>
-    request<{ runId: string }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/explain`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text }),
-    }),
+    request<{ runId: string; sessionId: string }>(
+      `${projectBase(pid)}/specs/${encodeURIComponent(id)}/explain`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text }),
+      },
+    ),
   triggerReview: (pid: string, id: string) =>
-    request<{ runId: string }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/review`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: '{}',
-    }),
+    request<{ runId: string; sessionId: string }>(
+      `${projectBase(pid)}/specs/${encodeURIComponent(id)}/review`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      },
+    ),
   gitOp: (pid: string, id: string, action: GitOpsAction) =>
-    request<{ runId: string }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/git`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action }),
-    }),
+    request<{ runId: string; sessionId: string }>(
+      `${projectBase(pid)}/specs/${encodeURIComponent(id)}/git`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action }),
+      },
+    ),
   getChanges: (pid: string, id: string) =>
     request<{ changes: GitChange[] }>(
       `${projectBase(pid)}/specs/${encodeURIComponent(id)}/changes`,
@@ -339,14 +353,37 @@ export const api = {
     `${projectBase(pid)}/spec-drafts/${encodeURIComponent(draftId)}/attachments/${encodeURIComponent(storedName)}`,
   specAttachmentUrl: (pid: string, specId: string, name: string): string =>
     `${projectBase(pid)}/specs/${encodeURIComponent(specId)}/attachments/${encodeURIComponent(name)}`,
-  listAgentLogs: (pid: string, specId: string) =>
-    request<AgentLogMeta[]>(`${projectBase(pid)}/specs/${encodeURIComponent(specId)}/agent-logs`),
-  getAgentLog: (pid: string, specId: string, runId: string) =>
-    request<AgentLogPayload>(
-      `${projectBase(pid)}/specs/${encodeURIComponent(specId)}/agent-logs/${encodeURIComponent(runId)}`,
-    ),
   listFiles: (pid: string, query: string, limit = 50) =>
     request<FileCompletionResult>(
       `${projectBase(pid)}/files?query=${encodeURIComponent(query)}&limit=${limit}`,
+    ),
+  listSessions: (pid: string) => request<SessionInfo[]>(`${projectBase(pid)}/sessions`),
+  createSession: (pid: string, body: { title?: string; agentKind?: AgentKind } = {}) =>
+    request<{ sessionId: string; kind: AgentKind }>(`${projectBase(pid)}/sessions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  getSessionMessages: (pid: string, sid: string) =>
+    request<SessionMessage[]>(
+      `${projectBase(pid)}/sessions/${encodeURIComponent(sid)}/messages`,
+    ),
+  sendSessionMessage: (pid: string, sid: string, prompt: string) =>
+    request<{ runId: string; sessionId: string }>(
+      `${projectBase(pid)}/sessions/${encodeURIComponent(sid)}/messages`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      },
+    ),
+  abortSession: (pid: string, sid: string) =>
+    request<{ aborted: boolean }>(
+      `${projectBase(pid)}/sessions/${encodeURIComponent(sid)}/abort`,
+      { method: 'POST' },
+    ),
+  getSpecSession: (pid: string, id: string) =>
+    request<{ sessionId: string; kind: AgentKind }>(
+      `${projectBase(pid)}/specs/${encodeURIComponent(id)}/session`,
     ),
 }

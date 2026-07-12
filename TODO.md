@@ -2,10 +2,9 @@
 
 ## P0
 
+- 问卷补全被激活项看不见，背景期望是蓝色。
 - mermaid GUI 初次几率无法渲染
 - 项目 script 管理，GUI 启动 dev 服务，或者通过通用 chat 启动 服务
-- Task 卡片 header 中 link herf 错误，会自动更新项目id，实际任务跟项目存在绑定关系
-- spec 详情页需要面包屑：需求列表》spec id > review 
 
 ## P1
 

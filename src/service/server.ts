@@ -1,12 +1,12 @@
 import { Hono } from 'hono'
 import { createSpecsRoutes } from './routes/specs.js'
+import { createSessionsRoutes } from './routes/sessions.js'
 import { createSpecReviewRoutes } from './routes/spec-review.js'
 import { createEventsRoutes } from './routes/events.js'
 import { createProjectRoutes } from './routes/project.js'
 import { createProjectConfigRoutes } from './routes/project-config.js'
 import { createSpecDraftsRoutes } from './routes/spec-drafts.js'
 import { createWorktreeRoutes } from './routes/worktree.js'
-import { createAgentLogsRoutes } from './routes/agent-logs.js'
 import { createProjectFilesRoutes } from './routes/project-files.js'
 import { createStaticRoutes } from './static.js'
 import type { ProjectRegistry } from './project-registry.js'
@@ -36,21 +36,21 @@ export function createApp(opts: CreateAppOptions): Hono {
         )
         return
       }
-      main.runner.run({
-        specId,
-        mode: 'skill-run',
-        prompt: `请使用 yorz-spec skill 处理 spec：${main.specsDirRelative}/${specId}/spec.md`,
-      })
+      const { sessionId } = await main.sessions.sessionForSpec(specId)
+      main.sessions.send(
+        sessionId,
+        `请使用 yorz-spec skill 处理 spec：${main.specsDirRelative}/${specId}/spec.md`,
+      )
     },
   })
 
   api.route('/', createProjectRoutes(opts.registry, worktreeManager))
   api.route('/', createProjectConfigRoutes(opts.registry))
   api.route('/', createSpecsRoutes(resolveProject))
+  api.route('/', createSessionsRoutes(resolveProject))
   api.route('/', createSpecReviewRoutes(resolveProject))
   api.route('/', createSpecDraftsRoutes(resolveProject))
   api.route('/', createWorktreeRoutes(opts.registry, worktreeManager))
-  api.route('/', createAgentLogsRoutes(resolveProject))
   api.route('/', createProjectFilesRoutes(resolveProject))
   api.route('/', createEventsRoutes(resolveProject, opts.registry, projectsBus))
   app.route('/api', api)

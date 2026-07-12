@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
@@ -40,9 +39,9 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     if ('error' in input) return c.json({ error: input.error }, 400)
     if (!input.title && input.requirement) {
       const prompt = buildDraftPrompt(input.type, input.requirement, input.draftId)
-      const draftSpecId = `__draft__-${cryptoRandomId()}`
-      const handle = p.runner.run({ specId: draftSpecId, mode: 'skill-run', prompt })
-      return c.json({ runId: handle.id, draft: true }, 202)
+      const { sessionId } = await p.sessions.createSession()
+      const handle = p.sessions.send(sessionId, prompt)
+      return c.json({ runId: handle.runId, sessionId, draft: true }, 202)
     }
     try {
       const { id, path } = await p.store.create(input)
@@ -172,12 +171,12 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
       return c.json({ error: (err as Error).message }, 400)
     }
     if (parsed.autoRun) {
-      const handle = p.runner.run({
-        specId,
-        mode: 'skill-run',
-        prompt: `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`,
-      })
-      return c.json({ ok: true, runId: handle.id })
+      const { sessionId } = await p.sessions.sessionForSpec(specId)
+      const handle = p.sessions.send(
+        sessionId,
+        `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`,
+      )
+      return c.json({ ok: true, runId: handle.runId, sessionId })
     }
     return c.json({ ok: true })
   })
@@ -188,12 +187,12 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     const specId = c.req.param('id')
     const detail = await p.store.read(specId)
     if (!detail) return c.json({ error: 'spec not found' }, 404)
-    const handle = p.runner.run({
-      specId,
-      mode: 'skill-run',
-      prompt: `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`,
-    })
-    return c.json({ runId: handle.id })
+    const { sessionId } = await p.sessions.sessionForSpec(specId)
+    const handle = p.sessions.send(
+      sessionId,
+      `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`,
+    )
+    return c.json({ runId: handle.runId, sessionId })
   })
 
   app.post('/projects/:projectId/specs/:id/explain', async (c) => {
@@ -219,8 +218,9 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
       `以下为 spec 文档 ${p.specsDirRelative}/${specId}/spec.md 中的一段内容。\n` +
       `请用中文简洁解释其含义、背景与可能的实施影响。**不要**修改任何文件，只在终端输出解释文本。\n\n` +
       `引用：\n"""\n${text}\n"""\n`
-    const handle = p.runner.run({ specId, mode: 'explain', prompt })
-    return c.json({ runId: handle.id })
+    const { sessionId } = await p.sessions.sessionForSpec(specId)
+    const handle = p.sessions.send(sessionId, prompt)
+    return c.json({ runId: handle.runId, sessionId })
   })
 
   app.delete('/projects/:projectId/specs/:id', async (c) => {
@@ -263,10 +263,6 @@ export function buildDraftPrompt(type: SpecType, requirement: string, draftId?: 
     )
   }
   return lines.join('\n')
-}
-
-function cryptoRandomId(): string {
-  return randomUUID().slice(0, 8)
 }
 
 type CreateInput = {

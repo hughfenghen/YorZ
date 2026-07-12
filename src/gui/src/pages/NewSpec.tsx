@@ -1,10 +1,9 @@
-import { For, Show, createEffect, createSignal, onCleanup, type Component } from 'solid-js'
+import { For, Show, createSignal, onCleanup, type Component } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
 import { X, Upload, Loader2 } from 'lucide-solid'
 import { api, type AttachmentKind, type AttachmentMeta, type CreateSpecBody } from '../lib/api.js'
-import { projectHref, useCurrentProjectId } from '../lib/project.js'
-import { subscribeSpecsList } from '../lib/sse.js'
-import { agentTasks } from '../lib/agent-tasks.js'
+import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/project.js'
+import { subscribeSpecsList, subscribeSession } from '../lib/sse.js'
 import { Button } from '../components/ui/button.jsx'
 import { Textarea } from '../components/ui/textarea.jsx'
 import { Input } from '../components/ui/input.jsx'
@@ -83,30 +82,18 @@ export const NewSpec: Component = () => {
   let itemRefs: (HTMLLIElement | null)[] = []
 
   let cleanupList: (() => void) | null = null
+  let sessionUnsub: (() => void) | null = null
   let baselineIds: Set<string> = new Set()
   let targetProjectId: string = ''
-  const [activeRunId, setActiveRunId] = createSignal<string | null>(null)
   let navigated = false
   let fileInputEl: HTMLInputElement | undefined
   let textareaEl: HTMLTextAreaElement | undefined
 
   onCleanup(() => {
     cleanupList?.()
+    sessionUnsub?.()
     for (const att of attachments()) {
       if (att.previewUrl) URL.revokeObjectURL(att.previewUrl)
-    }
-  })
-
-  createEffect(() => {
-    const rid = activeRunId()
-    if (!rid) return
-    const task = agentTasks.state.tasks[rid]
-    if (!task) return
-    if (task.status === 'failed') {
-      setPhase('failed')
-      setError(task.error ?? t('newSpec.agentRunFailed'))
-      cleanupList?.()
-      cleanupList = null
     }
   })
 
@@ -363,13 +350,13 @@ export const NewSpec: Component = () => {
       const fresh = list.find((s) => !baselineIds.has(s.id))
       if (fresh) {
         navigated = true
-        const runId = activeRunId()
         cleanupList?.()
         cleanupList = null
-        const base = pid
+        sessionUnsub?.()
+        sessionUnsub = null
+        const target = pid
           ? `/${pid}/specs/${encodeURIComponent(fresh.id)}`
           : projectHref(`specs/${encodeURIComponent(fresh.id)}`)
-        const target = base + (runId ? `?runId=${encodeURIComponent(runId)}` : '')
         navigate(target)
       }
     } catch {
@@ -416,14 +403,16 @@ export const NewSpec: Component = () => {
 
       const resp = await api.createSpec(pid, body)
       if ('draft' in resp && resp.draft) {
-        setActiveRunId(resp.runId)
-        agentTasks.start({
-          runId: resp.runId,
-          projectId: pid,
-          mode: 'skill-run',
-          specId: `__draft__-${resp.runId}`,
-          specTitle: t('newSpec.creatingSpec'),
-          source: 'draft',
+        requestChatSession(resp.sessionId)
+        sessionUnsub = subscribeSession(pid, resp.sessionId, {
+          onEvent: (ev) => {
+            if (ev.type === 'error') {
+              setPhase('failed')
+              setError(ev.message || t('newSpec.agentRunFailed'))
+              sessionUnsub?.()
+              sessionUnsub = null
+            }
+          },
         })
         cleanupList = subscribeSpecsList(pid, () => {
           void pollForNewSpec()
