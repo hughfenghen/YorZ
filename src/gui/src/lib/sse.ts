@@ -199,8 +199,19 @@ export type SessionEvent =
   | { type: 'turn-completed'; usage?: unknown }
   | { type: 'error'; message: string }
 
+export interface SessionReadyEvent {
+  sessionId: string
+}
+
 export interface SessionSubscribeHandlers {
   onEvent?: (e: SessionEvent) => void
+  /**
+   * The server has attached this session's topic and every subsequent turn event
+   * will reach us. The session stream has NO replay buffer, so a caller that
+   * creates a session and immediately POSTs a message would race its own
+   * subscription and lose the early text deltas — gate the POST on this.
+   */
+  onReady?: (e: SessionReadyEvent) => void
   onServerHeartbeat?: (e: ServerHeartbeatEvent) => void
 }
 
@@ -217,6 +228,7 @@ export function subscribeSession(
   const topic = `project:${pid}:session:${sid}`
   const unsub = mux.subscribe(topic, (event, data) => {
     if (event === 'session-msg') handlers.onEvent?.(data as SessionEvent)
+    else if (event === 'ready') handlers.onReady?.(data as SessionReadyEvent)
     else if (event === 'server-heartbeat')
       handlers.onServerHeartbeat?.(data as ServerHeartbeatEvent)
   })

@@ -68,14 +68,18 @@ describe('renderMarkdown GFM task lists', () => {
 
   it('renders "- [x]" as a checked, disabled checkbox', () => {
     const html = renderMarkdown('- [x] done item')
-    expect(html).toMatch(/<input[^>]*checked=""[^>]*type="checkbox"|<input[^>]*type="checkbox"[^>]*checked=""/)
+    expect(html).toMatch(
+      /<input[^>]*checked=""[^>]*type="checkbox"|<input[^>]*type="checkbox"[^>]*checked=""/,
+    )
     expect(html).toContain('disabled=""')
     expect(html).toContain('done item')
   })
 
   it('accepts uppercase "- [X]" as checked', () => {
     const html = renderMarkdown('- [X] done')
-    expect(html).toMatch(/<input[^>]*checked=""[^>]*type="checkbox"|<input[^>]*type="checkbox"[^>]*checked=""/)
+    expect(html).toMatch(
+      /<input[^>]*checked=""[^>]*type="checkbox"|<input[^>]*type="checkbox"[^>]*checked=""/,
+    )
   })
 
   it('leaves non-task list items untouched inside a mixed list', () => {
@@ -128,5 +132,37 @@ describe('renderMarkdown controlled HTML (details folding)', () => {
     const html = renderMarkdown('<details onclick="evil()">\n\nx\n\n</details>')
     expect(html).not.toContain('<details onclick')
     expect(html).toContain('&lt;details onclick')
+  })
+})
+
+describe('renderMarkdown mermaid mode', () => {
+  const src = '```mermaid\nflowchart LR\n  A --> B\n```'
+
+  it('emits a .mermaid placeholder div by default (SpecDetail behaviour)', () => {
+    const html = renderMarkdown(src)
+    expect(html).toContain('class="mermaid"')
+    expect(html).toContain('data-mermaid-source=')
+    expect(html).not.toContain('<pre><code')
+  })
+
+  it('emits a .mermaid placeholder div when mermaid is explicitly "diagram"', () => {
+    const html = renderMarkdown(src, { mermaid: 'diagram' })
+    expect(html).toContain('class="mermaid"')
+  })
+
+  it('renders a highlighted code block when mermaid is "code" (Chat behaviour)', () => {
+    const html = renderMarkdown(src, { mermaid: 'code' })
+    expect(html).toContain('<pre><code')
+    expect(html).not.toContain('class="mermaid"')
+    expect(html).toContain('flowchart LR')
+  })
+
+  it('keeps attachment rewrite working alongside mermaid: "code"', () => {
+    const html = renderMarkdown('![pic](attachments/a.png)', {
+      specId: '260622.feat.demo',
+      projectId: 'p1',
+      mermaid: 'code',
+    })
+    expect(html).toContain('src="/api/projects/p1/specs/260622.feat.demo/attachments/a.png"')
   })
 })

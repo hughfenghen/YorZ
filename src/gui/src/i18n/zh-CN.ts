@@ -26,7 +26,8 @@ export const zhCN = {
   },
   welcome: {
     title: '欢迎使用 YorZ',
-    description: 'YorZ 通过本地目录托管 spec 文档；请先添加一个项目目录，然后即可开始管理它的需求。',
+    description:
+      'YorZ 通过本地目录托管 spec 文档；请先添加一个项目目录，然后即可开始管理它的需求。',
     addHint: '添加项目请在终端执行：',
   },
   sidebar: {
@@ -60,11 +61,16 @@ export const zhCN = {
     sessionTitle: '{{kind}} · {{id}}',
     sessionTitleRunning: '{{kind}} · {{id}} · 执行中',
     empty: '选择或新建一个会话开始对话。',
+    /** Untitled（草稿）态：服务端尚未创建 session。 */
+    draftEmpty: 'Untitled 会话 —— 发送消息即开始。',
     inputPlaceholder: '输入消息，Enter 发送…',
-    noSessionPlaceholder: '先新建会话',
+    draftPlaceholder: '输入消息，发送后自动创建会话…',
+    noSessionPlaceholder: '请先选择项目',
+    showHistory: '显示历史',
+    noRunningSessions: '未提交的会话',
     abort: '中止',
     send: '发送',
-    toolUse: '[工具] {{name}}',
+    toolCollapsed: '[工具] ×{{count}}',
     errorMessage: '[错误] {{message}}',
   },
   home: {
@@ -84,7 +90,8 @@ export const zhCN = {
   },
   newSpec: {
     title: '新建 spec',
-    description: '只需选择类型与录入需求内容；文件名、概要、初始骨架由 Agent 根据需求生成，Agent 创建完文档后会自动进入 plan 阶段。',
+    description:
+      '只需选择类型与录入需求内容；文件名、概要、初始骨架由 Agent 根据需求生成，Agent 创建完文档后会自动进入 plan 阶段。',
     type: '类型',
     typeFeat: 'feat',
     typeFeatHint: '新功能',
@@ -93,15 +100,17 @@ export const zhCN = {
     typeFix: 'fix',
     typeFixHint: '修复缺陷',
     parallelWorktree: '新开项目并行',
-    parallelWorktreeDesc: '以 git worktree 形式开新分支并行开发，避免与主项目互相干扰；合并将通过列表页『合入主项目』按钮一键完成。',
+    parallelWorktreeDesc:
+      '以 git worktree 形式开新分支并行开发，避免与主项目互相干扰；合并将通过列表页『合入主项目』按钮一键完成。',
     requirement: '需求内容',
     requirementPlaceholder: '原始诉求、痛点、期望效果、关联文档/模块（可使用 @ 引用）',
     attachments: '附件',
     attachmentsHint: '共 {{count}}/{{max}}，单文件 ≤ 5 MB；图片支持 Cmd/Ctrl-V 粘贴',
     importAttachment: '导入附件',
-    createAndStart: '创建并启动 Agent',
+    createAndStart: '发送',
     creating: 'Agent 创建中…',
-    creatingHint: 'Agent 正在创建 spec 文档…可在右下角 Agent 面板查看流式输出，文档落地后将自动跳转。',
+    creatingHint:
+      'Agent 正在创建 spec 文档…可在右下角 Agent 面板查看流式输出，文档落地后将自动跳转。',
     descTooShort: '请至少输入 5 个字符的需求描述',
     attachmentLimit: '附件总数不能超过 {{max}} 个',
     unsupportedType: '不支持的文件类型：{{name}}',
@@ -121,10 +130,11 @@ export const zhCN = {
     appendTask: '追加任务',
     agentLogs: '执行日志',
     review: 'Review',
-    runAgent: '运行 Agent',
     running: '运行中…',
     forceStage: '强制设置 spec 状态',
     notFound: 'spec 不存在或已删除',
+    fullscreen: '全屏（临时折叠项目列表与对话面板）',
+    exitFullscreen: '退出全屏（Esc）',
   },
   review: {
     backToSpec: '返回 spec',
@@ -186,13 +196,13 @@ export const zhCN = {
   annotate: {
     title: '批注',
     placeholder: '写下你对这段文本的批注…',
-    submit: '提交批注',
+    submit: '添加批注',
     inSection: '中',
   },
   questionConfirm: {
     title: '待确认问题',
     unanswered: '未答题',
-    submitAll: '提交全部',
+    submitAll: '发送',
     running: '运行中…',
     noAnswers: '没有可提交的答复',
     selectionAnnotation: '选区批注',
@@ -211,7 +221,7 @@ export const zhCN = {
     description: '描述',
     descPlaceholder: '详细描述新增需求 / 重构意图 / 缺陷复现…',
     descRequired: '描述不能为空',
-    submit: '提交并触发 Agent',
+    submit: '发送',
     refSection: '引用章节：',
   },
   projectConfig: {

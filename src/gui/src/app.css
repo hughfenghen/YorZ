@@ -360,3 +360,66 @@
     overflow-x: auto;
   }
 }
+
+@layer base {
+  /*
+   * Chat modifier for `.markdown`. The chat column is a fraction of the width of
+   * the spec view the base styles were tuned for, so headings and vertical
+   * rhythm are stepped down a notch — otherwise an `# H1` in an agent reply
+   * dwarfs the conversation around it. Only spacing/size is touched; colors,
+   * code highlighting and layout come from `.markdown` unchanged.
+   */
+  .chat-md {
+    font-size: 0.875rem;
+    line-height: 1.55;
+  }
+  .chat-md > :first-child {
+    margin-top: 0;
+  }
+  .chat-md > :last-child {
+    margin-bottom: 0;
+  }
+  .chat-md h1 {
+    font-size: 1.15rem;
+    margin: 0.9rem 0 0.5rem;
+  }
+  .chat-md h2 {
+    font-size: 1.05rem;
+    margin: 0.8rem 0 0.45rem;
+  }
+  .chat-md h3 {
+    font-size: 1rem;
+    margin: 0.7rem 0 0.4rem;
+  }
+  .chat-md h4 {
+    font-size: 0.9rem;
+    margin: 0.6rem 0 0.35rem;
+  }
+  .chat-md p {
+    margin: 0.45rem 0;
+  }
+  .chat-md ul,
+  .chat-md ol {
+    margin: 0.45rem 0;
+    padding-left: 1.15rem;
+  }
+  .chat-md li {
+    margin: 0.15rem 0;
+  }
+  .chat-md pre {
+    padding: 0.5rem 0.6rem;
+    margin: 0.5rem 0;
+    font-size: 0.78rem;
+    line-height: 1.45;
+  }
+  .chat-md code {
+    font-size: 0.8rem;
+  }
+  .chat-md blockquote {
+    margin: 0.5rem 0;
+    padding-left: 0.6rem;
+  }
+  .chat-md table {
+    font-size: 0.8rem;
+  }
+}
