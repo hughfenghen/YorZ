@@ -171,7 +171,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
       return c.json({ error: (err as Error).message }, 400)
     }
     if (parsed.autoRun) {
-      const { sessionId } = await p.sessions.sessionForSpec(specId)
+      const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
       const handle = p.sessions.send(
         sessionId,
         `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`,
@@ -187,7 +187,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     const specId = c.req.param('id')
     const detail = await p.store.read(specId)
     if (!detail) return c.json({ error: 'spec not found' }, 404)
-    const { sessionId } = await p.sessions.sessionForSpec(specId)
+    const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
     const handle = p.sessions.send(
       sessionId,
       `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`,
@@ -218,7 +218,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
       `以下为 spec 文档 ${p.specsDirRelative}/${specId}/spec.md 中的一段内容。\n` +
       `请用中文简洁解释其含义、背景与可能的实施影响。**不要**修改任何文件，只在终端输出解释文本。\n\n` +
       `引用：\n"""\n${text}\n"""\n`
-    const { sessionId } = await p.sessions.sessionForSpec(specId)
+    const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
     const handle = p.sessions.send(sessionId, prompt)
     return c.json({ runId: handle.runId, sessionId })
   })

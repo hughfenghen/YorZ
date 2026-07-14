@@ -77,8 +77,10 @@ export const SpecDetail: Component = () => {
     onCleanup(unsub)
   })
 
-  // Resolve this spec's dedicated session and ask the Chat panel to switch to
-  // it, so system rounds (run / explain / review / git-ops) show up there.
+  // Resolve this spec's dedicated session (if one already exists) and ask the
+  // Chat panel to switch to it, so system rounds (run / explain / review /
+  // git-ops) show up there. Sessions are created lazily — when none is bound
+  // yet the probe returns null and Chat is left exactly as it is.
   createEffect(() => {
     const id = params.id
     const pid = projectId()
@@ -86,6 +88,7 @@ export const SpecDetail: Component = () => {
     void api
       .getSpecSession(pid, id)
       .then(({ sessionId }) => {
+        if (!sessionId) return
         setSpecSid(sessionId)
         requestChatSession(sessionId)
       })

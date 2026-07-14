@@ -134,6 +134,9 @@ export interface SessionInfo {
   kind: AgentKind
   createdAt: number
   updatedAt: number
+  specId?: string
+  /** A turn is currently in flight for this session (transient list state). */
+  running?: boolean
 }
 
 export type MessagePart =
@@ -382,8 +385,10 @@ export const api = {
       `${projectBase(pid)}/sessions/${encodeURIComponent(sid)}/abort`,
       { method: 'POST' },
     ),
+  // Read-only probe: `sessionId` is null when the spec has no session yet
+  // (sessions are created lazily, on the first system round).
   getSpecSession: (pid: string, id: string) =>
-    request<{ sessionId: string; kind: AgentKind }>(
+    request<{ sessionId: string | null; kind: AgentKind | null }>(
       `${projectBase(pid)}/specs/${encodeURIComponent(id)}/session`,
     ),
 }

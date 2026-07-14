@@ -66,10 +66,11 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
     port: port.port,
     registry,
     async close() {
+      await registry.closeAll()
       await new Promise<void>((resolve, reject) => {
         port.server.close((err) => (err ? reject(err) : resolve()))
+        port.server.closeAllConnections?.()
       })
-      await registry.closeAll()
     },
   }
 }

@@ -19,6 +19,7 @@ export type { ResolveProject }
 //
 //   projects
 //   project:<pid>:specs
+//   project:<pid>:sessions                (run status of every session)
 //   project:<pid>:spec:<specId>
 //   project:<pid>:spec:<specId>:changes
 //   project:<pid>:session:<sid>
