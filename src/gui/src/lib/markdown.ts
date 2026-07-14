@@ -61,6 +61,16 @@ export interface RenderOptions {
    */
   specId?: string
   projectId?: string
+  /**
+   * How to render a ```mermaid fence.
+   *
+   * - `'diagram'` (default): emit a `.mermaid` placeholder div for the caller to
+   *   paint via `renderMermaidIn(container)` — what SpecDetail does.
+   * - `'code'`: render it as an ordinary highlighted code block. Chat streams
+   *   markdown into a narrow column, so a half-written mermaid body would be
+   *   re-parsed (and fail to draw) on every delta.
+   */
+  mermaid?: 'diagram' | 'code'
 }
 
 const defaultImageRender =
@@ -110,7 +120,7 @@ function rewriteHrefIfAttachment(
   )
 }
 
-type RenderEnv = { specId?: string; projectId?: string }
+type RenderEnv = { specId?: string; projectId?: string; mermaid?: 'diagram' | 'code' }
 
 md.renderer.rules.image = function (tokens, idx, options, env, self) {
   const e = env as RenderEnv | undefined
@@ -147,7 +157,8 @@ md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
 md.renderer.rules.fence = function (tokens, idx, options, env, self) {
   const token = tokens[idx]
   const info = token.info.trim()
-  if (info === 'mermaid') {
+  const mode = (env as RenderEnv | undefined)?.mermaid ?? 'diagram'
+  if (info === 'mermaid' && mode === 'diagram') {
     const code = token.content
     const escaped = code.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     return `<div class="mermaid" data-mermaid-source="${escaped}">${code}</div>`
@@ -158,8 +169,9 @@ md.renderer.rules.fence = function (tokens, idx, options, env, self) {
 md.use(taskLists, { enabled: false, label: false })
 
 export function renderMarkdown(source: string, opts: RenderOptions = {}): string {
-  if (!opts.specId) return md.render(source, {})
-  const env: RenderEnv = { specId: opts.specId }
+  const env: RenderEnv = {}
+  if (opts.specId) env.specId = opts.specId
   if (opts.projectId) env.projectId = opts.projectId
+  if (opts.mermaid) env.mermaid = opts.mermaid
   return md.render(source, env)
 }

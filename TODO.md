@@ -2,14 +2,12 @@
 
 ## P0
 
-- 路径补全被激活项看不见，背景期望是蓝色。
-- mermaid GUI 初次几率无法渲染
-- 项目 script 管理，GUI 启动 dev 服务，或者通过通用 chat 启动 服务
-- 终止 session 对话
-- chat 自动滚动
 - 类图提供属性注释、新增、删除
-- 运行 Agent 按钮，及时隐藏（done）
 - 优化问题确认数量：存在多方案、后续影响大、方案优缺点明显难以抉择
+- chat 支持粘贴图片
+- serve 检查并自动 install skill
+- chat 输入框文件补全时 esc 关闭弹窗，但 input 不要失焦
+- spec 放到右上角 页面header，随时触达
 
 ## P1
 

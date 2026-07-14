@@ -18,6 +18,7 @@ import {
   HelpCircle,
 } from 'lucide-solid'
 import { api } from '../lib/api.js'
+import { focusMode, exitFocusMode } from '../lib/layout-focus.js'
 import type { ProjectListItem } from '../lib/project.js'
 import { ProjectConfigDialog } from './ProjectConfigDialog.js'
 import { Button } from './ui/button.jsx'
@@ -108,7 +109,18 @@ export const ProjectsSidebar: Component = () => {
     return m && m[1] !== 'api' ? m[1]! : ''
   })
 
+  // What the user actually sees: focus mode forces the rail shut without ever
+  // touching the persisted flag, so leaving it restores their real preference.
+  const isCollapsed = () => collapsed() || focusMode()
+
   function toggle() {
+    // In focus mode the only affordance on screen is "expand" — honour it by
+    // leaving focus mode and falling back to the persisted state, rather than
+    // writing a new one the user never asked for.
+    if (focusMode()) {
+      exitFocusMode()
+      return
+    }
     const next = !collapsed()
     setCollapsed(next)
     writeCollapsed(next)
@@ -119,7 +131,7 @@ export const ProjectsSidebar: Component = () => {
   let docMouseUp: (() => void) | null = null
 
   function beginResize(ev: MouseEvent) {
-    if (collapsed()) return
+    if (isCollapsed()) return
     ev.preventDefault()
     dragState = { startX: ev.clientX, startW: width(), raf: null }
     document.body.classList.add('is-resizing')
@@ -205,22 +217,22 @@ export const ProjectsSidebar: Component = () => {
     void refetch()
   }
 
-  const asideStyle = () => (collapsed() ? undefined : { width: `${width()}px` })
+  const asideStyle = () => (isCollapsed() ? undefined : { width: `${width()}px` })
 
   return (
     <aside
       class={`relative flex flex-col border-r bg-card shrink-0 ${
-        collapsed() ? 'w-9 transition-[width] duration-150' : ''
+        isCollapsed() ? 'w-9 transition-[width] duration-150' : ''
       }`}
       style={asideStyle()}
     >
       <header
         class={`flex items-center border-b ${
-          collapsed() ? 'justify-center py-2' : 'justify-between px-2.5 py-2'
+          isCollapsed() ? 'justify-center py-2' : 'justify-between px-2.5 py-2'
         }`}
       >
         <Show
-          when={!collapsed()}
+          when={!isCollapsed()}
           fallback={
             <Button
               variant="outline"
@@ -260,9 +272,7 @@ export const ProjectsSidebar: Component = () => {
 
       <Show
         when={projects() !== undefined}
-        fallback={
-          <p class="px-2.5 py-2 text-muted-foreground">{t('common.loading')}</p>
-        }
+        fallback={<p class="px-2.5 py-2 text-muted-foreground">{t('common.loading')}</p>}
       >
         <ul class="m-0 flex-1 list-none overflow-y-auto py-1.5">
           <For each={projects() ?? []}>
@@ -273,14 +283,12 @@ export const ProjectsSidebar: Component = () => {
                   <A
                     href={`/${encodeURIComponent(p.id)}`}
                     class={`flex-1 truncate px-2.5 py-1.5 no-underline ${
-                      isActive()
-                        ? 'bg-background font-semibold'
-                        : 'hover:bg-background'
-                    } ${collapsed() ? 'px-0 text-center' : ''}`}
+                      isActive() ? 'bg-background font-semibold' : 'hover:bg-background'
+                    } ${isCollapsed() ? 'px-0 text-center' : ''}`}
                     title={p.path}
                   >
                     <Show
-                      when={!collapsed()}
+                      when={!isCollapsed()}
                       fallback={
                         <span class="inline-block font-semibold">
                           {(p.name[0] ?? '?').toUpperCase()}
@@ -299,7 +307,7 @@ export const ProjectsSidebar: Component = () => {
                       </Show>
                     </Show>
                   </A>
-                  <Show when={!collapsed()}>
+                  <Show when={!isCollapsed()}>
                     <button
                       type="button"
                       class="absolute right-6 top-1/2 -translate-y-1/2 p-1 text-muted-foreground opacity-0 transition-opacity hover:text-accent-foreground group-hover:opacity-100"
@@ -326,11 +334,9 @@ export const ProjectsSidebar: Component = () => {
         </ul>
       </Show>
 
-      <footer
-        class={`border-t ${collapsed() ? 'flex justify-center py-2' : 'p-2'}`}
-      >
+      <footer class={`border-t ${isCollapsed() ? 'flex justify-center py-2' : 'p-2'}`}>
         <Show
-          when={!collapsed()}
+          when={!isCollapsed()}
           fallback={
             <span
               class="flex h-5 w-5 items-center justify-center rounded bg-muted text-muted-foreground"
@@ -348,16 +354,13 @@ export const ProjectsSidebar: Component = () => {
           </p>
         </Show>
         {error() && (
-          <p
-            class="mt-1 text-sm text-destructive break-words"
-            title={error()!}
-          >
+          <p class="mt-1 text-sm text-destructive break-words" title={error()!}>
             {error()}
           </p>
         )}
       </footer>
 
-      <Show when={!collapsed()}>
+      <Show when={!isCollapsed()}>
         <div
           class="absolute right-0 top-0 z-[2] h-full w-1 cursor-col-resize bg-transparent hover:bg-accent/40"
           role="separator"
@@ -379,7 +382,10 @@ export const ProjectsSidebar: Component = () => {
         )}
       </Show>
 
-      <Dialog open={deleting() !== null} onOpenChange={(o) => !o && !deleteBusy() && setDeleting(null)}>
+      <Dialog
+        open={deleting() !== null}
+        onOpenChange={(o) => !o && !deleteBusy() && setDeleting(null)}
+      >
         <DialogContent class="max-w-sm">
           <DialogHeader>
             <DialogTitle>{t('sidebar.deleteProject')}</DialogTitle>
@@ -403,11 +409,7 @@ export const ProjectsSidebar: Component = () => {
             )}
           </Show>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleting(null)}
-              disabled={deleteBusy()}
-            >
+            <Button variant="outline" onClick={() => setDeleting(null)} disabled={deleteBusy()}>
               {t('common.cancel')}
             </Button>
             <Button

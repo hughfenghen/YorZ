@@ -1,5 +1,5 @@
 import { createEffect, createSignal, onCleanup, Show, type Component } from 'solid-js'
-import { X } from 'lucide-solid'
+import { Send, X } from 'lucide-solid'
 import type { AppendItemBody, AppendItemKind } from '../lib/api.js'
 import { Button } from './ui/button.jsx'
 import { Textarea } from './ui/textarea.jsx'
@@ -94,9 +94,7 @@ export const AppendTaskDialog: Component<Props> = (props) => {
           class="append-dialog fixed z-50 flex w-96 max-w-[calc(100vw-2rem)] flex-col gap-3 rounded-xl border bg-card p-4 shadow-lg"
           role="dialog"
           aria-label={t('appendTask.title')}
-          style={
-            pos() ? { top: `${pos()!.top}px`, left: `${pos()!.left}px` } : undefined
-          }
+          style={pos() ? { top: `${pos()!.top}px`, left: `${pos()!.left}px` } : undefined}
           onMouseDown={(e) => e.stopPropagation()}
         >
           <header class="flex flex-col gap-0.5">
@@ -155,10 +153,12 @@ export const AppendTaskDialog: Component<Props> = (props) => {
 
             <div class="flex items-center justify-end gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={cancel} disabled={busy()}>
-                <X class="mr-1 h-3.5 w-3.5" />
                 {t('common.cancel')}
               </Button>
+              {/* Mirrors the Chat composer's Send button — agent-triggering
+                  buttons share one visual language. */}
               <Button type="submit" variant="default" size="sm" disabled={busy()}>
+                <Send class="mr-1 h-3.5 w-3.5" />
                 {busy() ? t('common.submitting') : t('appendTask.submit')}
               </Button>
             </div>

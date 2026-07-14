@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { basename, join, relative, sep } from 'node:path'
 import chokidar, { type FSWatcher } from 'chokidar'
@@ -6,6 +7,14 @@ export type WatcherEvent = 'updated' | 'removed'
 export type DetailListener = (evt: WatcherEvent, mtime: number) => void
 export type ListListener = () => void
 
+/**
+ * How long to wait before trusting an `unlink` event. Editors and agents write
+ * atomically (write temp file → rename over the target), which surfaces as a
+ * transient unlink+add pair. Dispatching `removed` during that window makes the
+ * GUI refetch a file that momentarily does not exist → 404.
+ */
+const UNLINK_SETTLE_MS = 80
+
 export interface WatcherOptions {
   cwd: string
   /**
@@ -13,18 +22,24 @@ export interface WatcherOptions {
    * `<cwd>/.yorz/specs` for backward compatibility.
    */
   specsDir?: string
+  /** Settle window for `unlink` events. Exposed for tests; defaults to 80ms. */
+  unlinkSettleMs?: number
 }
 
 export class SpecWatcher {
   private readonly root: string
+  private readonly unlinkSettleMs: number
   private readonly detailListeners = new Map<string, Set<DetailListener>>()
   private readonly listListeners = new Set<ListListener>()
   /** specId → most recent mtime we ourselves just wrote (echo suppression). */
   private readonly suppress = new Map<string, number>()
+  /** specId → pending unlink settle timer (cleared on close). */
+  private readonly pendingUnlinks = new Map<string, NodeJS.Timeout>()
   private watcher: FSWatcher | null = null
 
   constructor(opts: WatcherOptions) {
     this.root = opts.specsDir ?? join(opts.cwd, '.yorz', 'specs')
+    this.unlinkSettleMs = opts.unlinkSettleMs ?? UNLINK_SETTLE_MS
   }
 
   async start(): Promise<void> {
@@ -45,6 +60,8 @@ export class SpecWatcher {
   }
 
   async close(): Promise<void> {
+    for (const timer of this.pendingUnlinks.values()) clearTimeout(timer)
+    this.pendingUnlinks.clear()
     await this.watcher?.close()
     this.watcher = null
   }
@@ -77,22 +94,54 @@ export class SpecWatcher {
     if (basename(filePath) !== 'spec.md') return
     const id = this.idForPath(filePath)
     if (!id) return
-    let mtimeMs = 0
-    if (evt === 'updated') {
-      try {
-        const stats = await stat(filePath)
-        mtimeMs = stats.mtimeMs
-      } catch {
-        return
-      }
-      const suppressed = this.suppress.get(id)
-      if (suppressed !== undefined && Math.abs(suppressed - mtimeMs) < 5) {
-        this.suppress.delete(id)
-        return
-      }
-    } else {
-      this.suppress.delete(id)
+
+    if (evt === 'removed') {
+      this.scheduleUnlink(id, filePath)
+      return
     }
+
+    // The file is back (or was never really gone) — cancel any pending unlink so
+    // an atomic rewrite never surfaces as `removed`.
+    const pending = this.pendingUnlinks.get(id)
+    if (pending) {
+      clearTimeout(pending)
+      this.pendingUnlinks.delete(id)
+    }
+
+    let mtimeMs = 0
+    try {
+      const stats = await stat(filePath)
+      mtimeMs = stats.mtimeMs
+    } catch {
+      return
+    }
+    const suppressed = this.suppress.get(id)
+    if (suppressed !== undefined && Math.abs(suppressed - mtimeMs) < 5) {
+      this.suppress.delete(id)
+      return
+    }
+    this.emit(id, 'updated', mtimeMs)
+  }
+
+  /**
+   * Hold an `unlink` for a settle window, then re-check the file. If it came
+   * back it was an atomic rewrite — drop the event and let the paired add/change
+   * drive `updated`. Only a file that is still gone counts as a real removal.
+   */
+  private scheduleUnlink(id: string, filePath: string): void {
+    const existing = this.pendingUnlinks.get(id)
+    if (existing) clearTimeout(existing)
+    const timer = setTimeout(() => {
+      this.pendingUnlinks.delete(id)
+      if (existsSync(filePath)) return
+      this.suppress.delete(id)
+      this.emit(id, 'removed', 0)
+    }, this.unlinkSettleMs)
+    timer.unref?.()
+    this.pendingUnlinks.set(id, timer)
+  }
+
+  private emit(id: string, evt: WatcherEvent, mtimeMs: number): void {
     for (const cb of this.detailListeners.get(id) ?? []) cb(evt, mtimeMs)
     for (const cb of this.listListeners) cb()
   }

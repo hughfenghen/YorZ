@@ -21,7 +21,7 @@ test.describe.serial('question confirm panel', () => {
         res.request().method() === 'POST',
     )
 
-    await panel.locator('button', { hasText: '提交全部' }).click()
+    await panel.locator('button', { hasText: '发送' }).click()
     const submitRes = await submitPromise
     expect(submitRes.status()).toBe(200)
 
@@ -57,7 +57,7 @@ test.describe.serial('question confirm panel', () => {
         res.url().includes(`/api/specs/${QUESTIONS_SPEC_ID}/questions/answers`) &&
         res.request().method() === 'POST',
     )
-    await panel.locator('button', { hasText: '提交全部' }).click()
+    await panel.locator('button', { hasText: '发送' }).click()
     const submitRes = await submitPromise
     expect(submitRes.status()).toBe(200)
 

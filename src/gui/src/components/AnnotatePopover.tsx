@@ -80,7 +80,8 @@ export const AnnotatePopover: Component<Props> = (props) => {
           <strong>{t('annotate.title')}</strong>
         </header>
         <blockquote class="m-0 border-l-2 border-border bg-background px-2.5 py-1.5 text-[0.9em] text-muted-foreground">
-          <em>{props.snap?.sectionPath}</em> {t('annotate.inSection')} "{(props.snap?.text ?? '').slice(0, 200)}"
+          <em>{props.snap?.sectionPath}</em> {t('annotate.inSection')} "
+          {(props.snap?.text ?? '').slice(0, 200)}"
         </blockquote>
         <form onSubmit={submit}>
           <Textarea
@@ -92,11 +93,11 @@ export const AnnotatePopover: Component<Props> = (props) => {
             autofocus
           />
           {error() && <p class="text-destructive ">{error()}</p>}
-          <div class="flex justify-end gap-2">
-            <Button variant="outline" type="button" onClick={props.onCancel}>
+          <div class="mt-3 flex justify-end gap-2">
+            <Button variant="ghost" type="button" onClick={props.onCancel}>
               {t('common.cancel')}
             </Button>
-            <Button variant="default" type="submit" disabled={busy()}>
+            <Button variant="default" type="submit" disabled={busy() || !note().trim()}>
               {busy() ? t('common.submitting') : t('annotate.submit')}
             </Button>
           </div>

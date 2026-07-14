@@ -9,8 +9,16 @@ import {
   type Component,
 } from 'solid-js'
 import { A, useParams } from '@solidjs/router'
-import { api, type AppendItemBody, type QuestionAnswersBody, type SpecStage } from '../lib/api.js'
+import { Maximize2, Minimize2 } from 'lucide-solid'
+import {
+  api,
+  type AppendItemBody,
+  type QuestionAnswersBody,
+  type SpecDetail as SpecDetailDoc,
+  type SpecStage,
+} from '../lib/api.js'
 import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/project.js'
+import { exitFocusMode, focusMode, toggleFocusMode } from '../lib/layout-focus.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { renderMermaidIn } from '../lib/mermaid.js'
 import { subscribeSpec, subscribeSession } from '../lib/sse.js'
@@ -33,15 +41,47 @@ const STAGE_BG: Record<string, string> = {
   done: 'bg-stage-done',
 }
 
+/** Coalesce the SSE event storm an agent's successive writes produce. */
+const SSE_DEBOUNCE_MS = 120
+const FETCH_RETRIES = 3
+const FETCH_BACKOFF_MS = 150
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Agents and editors write atomically (temp file → rename), so a refetch landing
+ * inside that window sees the file as missing and the API answers 404. Retry a
+ * few times, and if it still fails fall back to the last good document rather
+ * than throwing — an unhandled fetcher rejection strands `Suspense` on its
+ * loading fallback forever. Only a spec we never loaded resolves to `null`
+ * (the genuine not-found case).
+ */
+async function fetchSpecWithRetry(
+  pid: string,
+  id: string,
+  prev: SpecDetailDoc | null | undefined,
+): Promise<SpecDetailDoc | null> {
+  for (let attempt = 0; attempt <= FETCH_RETRIES; attempt += 1) {
+    try {
+      return await api.getSpec(pid, id)
+    } catch (err) {
+      const is404 = (err as Error).message.startsWith('404')
+      if (!is404) throw err
+      if (attempt < FETCH_RETRIES) await sleep(FETCH_BACKOFF_MS)
+    }
+  }
+  return prev ?? null
+}
+
 export const SpecDetail: Component = () => {
   const params = useParams<{ id: string }>()
   const projectId = useCurrentProjectId()
   const [refreshTick, setRefreshTick] = createSignal(0)
   const [running, setRunning] = createSignal(false)
   const [specSid, setSpecSid] = createSignal('')
-  const [spec] = createResource(
+  const [spec] = createResource<SpecDetailDoc | null, readonly [string, string, number]>(
     () => [projectId(), params.id, refreshTick()] as const,
-    async ([pid, id]) => api.getSpec(pid, id),
+    async ([pid, id], info) => fetchSpecWithRetry(pid, id, info.value),
   )
 
   const [snap, setSnap] = createSignal<SelectionSnapshot | null>(null)
@@ -60,10 +100,11 @@ export const SpecDetail: Component = () => {
     return parseConfirmQuestions(s.body)
   })
 
+  // Annotations are drafted at any stage, so the panel is gated purely on having
+  // something to submit — not on the spec being in `plan`.
   const showPanel = createMemo(() => {
     const s = spec()
     if (!s) return false
-    if (s.frontmatter.stage !== 'plan') return false
     return questions().length > 0 || freeforms().length > 0
   })
 
@@ -71,10 +112,17 @@ export const SpecDetail: Component = () => {
     const id = params.id
     const pid = projectId()
     if (!id || !pid) return
+    let timer: ReturnType<typeof setTimeout> | undefined
     const unsub = subscribeSpec(pid, id, {
-      onUpdated: () => setRefreshTick((t) => t + 1),
+      onUpdated: () => {
+        if (timer) clearTimeout(timer)
+        timer = setTimeout(() => setRefreshTick((t) => t + 1), SSE_DEBOUNCE_MS)
+      },
     })
-    onCleanup(unsub)
+    onCleanup(() => {
+      if (timer) clearTimeout(timer)
+      unsub()
+    })
   })
 
   // Resolve this spec's dedicated session (if one already exists) and ask the
@@ -115,9 +163,36 @@ export const SpecDetail: Component = () => {
     onCleanup(unsub)
   })
 
+  // Focus mode is this page's, not the app's: leaving the spec must always give
+  // the chrome back, or the user lands on another page with no sidebar and no
+  // obvious cause. Escape is the conventional way out of a fullscreen view.
+  onCleanup(exitFocusMode)
+
+  createEffect(() => {
+    if (!focusMode()) return
+    const onKey = (e: KeyboardEvent) => {
+      // The append dialog binds Escape too — let it close itself first rather
+      // than having one keypress both dismiss the dialog and drop fullscreen.
+      if (e.key !== 'Escape' || appendOpen() || popoverOpen()) return
+      exitFocusMode()
+    }
+    window.addEventListener('keydown', onKey)
+    onCleanup(() => window.removeEventListener('keydown', onKey))
+  })
+
+  // Markdown injection and mermaid rendering live in ONE effect: mermaid must run
+  // against the nodes this very pass produced. Splitting them (innerHTML bound in
+  // JSX, mermaid keyed off `articleEl`) meant an SSE-driven body change re-rendered
+  // the HTML without ever re-running mermaid — diagrams stayed as raw source until
+  // a full page reload remounted the element.
   createEffect(() => {
     const el = articleEl()
-    if (!el) return
+    const s = spec()
+    if (!el || !s) return
+    const pid = projectId()
+
+    el.innerHTML = renderMarkdown(s.body, { specId: s.id, projectId: pid || undefined })
+
     let active = true
     let cleanupFn: (() => void) | undefined
     void renderMermaidIn(el).then((cleanup) => {
@@ -159,27 +234,22 @@ export const SpecDetail: Component = () => {
     setPopoverOpen(true)
   }
 
+  // Every annotation — at every stage — becomes a draft in the confirm panel, so
+  // several can be accumulated and submitted in one go (which then runs the agent).
+  // Submitting via `applyQuestionAnswers` also forces the spec back to `plan`, the
+  // same "reopen the flow" semantics `appendAnnotation` already had.
   async function submitAnnotate(note: string) {
     const s = popoverSnap()
     if (!s) return
-    const stage = spec()?.frontmatter.stage
-    if (stage === 'plan') {
-      setFreeforms((prev) => [
-        ...prev,
-        {
-          id: `f-${Date.now()}-${prev.length}`,
-          sectionPath: s.sectionPath,
-          quote: s.text,
-          note,
-        },
-      ])
-      return
-    }
-    await api.appendAnnotation(projectId(), params.id, {
-      sectionPath: s.sectionPath,
-      quote: s.text,
-      note,
-    })
+    setFreeforms((prev) => [
+      ...prev,
+      {
+        id: `f-${Date.now()}-${prev.length}`,
+        sectionPath: s.sectionPath,
+        quote: s.text,
+        note,
+      },
+    ])
   }
 
   function removeFreeform(id: string) {
@@ -231,12 +301,31 @@ export const SpecDetail: Component = () => {
             return (
               <>
                 <header class="flex flex-col items-start justify-between gap-2">
-                  <Breadcrumb
-                    items={[
-                      { label: t('breadcrumb.specList'), href: projectHref('') },
-                      { label: s().id },
-                    ]}
-                  />
+                  <div class="flex w-full items-center justify-between gap-2">
+                    <Breadcrumb
+                      items={[
+                        { label: t('breadcrumb.specList'), href: projectHref('') },
+                        { label: s().id },
+                      ]}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      class="h-6 w-6 shrink-0 p-0"
+                      onClick={toggleFocusMode}
+                      title={
+                        focusMode() ? t('specDetail.exitFullscreen') : t('specDetail.fullscreen')
+                      }
+                      aria-label={
+                        focusMode() ? t('specDetail.exitFullscreen') : t('specDetail.fullscreen')
+                      }
+                      aria-pressed={focusMode()}
+                    >
+                      <Show when={focusMode()} fallback={<Maximize2 class="h-3 w-3" />}>
+                        <Minimize2 class="h-3 w-3" />
+                      </Show>
+                    </Button>
+                  </div>
                   <div>
                     <p class=" text-muted-foreground">
                       {s().frontmatter.summary || t('common.pendingAgent')}
@@ -272,15 +361,9 @@ export const SpecDetail: Component = () => {
                     >
                       {t('specDetail.review')}
                     </A>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={runAgent}
-                      disabled={running()}
-                      class={running() ? 'opacity-85' : ''}
-                    >
-                      {running() ? t('specDetail.running') : t('specDetail.runAgent')}
-                    </Button>
+                    <Show when={running()}>
+                      <Badge variant="secondary">{t('specDetail.running')}</Badge>
+                    </Show>
                   </div>
                 </header>
 
@@ -298,13 +381,10 @@ export const SpecDetail: Component = () => {
                       onSubmit={submitAnswers}
                     />
                   </Show>
+                  {/* Content is injected by the markdown+mermaid effect above. */}
                   <article
                     class="markdown spec-main flex-[6] min-w-0 overflow-auto rounded-xl border bg-card p-4 shadow"
                     ref={setArticleEl}
-                    innerHTML={renderMarkdown(s().body, {
-                      specId: s().id,
-                      projectId: projectId() || undefined,
-                    })}
                   />
                 </div>
 
@@ -334,9 +414,4 @@ export const SpecDetail: Component = () => {
       </Suspense>
     </section>
   )
-}
-
-function titleFromBody(body: string): string | undefined {
-  const match = body.match(/^#\s+(.+)$/m)
-  return match?.[1]?.trim()
 }

@@ -13,19 +13,25 @@ import { ChevronsRight, ChevronsLeft, ChevronDown, Loader2, Plus, Send, Square }
 import { format as formatTimeago, register as registerTimeago } from 'timeago.js'
 import zhCNTimeago from 'timeago.js/lib/lang/zh_CN.js'
 import { enShort } from '../lib/timeago-locale.js'
-import { api, type SessionInfo, type SessionMessage } from '../lib/api.js'
+import { api, type SessionInfo } from '../lib/api.js'
 import { subscribeSession, subscribeSessions, type SessionEvent } from '../lib/sse.js'
 import { activeProjectId } from '../lib/project.js'
 import { clearRequestedChatSession, requestedChatSessionId } from '../lib/chat-session-request.js'
+import { focusMode, exitFocusMode } from '../lib/layout-focus.js'
+import { groupParts, toPart, type ChatPart } from '../lib/chat-blocks.js'
+import { renderMarkdown } from '../lib/markdown.js'
 import { t, useTranslation } from '../i18n/index.js'
 import { Button } from './ui/button.jsx'
 import { Card } from './ui/card.jsx'
 import { MentionTextarea } from './MentionTextarea.jsx'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible.jsx'
+import { ChatToolBlock } from './ChatToolBlock.jsx'
+import { Collapsible, CollapsibleContent } from './ui/collapsible.jsx'
+import { Checkbox, CheckboxControl, CheckboxLabel } from './ui/checkbox.jsx'
 
 const COLLAPSED_KEY = 'yorz.layout.col2.collapsed'
 const WIDTH_KEY = 'yorz.layout.col2.width'
 const LIST_COLLAPSED_KEY = 'yorz.chat.sessionList.collapsed'
+const SHOW_HISTORY_KEY = 'yorz.chat.sessionList.showHistory'
 const DEFAULT_WIDTH = 340
 const MIN_WIDTH = 260
 /** Fallback cap when there is no window (SSR / tests). */
@@ -33,6 +39,24 @@ const FALLBACK_MAX_WIDTH = 960
 /** Chat may be dragged out to 80% of the viewport. */
 const MAX_WIDTH_RATIO = 0.8
 const AUTO_SCROLL_THRESHOLD = 96
+/** "Show history" reveals sessions touched within the last week. */
+const HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+/**
+ * How long a draft's first send waits for its session subscription to attach.
+ * On timeout we POST anyway: losing a few early deltas (they are still in the
+ * transcript) beats wedging Send behind a dropped `ready` event.
+ */
+const SUBSCRIBE_READY_TIMEOUT_MS = 1500
+/**
+ * Streaming deltas arrive far faster than a human reads, and every flush re-parses
+ * the whole markdown of the block being streamed. Batching them on a short timer
+ * keeps that cost off the hot path without a visible lag.
+ */
+const STREAM_FLUSH_MS = 80
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 // Abbreviated English ("5m ago") — the stock en_US pack overflows the list column.
 registerTimeago('en', enShort)
@@ -64,22 +88,6 @@ function writeLocal(key: string, value: string): void {
   }
 }
 
-interface ChatEntry {
-  role: 'user' | 'assistant'
-  text: string
-}
-
-function messageToEntry(m: SessionMessage): ChatEntry {
-  const text = m.parts
-    .map((p) => {
-      if (p.type === 'text') return p.text
-      if (p.type === 'tool-use') return `\n${t('chat.toolUse', { name: p.name })}\n`
-      return ''
-    })
-    .join('')
-  return { role: m.role, text }
-}
-
 export const ChatPanel: Component = () => {
   let messagesEl: HTMLDivElement | undefined
   const { lng } = useTranslation()
@@ -88,16 +96,59 @@ export const ChatPanel: Component = () => {
   const [width, setWidth] = createSignal(
     clampWidth(Number(readLocal(WIDTH_KEY, String(DEFAULT_WIDTH)))),
   )
-  // Collapsed by default: the list is a switcher, not the primary surface.
-  const [listOpen, setListOpen] = createSignal(readLocal(LIST_COLLAPSED_KEY, '1') !== '1')
+  // Expanded by default (localStorage memory wins): the list now carries the
+  // "show history" control, so it must be discoverable without a click.
+  const [listOpen, setListOpen] = createSignal(readLocal(LIST_COLLAPSED_KEY, '0') !== '1')
+  const [showHistory, setShowHistory] = createSignal(readLocal(SHOW_HISTORY_KEY, '0') === '1')
+  /**
+   * `''` is the Untitled (draft) session: a fully usable panel whose session does
+   * not exist server-side yet — it is created on the first send. Panel usability
+   * is keyed off the project, not off this id.
+   */
   const [activeSid, setActiveSid] = createSignal<string>('')
-  const [entries, setEntries] = createSignal<ChatEntry[]>([])
+  /**
+   * The structured part stream — the single source of truth for the message area.
+   * Both the transcript API and the live SSE stream translate into these, so a
+   * reloaded session renders identically to one you watched stream in.
+   */
+  const [parts, setParts] = createSignal<ChatPart[]>([])
+  const blocks = createMemo(() => groupParts(parts()))
   const [input, setInput] = createSignal('')
   const [autoScroll, setAutoScroll] = createSignal(true)
   const [timeTick, setTimeTick] = createSignal(Date.now())
+  /** A draft's create→subscribe→send handshake is in flight; blocks double-create. */
+  const [starting, setStarting] = createSignal(false)
   // Live run status per session id, seeded from the list response and kept in
   // sync by the project-level `sessions` SSE topic.
   const [runningSids, setRunningSids] = createSignal<Record<string, boolean>>({})
+
+  /**
+   * Sessions created locally in this tab that have no transcript on disk yet:
+   * their `entries` live only in memory (optimistic user message + live deltas),
+   * so the selection effect must NOT clear them and refetch an empty transcript.
+   * An id leaves the set once its first turn completes and gets persisted.
+   */
+  const freshSids = new Set<string>()
+  /** sid → deferred resolved by the session topic's `ready` event. */
+  const readyWaiters = new Map<string, { promise: Promise<void>; resolve: () => void }>()
+
+  function waitForSubscription(sid: string): Promise<void> {
+    let entry = readyWaiters.get(sid)
+    if (!entry) {
+      let resolve: () => void = () => {}
+      const promise = new Promise<void>((r) => {
+        resolve = r
+      })
+      entry = { promise, resolve }
+      readyWaiters.set(sid, entry)
+    }
+    return entry.promise
+  }
+
+  function markSubscribed(sid: string): void {
+    void waitForSubscription(sid)
+    readyWaiters.get(sid)?.resolve()
+  }
 
   const [sessions, { refetch: refetchSessions }] = createResource(
     () => activeProjectId() || undefined,
@@ -125,12 +176,15 @@ export const ChatPanel: Component = () => {
     })
   })
 
-  // Switching projects invalidates every session id we hold.
+  // Switching projects invalidates every session id we hold — back to Untitled.
   createEffect(() => {
     activeProjectId()
     setActiveSid('')
     setRunningSids({})
-    setEntries([])
+    resetParts()
+    setStarting(false)
+    freshSids.clear()
+    readyWaiters.clear()
   })
 
   // Project-level run status: lights up the spinner on sessions other than the
@@ -157,6 +211,19 @@ export const ChatPanel: Component = () => {
   const runningCount = createMemo(() => (sessions() ?? []).filter((s) => isRunning(s.id)).length)
 
   /**
+   * Default view is "what is running now". Ticking "history" widens it to the
+   * last week. The active session is always kept, whatever the filter says:
+   * opening a history session and then unticking the box must not make the
+   * conversation you are looking at vanish from the list.
+   */
+  const visibleSessions = createMemo(() => {
+    const list = sessions() ?? []
+    const sid = activeSid()
+    const cutoff = showHistory() ? timeTick() - HISTORY_WINDOW_MS : Number.POSITIVE_INFINITY
+    return list.filter((s) => isRunning(s.id) || s.id === sid || s.updatedAt >= cutoff)
+  })
+
+  /**
    * The single entry point for switching sessions (list click, spec-page request,
    * new session). The refetch is the self-heal: it re-seeds `runningSids` from the
    * server, so a session whose `running=false` event was lost (SSE reconnect, page
@@ -180,7 +247,18 @@ export const ChatPanel: Component = () => {
     }
   })
 
+  // Focus mode hides the panel without touching the persisted flag, so exiting
+  // it restores whatever the user actually chose.
+  const isCollapsed = () => collapsed() || focusMode()
+
   function toggle() {
+    // While focus mode holds the panel shut the only affordance is "expand" —
+    // honour it by leaving focus mode instead of persisting a state the user
+    // never picked.
+    if (focusMode()) {
+      exitFocusMode()
+      return
+    }
     const next = !collapsed()
     setCollapsed(next)
     writeLocal(COLLAPSED_KEY, next ? '1' : '0')
@@ -189,6 +267,11 @@ export const ChatPanel: Component = () => {
   function toggleList(open: boolean) {
     setListOpen(open)
     writeLocal(LIST_COLLAPSED_KEY, open ? '0' : '1')
+  }
+
+  function toggleShowHistory(on: boolean) {
+    setShowHistory(on)
+    writeLocal(SHOW_HISTORY_KEY, on ? '1' : '0')
   }
 
   // The 80% cap is viewport-relative: re-clamp when the window shrinks.
@@ -214,7 +297,7 @@ export const ChatPanel: Component = () => {
   let docMove: ((e: MouseEvent) => void) | null = null
   let docUp: (() => void) | null = null
   function beginResize(ev: MouseEvent) {
-    if (collapsed()) return
+    if (isCollapsed()) return
     ev.preventDefault()
     dragState = { startX: ev.clientX, startW: width(), raf: null }
     document.body.classList.add('is-resizing')
@@ -254,25 +337,46 @@ export const ChatPanel: Component = () => {
     if (!pid || !sid) return
     let disposed = false
     setAutoScroll(true)
-    setEntries([])
-    void api
-      .getSessionMessages(pid, sid)
-      .then((msgs) => {
-        if (!disposed) setEntries(msgs.map(messageToEntry))
-      })
-      .catch(() => {})
+    // A locally-created session has nothing to load: the transcript is not on
+    // disk yet, and `parts` already holds the optimistic user message plus
+    // whatever has streamed in. Clearing + refetching here would wipe both.
+    if (!freshSids.has(sid)) {
+      resetParts()
+      void api
+        .getSessionMessages(pid, sid)
+        .then((msgs) => {
+          // Flatten message → parts: tool-result keeps its payload instead of
+          // being dropped, so the transcript and the live stream now agree.
+          if (!disposed) resetParts(msgs.flatMap((m) => m.parts.map((p) => toPart(m.role, p))))
+        })
+        .catch(() => {})
+    }
 
     const sub = subscribeSession(pid, sid, {
+      onReady: () => markSubscribed(sid),
       onEvent: (ev: SessionEvent) => {
-        if (ev.type === 'text') appendAssistant(ev.delta)
+        if (ev.type === 'text') appendAssistantDelta(ev.delta)
         else if (ev.type === 'tool-use') {
-          appendAssistant(`\n${t('chat.toolUse', { name: ev.name })}\n`)
+          pushPart({ kind: 'tool', name: ev.name, input: ev.input })
+        } else if (ev.type === 'tool-result') {
+          // Previously unhandled: the result was silently dropped live, yet came
+          // back as an empty bubble after a reload. Both paths agree now.
+          pushPart({ kind: 'tool', result: ev.text })
         } else if (ev.type === 'turn-completed') {
+          // The turn is persisted now — a later re-select should read the
+          // transcript rather than trust this tab's in-memory parts. Drain the
+          // buffer first, or the tail of the last delta is lost.
+          flushDeltas()
+          freshSids.delete(sid)
           setRunningSids((prev) => ({ ...prev, [sid]: false }))
         } else if (ev.type === 'error') {
           appendAssistant(`\n${t('chat.errorMessage', { message: ev.message })}\n`)
           setRunningSids((prev) => ({ ...prev, [sid]: false }))
         } else if (ev.type === 'session-started' && ev.sessionId !== sid) {
+          // codex swaps in its own id mid-turn. The new id has no transcript
+          // either, so inherit `fresh` — otherwise re-subscribing under the new
+          // id would clear the deltas already on screen.
+          if (freshSids.has(sid)) freshSids.add(ev.sessionId)
           setRunningSids((prev) => ({ ...prev, [sid]: false, [ev.sessionId]: true }))
           setActiveSid(ev.sessionId)
           void refetchSessions()
@@ -281,12 +385,13 @@ export const ChatPanel: Component = () => {
     })
     onCleanup(() => {
       disposed = true
+      readyWaiters.delete(sid)
       sub()
     })
   })
 
   createEffect(() => {
-    entries()
+    parts()
     if (!autoScroll()) return
     requestAnimationFrame(scrollMessagesToBottom)
   })
@@ -316,45 +421,134 @@ export const ChatPanel: Component = () => {
     return new Date(ts).toLocaleString(lng())
   }
 
-  function appendAssistant(delta: string): void {
-    setEntries((prev) => {
-      const last = prev[prev.length - 1]
-      if (last && last.role === 'assistant') {
-        return [...prev.slice(0, -1), { role: 'assistant', text: last.text + delta }]
-      }
-      return [...prev, { role: 'assistant', text: delta }]
-    })
+  // --- streaming delta buffer -------------------------------------------------
+  /** Deltas seen since the last flush. Never read outside flushDeltas(). */
+  let pendingDelta = ''
+  let flushTimer: number | null = null
+
+  function withAssistantText(prev: ChatPart[], text: string): ChatPart[] {
+    const last = prev[prev.length - 1]
+    if (last && last.kind === 'text' && last.role === 'assistant') {
+      return [...prev.slice(0, -1), { ...last, text: last.text + text }]
+    }
+    return [...prev, { kind: 'text', role: 'assistant', text }]
   }
 
-  async function newSession() {
-    const pid = activeProjectId()
-    if (!pid) return
-    try {
-      const { sessionId } = await api.createSession(pid, {})
-      // A brand-new session has no turn in flight. Seed it explicitly: it is not
-      // in the list yet (the server hides sessions that never ran a turn), so the
-      // list response cannot seed it and Send must not inherit a stale `true`.
-      setRunningSids((prev) => ({ ...prev, [sessionId]: false }))
-      selectSession(sessionId)
-    } catch {
-      // surfaced via list refresh failure; keep silent
+  function flushDeltas(): void {
+    if (flushTimer != null) {
+      clearTimeout(flushTimer)
+      flushTimer = null
     }
+    const delta = pendingDelta
+    pendingDelta = ''
+    if (!delta) return
+    setParts((prev) => withAssistantText(prev, delta))
+  }
+
+  /** Buffered append for high-frequency stream deltas. */
+  function appendAssistantDelta(delta: string): void {
+    pendingDelta += delta
+    if (flushTimer != null) return
+    flushTimer = window.setTimeout(flushDeltas, STREAM_FLUSH_MS)
+  }
+
+  /**
+   * Immediate append for one-off assistant text (errors). Flushing first is what
+   * preserves arrival order — buffered deltas must land before this text does.
+   */
+  function appendAssistant(text: string): void {
+    flushDeltas()
+    setParts((prev) => withAssistantText(prev, text))
+  }
+
+  /** Append a non-text part (or a user message), after draining the buffer. */
+  function pushPart(part: ChatPart): void {
+    flushDeltas()
+    setParts((prev) => [...prev, part])
+  }
+
+  /** Drop everything on screen, buffer included — a stale delta must not resurface. */
+  function resetParts(next: ChatPart[] = []): void {
+    if (flushTimer != null) {
+      clearTimeout(flushTimer)
+      flushTimer = null
+    }
+    pendingDelta = ''
+    setParts(next)
+  }
+
+  onCleanup(() => {
+    if (flushTimer != null) clearTimeout(flushTimer)
+  })
+
+  /**
+   * "New session" no longer hits the server — it drops the panel back to the
+   * Untitled draft, and the session is created by the first send. This is what
+   * kills the empty-shell sessions the server had to filter out of the list.
+   * A no-op when already on the draft (the button is disabled there anyway).
+   */
+  function newSession(): void {
+    if (!activeProjectId() || !activeSid()) return
+    setActiveSid('')
+    resetParts()
+    setAutoScroll(true)
   }
 
   async function send() {
     const pid = activeProjectId()
     const sid = activeSid()
     const prompt = input().trim()
-    if (!pid || !sid || !prompt || activeRunning()) return
+    if (!pid || !prompt || starting() || activeRunning()) return
     setInput('')
     setAutoScroll(true)
-    setEntries((prev) => [...prev, { role: 'user', text: prompt }])
+    if (!sid) {
+      await sendFromDraft(pid, prompt)
+      return
+    }
+    pushPart({ kind: 'text', role: 'user', text: prompt })
     setRunningSids((prev) => ({ ...prev, [sid]: true }))
     try {
       await api.sendSessionMessage(pid, sid, prompt)
     } catch (err) {
       appendAssistant(`\n${t('chat.errorMessage', { message: (err as Error).message })}\n`)
       setRunningSids((prev) => ({ ...prev, [sid]: false }))
+    }
+  }
+
+  /**
+   * Untitled → live session, in one click. Create and POST race the session
+   * subscription: the event stream has no replay buffer, so any delta emitted
+   * before our topic attaches is gone. Gate the POST on the server's `ready`
+   * event, with a timeout so a lost `ready` degrades gracefully.
+   */
+  async function sendFromDraft(pid: string, prompt: string): Promise<void> {
+    setStarting(true)
+    try {
+      let sid: string
+      try {
+        sid = (await api.createSession(pid, {})).sessionId
+      } catch (err) {
+        setInput(prompt)
+        appendAssistant(`\n${t('chat.errorMessage', { message: (err as Error).message })}\n`)
+        return
+      }
+      freshSids.add(sid)
+      // Register the deferred BEFORE the selection effect subscribes, so the
+      // `ready` event cannot land between subscribe and await.
+      const ready = waitForSubscription(sid)
+      resetParts([{ kind: 'text', role: 'user', text: prompt }])
+      setRunningSids((prev) => ({ ...prev, [sid]: true }))
+      setActiveSid(sid)
+      await Promise.race([ready, delay(SUBSCRIBE_READY_TIMEOUT_MS)])
+      try {
+        await api.sendSessionMessage(pid, sid, prompt)
+      } catch (err) {
+        appendAssistant(`\n${t('chat.errorMessage', { message: (err as Error).message })}\n`)
+        setRunningSids((prev) => ({ ...prev, [sid]: false }))
+      }
+      void refetchSessions()
+    } finally {
+      setStarting(false)
     }
   }
 
@@ -382,17 +576,17 @@ export const ChatPanel: Component = () => {
   return (
     <aside
       class={`relative flex flex-col border-r bg-card shrink-0 ${
-        collapsed() ? 'w-9 transition-[width] duration-150' : ''
+        isCollapsed() ? 'w-9 transition-[width] duration-150' : ''
       }`}
-      style={collapsed() ? undefined : { width: `${width()}px` }}
+      style={isCollapsed() ? undefined : { width: `${width()}px` }}
     >
       <header
         class={`flex items-center border-b ${
-          collapsed() ? 'justify-center py-2' : 'justify-between px-2.5 py-2'
+          isCollapsed() ? 'justify-center py-2' : 'justify-between px-2.5 py-2'
         }`}
       >
         <Show
-          when={!collapsed()}
+          when={!isCollapsed()}
           fallback={
             <Button
               variant="outline"
@@ -406,86 +600,108 @@ export const ChatPanel: Component = () => {
           }
         >
           <span class="font-semibold tracking-wide">{t('chat.title')}</span>
-          <div class="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              class="h-7 w-7 p-0"
-              onClick={() => void newSession()}
-              title={t('chat.newSession')}
-            >
-              <Plus class="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              class="h-7 w-7 p-0"
-              onClick={toggle}
-              title={t('chat.collapse')}
-            >
-              <ChevronsLeft class="h-4 w-4" />
-            </Button>
-          </div>
+          {/* Session actions live next to Send/Abort now — the header only collapses. */}
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-7 w-7 p-0"
+            onClick={toggle}
+            title={t('chat.collapse')}
+          >
+            <ChevronsLeft class="h-4 w-4" />
+          </Button>
         </Show>
       </header>
 
-      <Show when={!collapsed()}>
+      <Show when={!isCollapsed()}>
         <div class="flex min-h-0 flex-1 flex-col">
-          <Show when={(sessions() ?? []).length > 0}>
+          {/* Rendered whenever a project is open — even with zero visible sessions,
+              the user needs the "history" checkbox to widen the filter. */}
+          <Show when={activeProjectId()}>
             <Card class="m-2 rounded-lg shadow-none">
               <Collapsible open={listOpen()} onOpenChange={toggleList}>
-                <CollapsibleTrigger
-                  class="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-background"
-                  title={listOpen() ? t('chat.collapseSessions') : t('chat.expandSessions')}
-                >
-                  <Show
-                    when={runningCount() > 0}
-                    fallback={<span class="font-medium">{t('chat.sessionsLabelPlain')}</span>}
+                {/* Hand-rolled trigger row: the checkbox is an interactive element and
+                    must not nest inside CollapsibleTrigger's <button>. */}
+                <div class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm">
+                  <button
+                    type="button"
+                    class="min-w-0 flex-1 text-left font-medium"
+                    title={listOpen() ? t('chat.collapseSessions') : t('chat.expandSessions')}
+                    onClick={() => toggleList(!listOpen())}
                   >
-                    <span class="font-medium">
-                      {t('chat.sessionsLabel', { count: runningCount() })}
-                    </span>
-                  </Show>
-                  <ChevronDown
-                    class={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150 ${
-                      listOpen() ? '' : '-rotate-90'
-                    }`}
-                  />
-                </CollapsibleTrigger>
+                    <Show
+                      when={runningCount() > 0}
+                      fallback={<span>{t('chat.sessionsLabelPlain')}</span>}
+                    >
+                      <span>{t('chat.sessionsLabel', { count: runningCount() })}</span>
+                    </Show>
+                  </button>
+                  <Checkbox
+                    class="flex shrink-0 items-center gap-1.5"
+                    checked={showHistory()}
+                    onChange={toggleShowHistory}
+                  >
+                    <CheckboxControl class="h-3.5 w-3.5" />
+                    <CheckboxLabel class="cursor-pointer text-xs text-muted-foreground">
+                      {t('chat.showHistory')}
+                    </CheckboxLabel>
+                  </Checkbox>
+                  <button
+                    type="button"
+                    class="shrink-0"
+                    title={listOpen() ? t('chat.collapseSessions') : t('chat.expandSessions')}
+                    onClick={() => toggleList(!listOpen())}
+                  >
+                    <ChevronDown
+                      class={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150 ${
+                        listOpen() ? '' : '-rotate-90'
+                      }`}
+                    />
+                  </button>
+                </div>
                 <CollapsibleContent>
                   <ul class="m-0 max-h-64 list-none overflow-y-auto border-t py-1">
-                    <For each={sessions() ?? []}>
-                      {(s: SessionInfo) => (
-                        <li>
-                          <button
-                            type="button"
-                            class={`flex w-full items-center gap-1 px-2.5 py-1.5 text-left text-sm ${
-                              activeSid() === s.id
-                                ? 'bg-background font-semibold'
-                                : 'hover:bg-background'
-                            }`}
-                            title={
-                              isRunning(s.id)
-                                ? t('chat.sessionTitleRunning', { kind: s.kind, id: s.id })
-                                : t('chat.sessionTitle', { kind: s.kind, id: s.id })
-                            }
-                            onClick={() => selectSession(s.id)}
-                          >
-                            <Show when={isRunning(s.id)}>
-                              <Loader2 class="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
-                            </Show>
-                            <span class="shrink-0 text-xs text-muted-foreground">[{s.kind}]</span>
-                            <span class="min-w-0 flex-1 truncate">{s.title || s.id}</span>
-                            <span
-                              class="ml-auto max-w-20 shrink-0 truncate pl-2 text-right text-[11px] font-normal tabular-nums text-muted-foreground"
-                              title={exactSessionUpdatedAt(s.updatedAt)}
-                            >
-                              {formatSessionUpdatedAt(s.updatedAt)}
-                            </span>
-                          </button>
+                    <Show
+                      when={visibleSessions().length > 0}
+                      fallback={
+                        <li class="px-2.5 py-1.5 text-xs text-muted-foreground">
+                          {t('chat.noRunningSessions')}
                         </li>
-                      )}
-                    </For>
+                      }
+                    >
+                      <For each={visibleSessions()}>
+                        {(s: SessionInfo) => (
+                          <li>
+                            <button
+                              type="button"
+                              class={`flex w-full items-center gap-1 px-2.5 py-1.5 text-left text-sm ${
+                                activeSid() === s.id
+                                  ? 'bg-background font-semibold'
+                                  : 'hover:bg-background'
+                              }`}
+                              title={
+                                isRunning(s.id)
+                                  ? t('chat.sessionTitleRunning', { kind: s.kind, id: s.id })
+                                  : t('chat.sessionTitle', { kind: s.kind, id: s.id })
+                              }
+                              onClick={() => selectSession(s.id)}
+                            >
+                              <Show when={isRunning(s.id)}>
+                                <Loader2 class="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+                              </Show>
+                              <span class="shrink-0 text-xs text-muted-foreground">[{s.kind}]</span>
+                              <span class="min-w-0 flex-1 truncate">{s.title || s.id}</span>
+                              <span
+                                class="ml-auto max-w-20 shrink-0 truncate pl-2 text-right text-[11px] font-normal tabular-nums text-muted-foreground"
+                                title={exactSessionUpdatedAt(s.updatedAt)}
+                              >
+                                {formatSessionUpdatedAt(s.updatedAt)}
+                              </span>
+                            </button>
+                          </li>
+                        )}
+                      </For>
+                    </Show>
                   </ul>
                 </CollapsibleContent>
               </Collapsible>
@@ -498,18 +714,53 @@ export const ChatPanel: Component = () => {
             onScroll={onMessagesScroll}
           >
             <Show
-              when={activeSid()}
-              fallback={<p class="text-sm text-muted-foreground">{t('chat.empty')}</p>}
+              when={blocks().length > 0}
+              fallback={
+                <p class="text-sm text-muted-foreground">
+                  {activeSid() ? t('chat.empty') : t('chat.draftEmpty')}
+                </p>
+              }
             >
-              <For each={entries()}>
-                {(e) => (
-                  <div
-                    class={`mb-2 whitespace-pre-wrap rounded px-2 py-1.5 text-sm ${
-                      e.role === 'user' ? 'bg-background' : 'bg-muted'
-                    }`}
+              <For each={blocks()}>
+                {(block) => (
+                  <Show
+                    when={block.kind === 'assistant' ? block : null}
+                    fallback={
+                      // User input is NOT markdown: it routinely carries `@paths`,
+                      // indentation and bare `*`/`_` that md would rewrite.
+                      //
+                      // Tinted with `primary` rather than the old `bg-background`,
+                      // which sat within 2% lightness of the agent's `bg-muted` —
+                      // the two bubbles were effectively the same color. What you
+                      // said now reads at a glance against what the agent replied.
+                      <div class="mb-2 whitespace-pre-wrap rounded border border-primary/20 border-l-2 border-l-primary bg-primary/10 px-2 py-1.5 text-sm font-medium text-foreground">
+                        {(block as { text: string }).text}
+                      </div>
+                    }
                   >
-                    {e.text}
-                  </div>
+                    {(assistant) => (
+                      <div class="mb-2 rounded bg-muted px-2 py-1.5 text-sm">
+                        <For each={assistant().segments}>
+                          {(seg) => (
+                            <Show
+                              when={seg.kind === 'tools' ? seg : null}
+                              fallback={
+                                <div
+                                  class="markdown chat-md"
+                                  // eslint-disable-next-line solid/no-innerhtml -- renderMarkdown escapes all raw HTML outside a details/summary whitelist
+                                  innerHTML={renderMarkdown((seg as { text: string }).text, {
+                                    mermaid: 'code',
+                                  })}
+                                />
+                              }
+                            >
+                              {(tools) => <ChatToolBlock tools={tools().tools} />}
+                            </Show>
+                          )}
+                        </For>
+                      </div>
+                    )}
+                  </Show>
                 )}
               </For>
             </Show>
@@ -522,15 +773,42 @@ export const ChatPanel: Component = () => {
               onValueChange={setInput}
               onKeyDown={onKeyDown}
               placeholder={
-                activeSid() ? t('chat.inputPlaceholder') : t('chat.noSessionPlaceholder')
+                !activeProjectId()
+                  ? t('chat.noSessionPlaceholder')
+                  : activeSid()
+                    ? t('chat.inputPlaceholder')
+                    : t('chat.draftPlaceholder')
               }
-              disabled={!activeSid()}
+              disabled={!activeProjectId()}
               minRows={2}
               maxRows={10}
               class="mb-1 bg-background px-2 py-1 text-sm"
             />
-            <div class="flex justify-end gap-1">
-              <Show when={activeRunning()}>
+            <div class="flex items-center justify-end gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-8 w-8 p-0"
+                onClick={newSession}
+                disabled={!activeProjectId() || !activeSid()}
+                title={t('chat.newSession')}
+              >
+                <Plus class="h-4 w-4" />
+              </Button>
+              {/* Strictly exclusive: a run shows Abort, everything else shows Send. */}
+              <Show
+                when={activeRunning()}
+                fallback={
+                  <Button
+                    size="sm"
+                    onClick={() => void send()}
+                    disabled={!activeProjectId() || !input().trim() || starting()}
+                  >
+                    <Send class="mr-1 h-3.5 w-3.5" />
+                    {t('chat.send')}
+                  </Button>
+                }
+              >
                 <Button
                   variant="outline"
                   size="sm"
@@ -541,20 +819,12 @@ export const ChatPanel: Component = () => {
                   {t('chat.abort')}
                 </Button>
               </Show>
-              <Button
-                size="sm"
-                onClick={() => void send()}
-                disabled={!activeSid() || !input().trim() || activeRunning()}
-              >
-                <Send class="mr-1 h-3.5 w-3.5" />
-                {t('chat.send')}
-              </Button>
             </div>
           </div>
         </div>
       </Show>
 
-      <Show when={!collapsed()}>
+      <Show when={!isCollapsed()}>
         <div
           class="absolute right-0 top-0 z-[2] h-full w-1 cursor-col-resize bg-transparent hover:bg-accent/40"
           role="separator"

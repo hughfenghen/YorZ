@@ -4,7 +4,7 @@ import type { AnnotationBody, QuestionAnswerBody, QuestionAnswersBody } from '..
 import { buildAnswerItem, FREEFORM_SENTINEL } from '../lib/answer-payload.js'
 import { Button } from './ui/button.jsx'
 import { Textarea } from './ui/textarea.jsx'
-import { X } from 'lucide-solid'
+import { Send, X } from 'lucide-solid'
 import { t } from '../i18n/index.js'
 
 export interface FreeformDraft {
@@ -113,19 +113,29 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
       class="flex min-w-0 flex-[4] flex-col overflow-hidden rounded-lg border bg-card shadow-lg"
       data-testid="question-confirm-panel"
     >
-      <header class="grid [grid-template-columns:auto_1fr] gap-x-2 gap-y-1.5 border-b bg-background px-3 py-2.5">
-        <strong class="font-semibold">{t('questionConfirm.title')}</strong>
-        <span class="text-muted-foreground text-right">
-          {t('questionConfirm.unanswered')} <span class="font-semibold text-accent">{unanswered()}</span> / {props.questions.length}
-        </span>
-        <div class="col-span-full flex gap-1.5">
-          <Button
-            disabled={busy() || props.running}
-            onClick={submit}
-          >
-            {busy() ? t('common.submitting') : props.running ? t('questionConfirm.running') : t('questionConfirm.submitAll')}
-          </Button>
+      <header class="flex items-center justify-between gap-2 border-b bg-background px-3 py-2.5">
+        {/* The panel is narrow (flex-[4]), so the three items compete for one
+            row. Degrade in priority order: the title truncates first, while the
+            count and the button — the actionable bits — always stay whole. */}
+        <div class="flex min-w-0 flex-1 items-baseline gap-2">
+          <strong class="min-w-0 truncate font-semibold" title={t('questionConfirm.title')}>
+            {t('questionConfirm.title')}
+          </strong>
+          <span class="shrink-0 whitespace-nowrap text-sm text-muted-foreground">
+            {t('questionConfirm.unanswered')}{' '}
+            <span class="font-semibold text-accent">{unanswered()}</span> / {props.questions.length}
+          </span>
         </div>
+        {/* Same shape as the Chat composer's Send: every button that kicks off an
+            agent run reads identically. */}
+        <Button size="sm" class="shrink-0" disabled={busy() || props.running} onClick={submit}>
+          <Send class="mr-1 h-3.5 w-3.5" />
+          {busy()
+            ? t('common.submitting')
+            : props.running
+              ? t('questionConfirm.running')
+              : t('questionConfirm.submitAll')}
+        </Button>
       </header>
       <Show when={error()}>
         <p class="text-destructive mx-3 mt-1 ">{error()}</p>
@@ -153,7 +163,10 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
                             <span class="min-w-0 break-words">
                               {opt.label}
                               <Show when={opt.recommended}>
-                                <em class="text-accent text-sm not-italic"> {t('questionConfirm.recommended')}</em>
+                                <em class="text-accent text-sm not-italic">
+                                  {' '}
+                                  {t('questionConfirm.recommended')}
+                                </em>
                               </Show>
                             </span>
                           </label>
@@ -202,7 +215,8 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
                 </Button>
               </header>
               <blockquote class="border-border bg-card m-0 border-l-2 px-2 py-1 text-sm text-muted-foreground break-words">
-                <em>{f.sectionPath}</em> {t('questionConfirm.quoteConnector')} "{f.quote.slice(0, 200)}"
+                <em>{f.sectionPath}</em> {t('questionConfirm.quoteConnector')} "
+                {f.quote.slice(0, 200)}"
               </blockquote>
               <p class="m-0 whitespace-pre-wrap break-words">！！！{f.note}</p>
             </li>

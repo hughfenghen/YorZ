@@ -1,6 +1,6 @@
 import { For, Show, createSignal, onCleanup, type Component } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
-import { X, Upload, Loader2 } from 'lucide-solid'
+import { X, Upload, Loader2, Send } from 'lucide-solid'
 import { api, type AttachmentKind, type AttachmentMeta, type CreateSpecBody } from '../lib/api.js'
 import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/project.js'
 import { subscribeSpecsList, subscribeSession } from '../lib/sse.js'
@@ -507,6 +507,7 @@ export const NewSpec: Component = () => {
         {error() && <p class=" text-destructive">{error()}</p>}
 
         <Button type="submit" variant="default" disabled={busy()}>
+          {busy() ? <Loader2 class="mr-1 h-4 w-4 animate-spin" /> : <Send class="mr-1 h-4 w-4" />}
           {busy() ? t('newSpec.creating') : t('newSpec.createAndStart')}
         </Button>
 
