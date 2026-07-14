@@ -29,9 +29,11 @@ export class SpecWatcher {
 
   async start(): Promise<void> {
     if (this.watcher) return
+    const usePolling = process.env.YORZ_WATCH_USE_POLLING === '1'
     this.watcher = chokidar.watch(this.root, {
       ignoreInitial: true,
       depth: 2,
+      ...(usePolling ? { usePolling: true, interval: 100 } : {}),
     })
     this.watcher.on('add', (p) => this.handle(p, 'updated'))
     this.watcher.on('change', (p) => this.handle(p, 'updated'))

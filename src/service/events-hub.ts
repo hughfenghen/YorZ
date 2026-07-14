@@ -254,6 +254,7 @@ export class EventsHub {
     if (!project) throw new Error('project not found')
 
     if (rest === 'specs') return this.attachSpecsList(s, topic, project)
+    if (rest === 'sessions') return this.attachSessionsStatus(s, topic, project)
     let sm = /^spec:([^:]+):changes$/.exec(rest)
     if (sm) return this.attachSpecChanges(s, topic, project, sm[1])
     sm = /^spec:([^:]+)$/.exec(rest)
@@ -321,6 +322,15 @@ export class EventsHub {
     this.emit(s, topic, 'ready', { sessionId: sid })
     return project.sessions.subscribe(sid, (ev) => {
       this.emit(s, topic, 'session-msg', ev)
+    })
+  }
+
+  // Project-level topic: broadcasts which sessions have an in-flight turn, so
+  // the Chat list can render a spinner on sessions other than the active one.
+  private attachSessionsStatus(s: Session, topic: string, project: ProjectInstance): () => void {
+    this.emit(s, topic, 'ready', {})
+    return project.sessions.subscribeStatus((ev) => {
+      this.emit(s, topic, 'session-status', ev)
     })
   }
 }

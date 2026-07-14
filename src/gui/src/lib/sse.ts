@@ -223,6 +223,35 @@ export function subscribeSession(
   return makeSubscription(unsub)
 }
 
+export interface SessionStatusEvent {
+  sessionId: string
+  running: boolean
+}
+
+export interface SessionsSubscribeHandlers {
+  onStatus?: (e: SessionStatusEvent) => void
+  onServerHeartbeat?: (e: ServerHeartbeatEvent) => void
+}
+
+/** Project-level topic: run status of every session (drives the list spinner). */
+export function subscribeSessions(
+  pid: string,
+  handlers: SessionsSubscribeHandlers,
+): SseSubscription {
+  if (!pid) {
+    const noop = (() => {}) as SseSubscription
+    noop.readyState = () => 2
+    return noop
+  }
+  const topic = `project:${pid}:sessions`
+  const unsub = mux.subscribe(topic, (event, data) => {
+    if (event === 'session-status') handlers.onStatus?.(data as SessionStatusEvent)
+    else if (event === 'server-heartbeat')
+      handlers.onServerHeartbeat?.(data as ServerHeartbeatEvent)
+  })
+  return makeSubscription(unsub)
+}
+
 export function subscribeSpecsList(pid: string, onChange: () => void): () => void {
   if (!pid) return () => {}
   const topic = `project:${pid}:specs`

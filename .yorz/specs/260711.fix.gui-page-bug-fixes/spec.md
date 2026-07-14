@@ -1,8 +1,8 @@
 ---
 stage: done
-last_action: 三处 bug 修复完成并通过 GUI 构建，任务全部完成，标记 done
-updated_at: '2026-07-11 17:45:00'
-summary: 修复 GUI 三处问题：review 页容器不应整体滚动而由文件列表/文档区各自独立滚动；spec 相关页增加面包屑并清理详情页 header 重复的 specId 与 summary 边距；追加任务弹窗溢出到页面左侧、应定位在按钮正下方。
+last_action: 任务全部完成，标记 done
+updated_at: '2026-07-14 17:52:31'
+summary: 修复 GUI 页面与交互 bug：review 页内部独立滚动、spec 页面包屑与 header 清理、追加任务弹窗定位；追加修复 chat 面板发送/终止按钮随当前 session 自愈、英文 time ago 简写、session 列表 header 显示执行中数量、列表默认折叠。
 ---
 
 # GUI 页面与交互 Bug 修复
@@ -19,9 +19,16 @@ summary: 修复 GUI 三处问题：review 页容器不应整体滚动而由文�
 2. spec 相关页面需要面包屑：需求列表 > spec id（详情页） > review｜执行日志；详情页 header 区域移除 specId（与面包屑、文档内容标题重复）；summary 下方与按钮操作区稍微增加一点边距，别靠太近。
 3. spec 详情页「追加任务」弹窗可能溢出到页面左侧边界之外，弹窗应在按钮正下方即可。
 
+追加（2026-07-14，见 `## 追加任务`）：
+
+4. chat 面板的发送 / 终止按钮应只与**当前 session** 的执行状态相关；现状为 session 发送消息后，切换 session、新建 session 均无法再向 Agent 发送新消息。
+5. session 面板国际化：英文 time ago 应使用简写（`minutes ago` 太长）。
+6. session 列表卡片 header 应显示**执行中** session 数量而非列表总数；无执行中 session 时连括号数字一并省略。
+7. session 列表卡片默认折叠。
+
 ## 3. 现状分析
 
-三处问题分属「布局高度约束链断裂」「缺少面包屑 + header 冗余」「弹窗定位锚点错误」，均在 `src/gui` 前端层，不涉及 Service / CLI。
+前三处问题分属「布局高度约束链断裂」「缺少面包屑 + header 冗余」「弹窗定位锚点错误」；追加四项集中在 `ChatPanel` 的 session 运行态与列表 header。全部在 `src/gui` 前端层，不涉及 Service / CLI。
 
 ### 3.1 布局与页面壳层
 
@@ -87,9 +94,44 @@ flowchart LR
 
 </details>
 
+### 3.4 chat 面板 session 运行态与列表 header
+
+服务端已是**按 session 粒度**维护运行态（`SessionManager.running: Set<sid>`，`setRunning` 通过项目级 `session-status` 事件广播），前端 `ChatPanel` 也用 `runningSids: Record<sid, boolean>` 承接，按钮绑定的 `activeRunning()` 本就只看当前 session。问题不在「作用域」，而在**状态收敛的单向性**：
+
+`runningSids[sid]` 由 `send()` **乐观置 true**，其后置回 false **完全依赖 SSE 事件**（项目级 `session-status`、或当前 session topic 的 `turn-completed` / `error`）。一旦该 session 的 `running=false` 事件丢失（SSE 断线重连、页面在 turn 进行中重载、mux 退订窗口），`runningSids[sid]` 就**永久停在 true**：发送按钮永久禁用、终止按钮永久显示。而唯一的纠正路径 `onStatus(!running) → refetchSessions()` **本身依赖那条丢失的事件**，形成自锁——切换 session、新建 session 都**不会**主动向服务端拉取真值来自愈。
+
+```mermaid
+flowchart TB
+    send["send() 乐观置 runningSids[sid]=true"] --> wait{"running=false 事件是否送达"}
+    wait -->|送达| ok["置 false，按钮恢复"]
+    wait -->|丢失（断线/重载/退订）| stuck["runningSids[sid] 永久 true"]
+    stuck --> lock["纠正路径 onStatus(!running)→refetch 依赖同一事件 → 自锁"]
+    switch["用户切换 session / 新建 session"] --> norefetch["不 refetch、不拉服务端真值 → 无法自愈"]
+    norefetch --> stuck
+    classDef breaking fill:#ffdddd,stroke:#e03131,color:#c92a2a
+    classDef affected fill:#fff3bf,stroke:#f08c00,color:#e67700
+    class stuck,lock breaking
+    class norefetch affected
+    class ok affected
+```
+
+伴随的三处列表侧现状：seed effect 只 merge 不 prune（切项目后旧 id 残留）；新建 session 因服务端 ghost 过滤不进列表，其 `runningSids` 条目从未被初始化；header 计数取的是列表长度而非执行中数量；列表默认展开；英文相对时间来自 timeago.js 的 `en_US` 语言包（`5 minutes ago`），不在项目 i18n 文件内。
+
+<details>
+<summary>精确层：ChatPanel 与 SessionManager 关键位置</summary>
+
+- `src/gui/src/components/ChatPanel.tsx:97` `runningSids` 定义；:105-113 seed effect（`next[s.id] = Boolean(s.running)`，只 merge 不 prune）；:117-129 项目级 `subscribeSessions` → `onStatus`，`!running` 时才 `refetchSessions()`。
+- 同文件 :131-135 `isRunning` / `activeRunning`；:310-325 `send()`（:318 乐观置 true）；:327-333 `abort()`；:298-308 `newSession()`（未初始化新 id 的 running，未在切换后拉真值）；:427 列表点击 `setActiveSid(s.id)`（同样不 refetch）。
+- 同文件 :89 `listOpen` 默认展开：`readLocal(LIST_COLLAPSED_KEY, '0') !== '1'`；:401-403 header 计数 `t('chat.sessionsLabel', { count: (sessions() ?? []).length })`；:485-503 终止（`Show when={activeRunning()}`）与发送（`disabled={!activeSid() || !input().trim() || activeRunning()}`）按钮。
+- 同文件 :13-15、:36-37 注册 timeago.js `en_US` / `zh_CN` 语言包；:277-281 `formatSessionUpdatedAt` → `formatTimeago(ts, lng())`。
+- `src/service/session-manager.ts:44` `running` Set；:150-154 `setRunning` 广播 `session-status`；:106-137 `listSessions()` 逐项标注 `running`，:124-129 过滤未跑过 turn 的 ghost session（`this.running.has(s.id)` 时保留）；:174-215 `send()` 的 `setRunning(true)` → `finally setRunning(false)`。
+- i18n `chat` 块：`src/gui/src/i18n/zh-CN.ts:50-67`、`src/gui/src/i18n/en.ts:50-67`（含 `sessionsLabel`）。
+
+</details>
+
 ## 4. 技术实现方案
 
-按三处 bug 独立修复，改动集中在 `src/gui` 前端，无 Service / API 改动。
+按 bug 独立修复，改动集中在 `src/gui` 前端，无 Service / API 改动。
 
 ### 4.1 Bug 1：review 页弹性占满、内部独立滚动
 
@@ -184,11 +226,59 @@ flowchart LR
 
 </details>
 
-### 4.4 验证方式
+### 4.4 追加 Bug 4-7：chat 面板 session 运行态与列表
+
+改动全部落在 `ChatPanel.tsx` + i18n + 一个新的 timeago 语言包文件；服务端不动（其 per-session 运行态已是权威真值）。
+
+**Bug 4（发送/终止只跟当前 session 走）**：核心是把运行态从「乐观置位 + 单向依赖 SSE」改为「**以服务端 list 为权威 + 切换/新建时主动对齐**」，使任何一次事件丢失都能在下一次选择 session 时自愈：
+
+- 抽出 `selectSession(sid)` 统一收口所有切换入口（列表点击、spec 页 `requestedChatSessionId`、新建），内部 `setActiveSid(sid)` 后 `void refetchSessions()` 拉取服务端真值。
+- seed effect 改为**以 list 重建**而非只 merge：list 内的 id 以 `s.running` 覆盖，list 外的 id 直接丢弃（服务端对 running 中的 ghost session 会保留在 list 中，故不会误清刚发出的 turn）。这同时解决切项目后旧 id 残留。
+- `newSession()` 拿到 id 后立即 `runningSids[newId] = false` 并经 `selectSession` 激活，保证新建 session 一定可发送。
+- 切换项目时清空 `activeSid` 与 `runningSids`，杜绝跨项目串号。
+
+```mermaid
+flowchart TB
+    subgraph 权威源
+      srv["服务端 running Set（per-session）"]
+    end
+    srv -->|listSessions 的 running 字段| seed["seed：以 list 重建 runningSids（覆盖+剔除）"]
+    srv -->|SSE session-status| seed
+    select["selectSession(sid)：列表点击 / spec 页请求 / 新建"] --> refetch["refetchSessions() 主动对齐"]
+    refetch --> seed
+    seed --> memo["activeRunning() = runningSids[activeSid]"]
+    memo --> btn["发送 disabled / 终止 显示"]
+    classDef ok fill:#d3f9d8,stroke:#2f9e44,color:#2b8a3e
+    class srv,seed,refetch,select ok
+```
+
+**Bug 5（英文 time ago 简写）**：新增 `src/gui/src/lib/timeago-locale.ts`，导出符合 timeago.js `LocaleFunc` 的 `enShort`（`just now` / `5m ago` / `3h ago` / `2d ago` / `in 5m`…），在 `ChatPanel` 用它 `registerTimeago('en', enShort)` 覆盖原 `en_US`；中文沿用 `zh_CN`（`5分钟前` 本已够短）。
+
+**Bug 6（header 显示执行中数量）**：`runningCount = (sessions() ?? []).filter((s) => isRunning(s.id)).length`；`runningCount > 0` 时渲染 `t('chat.sessionsLabel', { count })`（带括号数字），否则渲染 `t('chat.sessionsLabelPlain')`（纯 `会话` / `Sessions`，无括号）。
+
+**Bug 7（列表默认折叠）**：`listOpen` 初值由 `readLocal(LIST_COLLAPSED_KEY, '0') !== '1'` 改为 `readLocal(LIST_COLLAPSED_KEY, '1') !== '1'`——无本地记录时折叠，用户显式展开后仍按 localStorage 记忆。
+
+<details>
+<summary>精确层：ChatPanel 改动点与 timeago 语言包</summary>
+
+- `ChatPanel.tsx:89` → `createSignal(readLocal(LIST_COLLAPSED_KEY, '1') !== '1')`（默认折叠）。
+- `ChatPanel.tsx:105-113` seed effect → 以 list 重建：`const next: Record<string, boolean> = {}; for (const s of list) next[s.id] = Boolean(s.running); return next`；为不丢失「刚 send 但 list 尚未回包」的乐观值，保留 `activeSid()` 当前条目：若 `prev[activeSid()]` 为 true 且 activeSid 不在 list 中，则保留该条。
+- `ChatPanel.tsx` 新增 `function selectSession(sid: string)`：`if (sid === activeSid()) return; setActiveSid(sid); void refetchSessions()`；替换 :427 `onClick={() => setActiveSid(s.id)}`、:140-150 spec 页请求分支、:298-308 `newSession()` 内的 `setActiveSid`。
+- `ChatPanel.tsx:298-308` `newSession()`：`const { sessionId } = await api.createSession(pid, {})`；`setRunningSids((prev) => ({ ...prev, [sessionId]: false }))`；`selectSession(sessionId)`（内部已 refetch，去掉原先的 `await refetchSessions()`）。
+- 新增「项目切换清空」effect：`createEffect(() => { activeProjectId(); setActiveSid(''); setRunningSids({}); setEntries([]) })`——注意需与既有 `sessions` resource 的 pid 依赖并存，且不能吞掉 `requestedChatSessionId` 的切换（该 effect 只依赖 `activeProjectId`，Solid 下不会被 activeSid 变化重入）。
+- 新文件 `src/gui/src/lib/timeago-locale.ts`：`export const enShort: LocaleFunc = (_n, index) => [['just now','right now'],['%ss ago','in %ss'],['1m ago','in 1m'],['%sm ago','in %sm'],['1h ago','in 1h'],['%sh ago','in %sh'],['1d ago','in 1d'],['%sd ago','in %sd'],['1w ago','in 1w'],['%sw ago','in %sw'],['1mo ago','in 1mo'],['%smo ago','in %smo'],['1y ago','in 1y'],['%sy ago','in %sy']][index] as [string, string]`。
+- `ChatPanel.tsx:13-15/36-37`：`registerTimeago('en', enShort)` 取代 `registerTimeago('en', enUSTimeago)`，移除 `en_US` 语言包导入。
+- `ChatPanel.tsx:401-403` header：`<Show when={runningCount() > 0} fallback={<span class="font-medium">{t('chat.sessionsLabelPlain')}</span>}><span class="font-medium">{t('chat.sessionsLabel', { count: runningCount() })}</span></Show>`。
+- i18n 新增键 `chat.sessionsLabelPlain`：zh-CN `'会话'`、en `'Sessions'`；`chat.sessionsLabel` 语义改为「执行中会话数」，值维持 `'会话（{{count}}）'` / `'Sessions ({{count}})'`。
+
+</details>
+
+### 4.5 验证方式
 
 - 单元/构建：`pnpm -C src/gui build` 或仓库既有 `tsc --noEmit`（若配置）通过。
 - e2e：`src/gui/src/__e2e__/append-task.spec.ts`、`body-no-overflow.spec.ts` 通过；必要时补断言。
 - 手动：review 页无页面级滚动条、文件列表与 review.md 各自独立滚动；三个 spec 页面包屑正确、详情页无重复 id、summary 与按钮有间距；窄视口下追加任务弹窗在按钮正下方且不越界。
+- 手动（追加项）：session A 发送后切到 session B / 新建 session 均可立即发送；session 列表 header 仅在有执行中 session 时显示括号数字；列表首次进入为折叠态；英文下相对时间显示为 `5m ago` 形式。
 
 ## 5. 待确认问题
 
@@ -206,8 +296,27 @@ _暂无_
 - [x] 运行 GUI 构建/类型检查（验收：pnpm -C src/gui 构建或 tsc 无报错）
 - [x] 同步更新 append-task e2e 断言为「正下方+不越界」以匹配新定位（验收：assertion 校验 below/left/no-overflow）
 - [ ] [manual] 浏览器人工核验三处 bug 修复效果（验收：review 页无页面滚动条+内部独立滚动、面包屑正确、弹窗在按钮正下方不越界）
+- [x] 在 ChatPanel 抽出 selectSession(sid) 收口所有切换入口并 refetch 对齐服务端 running（验收：列表点击、spec 页请求、newSession 均调用 selectSession，函数内含 refetchSessions）
+- [x] 改 ChatPanel seed effect 为以 list 重建 runningSids（验收：list 外的 id 被剔除，仅保留 activeSid 的乐观 true）
+- [x] newSession 创建后立即置 runningSids[newId]=false 并经 selectSession 激活（验收：新建 session 后发送按钮立即可用）
+- [x] 新增项目切换清空 activeSid/runningSids/entries 的 effect（验收：切换项目后无跨项目 sid 残留）
+- [x] 新增 src/gui/src/lib/timeago-locale.ts 的 enShort 并在 ChatPanel 注册覆盖 en（验收：英文相对时间显示为 5m ago 形式）
+- [x] ChatPanel 列表 header 改为显示执行中 session 数量、无执行中时省略括号（验收：runningCount>0 用 sessionsLabel，否则 sessionsLabelPlain）
+- [x] i18n zh-CN.ts 与 en.ts 新增 chat.sessionsLabelPlain（验收：两文件均含该键）
+- [x] session 列表卡片默认折叠（验收：listOpen 初值为 readLocal(LIST_COLLAPSED_KEY, '1') !== '1'）
+- [x] 运行 GUI 构建/类型检查（验收：pnpm run build 无类型/打包错误）
+- [ ] [manual] 浏览器人工核验追加四项（验收：session 发送后切换/新建 session 均可发送、header 仅在有执行中会话时显示数字、列表默认折叠、英文时间为简写）
 
-## 7. 执行记录
+## 7. 追加任务
+
+- [fixed] [fix] 2026-07-14 16:47:55 | 1. chat 面板中的 发送、终止 按钮，应该只跟当前session 执行状态相关，目前 session 发送消息后，切换 session、新建 sessio
+  - 描述：1. chat 面板中的 发送、终止 按钮，应该只跟当前session 执行状态相关，目前 session 发送消息后，切换 session、新建 session 无法发送新信息给 Agent
+
+2. session 面板国际化， time ago 英文应该使用简写， minutes ago 太长了
+3. session 列表卡片的 header 应该显示执行中 session 数量，不要显示列表数量，如果没有执行中 session 数量，括号数字都不需要显示
+4. session 列表卡片默认折叠
+
+## 8. 执行记录
 
 - Bug 1：`src/gui/src/AppShell.tsx:76` main 由 `min-w-0 flex-1 overflow-auto` 改为 `flex min-h-0 min-w-0 flex-1 flex-col overflow-auto`，使页面根 section 的 `flex-1 + min-h-0` 高度链贯通；review 页文件列表与 review.md 各自独立滚动，overflow-auto 兜底不自管滚动的页面。验证：GUI 构建通过。
 - Bug 2：新增 `src/gui/src/components/Breadcrumb.tsx`（items 数组，末段纯文本，ChevronRight 分隔）；`SpecDetail` 顶部接入面包屑（需求列表>id）、移除 `<code>{s().id}</code>`、操作区 div 加 `mt-2`；`SpecReview`/`SpecAgentLogs` 用面包屑（需求列表>id(链接)>Review｜执行日志）替换原返回链接与带 id 的 h1，并移除随之未用的 `A`、`ArrowLeft` 导入；`i18n/zh-CN.ts`、`en.ts` 新增 `breadcrumb.specList`。验证：GUI 构建通过。
@@ -216,3 +325,9 @@ _暂无_
 - 构建：`pnpm run build`（CLI+GUI）成功，无类型/打包错误（`tsc --noEmit` 报的 `@/lib/cn` 系既有路径别名问题，vite 构建正常解析，与本次改动无关）。
 - e2e 未能在当前环境运行：Playwright webServer 依赖隔离的单项目 `.tmp-e2e`，但本机全局 YorZ 项目注册表含 4 个真实项目，导致 `/specs/:id`（无 projectId 前缀）无法自动跳转到种子项目，页面元素定位失败；未改动的 `body-no-overflow` 用例同样失败，证明属环境隔离问题而非代码缺陷。修复需改动用户全局注册表（移除真实项目），不擅自执行。留待 `[manual]` 浏览器人工核验。
 - 收尾：非 manual 任务全部完成，待确认问题为空、无批注、无追加任务 `[open]`，标记 done（`[manual]` 浏览器核验项按规则忽略）。
+- 追加 Bug 4（发送/终止只跟当前 session）：根因是运行态**单向收敛**——`send()` 乐观置 `runningSids[sid]=true`，置回 false 只能靠 SSE，事件一旦丢失就永久卡死，而唯一的纠正路径 `onStatus(!running)→refetch` 又依赖同一条事件，形成自锁。改为**以服务端 list 为权威 + 切换时主动对齐**：新增 `selectSession(sid)` 收口列表点击 / spec 页请求 / 新建三处切换入口，内部 `setActiveSid` 后 `refetchSessions()`；seed effect 由「只 merge」改为「以 list 重建」（覆盖 list 内 id、剔除 list 外 id，仅保留 activeSid 的乐观 true，避免误清刚发出的 turn）；`newSession()` 拿到 id 后立即置 `running=false` 再 `selectSession` 激活；新增项目切换清空 `activeSid`/`runningSids`/`entries` 的 effect，杜绝跨项目串号。任何一次事件丢失都能在下次选择 session 时自愈。
+- 追加 Bug 5（英文 time ago 简写）：新增 `src/gui/src/lib/timeago-locale.ts` 导出 `enShort`（`just now` / `5m ago` / `3h ago` / `2d ago`，含 `in %sm` 未来态），`ChatPanel` 以 `registerTimeago('en', enShort)` 覆盖并移除 `timeago.js/lib/lang/en_US.js` 导入；中文沿用 `zh_CN`。
+- 追加 Bug 6（header 显示执行中数量）：新增 `runningCount` memo（`sessions()` 中 `isRunning` 为真的条数）；header 用 `Show` 分支——有执行中会话时渲染 `chat.sessionsLabel`（带括号数字），否则渲染新键 `chat.sessionsLabelPlain`（纯「会话 / Sessions」，无括号）。`i18n/zh-CN.ts`、`en.ts` 同步新增该键。
+- 追加 Bug 7（列表默认折叠）：`listOpen` 初值由 `readLocal(LIST_COLLAPSED_KEY, '0') !== '1'` 改为默认 `'1'`，无本地记录时折叠；用户显式展开后仍按 localStorage 记忆。
+- 验证：`pnpm run build`（CLI+GUI）通过，无类型/打包错误；`pnpm test` 34 个测试文件、269 个用例全部通过。浏览器行为核验留 `[manual]` 项。
+- 收尾（追加轮）：追加任务条目标记 `[fixed]`，非 manual 任务全部完成，待确认问题为空、无批注、无 `[open]`，重新标记 done。

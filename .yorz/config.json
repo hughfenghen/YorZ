@@ -1,7 +1,7 @@
 {
   "version": 1,
   "agent": {
-    "kind": "opencode"
+    "kind": "claude"
   },
   "specsDir": ".yorz/specs"
 }

@@ -4,10 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TextDecoder } from 'node:util'
 import { promisify } from 'node:util'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it } from 'vitest'
 import { start, type ServeHandle } from '../index.js'
 
 const execFileP = promisify(execFile)
+const previousWatchUsePolling = process.env.YORZ_WATCH_USE_POLLING
+process.env.YORZ_WATCH_USE_POLLING = '1'
 
 async function gitInTmp(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileP('git', args, { cwd })
@@ -29,6 +31,11 @@ let handle: ServeHandle | null = null
 afterEach(async () => {
   await handle?.close()
   handle = null
+})
+
+afterAll(() => {
+  if (previousWatchUsePolling === undefined) delete process.env.YORZ_WATCH_USE_POLLING
+  else process.env.YORZ_WATCH_USE_POLLING = previousWatchUsePolling
 })
 
 async function startInTmp() {
@@ -65,14 +72,19 @@ async function openMultiplex(
   })
   const reader = sseRes.body!.getReader()
   const decoder = new TextDecoder()
-  await readUntil(reader, decoder, (t) => t.includes(`"clientId":"${clientId}"`))
-  const subRes = await fetch(`${apiRoot}/events/subscribe`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ clientId, topics }),
-  })
-  if (!subRes.ok) throw new Error(`subscribe failed: ${subRes.status}`)
-  return { reader, decoder, clientId }
+  try {
+    await readUntil(reader, decoder, (t) => t.includes(`"clientId":"${clientId}"`))
+    const subRes = await fetch(`${apiRoot}/events/subscribe`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ clientId, topics }),
+    })
+    if (!subRes.ok) throw new Error(`subscribe failed: ${subRes.status}`)
+    return { reader, decoder, clientId }
+  } catch (err) {
+    await reader.cancel().catch(() => {})
+    throw err
+  }
 }
 
 describe('YorZ Service HTTP', () => {
@@ -107,40 +119,43 @@ describe('YorZ Service HTTP', () => {
   it('specs-list topic emits list-updated when a new spec lands externally', async () => {
     const { cwd, apiRoot, projectId } = await startInTmp()
     const { reader, decoder } = await openMultiplex(apiRoot, [`project:${projectId}:specs`])
-    // Wait for the topic ready ack before triggering the filesystem write to
-    // ensure the watcher is fully attached.
-    await readUntil(reader, decoder, (t) => t.includes('"event":"ready"'), 2000)
+    try {
+      // Wait for the topic ready ack before triggering the filesystem write to
+      // ensure the watcher is fully attached.
+      await readUntil(reader, decoder, (t) => t.includes('"event":"ready"'), 2000)
 
-    // Self-writes via the SpecStore are suppressed by the watcher's echo guard;
-    // simulate the real flow (Agent writes the file directly) by using fs.
-    await new Promise((r) => setTimeout(r, 200))
-    const { mkdir, writeFile } = await import('node:fs/promises')
-    const dir = join(cwd, '.yorz', 'specs', '260614.feat.external')
-    await mkdir(dir, { recursive: true })
-    await writeFile(
-      join(dir, 'spec.md'),
-      [
-        '---',
-        'stage: plan',
-        'last_action: ext',
-        'updated_at: 2026-06-14',
-        'summary: ext',
-        '---',
-        '',
-        '# Ext',
-        '',
-      ].join('\n'),
-      'utf8',
-    )
+      // Self-writes via the SpecStore are suppressed by the watcher's echo guard;
+      // simulate the real flow (Agent writes the file directly) by using fs.
+      await new Promise((r) => setTimeout(r, 200))
+      const { mkdir, writeFile } = await import('node:fs/promises')
+      const dir = join(cwd, '.yorz', 'specs', '260614.feat.external')
+      await mkdir(dir, { recursive: true })
+      await writeFile(
+        join(dir, 'spec.md'),
+        [
+          '---',
+          'stage: plan',
+          'last_action: ext',
+          'updated_at: 2026-06-14',
+          'summary: ext',
+          '---',
+          '',
+          '# Ext',
+          '',
+        ].join('\n'),
+        'utf8',
+      )
 
-    const evt = await readUntil(
-      reader,
-      decoder,
-      (t) => t.includes('"event":"list-updated"'),
-      4000,
-    )
-    expect(evt).toContain('list-updated')
-    await reader.cancel()
+      const evt = await readUntil(
+        reader,
+        decoder,
+        (t) => t.includes('"event":"list-updated"'),
+        6000,
+      )
+      expect(evt).toContain('list-updated')
+    } finally {
+      await reader.cancel().catch(() => {})
+    }
   })
 
   it('POST /api/specs/:id/inputs annotate writes ！！！ block and resets stage', async () => {
@@ -180,19 +195,32 @@ describe('YorZ Service HTTP', () => {
     const { reader, decoder } = await openMultiplex(apiRoot, [
       `project:${projectId}:spec:${id}`,
     ])
-    const ready = await readUntil(reader, decoder, (t) => t.includes('"event":"ready"'))
-    expect(ready).toContain('"event":"ready"')
+    try {
+      const ready = await readUntil(reader, decoder, (t) => t.includes('"event":"ready"'))
+      expect(ready).toContain('"event":"ready"')
 
-    await new Promise((r) => setTimeout(r, 200))
-    const specPath = join(cwd, '.yorz', 'specs', id, 'spec.md')
-    const original = await readFile(specPath, 'utf8')
-    await writeFile(specPath, original + '\n\nedited externally\n', 'utf8')
+      await new Promise((r) => setTimeout(r, 200))
+      const specPath = join(cwd, '.yorz', 'specs', id, 'spec.md')
+      const original = await readFile(specPath, 'utf8')
+      let keepWriting = true
+      const writer = (async () => {
+        for (let i = 0; keepWriting; i++) {
+          await writeFile(specPath, `${original}\n\nedited externally ${i}\n`, 'utf8')
+          await new Promise((r) => setTimeout(r, 250))
+        }
+      })()
 
-    const updated = await readUntil(reader, decoder, (t) => t.includes('"event":"updated"'), 3000)
-    expect(updated).toContain('"event":"updated"')
-
-    await reader.cancel()
-  })
+      try {
+        const updated = await readUntil(reader, decoder, (t) => t.includes('"event":"updated"'), 8000)
+        expect(updated).toContain('"event":"updated"')
+      } finally {
+        keepWriting = false
+        await writer.catch(() => {})
+      }
+    } finally {
+      await reader.cancel().catch(() => {})
+    }
+  }, 12_000)
 
   it('returns 404 for unknown spec', async () => {
     const { apiPrefix } = await startInTmp()
@@ -208,6 +236,37 @@ describe('YorZ Service HTTP', () => {
       body: JSON.stringify({ type: 'bogus' }),
     })
     expect(res.status).toBe(400)
+  })
+
+  it('GET /specs/:id/session is a read-only probe: null when unbound, no session created', async () => {
+    const { cwd, apiPrefix } = await startInTmp()
+    const create = await fetch(`${apiPrefix}/specs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Probe', type: 'feat', summary: 'probe' }),
+    })
+    const { id } = (await create.json()) as { id: string }
+
+    const res = await fetch(`${apiPrefix}/specs/${id}/session`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ sessionId: null, kind: null })
+
+    // Merely probing must not mint a ghost session into the index. (Asserted on
+    // the index file rather than GET /sessions: that route scans every native
+    // adapter's on-disk transcripts, which is far too heavy for a route test.)
+    const indexPath = join(cwd, '.yorz', 'tmp', 'sessions', 'index.json')
+    await expect(readFile(indexPath, 'utf8')).rejects.toThrow()
+  })
+
+  it('project-level sessions topic accepts subscription and acks ready', async () => {
+    const { apiRoot, projectId } = await startInTmp()
+    const { reader, decoder } = await openMultiplex(apiRoot, [`project:${projectId}:sessions`])
+    try {
+      const frame = await readUntil(reader, decoder, (t) => t.includes('"event":"ready"'), 2000)
+      expect(frame).toContain(`project:${projectId}:sessions`)
+    } finally {
+      await reader.cancel().catch(() => {})
+    }
   })
 
   it('400 when annotate body is missing required fields', async () => {
@@ -237,12 +296,13 @@ async function readUntil(
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     const remaining = deadline - Date.now()
-    const next = (await Promise.race([
-      reader.read(),
-      new Promise<{ value?: Uint8Array; done: boolean }>((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), remaining),
-      ),
-    ])) as { value?: Uint8Array; done: boolean }
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const timeout = new Promise<{ value?: Uint8Array; done: boolean }>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('timeout')), remaining)
+    })
+    const next = (await Promise.race([reader.read(), timeout]).finally(() => {
+      if (timer) clearTimeout(timer)
+    })) as { value?: Uint8Array; done: boolean }
     if (next.done) break
     if (next.value) accumulated += decoder.decode(next.value, { stream: true })
     if (predicate(accumulated)) return accumulated

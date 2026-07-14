@@ -51,7 +51,10 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
     const detail = await p.store.read(specId)
     if (!detail) return c.json({ error: 'spec not found' }, 404)
     try {
-      return c.json(await p.sessions.sessionForSpec(specId))
+      // Read-only probe: never mint a session here. Opening a spec detail page
+      // must not create a session that would never run a turn.
+      const found = await p.sessions.findSessionForSpec(specId)
+      return c.json(found ?? { sessionId: null, kind: null })
     } catch (err) {
       return c.json({ error: (err as Error).message }, 500)
     }
