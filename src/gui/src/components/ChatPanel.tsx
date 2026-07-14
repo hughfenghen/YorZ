@@ -20,6 +20,7 @@ import { clearRequestedChatSession, requestedChatSessionId } from '../lib/chat-s
 import { t, useTranslation } from '../i18n/index.js'
 import { Button } from './ui/button.jsx'
 import { Card } from './ui/card.jsx'
+import { MentionTextarea } from './MentionTextarea.jsx'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible.jsx'
 
 const COLLAPSED_KEY = 'yorz.layout.col2.collapsed'
@@ -365,7 +366,13 @@ export const ChatPanel: Component = () => {
     setRunningSids((prev) => ({ ...prev, [sid]: false }))
   }
 
+  /**
+   * Runs after MentionTextarea's own key handling. Two gates before Enter means
+   * "send": the mention popup calls preventDefault() when it consumed the key,
+   * and an IME's candidate-confirming Enter must never submit a half-typed line.
+   */
   function onKeyDown(e: KeyboardEvent) {
+    if (e.defaultPrevented || e.isComposing) return
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       void send()
@@ -509,15 +516,18 @@ export const ChatPanel: Component = () => {
           </div>
 
           <div class="border-t p-2">
-            <textarea
-              class="mb-1 h-16 w-full resize-none rounded border bg-background px-2 py-1 text-sm outline-none"
+            <MentionTextarea
+              projectId={activeProjectId() || ''}
+              value={input()}
+              onValueChange={setInput}
+              onKeyDown={onKeyDown}
               placeholder={
                 activeSid() ? t('chat.inputPlaceholder') : t('chat.noSessionPlaceholder')
               }
-              value={input()}
               disabled={!activeSid()}
-              onInput={(e) => setInput(e.currentTarget.value)}
-              onKeyDown={onKeyDown}
+              minRows={2}
+              maxRows={10}
+              class="mb-1 bg-background px-2 py-1 text-sm"
             />
             <div class="flex justify-end gap-1">
               <Show when={activeRunning()}>

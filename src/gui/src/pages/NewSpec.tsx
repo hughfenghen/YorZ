@@ -5,7 +5,7 @@ import { api, type AttachmentKind, type AttachmentMeta, type CreateSpecBody } fr
 import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/project.js'
 import { subscribeSpecsList, subscribeSession } from '../lib/sse.js'
 import { Button } from '../components/ui/button.jsx'
-import { Textarea } from '../components/ui/textarea.jsx'
+import { MentionTextarea } from '../components/MentionTextarea.jsx'
 import { Input } from '../components/ui/input.jsx'
 import { Checkbox, CheckboxControl, CheckboxLabel } from '../components/ui/checkbox.jsx'
 import { Breadcrumb } from '../components/Breadcrumb.jsx'
@@ -73,21 +73,12 @@ export const NewSpec: Component = () => {
   const [useWorktree, setUseWorktree] = createSignal(false)
   const busy = () => phase() === 'creating'
 
-  const [mentionOpen, setMentionOpen] = createSignal(false)
-  const [mentionItems, setMentionItems] = createSignal<string[]>([])
-  const [mentionIndex, setMentionIndex] = createSignal(0)
-  let mentionStart = -1
-  let mentionQuery = ''
-  let mentionTimer: ReturnType<typeof setTimeout> | null = null
-  let itemRefs: (HTMLLIElement | null)[] = []
-
   let cleanupList: (() => void) | null = null
   let sessionUnsub: (() => void) | null = null
   let baselineIds: Set<string> = new Set()
   let targetProjectId: string = ''
   let navigated = false
   let fileInputEl: HTMLInputElement | undefined
-  let textareaEl: HTMLTextAreaElement | undefined
 
   onCleanup(() => {
     cleanupList?.()
@@ -213,102 +204,6 @@ export const NewSpec: Component = () => {
     if (imgs.length === 0) return
     e.preventDefault()
     await addFiles(imgs)
-  }
-
-  function checkMention(el: HTMLTextAreaElement) {
-    const pos = el.selectionStart
-    const text = el.value.slice(0, pos)
-    const atIdx = text.lastIndexOf('@')
-    if (atIdx === -1) {
-      closeMention()
-      return
-    }
-    if (atIdx > 0 && !/\s/.test(text[atIdx - 1])) {
-      closeMention()
-      return
-    }
-    const afterAt = text.slice(atIdx + 1)
-    if (!/^[\w./@-]*$/.test(afterAt)) {
-      closeMention()
-      return
-    }
-    mentionStart = atIdx
-    mentionQuery = afterAt
-    if (!mentionOpen()) setMentionOpen(true)
-    debouncedSearch(afterAt)
-  }
-
-  function closeMention() {
-    setMentionOpen(false)
-    setMentionItems([])
-    setMentionIndex(0)
-    mentionStart = -1
-    mentionQuery = ''
-    itemRefs = []
-    if (mentionTimer) {
-      clearTimeout(mentionTimer)
-      mentionTimer = null
-    }
-  }
-
-  function debouncedSearch(query: string) {
-    if (mentionTimer) clearTimeout(mentionTimer)
-    mentionTimer = setTimeout(async () => {
-      const pid = projectId()
-      if (!pid) return
-      try {
-        const result = await api.listFiles(pid, query)
-        itemRefs = []
-        setMentionItems(result.items)
-        setMentionIndex(0)
-      } catch {
-        setMentionItems([])
-      }
-    }, 150)
-  }
-
-  function selectMention(path: string) {
-    const text = content()
-    const before = text.slice(0, mentionStart)
-    const after = text.slice(mentionStart + 1 + mentionQuery.length)
-    const replacement = '@' + path
-    const newText = before + replacement + after
-    setContent(newText)
-    closeMention()
-    if (textareaEl) {
-      const cursorPos = before.length + replacement.length
-      requestAnimationFrame(() => {
-        textareaEl!.focus()
-        textareaEl!.setSelectionRange(cursorPos, cursorPos)
-      })
-    }
-  }
-
-  function scrollActiveIntoView() {
-    const el = itemRefs[mentionIndex()]
-    if (el) el.scrollIntoView({ block: 'nearest' })
-  }
-
-  function onTextareaKeyDown(e: KeyboardEvent) {
-    if (!mentionOpen()) return
-    const items = mentionItems()
-    if (items.length === 0) return
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setMentionIndex((i) => (i + 1) % items.length)
-      requestAnimationFrame(scrollActiveIntoView)
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setMentionIndex((i) => (i - 1 + items.length) % items.length)
-      requestAnimationFrame(scrollActiveIntoView)
-    } else if (e.key === 'Enter' || e.key === 'Tab') {
-      if (e.key === 'Enter' && e.isComposing) return
-      e.preventDefault()
-      selectMention(items[mentionIndex()])
-    } else if (e.key === 'Escape') {
-      e.preventDefault()
-      closeMention()
-    }
   }
 
   async function removeAttachment(id: string) {
@@ -478,50 +373,19 @@ export const NewSpec: Component = () => {
 
         <label class="flex flex-col gap-1.5 font-medium">
           <span>{t('newSpec.requirement')}</span>
-          <div class="relative w-full">
-            <Textarea
-              ref={textareaEl}
-              rows={10}
-              value={content()}
-              onInput={(e) => {
-                setContent(e.currentTarget.value)
-                checkMention(e.currentTarget)
-              }}
-              onKeyDown={onTextareaKeyDown}
-              onBlur={() => setTimeout(() => closeMention(), 150)}
-              onPaste={onPaste}
-              placeholder={t('newSpec.requirementPlaceholder')}
-              required
-              autofocus
-              disabled={busy()}
-              class="resize-y"
-            />
-            <Show when={mentionOpen() && mentionItems().length > 0}>
-              <ul class="absolute bottom-full left-0 right-0 z-[100] m-0 max-h-60 list-none overflow-y-auto rounded-lg border bg-card py-1 shadow-lg">
-                <For each={mentionItems()}>
-                  {(item, i) => (
-                    <li ref={(el) => (itemRefs[i()] = el)}>
-                      <button
-                        type="button"
-                        class={`block w-full overflow-hidden whitespace-nowrap border-0 bg-transparent px-3 py-1.5 text-left text-ellipsis ${
-                          mentionIndex() === i()
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-foreground'
-                        }`}
-                        onMouseEnter={() => setMentionIndex(i())}
-                        onMouseDown={(e) => {
-                          e.preventDefault()
-                          selectMention(item)
-                        }}
-                      >
-                        {item}
-                      </button>
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </Show>
-          </div>
+          <MentionTextarea
+            projectId={projectId()}
+            value={content()}
+            onValueChange={setContent}
+            onPaste={onPaste}
+            placeholder={t('newSpec.requirementPlaceholder')}
+            autosize={false}
+            rows={10}
+            required
+            autofocus
+            disabled={busy()}
+            class="resize-y"
+          />
         </label>
 
         <section
