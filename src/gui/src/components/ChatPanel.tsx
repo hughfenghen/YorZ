@@ -5,6 +5,7 @@ import {
   createMemo,
   createResource,
   createSignal,
+  on,
   onCleanup,
   onMount,
   type Component,
@@ -44,6 +45,7 @@ const WIDTH_KEY = 'yorz.layout.col2.width'
 const LIST_COLLAPSED_KEY = 'yorz.chat.sessionList.collapsed'
 const SHOW_HISTORY_KEY = 'yorz.chat.sessionList.showHistory'
 const DEFAULT_WIDTH = 340
+const DEFAULT_WIDTH_RATIO = 0.4
 const MIN_WIDTH = 260
 /** Fallback cap when there is no window (SSR / tests). */
 const FALLBACK_MAX_WIDTH = 960
@@ -83,6 +85,23 @@ function clampWidth(n: number): number {
   return Math.min(maxWidth(), Math.max(MIN_WIDTH, Math.round(n)))
 }
 
+function defaultWidth(): number {
+  if (typeof window === 'undefined') return DEFAULT_WIDTH
+  return clampWidth(window.innerWidth * DEFAULT_WIDTH_RATIO)
+}
+
+function readWidth(): number {
+  try {
+    if (typeof window === 'undefined') return DEFAULT_WIDTH
+    const raw = window.localStorage.getItem(WIDTH_KEY)
+    if (!raw) return defaultWidth()
+    const n = Number(raw)
+    return Number.isFinite(n) ? clampWidth(n) : defaultWidth()
+  } catch {
+    return defaultWidth()
+  }
+}
+
 function readLocal(key: string, fallback: string): string {
   try {
     return (typeof window !== 'undefined' && window.localStorage.getItem(key)) || fallback
@@ -110,9 +129,7 @@ export const ChatPanel: Component = () => {
   const attachments = createAttachments({ projectId: () => activeProjectId() || '' })
 
   const [collapsed, setCollapsed] = createSignal(readLocal(COLLAPSED_KEY, '0') === '1')
-  const [width, setWidth] = createSignal(
-    clampWidth(Number(readLocal(WIDTH_KEY, String(DEFAULT_WIDTH)))),
-  )
+  const [width, setWidth] = createSignal(readWidth())
   // Expanded by default (localStorage memory wins): the list now carries the
   // "show history" control, so it must be discoverable without a click.
   const [listOpen, setListOpen] = createSignal(readLocal(LIST_COLLAPSED_KEY, '0') !== '1')
@@ -194,16 +211,17 @@ export const ChatPanel: Component = () => {
   })
 
   // Switching projects invalidates every session id we hold — back to Untitled.
-  createEffect(() => {
-    activeProjectId()
-    setActiveSid('')
-    setRunningSids({})
-    resetParts()
-    setStarting(false)
-    freshSids.clear()
-    readyWaiters.clear()
-    attachments.reset()
-  })
+  createEffect(
+    on(activeProjectId, () => {
+      setActiveSid('')
+      setRunningSids({})
+      resetParts()
+      setStarting(false)
+      freshSids.clear()
+      readyWaiters.clear()
+      attachments.reset()
+    }),
+  )
 
   // Project-level run status: lights up the spinner on sessions other than the
   // active one (whose events arrive on the per-session topic).
@@ -492,7 +510,7 @@ export const ChatPanel: Component = () => {
       flushTimer = null
     }
     pendingDelta = ''
-    setParts(next)
+    setParts((prev) => (next.length === 0 && prev.length === 0 ? prev : next))
   }
 
   onCleanup(() => {

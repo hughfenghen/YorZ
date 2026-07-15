@@ -37,8 +37,9 @@ import { t } from '../i18n/index.js'
 const COLLAPSED_KEY = 'yorz.projectsSidebar.collapsed'
 const WIDTH_KEY = 'yorz.projectsSidebar.width'
 const DEFAULT_WIDTH = 220
+const DEFAULT_WIDTH_RATIO = 0.2
 const MIN_WIDTH = 160
-const MAX_WIDTH = 480
+const MAX_WIDTH = 640
 
 function readCollapsed(): boolean {
   try {
@@ -63,15 +64,20 @@ function clampWidth(n: number): number {
   return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(n)))
 }
 
+function defaultWidth(): number {
+  if (typeof window === 'undefined') return DEFAULT_WIDTH
+  return clampWidth(window.innerWidth * DEFAULT_WIDTH_RATIO)
+}
+
 function readWidth(): number {
   try {
     if (typeof window === 'undefined') return DEFAULT_WIDTH
     const raw = window.localStorage.getItem(WIDTH_KEY)
-    if (!raw) return DEFAULT_WIDTH
+    if (!raw) return defaultWidth()
     const n = Number(raw)
-    return Number.isFinite(n) ? clampWidth(n) : DEFAULT_WIDTH
+    return Number.isFinite(n) ? clampWidth(n) : defaultWidth()
   } catch {
-    return DEFAULT_WIDTH
+    return defaultWidth()
   }
 }
 
@@ -283,7 +289,9 @@ export const ProjectsSidebar: Component = () => {
                   <A
                     href={`/${encodeURIComponent(p.id)}`}
                     class={`flex-1 truncate px-2.5 py-1.5 no-underline ${
-                      isActive() ? 'bg-background font-semibold' : 'hover:bg-background'
+                      isActive()
+                        ? 'bg-accent text-accent-foreground font-semibold'
+                        : 'hover:bg-muted'
                     } ${isCollapsed() ? 'px-0 text-center' : ''}`}
                     title={p.path}
                   >
