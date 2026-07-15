@@ -28,13 +28,14 @@ import { subscribeSession, subscribeSessions, type SessionEvent } from '../lib/s
 import { activeProjectId } from '../lib/project.js'
 import { clearRequestedChatSession, requestedChatSessionId } from '../lib/chat-session-request.js'
 import { focusMode, exitFocusMode } from '../lib/layout-focus.js'
-import { groupParts, toPart, type ChatPart } from '../lib/chat-blocks.js'
+import { groupParts, messagesToParts, type ChatPart } from '../lib/chat-blocks.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { t, useTranslation } from '../i18n/index.js'
 import { Button } from './ui/button.jsx'
 import { Card } from './ui/card.jsx'
 import { MentionTextarea } from './MentionTextarea.jsx'
 import { ChatToolBlock } from './ChatToolBlock.jsx'
+import { ChatContextBlock } from './ChatContextBlock.jsx'
 import { Collapsible, CollapsibleContent } from './ui/collapsible.jsx'
 import { Checkbox, CheckboxControl, CheckboxLabel } from './ui/checkbox.jsx'
 import { AttachmentList } from './AttachmentList.jsx'
@@ -383,7 +384,7 @@ export const ChatPanel: Component = () => {
         .then((msgs) => {
           // Flatten message → parts: tool-result keeps its payload instead of
           // being dropped, so the transcript and the live stream now agree.
-          if (!disposed) resetParts(msgs.flatMap((m) => m.parts.map((p) => toPart(m.role, p))))
+          if (!disposed) resetParts(messagesToParts(msgs))
         })
         .catch(() => {})
     }
@@ -765,42 +766,49 @@ export const ChatPanel: Component = () => {
               <For each={blocks()}>
                 {(block) => (
                   <Show
-                    when={block.kind === 'assistant' ? block : null}
+                    when={block.kind === 'context' ? block : null}
                     fallback={
-                      // User input is NOT markdown: it routinely carries `@paths`,
-                      // indentation and bare `*`/`_` that md would rewrite.
-                      //
-                      // Tinted with `primary` rather than the old `bg-background`,
-                      // which sat within 2% lightness of the agent's `bg-muted` —
-                      // the two bubbles were effectively the same color. What you
-                      // said now reads at a glance against what the agent replied.
-                      <div class="mb-2 whitespace-pre-wrap rounded border border-primary/20 border-l-2 border-l-primary bg-primary/10 px-2 py-1.5 text-sm font-medium text-foreground">
-                        {(block as { text: string }).text}
-                      </div>
+                      <Show
+                        when={block.kind === 'assistant' ? block : null}
+                        fallback={
+                          // User input is NOT markdown: it routinely carries `@paths`,
+                          // indentation and bare `*`/`_` that md would rewrite.
+                          //
+                          // Tinted with `primary` rather than the old `bg-background`,
+                          // which sat within 2% lightness of the agent's `bg-muted` —
+                          // the two bubbles were effectively the same color. What you
+                          // said now reads at a glance against what the agent replied.
+                          <div class="mb-2 whitespace-pre-wrap rounded border border-primary/20 border-l-2 border-l-primary bg-primary/10 px-2 py-1.5 text-sm font-medium text-foreground">
+                            {(block as { text: string }).text}
+                          </div>
+                        }
+                      >
+                        {(assistant) => (
+                          <div class="mb-2 rounded bg-muted px-2 py-1.5 text-sm">
+                            <For each={assistant().segments}>
+                              {(seg) => (
+                                <Show
+                                  when={seg.kind === 'tools' ? seg : null}
+                                  fallback={
+                                    <div
+                                      class="markdown chat-md"
+                                      // eslint-disable-next-line solid/no-innerhtml -- renderMarkdown escapes all raw HTML outside a details/summary whitelist
+                                      innerHTML={renderMarkdown((seg as { text: string }).text, {
+                                        mermaid: 'code',
+                                      })}
+                                    />
+                                  }
+                                >
+                                  {(tools) => <ChatToolBlock tools={tools().tools} />}
+                                </Show>
+                              )}
+                            </For>
+                          </div>
+                        )}
+                      </Show>
                     }
                   >
-                    {(assistant) => (
-                      <div class="mb-2 rounded bg-muted px-2 py-1.5 text-sm">
-                        <For each={assistant().segments}>
-                          {(seg) => (
-                            <Show
-                              when={seg.kind === 'tools' ? seg : null}
-                              fallback={
-                                <div
-                                  class="markdown chat-md"
-                                  // eslint-disable-next-line solid/no-innerhtml -- renderMarkdown escapes all raw HTML outside a details/summary whitelist
-                                  innerHTML={renderMarkdown((seg as { text: string }).text, {
-                                    mermaid: 'code',
-                                  })}
-                                />
-                              }
-                            >
-                              {(tools) => <ChatToolBlock tools={tools().tools} />}
-                            </Show>
-                          )}
-                        </For>
-                      </div>
-                    )}
+                    {(context) => <ChatContextBlock contexts={context().contexts} />}
                   </Show>
                 )}
               </For>

@@ -128,6 +128,8 @@ export interface FileCompletionResult {
 
 export type AgentKind = 'claude' | 'codex' | 'opencode'
 
+export type AgentContextKind = 'recommended_plugins' | 'agents_instructions' | 'environment_context'
+
 export interface SessionInfo {
   id: string
   title: string
@@ -140,7 +142,7 @@ export interface SessionInfo {
 }
 
 export type MessagePart =
-  | { type: 'text'; text: string }
+  | { type: 'text'; text: string; contextKind?: AgentContextKind }
   | { type: 'tool-use'; name: string; input: unknown }
   | { type: 'tool-result'; text: string }
 

@@ -1,5 +1,7 @@
 export type AgentKind = 'claude' | 'codex' | 'opencode'
 
+export type AgentContextKind = 'recommended_plugins' | 'agents_instructions' | 'environment_context'
+
 /** Normalized streaming event emitted by every adapter's `send()`. */
 export type AgentEvent =
   | { type: 'session-started'; sessionId: string }
@@ -10,7 +12,7 @@ export type AgentEvent =
   | { type: 'error'; message: string }
 
 export type MessagePart =
-  | { type: 'text'; text: string }
+  | { type: 'text'; text: string; contextKind?: AgentContextKind }
   | { type: 'tool-use'; name: string; input: unknown }
   | { type: 'tool-result'; text: string }
 
