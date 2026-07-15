@@ -27,6 +27,7 @@ export default defineConfig({
         '@hono/node-server',
         'chokidar',
         'gray-matter',
+        '@openai/codex-sdk',
         'markdown-it',
         /^markdown-it\//,
         'mermaid',
