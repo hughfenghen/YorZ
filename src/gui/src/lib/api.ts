@@ -371,13 +371,13 @@ export const api = {
     request<SessionMessage[]>(
       `${projectBase(pid)}/sessions/${encodeURIComponent(sid)}/messages`,
     ),
-  sendSessionMessage: (pid: string, sid: string, prompt: string) =>
+  sendSessionMessage: (pid: string, sid: string, prompt: string, draftId?: string) =>
     request<{ runId: string; sessionId: string }>(
       `${projectBase(pid)}/sessions/${encodeURIComponent(sid)}/messages`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify(draftId ? { prompt, draftId } : { prompt }),
       },
     ),
   abortSession: (pid: string, sid: string) =>
