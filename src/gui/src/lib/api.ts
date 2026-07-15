@@ -388,7 +388,7 @@ export const api = {
   // Read-only probe: `sessionId` is null when the spec has no session yet
   // (sessions are created lazily, on the first system round).
   getSpecSession: (pid: string, id: string) =>
-    request<{ sessionId: string | null; kind: AgentKind | null }>(
+    request<{ sessionId: string | null; kind: AgentKind | null; running: boolean }>(
       `${projectBase(pid)}/specs/${encodeURIComponent(id)}/session`,
     ),
 }

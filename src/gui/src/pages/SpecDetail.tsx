@@ -21,7 +21,7 @@ import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/pro
 import { exitFocusMode, focusMode, toggleFocusMode } from '../lib/layout-focus.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { renderMermaidIn } from '../lib/mermaid.js'
-import { subscribeSpec, subscribeSession } from '../lib/sse.js'
+import { subscribeSpec, subscribeSession, subscribeSessions } from '../lib/sse.js'
 import { observeSelection, type SelectionSnapshot } from '../lib/selection.js'
 import { formatSpecUpdatedAt } from '../lib/time.js'
 import { parseConfirmQuestions } from '../lib/question-parse.js'
@@ -100,11 +100,15 @@ export const SpecDetail: Component = () => {
     return parseConfirmQuestions(s.body)
   })
 
-  // Annotations are drafted at any stage, so the panel is gated purely on having
-  // something to submit — not on the spec being in `plan`.
+  // Annotations are drafted at any stage, so the panel is gated on having
+  // something to submit — but NEVER while the spec's agent is running: a visible
+  // panel could be submitted again and spin up a second session that concurrently
+  // rewrites the same doc. `freeforms` drafts are only hidden, not cleared, so
+  // they reappear once the run finishes.
   const showPanel = createMemo(() => {
     const s = spec()
     if (!s) return false
+    if (running()) return false
     return questions().length > 0 || freeforms().length > 0
   })
 
@@ -135,12 +139,31 @@ export const SpecDetail: Component = () => {
     if (!id || !pid) return
     void api
       .getSpecSession(pid, id)
-      .then(({ sessionId }) => {
+      .then(({ sessionId, running: r }) => {
         if (!sessionId) return
         setSpecSid(sessionId)
+        // Backfill the initial run state so a page opened while a background turn
+        // is already in flight starts with the panel hidden.
+        setRunning(r)
         requestChatSession(sessionId)
       })
       .catch(() => {})
+  })
+
+  // Keep `running` authoritative for this spec's session. The project-level
+  // `session-status` topic reports both start (→true) and finish (→false),
+  // including turns kicked off elsewhere; the single-session stream below only
+  // ever settles it to false. Neither replays a snapshot, hence the probe above.
+  createEffect(() => {
+    const pid = projectId()
+    const sid = specSid()
+    if (!pid || !sid) return
+    const unsub = subscribeSessions(pid, {
+      onStatus: (ev) => {
+        if (ev.sessionId === sid) setRunning(ev.running)
+      },
+    })
+    onCleanup(unsub)
   })
 
   // Drive the slim running indicator from the spec session's turn lifecycle.
@@ -191,13 +214,28 @@ export const SpecDetail: Component = () => {
     if (!el || !s) return
     const pid = projectId()
 
+    // An SSE refresh yields a fresh spec() object even when the body is
+    // unchanged, so this effect re-runs and `innerHTML = …` rebuilds every child
+    // — which drops the container's scrollTop to 0. Save it first and restore
+    // after both the synchronous rebuild and the async mermaid injection, each
+    // clamped to the new scrollHeight so a shortened body can't overscroll.
+    const prevTop = el.scrollTop
+    const restoreScroll = () => {
+      el.scrollTop = Math.min(prevTop, el.scrollHeight - el.clientHeight)
+    }
+
     el.innerHTML = renderMarkdown(s.body, { specId: s.id, projectId: pid || undefined })
+    restoreScroll()
 
     let active = true
     let cleanupFn: (() => void) | undefined
     void renderMermaidIn(el).then((cleanup) => {
-      if (active) cleanupFn = cleanup
-      else cleanup()
+      if (active) {
+        cleanupFn = cleanup
+        // mermaid swapped raw source for sized svg, shifting content height —
+        // restore once more (only if this pass is still the live one).
+        restoreScroll()
+      } else cleanup()
     })
     onCleanup(() => {
       active = false

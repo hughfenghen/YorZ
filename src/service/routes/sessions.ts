@@ -54,7 +54,10 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
       // Read-only probe: never mint a session here. Opening a spec detail page
       // must not create a session that would never run a turn.
       const found = await p.sessions.findSessionForSpec(specId)
-      return c.json(found ?? { sessionId: null, kind: null })
+      // Surface the live run state so the detail page can hide the confirm panel
+      // even when the turn was started by a background/other session.
+      if (!found) return c.json({ sessionId: null, kind: null, running: false })
+      return c.json({ ...found, running: p.sessions.isRunning(found.sessionId) })
     } catch (err) {
       return c.json({ error: (err as Error).message }, 500)
     }
