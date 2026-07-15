@@ -1,4 +1,4 @@
-import { createMemo, createSignal, onCleanup, type Accessor } from 'solid-js'
+import { createMemo, createSignal, onCleanup, untrack, type Accessor } from 'solid-js'
 import { api, type AttachmentKind } from './api.js'
 import { t } from '../i18n/index.js'
 
@@ -240,10 +240,11 @@ export function createAttachments(opts: {
   }
 
   function reset() {
-    for (const att of attachments()) {
+    const current = untrack(attachments)
+    for (const att of current) {
       if (att.previewUrl) URL.revokeObjectURL(att.previewUrl)
     }
-    setAttachments([])
+    if (current.length > 0) setAttachments([])
     setDraftId(null)
     setRenamingId(null)
     setRenameDraft('')
