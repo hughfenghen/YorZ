@@ -249,7 +249,7 @@ describe('YorZ Service HTTP', () => {
 
     const res = await fetch(`${apiPrefix}/specs/${id}/session`)
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ sessionId: null, kind: null })
+    expect(await res.json()).toEqual({ sessionId: null, kind: null, running: false })
 
     // Merely probing must not mint a ghost session into the index. (Asserted on
     // the index file rather than GET /sessions: that route scans every native
