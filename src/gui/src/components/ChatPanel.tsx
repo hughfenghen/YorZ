@@ -9,7 +9,16 @@ import {
   onMount,
   type Component,
 } from 'solid-js'
-import { ChevronsRight, ChevronsLeft, ChevronDown, Loader2, Plus, Send, Square } from 'lucide-solid'
+import {
+  ChevronsRight,
+  ChevronsLeft,
+  ChevronDown,
+  Loader2,
+  Paperclip,
+  Plus,
+  Send,
+  Square,
+} from 'lucide-solid'
 import { format as formatTimeago, register as registerTimeago } from 'timeago.js'
 import zhCNTimeago from 'timeago.js/lib/lang/zh_CN.js'
 import { enShort } from '../lib/timeago-locale.js'
@@ -27,6 +36,8 @@ import { MentionTextarea } from './MentionTextarea.jsx'
 import { ChatToolBlock } from './ChatToolBlock.jsx'
 import { Collapsible, CollapsibleContent } from './ui/collapsible.jsx'
 import { Checkbox, CheckboxControl, CheckboxLabel } from './ui/checkbox.jsx'
+import { AttachmentList } from './AttachmentList.jsx'
+import { ACCEPT_MIME, MAX_COUNT, createAttachments } from '../lib/attachments.js'
 
 const COLLAPSED_KEY = 'yorz.layout.col2.collapsed'
 const WIDTH_KEY = 'yorz.layout.col2.width'
@@ -90,7 +101,13 @@ function writeLocal(key: string, value: string): void {
 
 export const ChatPanel: Component = () => {
   let messagesEl: HTMLDivElement | undefined
+  let fileInputEl: HTMLInputElement | undefined
   const { lng } = useTranslation()
+
+  // Transient chat attachments — uploaded to the same draft store as NewSpec, then
+  // referenced by path in the outgoing prompt. Reset after each send and whenever
+  // the active session / project changes.
+  const attachments = createAttachments({ projectId: () => activeProjectId() || '' })
 
   const [collapsed, setCollapsed] = createSignal(readLocal(COLLAPSED_KEY, '0') === '1')
   const [width, setWidth] = createSignal(
@@ -185,6 +202,7 @@ export const ChatPanel: Component = () => {
     setStarting(false)
     freshSids.clear()
     readyWaiters.clear()
+    attachments.reset()
   })
 
   // Project-level run status: lights up the spinner on sessions other than the
@@ -492,23 +510,26 @@ export const ChatPanel: Component = () => {
     setActiveSid('')
     resetParts()
     setAutoScroll(true)
+    attachments.reset()
   }
 
   async function send() {
     const pid = activeProjectId()
     const sid = activeSid()
     const prompt = input().trim()
-    if (!pid || !prompt || starting() || activeRunning()) return
+    if (!pid || !prompt || starting() || activeRunning() || attachments.hasPending()) return
     setInput('')
     setAutoScroll(true)
     if (!sid) {
       await sendFromDraft(pid, prompt)
       return
     }
+    const did = attachments.draftId() ?? undefined
     pushPart({ kind: 'text', role: 'user', text: prompt })
     setRunningSids((prev) => ({ ...prev, [sid]: true }))
     try {
-      await api.sendSessionMessage(pid, sid, prompt)
+      await api.sendSessionMessage(pid, sid, prompt, did)
+      attachments.reset()
     } catch (err) {
       appendAssistant(`\n${t('chat.errorMessage', { message: (err as Error).message })}\n`)
       setRunningSids((prev) => ({ ...prev, [sid]: false }))
@@ -533,6 +554,7 @@ export const ChatPanel: Component = () => {
         return
       }
       freshSids.add(sid)
+      const did = attachments.draftId() ?? undefined
       // Register the deferred BEFORE the selection effect subscribes, so the
       // `ready` event cannot land between subscribe and await.
       const ready = waitForSubscription(sid)
@@ -541,7 +563,8 @@ export const ChatPanel: Component = () => {
       setActiveSid(sid)
       await Promise.race([ready, delay(SUBSCRIBE_READY_TIMEOUT_MS)])
       try {
-        await api.sendSessionMessage(pid, sid, prompt)
+        await api.sendSessionMessage(pid, sid, prompt, did)
+        attachments.reset()
       } catch (err) {
         appendAssistant(`\n${t('chat.errorMessage', { message: (err as Error).message })}\n`)
         setRunningSids((prev) => ({ ...prev, [sid]: false }))
@@ -767,23 +790,54 @@ export const ChatPanel: Component = () => {
           </div>
 
           <div class="border-t p-2">
-            <MentionTextarea
-              projectId={activeProjectId() || ''}
-              value={input()}
-              onValueChange={setInput}
-              onKeyDown={onKeyDown}
-              placeholder={
-                !activeProjectId()
-                  ? t('chat.noSessionPlaceholder')
-                  : activeSid()
-                    ? t('chat.inputPlaceholder')
-                    : t('chat.draftPlaceholder')
-              }
-              disabled={!activeProjectId()}
-              minRows={2}
-              maxRows={10}
-              class="mb-1 bg-background px-2 py-1 text-sm"
-            />
+            <Show when={attachments.count() > 0}>
+              <div class="mb-1.5">
+                <AttachmentList ctrl={attachments} compact />
+              </div>
+            </Show>
+            <Show when={attachments.error()}>
+              <p class="mb-1 text-xs text-destructive">{attachments.error()}</p>
+            </Show>
+            {/* Attachment button sits inline to the right of the textarea, vertically
+                centered against it — not down in the action row. */}
+            <div class="mb-1 flex items-center gap-1">
+              <MentionTextarea
+                projectId={activeProjectId() || ''}
+                value={input()}
+                onValueChange={setInput}
+                onKeyDown={onKeyDown}
+                onPaste={attachments.onPaste}
+                placeholder={
+                  !activeProjectId()
+                    ? t('chat.noSessionPlaceholder')
+                    : activeSid()
+                      ? t('chat.inputPlaceholder')
+                      : t('chat.draftPlaceholder')
+                }
+                disabled={!activeProjectId()}
+                minRows={2}
+                maxRows={10}
+                class="min-w-0 flex-1 bg-background px-2 py-1 text-sm"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-8 w-8 shrink-0 p-0"
+                onClick={() => fileInputEl?.click()}
+                disabled={!activeProjectId() || attachments.count() >= MAX_COUNT}
+                title={t('newSpec.importAttachment')}
+              >
+                <Paperclip class="h-4 w-4" />
+              </Button>
+              <input
+                ref={fileInputEl}
+                type="file"
+                accept={ACCEPT_MIME}
+                multiple
+                hidden
+                onChange={attachments.onFileInputChange}
+              />
+            </div>
             <div class="flex items-center justify-end gap-1">
               <Button
                 variant="outline"
@@ -802,7 +856,12 @@ export const ChatPanel: Component = () => {
                   <Button
                     size="sm"
                     onClick={() => void send()}
-                    disabled={!activeProjectId() || !input().trim() || starting()}
+                    disabled={
+                      !activeProjectId() ||
+                      !input().trim() ||
+                      starting() ||
+                      attachments.hasPending()
+                    }
                   >
                     <Send class="mr-1 h-3.5 w-3.5" />
                     {t('chat.send')}

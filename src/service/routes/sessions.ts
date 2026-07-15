@@ -1,10 +1,37 @@
 import { Hono } from 'hono'
 import type { AgentKind } from '../agent-sdk/types.js'
+import type { AttachmentMeta } from '../attachment-store.js'
 import type { ProjectInstance } from '../project-registry.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
 const KINDS: AgentKind[] = ['claude', 'codex', 'opencode']
+const DRAFT_ID_RE = /^[a-zA-Z0-9-]{1,64}$/
+
+/**
+ * Append a readable, non-migrating attachment block to a chat prompt. Mirrors the
+ * spec-draft flow but for the transient chat case: files stay in `.yorz/tmp` and
+ * the Agent reads them in place. Returns the prompt unchanged when there are none.
+ */
+export function buildChatPrompt(
+  prompt: string,
+  draftId: string,
+  attachments: AttachmentMeta[],
+): string {
+  if (attachments.length === 0) return prompt
+  const dir = `.yorz/tmp/drafts/${draftId}/attachments`
+  const lines = attachments.map((a) => {
+    const rel = `${dir}/${a.storedName}`
+    return a.kind === 'image' ? `- ![${a.name}](${rel})` : `- [${a.name}](${rel})`
+  })
+  return [
+    prompt,
+    '',
+    '---',
+    `本次消息附带 ${attachments.length} 个附件，已保存在临时目录 \`${dir}/\`（请按需用文件工具直接读取，无需迁移）：`,
+    ...lines,
+  ].join('\n')
+}
 
 export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
   const app = new Hono()
@@ -76,7 +103,7 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
   app.post('/projects/:projectId/sessions/:sid/messages', async (c) => {
     const p = await need(c)
     if (p instanceof Response) return p
-    let body: { prompt?: unknown } = {}
+    let body: { prompt?: unknown; draftId?: unknown } = {}
     try {
       body = (await c.req.json()) as typeof body
     } catch {
@@ -84,7 +111,23 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
     }
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
     if (!prompt) return c.json({ error: 'prompt required' }, 400)
-    const handle = p.sessions.send(c.req.param('sid'), prompt)
+
+    // Optional attachment draft: list its files and append their readable paths so
+    // the Agent can read them in place. A malformed/missing draft degrades to the
+    // plain prompt rather than failing the send.
+    let finalPrompt = prompt
+    if (body.draftId !== undefined) {
+      if (typeof body.draftId !== 'string' || !DRAFT_ID_RE.test(body.draftId)) {
+        return c.json({ error: 'draftId has invalid format' }, 400)
+      }
+      const draftId = body.draftId
+      if (await p.attachments.draftExists(draftId)) {
+        const metas = await p.attachments.listAttachments(draftId)
+        finalPrompt = buildChatPrompt(prompt, draftId, metas)
+      }
+    }
+
+    const handle = p.sessions.send(c.req.param('sid'), finalPrompt)
     return c.json({ runId: handle.runId, sessionId: handle.sessionId }, 202)
   })
 

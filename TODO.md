@@ -7,6 +7,8 @@
 - chat 支持粘贴图片
 - yorz serve 检查并自动 install skill
 - Agent 更新 spec 文档，会导致滚动条重置到顶部，未输出完成即渲染了问题弹窗，可能导致两个 Agent session 同时更新 spec 文档
+- chat 输入框文件补全时 esc 关闭弹窗，但 input 不要失焦
+- spec 放到右上角 页面header，随时触达
 - 追加任务、批注，等用户输入内容容易破坏文档结构一致性
 
 ```
