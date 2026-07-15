@@ -70,6 +70,7 @@ export const en = {
     noRunningSessions: 'Uncommitted sessions',
     abort: 'Abort',
     send: 'Send',
+    agentContextCollapsed: 'Agent context ×{{count}}',
     toolCollapsed: '[Tool] ×{{count}}',
     errorMessage: '[Error] {{message}}',
   },

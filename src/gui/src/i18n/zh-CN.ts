@@ -70,6 +70,7 @@ export const zhCN = {
     noRunningSessions: '未提交的会话',
     abort: '中止',
     send: '发送',
+    agentContextCollapsed: 'Agent 上下文 ×{{count}}',
     toolCollapsed: '[工具] ×{{count}}',
     errorMessage: '[错误] {{message}}',
   },

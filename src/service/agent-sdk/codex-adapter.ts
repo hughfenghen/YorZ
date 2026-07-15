@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline'
 import { createReadStream } from 'node:fs'
 import { Codex, type Thread, type ThreadEvent } from '@openai/codex-sdk'
 import type {
+  AgentContextKind,
   AgentEvent,
   AgentSdkAdapter,
   AgentSession,
@@ -17,6 +18,30 @@ import type {
 } from './types.js'
 
 const SESSIONS_ROOT = join(homedir(), '.codex', 'sessions')
+
+function detectAgentContextKind(text: string): AgentContextKind | undefined {
+  const trimmed = text.trimStart()
+  if (
+    trimmed.startsWith('<recommended_plugins>') &&
+    trimmed.includes('</recommended_plugins>')
+  ) {
+    return 'recommended_plugins'
+  }
+  if (
+    trimmed.startsWith('# AGENTS.md instructions for ') &&
+    trimmed.includes('<INSTRUCTIONS>') &&
+    trimmed.includes('</INSTRUCTIONS>')
+  ) {
+    return 'agents_instructions'
+  }
+  if (
+    trimmed.startsWith('<environment_context>') &&
+    trimmed.includes('</environment_context>')
+  ) {
+    return 'environment_context'
+  }
+  return undefined
+}
 
 class CodexSession implements AgentSession {
   private ctrl: AbortController | null = null
@@ -136,7 +161,12 @@ export class CodexAdapter implements AgentSdkAdapter {
       if (Array.isArray(content)) {
         for (const c of content) {
           const text = (c as { text?: unknown })?.text
-          if (typeof text === 'string' && text) parts.push({ type: 'text', text })
+          if (typeof text === 'string' && text) {
+            const contextKind = role === 'user' ? detectAgentContextKind(text) : undefined
+            parts.push(
+              contextKind ? { type: 'text', text, contextKind } : { type: 'text', text },
+            )
+          }
         }
       }
       if (parts.length) out.push({ role, parts })

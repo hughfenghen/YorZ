@@ -1,4 +1,4 @@
-import type { MessagePart } from './api.js'
+import type { AgentContextKind, MessagePart, SessionMessage } from './api.js'
 
 /**
  * Chat's rendering model, in two layers.
@@ -29,7 +29,13 @@ export interface ToolPart {
   result?: string
 }
 
-export type ChatPart = TextPart | ToolPart
+export interface AgentContextPart {
+  kind: 'context'
+  contextKind: AgentContextKind
+  text: string
+}
+
+export type ChatPart = TextPart | ToolPart | AgentContextPart
 
 export interface UserBlock {
   kind: 'user'
@@ -53,7 +59,14 @@ export interface AssistantBlock {
   segments: Segment[]
 }
 
-export type ChatBlock = UserBlock | AssistantBlock
+export interface AgentContextBlock {
+  kind: 'context'
+  contexts: AgentContextPart[]
+}
+
+export type ChatBlock = UserBlock | AssistantBlock | AgentContextBlock
+
+const MESSAGE_TEXT_SEPARATOR = '\n\n'
 
 /**
  * Translate one wire-level `MessagePart` into a `ChatPart`.
@@ -64,9 +77,45 @@ export type ChatBlock = UserBlock | AssistantBlock
  * no role at all and never split a bubble. See `groupParts`.
  */
 export function toPart(role: ChatRole, part: MessagePart): ChatPart {
-  if (part.type === 'text') return { kind: 'text', role, text: part.text }
+  if (part.type === 'text') {
+    if (part.contextKind) return { kind: 'context', contextKind: part.contextKind, text: part.text }
+    return { kind: 'text', role, text: part.text }
+  }
   if (part.type === 'tool-use') return { kind: 'tool', name: part.name, input: part.input }
   return { kind: 'tool', result: part.text }
+}
+
+/**
+ * Convert transcript messages into the same part stream used by live SSE, while
+ * preserving one piece of information that plain `flatMap(toPart)` loses: a
+ * boundary between two persisted messages with the same role and text type.
+ */
+export function messagesToParts(messages: readonly SessionMessage[]): ChatPart[] {
+  const out: ChatPart[] = []
+
+  for (const message of messages) {
+    let emittedTextInMessage = false
+
+    for (const wirePart of message.parts) {
+      const part = toPart(message.role, wirePart)
+
+      if (part.kind === 'text') {
+        const prev = out[out.length - 1]
+        const startsNewSameRoleTextMessage =
+          !emittedTextInMessage && prev?.kind === 'text' && prev.role === part.role
+        out.push(
+          startsNewSameRoleTextMessage
+            ? { ...part, text: MESSAGE_TEXT_SEPARATOR + part.text }
+            : part,
+        )
+        emittedTextInMessage = true
+      } else {
+        out.push(part)
+      }
+    }
+  }
+
+  return out
 }
 
 /** Attach a tool-result to the last tool that is still waiting for one. */
@@ -105,10 +154,20 @@ export function groupParts(parts: readonly ChatPart[]): ChatBlock[] {
   }
 
   for (const part of parts) {
+    if (part.kind === 'context') {
+      current = null
+      const lastBlock = blocks[blocks.length - 1]
+      if (lastBlock?.kind === 'context') lastBlock.contexts.push(part)
+      else blocks.push({ kind: 'context', contexts: [part] })
+      continue
+    }
+
     if (part.kind === 'text' && part.role === 'user') {
       // Close the open assistant bubble; the next agent output starts a fresh one.
       current = null
-      blocks.push({ kind: 'user', text: part.text })
+      const lastBlock = blocks[blocks.length - 1]
+      if (lastBlock?.kind === 'user') lastBlock.text += part.text
+      else blocks.push({ kind: 'user', text: part.text })
       continue
     }
 
