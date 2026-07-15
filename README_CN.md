@@ -36,6 +36,8 @@ yorz serve
 
 启动 YorZ Service（HTTP + SSE + 静态 GUI），默认在后台运行。在浏览器打开 `http://localhost:7423` 即可访问仪表盘。
 
+启动时，`yorz serve` 会自动检测 `yorz-spec` skill：当缺失或非最新时，为所有支持的 Agent（Claude Code / OpenCode / Codex）自动安装或更新，并在服务启动前输出日志。
+
 可选参数：
 
 ```bash
@@ -53,17 +55,9 @@ yorz add /path/to/your/project
 
 将目录初始化为 YorZ 项目（创建 `.yorz/` 配置），注册到 Service，并将 `.yorz/tmp` 加入 `.gitignore`。
 
-### 第三步 — 安装 Skill
+`yorz-spec` skill 教会你的 AI Agent 如何按 plan / tasks / execute / done 阶段驱动 spec 文档；它由 `yorz serve` 自动安装并保持最新（见第一步），无需手动安装。
 
-```bash
-yorz install skills              # 安装到所有支持的 Agent
-yorz install skills --agent claude   # 仅 Claude Code
-yorz install skills --agent opencode # 仅 OpenCode
-```
-
-`yorz-spec` skill 教会你的 AI Agent 如何按 plan / tasks / execute / done 阶段驱动 spec 文档。
-
-### 第四步 — 用 Agent 开始工作
+### 第三步 — 用 Agent 开始工作
 
 在项目中创建 spec：
 
@@ -80,7 +74,6 @@ yorz install skills --agent opencode # 仅 OpenCode
 | `yorz serve`            | 后台启动或复用 YorZ Service，支持多项目管理。                |
 | `yorz serve stop`        | 停止后台 YorZ Service。                                      |
 | `yorz add <path>`       | 初始化并注册一个目录为 YorZ 项目。                           |
-| `yorz install skills`   | 安装 yorz-spec skill 到 Claude Code / OpenCode。             |
 | `yorz uninstall skills` | 从 Agent 卸载 skill。                                        |
 | `yorz lint [paths...]`  | 检查 `spec.md` / `review.md` 结构规范。                      |
 | `yorz lint --all`       | 检查项目 specs 目录下所有 spec。                             |

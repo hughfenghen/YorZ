@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdtemp, readFile, rm, stat, writeFile, mkdir, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { install, SKILL_DIR_NAME } from '../install.js'
+import {
+  computeBundledFingerprint,
+  ensureSkillsInstalled,
+  install,
+  readInstalledFingerprint,
+  SKILL_DIR_NAME,
+} from '../install.js'
 import { uninstall } from '../uninstall.js'
 import { INSTALL_SCOPE_DEFAULT, installScopeTip } from '../defaults.js'
 
@@ -92,6 +98,67 @@ describe('install', () => {
   it('writes to codex user dir', async () => {
     const res = await install({ agent: 'codex', scope: 'user', home, cwd })
     expect(res.path).toBe(join(home, '.codex', 'skills', SKILL_DIR_NAME, 'SKILL.md'))
+  })
+})
+
+describe('skill fingerprint', () => {
+  it('computeBundledFingerprint is stable and a hex sha-256 digest', () => {
+    const a = computeBundledFingerprint()
+    const b = computeBundledFingerprint()
+    expect(a).toBe(b)
+    expect(a).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('readInstalledFingerprint returns null when SKILL.md is absent', async () => {
+    const skillDir = join(home, '.claude', 'skills', SKILL_DIR_NAME)
+    expect(await readInstalledFingerprint(skillDir)).toBeNull()
+  })
+
+  it('readInstalledFingerprint matches the bundled fingerprint after install', async () => {
+    await install({ agent: 'claude', scope: 'user', home, cwd })
+    const skillDir = join(home, '.claude', 'skills', SKILL_DIR_NAME)
+    expect(await readInstalledFingerprint(skillDir)).toBe(computeBundledFingerprint())
+  })
+
+  it('readInstalledFingerprint changes when an installed file is edited', async () => {
+    await install({ agent: 'claude', scope: 'user', home, cwd })
+    const skillDir = join(home, '.claude', 'skills', SKILL_DIR_NAME)
+    await writeFile(join(skillDir, 'SKILL.md'), 'TAMPERED', 'utf8')
+    expect(await readInstalledFingerprint(skillDir)).not.toBe(computeBundledFingerprint())
+  })
+})
+
+describe('ensureSkillsInstalled', () => {
+  it('installs for every agent on first run', async () => {
+    const results = await ensureSkillsInstalled({ home, cwd })
+    expect(results.map((r) => r.agent).sort()).toEqual(['claude', 'codex', 'opencode'])
+    expect(results.every((r) => r.status === 'installed')).toBe(true)
+    for (const r of results) {
+      await expect(stat(r.path)).resolves.toBeTruthy()
+    }
+  })
+
+  it('reports up-to-date on a second run with no changes', async () => {
+    await ensureSkillsInstalled({ home, cwd })
+    const results = await ensureSkillsInstalled({ home, cwd })
+    expect(results.every((r) => r.status === 'up-to-date')).toBe(true)
+  })
+
+  it('reports updated when an installed skill is outdated', async () => {
+    await ensureSkillsInstalled({ home, cwd })
+    const claudeSkill = join(home, '.claude', 'skills', SKILL_DIR_NAME, 'SKILL.md')
+    await writeFile(claudeSkill, 'OUTDATED', 'utf8')
+
+    const results = await ensureSkillsInstalled({ home, cwd })
+    const claude = results.find((r) => r.agent === 'claude')!
+    expect(claude.status).toBe('updated')
+    expect(results.filter((r) => r.agent !== 'claude').every((r) => r.status === 'up-to-date')).toBe(
+      true,
+    )
+    // Re-install restored the real content.
+    expect(await readInstalledFingerprint(join(home, '.claude', 'skills', SKILL_DIR_NAME))).toBe(
+      computeBundledFingerprint(),
+    )
   })
 })
 

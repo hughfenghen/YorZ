@@ -1,13 +1,12 @@
 import { homedir } from 'node:os'
 import { Command, Option } from 'commander'
 import pkg from '../../package.json' with { type: 'json' }
-import { install } from './install.js'
 import { uninstall } from './uninstall.js'
 import { runServe, runStopServe } from './serve.js'
 import { runAdd, AddGitAbortedError } from './add.js'
 import { runLint } from './lint.js'
 import type { AgentName, InstallScope } from './adapters/types.js'
-import { INSTALL_SCOPE_DEFAULT, installScopeTip } from './defaults.js'
+import { INSTALL_SCOPE_DEFAULT } from './defaults.js'
 
 interface CliOpts {
   agent: string
@@ -21,6 +20,7 @@ interface ServeOpts {
   registerCwd?: boolean
   foreground?: boolean
   background?: boolean
+  skipSkillCheck?: boolean
 }
 
 const ALL_AGENTS: AgentName[] = ['claude', 'opencode', 'codex']
@@ -38,39 +38,6 @@ function parseScope(value: string): InstallScope {
 
 const program = new Command()
 program.name('yorz').description('YorZ CLI — manage the yorz-spec skill.').version(pkg.version)
-
-const installCmd = program
-  .command('install')
-  .description('Install YorZ artifacts (skills, ...).')
-installCmd.action(() => {
-  installCmd.help()
-})
-
-installCmd
-  .command('skills')
-  .description('Install the yorz-spec skill into the target agent(s).')
-  .option('-a, --agent <agent>', 'target agent: claude | opencode | codex | all', 'all')
-  .addOption(
-    new Option('-s, --scope <scope>', 'install scope: user | project').default(
-      INSTALL_SCOPE_DEFAULT,
-    ),
-  )
-  .action(async function (this: Command, opts: CliOpts) {
-    const tip = installScopeTip(this.getOptionValueSource('scope'))
-    if (tip) console.log(tip)
-    const agents = parseAgents(opts.agent)
-    const scope = parseScope(opts.scope)
-    for (const agent of agents) {
-      const result = await install({ agent, scope, home: homedir(), cwd: process.cwd() })
-      const verb = result.overwritten ? 'overwritten' : 'installed'
-      console.log(`[${agent}] ${verb}: ${result.path}`)
-      if (result.gitignore?.updated) {
-        console.log(`[gitignore] appended .yorz/tmp to ${result.gitignore.path}`)
-      } else if (result.gitignore && !result.gitignore.updated) {
-        console.log(`[gitignore] already ignored .yorz/tmp`)
-      }
-    }
-  })
 
 const uninstallCmd = program
   .command('uninstall')
@@ -152,6 +119,9 @@ const serveCmd = program
     'directory to auto-register when it contains .yorz/ (default: process.cwd())',
   )
   .option('--no-register-cwd', 'do not auto-register the current directory')
+  .addOption(
+    new Option('--skip-skill-check', 'internal: skip the skill install/update check').hideHelp(),
+  )
   .action(async (opts: ServeOpts) => {
     if (opts.foreground && opts.background) {
       throw new Error('Use either --foreground or --background, not both')
@@ -166,6 +136,7 @@ const serveCmd = program
       cwd: opts.cwd,
       noRegisterCwd: opts.registerCwd === false,
       foreground: opts.foreground === true,
+      skipSkillCheck: opts.skipSkillCheck === true,
     })
   })
 
