@@ -2,8 +2,10 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { homedir } from 'node:os'
 import { start, type ServeHandle } from '../service/index.js'
 import { resolveGlobalConfigDir } from '../service/global-config.js'
+import { ensureSkillsInstalled } from './install.js'
 
 export interface ServeCommandOptions {
   port?: number
@@ -11,6 +13,8 @@ export interface ServeCommandOptions {
   cwd?: string
   noRegisterCwd?: boolean
   foreground?: boolean
+  /** Internal: skip the skill install/update check (set on the background child). */
+  skipSkillCheck?: boolean
 }
 
 export interface BackgroundServeResult {
@@ -43,6 +47,10 @@ const START_WAIT_MS = 5000
 export async function runServe(
   opts: ServeCommandOptions,
 ): Promise<ServeHandle | BackgroundServeResult> {
+  if (!opts.skipSkillCheck) {
+    await ensureSkillsInstalledWithLog(opts.cwd ?? process.cwd())
+  }
+
   if (!opts.foreground) {
     return startBackgroundServe(opts)
   }
@@ -126,7 +134,23 @@ export function backgroundArgs(opts: ServeCommandOptions): string[] {
   if (opts.open) args.push('--open')
   if (opts.cwd) args.push('--cwd', opts.cwd)
   if (opts.noRegisterCwd) args.push('--no-register-cwd')
+  // The parent already ran the skill check and printed logs; the detached child
+  // has stdio ignored, so skip the check to avoid a redundant install pass.
+  args.push('--skip-skill-check')
   return args
+}
+
+async function ensureSkillsInstalledWithLog(cwd: string): Promise<void> {
+  const results = await ensureSkillsInstalled({ home: homedir(), cwd })
+  for (const r of results) {
+    if (r.status === 'installed') {
+      console.log(`[skill][${r.agent}] installed: ${r.path}`)
+    } else if (r.status === 'updated') {
+      console.log(`[skill][${r.agent}] updated: ${r.path}`)
+    } else {
+      console.log(`[skill][${r.agent}] yorz-spec is up to date`)
+    }
+  }
 }
 
 export async function runStopServe(): Promise<StopServeResult> {

@@ -21,6 +21,7 @@ describe('serve', () => {
       '--cwd',
       '/tmp/project',
       '--no-register-cwd',
+      '--skip-skill-check',
     ])
   })
 

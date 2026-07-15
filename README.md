@@ -36,6 +36,8 @@ yorz serve
 
 This launches the YorZ Service (HTTP + SSE + static GUI) in the background by default. Open `http://localhost:7423` in your browser to access the dashboard.
 
+On startup, `yorz serve` automatically installs (or updates) the `yorz-spec` skill for all supported agents (Claude Code / OpenCode / Codex) when it's missing or out of date, logging the result before the Service starts.
+
 Options:
 
 ```bash
@@ -53,17 +55,9 @@ yorz add /path/to/your/project
 
 This initializes the directory as a YorZ project (creates `.yorz/` config), registers it with the Service, and sets up `.yorz/tmp` in `.gitignore`.
 
-### Step 3 — Install the Skill
+The `yorz-spec` skill — which teaches your AI agent how to drive spec documents through plan / tasks / execute / done stages — is installed and kept up to date automatically by `yorz serve` (see Step 1), so there's no manual install step.
 
-```bash
-yorz install skills              # install for all supported agents
-yorz install skills --agent claude   # Claude Code only
-yorz install skills --agent opencode # OpenCode only
-```
-
-The `yorz-spec` skill teaches your AI agent how to drive spec documents through plan / tasks / execute / done stages.
-
-### Step 4 — Start Coding with Your Agent
+### Step 3 — Start Coding with Your Agent
 
 Create a spec in your project:
 
@@ -80,7 +74,6 @@ Then ask your agent (Claude Code / OpenCode) to process it. The skill handles th
 | `yorz serve`            | Start or reuse the YorZ Service in the background. Multi-project. |
 | `yorz serve stop`        | Stop the background YorZ Service.                                |
 | `yorz add <path>`       | Initialize and register a directory as a YorZ project.           |
-| `yorz install skills`   | Install the yorz-spec skill into Claude Code / OpenCode.         |
 | `yorz uninstall skills` | Remove the yorz-spec skill from agents.                          |
 | `yorz lint [paths...]`  | Lint `spec.md` / `review.md` files for structural rules.         |
 | `yorz lint --all`       | Lint every spec under the project's specs directory.             |
