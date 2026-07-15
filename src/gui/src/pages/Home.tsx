@@ -131,10 +131,6 @@ export const Home: Component = () => {
     <section class="overflow-y-auto p-4">
       <header class="flex items-center justify-between">
         <h1 class="m-0 text-xl">{t('home.specList')}</h1>
-        <Button as={A} href={projectHref('specs/new')} variant="default" size="sm">
-          <Plus class="mr-1 h-4 w-4" />
-          {t('shell.newSpec')}
-        </Button>
       </header>
 
       <Show when={current()?.worktree}>
