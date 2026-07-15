@@ -1,4 +1,4 @@
-import { createSignal } from 'solid-js'
+import { createEffect, createSignal, onCleanup } from 'solid-js'
 
 /**
  * Transient "give the page the whole window" override.
@@ -23,4 +23,18 @@ export function toggleFocusMode(): void {
 
 export function exitFocusMode(): void {
   setFocusMode(false)
+}
+
+export function useFocusModePage(isEscapeBlocked?: () => boolean): void {
+  onCleanup(exitFocusMode)
+
+  createEffect(() => {
+    if (!focusMode()) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || isEscapeBlocked?.()) return
+      exitFocusMode()
+    }
+    window.addEventListener('keydown', onKey)
+    onCleanup(() => window.removeEventListener('keydown', onKey))
+  })
 }
