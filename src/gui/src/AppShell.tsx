@@ -1,6 +1,6 @@
 import { A, useLocation } from '@solidjs/router'
-import { createEffect, type JSX, type ParentComponent } from 'solid-js'
-import { Languages, Check } from 'lucide-solid'
+import { Show, createEffect, createMemo, type JSX, type ParentComponent } from 'solid-js'
+import { Languages, Check, Plus } from 'lucide-solid'
 import { ProjectsSidebar } from './components/ProjectsSidebar.jsx'
 import { ChatPanel } from './components/ChatPanel.jsx'
 import { Button } from './components/ui/button.jsx'
@@ -11,12 +11,16 @@ import {
   DropdownMenuItem,
 } from './components/ui/dropdown-menu.jsx'
 import { Toaster } from './components/ui/sonner.jsx'
-import { setActiveProjectId } from './lib/project.js'
+import { activeProjectId, projectHref, setActiveProjectId } from './lib/project.js'
 import { t, useTranslation } from './i18n/index.js'
 
 export const AppShell: ParentComponent = (props): JSX.Element => {
   const location = useLocation()
   const { lng, changeLanguage } = useTranslation()
+
+  // Already on the New Spec page? A same-route navigation would be a no-op, so
+  // open a fresh tab instead — that's the only way "new spec" does something here.
+  const onNewSpecPage = createMemo(() => location.pathname === projectHref('specs/new'))
 
   function selectLanguage(l: string): void {
     if (l === lng()) return
@@ -35,7 +39,20 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
         <A href="/" class="text-lg font-bold">
           YorZ
         </A>
-        <div class="ml-auto">
+        <div class="ml-auto flex items-center gap-2">
+          <Show when={activeProjectId()}>
+            <Button
+              as={A}
+              href={projectHref('specs/new')}
+              target={onNewSpecPage() ? '_blank' : undefined}
+              rel={onNewSpecPage() ? 'noopener' : undefined}
+              variant="default"
+              size="sm"
+            >
+              <Plus class="mr-1 h-4 w-4" />
+              {t('shell.newSpec')}
+            </Button>
+          </Show>
           <DropdownMenu placement="bottom-end">
             <DropdownMenuTrigger
               as={Button}
@@ -47,15 +64,11 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
             </DropdownMenuTrigger>
             <DropdownMenuContent>
               <DropdownMenuItem onSelect={() => selectLanguage('zh-CN')}>
-                <Check
-                  class={`mr-2 h-4 w-4 ${lng() === 'zh-CN' ? 'opacity-100' : 'opacity-0'}`}
-                />
+                <Check class={`mr-2 h-4 w-4 ${lng() === 'zh-CN' ? 'opacity-100' : 'opacity-0'}`} />
                 {t('shell.langZh')}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => selectLanguage('en')}>
-                <Check
-                  class={`mr-2 h-4 w-4 ${lng() === 'en' ? 'opacity-100' : 'opacity-0'}`}
-                />
+                <Check class={`mr-2 h-4 w-4 ${lng() === 'en' ? 'opacity-100' : 'opacity-0'}`} />
                 {t('shell.langEn')}
               </DropdownMenuItem>
             </DropdownMenuContent>
