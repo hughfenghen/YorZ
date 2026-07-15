@@ -9,7 +9,6 @@ import {
   type Component,
 } from 'solid-js'
 import { A, useParams } from '@solidjs/router'
-import { Maximize2, Minimize2 } from 'lucide-solid'
 import {
   api,
   type AppendItemBody,
@@ -18,7 +17,7 @@ import {
   type SpecStage,
 } from '../lib/api.js'
 import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/project.js'
-import { exitFocusMode, focusMode, toggleFocusMode } from '../lib/layout-focus.js'
+import { useFocusModePage } from '../lib/layout-focus.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { renderMermaidIn } from '../lib/mermaid.js'
 import { subscribeSpec, subscribeSession, subscribeSessions } from '../lib/sse.js'
@@ -30,6 +29,7 @@ import { AnnotatePopover } from '../components/AnnotatePopover.jsx'
 import { AppendTaskDialog } from '../components/AppendTaskDialog.jsx'
 import { QuestionConfirmPanel, type FreeformDraft } from '../components/QuestionConfirmPanel.jsx'
 import { Breadcrumb } from '../components/Breadcrumb.jsx'
+import { FocusModeButton } from '../components/FocusModeButton.jsx'
 import { Button } from '../components/ui/button.jsx'
 import { Badge } from '../components/ui/badge.jsx'
 import { t } from '../i18n/index.js'
@@ -186,22 +186,9 @@ export const SpecDetail: Component = () => {
     onCleanup(unsub)
   })
 
-  // Focus mode is this page's, not the app's: leaving the spec must always give
-  // the chrome back, or the user lands on another page with no sidebar and no
-  // obvious cause. Escape is the conventional way out of a fullscreen view.
-  onCleanup(exitFocusMode)
-
-  createEffect(() => {
-    if (!focusMode()) return
-    const onKey = (e: KeyboardEvent) => {
-      // The append dialog binds Escape too — let it close itself first rather
-      // than having one keypress both dismiss the dialog and drop fullscreen.
-      if (e.key !== 'Escape' || appendOpen() || popoverOpen()) return
-      exitFocusMode()
-    }
-    window.addEventListener('keydown', onKey)
-    onCleanup(() => window.removeEventListener('keydown', onKey))
-  })
+  // Focus mode is page-scoped: leaving the page restores the chrome, and Escape
+  // exits unless a page-level popover/dialog should consume the key first.
+  useFocusModePage(() => appendOpen() || popoverOpen())
 
   // Markdown injection and mermaid rendering live in ONE effect: mermaid must run
   // against the nodes this very pass produced. Splitting them (innerHTML bound in
@@ -346,23 +333,7 @@ export const SpecDetail: Component = () => {
                         { label: s().id },
                       ]}
                     />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      class="h-6 w-6 shrink-0 p-0"
-                      onClick={toggleFocusMode}
-                      title={
-                        focusMode() ? t('specDetail.exitFullscreen') : t('specDetail.fullscreen')
-                      }
-                      aria-label={
-                        focusMode() ? t('specDetail.exitFullscreen') : t('specDetail.fullscreen')
-                      }
-                      aria-pressed={focusMode()}
-                    >
-                      <Show when={focusMode()} fallback={<Maximize2 class="h-3 w-3" />}>
-                        <Minimize2 class="h-3 w-3" />
-                      </Show>
-                    </Button>
+                    <FocusModeButton />
                   </div>
                   <div>
                     <p class=" text-muted-foreground">

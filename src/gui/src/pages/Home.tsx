@@ -14,10 +14,12 @@ import { Plus, MoreHorizontal, GitMerge } from 'lucide-solid'
 import { api, type SpecListItem } from '../lib/api.js'
 import type { ProjectListItem } from '../lib/project.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
+import { useFocusModePage } from '../lib/layout-focus.js'
 import { subscribeProjectsList } from '../lib/sse.js'
 import { formatSpecUpdatedAt } from '../lib/time.js'
 import { Button } from '../components/ui/button.jsx'
 import { Badge } from '../components/ui/badge.jsx'
+import { FocusModeButton } from '../components/FocusModeButton.jsx'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -65,6 +67,7 @@ export const Home: Component = () => {
   const [confirmDeleteId, setConfirmDeleteId] = createSignal<string | null>(null)
   const [deleting, setDeleting] = createSignal(false)
   const [deleteError, setDeleteError] = createSignal<string | null>(null)
+  useFocusModePage(() => confirmDeleteId() !== null)
 
   onMount(() => {
     const unsub = subscribeProjectsList(() => {
@@ -131,6 +134,7 @@ export const Home: Component = () => {
     <section class="overflow-y-auto p-4">
       <header class="flex items-center justify-between">
         <h1 class="m-0 text-xl">{t('home.specList')}</h1>
+        <FocusModeButton />
       </header>
 
       <Show when={current()?.worktree}>

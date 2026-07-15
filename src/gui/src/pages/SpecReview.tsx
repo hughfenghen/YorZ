@@ -15,12 +15,14 @@ import { useParams } from '@solidjs/router'
 import { Loader2 } from 'lucide-solid'
 import { api, type GitOpsAction, type GitChange } from '../lib/api.js'
 import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/project.js'
+import { useFocusModePage } from '../lib/layout-focus.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { subscribeChanges, subscribeSession } from '../lib/sse.js'
 import { Button } from '../components/ui/button.jsx'
 import { Textarea } from '../components/ui/textarea.jsx'
 import { Separator } from '../components/ui/separator.jsx'
 import { Breadcrumb } from '../components/Breadcrumb.jsx'
+import { FocusModeButton } from '../components/FocusModeButton.jsx'
 import { t } from '../i18n/index.js'
 
 type ActionKind = 'review' | GitOpsAction
@@ -82,6 +84,7 @@ export const SpecReview: Component = () => {
   let commitMsgRef: HTMLTextAreaElement | undefined
   let roundUnsub: (() => void) | null = null
   onCleanup(() => roundUnsub?.())
+  useFocusModePage()
 
   function autoResize(el: HTMLTextAreaElement | undefined): void {
     if (!el) return
@@ -257,7 +260,7 @@ export const SpecReview: Component = () => {
   return (
     <section class="flex min-h-0 flex-1 flex-col gap-4 p-4">
       <Suspense fallback={<p class="text-muted-foreground">{t('common.loading')}</p>}>
-        <header class="flex items-start justify-between">
+        <header class="flex items-start justify-between gap-2">
           <div class="flex flex-col gap-1">
             <Breadcrumb
               items={[
@@ -270,10 +273,11 @@ export const SpecReview: Component = () => {
               {spec()?.frontmatter.summary || t('common.pendingAgent')}
             </p>
           </div>
-          <div class=" text-muted-foreground">
+          <div class="flex shrink-0 items-center gap-2 text-muted-foreground">
             <Show when={lastReviewTime()}>
               <span>{t('review.lastReview', { time: lastReviewTime() })}</span>
             </Show>
+            <FocusModeButton />
           </div>
         </header>
 
