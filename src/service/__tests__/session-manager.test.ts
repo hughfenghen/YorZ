@@ -132,7 +132,9 @@ describe('SessionManager per-spec sessions', () => {
 
 describe('SessionManager run status', () => {
   it('marks a session running for the duration of a turn and broadcasts both edges', async () => {
-    let release: (() => void) | null = null
+    // Definite assignment: the Promise executor runs synchronously, so `release`
+    // is always set before the test body calls it.
+    let release!: () => void
     const gate = new Promise<void>((r) => {
       release = r
     })
@@ -156,7 +158,7 @@ describe('SessionManager run status', () => {
     expect((await mgr.listSessions()).find((s) => s.id === 'sid-1')?.running).toBe(true)
 
     const done = new Promise<void>((r) => handle.onDone(() => r()))
-    release?.()
+    release()
     await done
 
     expect(mgr.isRunning('sid-1')).toBe(false)

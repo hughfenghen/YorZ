@@ -1,0 +1,36 @@
+{
+  // The Solid front-end, which only ever runs in a browser and is always served
+  // through Vite (vite.gui.config.ts). `moduleResolution: "Bundler"` models what
+  // Vite/esbuild actually do, which differs from Node in two ways this codebase
+  // relies on:
+  //   - extensionless and `@/*` alias imports resolve (Node ESM would require
+  //     an explicit `.js`), matching the alias in vite.gui.config.ts;
+  //   - a CJS dep whose `.d.ts` uses `export default` yields the function on a
+  //     default import, because bundlers honour `__esModule`. Under NodeNext the
+  //     same import is typed as the whole `module.exports` — that mismatch is
+  //     what made `timeago.js/lib/lang/zh_CN.js` fail to typecheck.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "types": ["vite/client"],
+    // Mirrors the `@` alias in vite.gui.config.ts. Scoped to this project because
+    // it only makes sense for browser code Vite resolves.
+    "paths": {
+      "@/*": ["./src/gui/src/*"]
+    },
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.gui.tsbuildinfo"
+  },
+  "include": ["src/gui/**/*.ts", "src/gui/**/*.tsx"]
+}

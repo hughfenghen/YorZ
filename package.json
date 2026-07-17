@@ -40,6 +40,7 @@
     "dev:cli": "vite build --watch",
     "dev:gui-build": "vite build --config vite.gui.config.ts --watch",
     "dev:gui": "vite --config vite.gui.config.ts",
+    "typecheck": "tsc -b",
     "test": "vitest run",
     "test:agent": "node scripts/test-agent.mjs",
     "test:e2e": "playwright test",

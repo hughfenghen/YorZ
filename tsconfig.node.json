@@ -1,0 +1,33 @@
+{
+  // Everything that runs in Node: the CLI, the service, the linter, skills, and
+  // the Vite config files themselves. Imports are resolved the way Node's ESM
+  // loader actually resolves them (explicit `.js` extensions, real `exports`
+  // maps), because these modules keep their import specifiers at runtime —
+  // Vite externalises node built-ins and every runtime dep (see vite.config.ts).
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    // `vite/client` is here for `import.meta.glob` in src/cli/install.ts: the CLI
+    // is bundled by Vite even though its output runs in Node.
+    "types": ["node", "vite/client"],
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo"
+  },
+  "include": [
+    "src/cli/**/*.ts",
+    "src/lint/**/*.ts",
+    "src/service/**/*.ts",
+    "src/skill/**/*.ts",
+    "vite.config.ts",
+    "vite.gui.config.ts"
+  ]
+}

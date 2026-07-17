@@ -1,27 +1,11 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "jsx": "preserve",
-    "jsxImportSource": "solid-js",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "types": ["node", "vite/client"],
-    "paths": {
-      "@/*": ["./src/gui/src/*"]
-    }
-  },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "vite.config.ts",
-    "vite.gui.config.ts"
-  ]
+  // Solution-style root: it owns no files of its own, it just wires the two real
+  // projects together. Editors use these references to pick the right compiler
+  // options per file; `pnpm typecheck` (tsc -b) checks both.
+  //
+  // The split exists because the two halves run in different places: src/gui is
+  // browser code bundled by Vite, everything else is Node. See each config for
+  // what that changes.
+  "files": [],
+  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.gui.json" }]
 }

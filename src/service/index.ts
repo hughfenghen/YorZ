@@ -69,7 +69,9 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
       await registry.closeAll()
       await new Promise<void>((resolve, reject) => {
         port.server.close((err) => (err ? reject(err) : resolve()))
-        port.server.closeAllConnections?.()
+        // `closeAllConnections` exists on http/https servers but not on the
+        // HTTP/2 members of ServerType, so narrow instead of optional-calling.
+        if ('closeAllConnections' in port.server) port.server.closeAllConnections()
       })
     },
   }
