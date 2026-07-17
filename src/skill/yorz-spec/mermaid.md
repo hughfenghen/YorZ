@@ -162,7 +162,7 @@ flowchart LR
 
 ```markdown
 <details>
-<summary>精确层：add.ts 类型定义与实现细节</summary>
+<summary>add.ts 类型定义与实现细节</summary>
 
 - `src/cli/add.ts:42` 新增 `interface AddOptions { path: string; force?: boolean }`
 - 具体源码 / 逐字段说明 …

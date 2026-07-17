@@ -156,6 +156,8 @@ export const zhCN = {
     fileCount: '{{selected}}/{{total}} 个文件',
     noChanges: '暂无变更文件',
     selectAtLeastOne: '请至少选择一个文件',
+    discardTitle: '丢弃变更',
+    confirmDiscardAction: '确认丢弃',
     confirmDiscard: '确定要丢弃选中的变更吗？此操作不可撤销。',
     confirmDiscardAll: '确定要丢弃当前 spec 相关的所有未提交变更吗？此操作不可撤销。',
     enterCommitMsg: '请输入 commit message',

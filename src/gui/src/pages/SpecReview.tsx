@@ -21,6 +21,14 @@ import { subscribeChanges, subscribeSession } from '../lib/sse.js'
 import { Button } from '../components/ui/button.jsx'
 import { Textarea } from '../components/ui/textarea.jsx'
 import { Separator } from '../components/ui/separator.jsx'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog.jsx'
 import { Breadcrumb } from '../components/Breadcrumb.jsx'
 import { FocusModeButton } from '../components/FocusModeButton.jsx'
 import { t } from '../i18n/index.js'
@@ -81,9 +89,29 @@ export const SpecReview: Component = () => {
   const [lastRun, setLastRun] = createSignal<{ kind: ActionKind; runId: string } | null>(null)
   const [agentKind, setAgentKind] = createSignal<ActionKind | null>(null)
 
+  // Promise-based confirm dialog: `askDiscard` opens the modal and resolves once
+  // the user picks. The prompt text lives in its own signal so it stays rendered
+  // through the dialog's close animation.
+  const [discardPrompt, setDiscardPrompt] = createSignal('')
+  const [pendingConfirm, setPendingConfirm] = createSignal<((ok: boolean) => void) | null>(null)
+
+  function askDiscard(message: string): Promise<boolean> {
+    setDiscardPrompt(message)
+    return new Promise((resolve) => setPendingConfirm(() => resolve))
+  }
+
+  function resolveConfirm(ok: boolean): void {
+    const resolve = pendingConfirm()
+    if (!resolve) return
+    setPendingConfirm(null)
+    resolve(ok)
+  }
+
   let commitMsgRef: HTMLTextAreaElement | undefined
   let roundUnsub: (() => void) | null = null
   onCleanup(() => roundUnsub?.())
+  // Never leave a caller awaiting a dialog that unmounted with the page.
+  onCleanup(() => resolveConfirm(false))
   useFocusModePage()
 
   function autoResize(el: HTMLTextAreaElement | undefined): void {
@@ -173,7 +201,7 @@ export const SpecReview: Component = () => {
       return
     }
     if (kind === 'discard') {
-      const ok = window.confirm(t('review.confirmDiscard'))
+      const ok = await askDiscard(t('review.confirmDiscard'))
       if (!ok) return
     }
     setDirectAction(kind)
@@ -204,7 +232,7 @@ export const SpecReview: Component = () => {
     if (isAnyRunning()) return
     setError(null)
     if (kind === 'discard') {
-      const ok = window.confirm(t('review.confirmDiscardAll'))
+      const ok = await askDiscard(t('review.confirmDiscardAll'))
       if (!ok) return
     }
     setBusy(kind)
@@ -447,6 +475,28 @@ export const SpecReview: Component = () => {
           </section>
         </div>
       </Suspense>
+
+      <Dialog
+        open={pendingConfirm() !== null}
+        onOpenChange={(open) => {
+          if (!open) resolveConfirm(false)
+        }}
+      >
+        <DialogContent class="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('review.discardTitle')}</DialogTitle>
+            <DialogDescription>{discardPrompt()}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => resolveConfirm(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="destructive" onClick={() => resolveConfirm(true)}>
+              {t('review.confirmDiscardAction')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

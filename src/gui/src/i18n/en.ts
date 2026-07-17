@@ -157,6 +157,8 @@ export const en = {
     fileCount: '{{selected}}/{{total}} files',
     noChanges: 'No changed files',
     selectAtLeastOne: 'Please select at least one file',
+    discardTitle: 'Discard changes',
+    confirmDiscardAction: 'Confirm Discard',
     confirmDiscard: 'Discard selected changes? This cannot be undone.',
     confirmDiscardAll: 'Discard all uncommitted changes for this spec? This cannot be undone.',
     enterCommitMsg: 'Please enter commit message',
