@@ -249,7 +249,7 @@ export function buildDraftPrompt(type: SpecType, requirement: string, draftId?: 
     '硬性要求：',
     `- 生成 kebab-case summary-name 时只使用对需求有语义代表性的英文/数字字符；如难以从中文中提炼出可读 slug，请直接使用 \`untitled-\` + 3 位日期内自增编号占位，禁止把中文挤压为零散英文片段（例如禁止出现 \`spec-agent-spec-agent\` 之类的拼接）。`,
     '- frontmatter.summary 必须是对需求的真实概述（≤200 字符），不要原样照搬整段需求。',
-    '- 完成 spec 文件初始化后立即进入 plan 阶段，按 SKILL 规则补齐 `现状分析` / `技术实现方案` / `待确认问题`，再视需要进入 tasks/execute。',
+    '- 完成 spec 文件初始化后立即进入 plan 阶段，按 SKILL 规则补齐 `现状分析` / `技术实现方案` / `待确认项`，再视需要进入 tasks/execute。',
   ]
   if (draftId) {
     lines.push(
@@ -259,7 +259,7 @@ export function buildDraftPrompt(type: SpecType, requirement: string, draftId?: 
       '- 迁移完成后，在 `## 背景` 章节末尾追加一段附件列表，每个附件占一行（按文件扩展名判定 `kind`）：',
       '  - 图片（`.png` / `.jpg` / `.jpeg` / `.gif` / `.webp` / `.bmp` / `.svg` / `.avif` / `.heic`）：使用 `![<文件名>](attachments/<文件名>)`',
       '  - PDF（`.pdf`） / 文本（`.txt` / `.md` / `.markdown`）：使用 `[<文件名>](attachments/<文件名>)`',
-      '- 迁移失败（如 draft 目录已被清理、权限不足）时，**不要静默丢弃**：在 `## 待确认问题` 章节追加一条记录说明问题，并退出本轮等待用户介入。',
+      '- 迁移失败（如 draft 目录已被清理、权限不足）时，**不要静默丢弃**：在 `## 待确认项` 章节追加一条记录说明问题，并退出本轮等待用户介入。',
     )
   }
   return lines.join('\n')

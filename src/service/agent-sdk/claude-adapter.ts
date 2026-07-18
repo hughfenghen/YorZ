@@ -66,6 +66,7 @@ class ClaudeSession implements AgentSession {
     const options: Options = {
       cwd: this.cwd,
       permissionMode: 'bypassPermissions',
+      allowDangerouslySkipPermissions: true,
       abortController: ctrl,
     }
     if (this.isNew && !this.started) options.sessionId = this.id

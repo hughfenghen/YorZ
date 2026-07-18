@@ -89,6 +89,65 @@ describe('pending-questions/structure', () => {
   })
 })
 
+describe('pending-questions/structure confirm type', () => {
+  it('accepts a [confirm] item with 方案 and 影响 fields', async () => {
+    const raw = wrap(
+      ['### 5.1 [confirm] 迁移 UserID 为 uuid', '', '**方案**：一次性迁移。', '**影响**：🔴 需停机。'].join(
+        '\n',
+      ),
+    )
+    const report = await lintSpecMd(raw, OPTS)
+    expect(report.findings.some((f) => f.ruleId === 'pending-questions/structure')).toBe(false)
+  })
+
+  it('accepts **代价** as impact alias', async () => {
+    const raw = wrap(
+      ['### 5.1 [confirm] 引入依赖', '', '**方案**：引入 zod。', '**代价**：包体积 +20KB。'].join('\n'),
+    )
+    const report = await lintSpecMd(raw, OPTS)
+    expect(report.findings.some((f) => f.ruleId === 'pending-questions/structure')).toBe(false)
+  })
+
+  it('flags a [confirm] item missing 影响', async () => {
+    const raw = wrap(['### 5.1 [confirm] 迁移 UserID 为 uuid', '', '**方案**：一次性迁移。'].join('\n'))
+    const report = await lintSpecMd(raw, OPTS)
+    expect(
+      report.findings.some(
+        (f) => f.ruleId === 'pending-questions/structure' && f.message.includes('影响'),
+      ),
+    ).toBe(true)
+  })
+
+  it('flags a [confirm] item that lists ordered candidates', async () => {
+    const raw = wrap(
+      [
+        '### 5.1 [confirm] 迁移 UserID 为 uuid',
+        '',
+        '**方案**：一次性迁移。',
+        '**影响**：🔴 需停机。',
+        '1. 备选方案不该出现',
+      ].join('\n'),
+    )
+    const report = await lintSpecMd(raw, OPTS)
+    expect(
+      report.findings.some(
+        (f) => f.ruleId === 'pending-questions/structure' && f.message.includes('不应列候选项'),
+      ),
+    ).toBe(true)
+  })
+})
+
+describe('pending-questions new section name', () => {
+  it('lints `## 待确认项` just like the legacy name', async () => {
+    const raw = wrap(['### 5.1 应该采用哪种方案？', '', '1. 方案 A', '2. 方案 B (推荐)'].join('\n')).replace(
+      '## 5. 待确认问题',
+      '## 5. 待确认项',
+    )
+    const report = await lintSpecMd(raw, OPTS)
+    expect(report.findings.some((f) => f.ruleId === 'pending-questions/structure')).toBe(false)
+  })
+})
+
 describe('pending-questions/empty', () => {
   it('accepts _暂无_ italic placeholder', async () => {
     const raw = wrap('_暂无_')

@@ -286,7 +286,7 @@ export const SpecReview: Component = () => {
   )
 
   return (
-    <section class="flex min-h-0 flex-1 flex-col gap-4 p-4">
+    <section class="flex min-h-0 flex-1 flex-col gap-2 p-2">
       <Suspense fallback={<p class="text-muted-foreground">{t('common.loading')}</p>}>
         <header class="flex items-start justify-between gap-2">
           <div class="flex flex-col gap-1">

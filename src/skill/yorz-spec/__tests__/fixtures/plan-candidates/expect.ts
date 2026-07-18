@@ -19,14 +19,15 @@ export async function assert(parsed: ParsedSpec): Promise<AssertResult> {
     failures.push(`stage expected plan, got ${String(parsed.frontmatter.stage)}`)
   }
 
-  rules.push('## 待确认问题 section exists')
-  const section = extractSection(parsed.body, '待确认问题')
+  rules.push('## 待确认项 section exists')
+  // 子串 '待确认' 同时匹配新名 `待确认项` 与旧名 `待确认问题`。
+  const section = extractSection(parsed.body, '待确认')
   if (!section) {
-    failures.push('## 待确认问题 section not found')
+    failures.push('## 待确认项 section not found')
     return finalize(failures, rules)
   }
 
-  rules.push('待确认问题 contains at least 1 real question')
+  rules.push('待确认项 contains at least 1 real question')
   const questions = parseQuestions(section)
   if (questions.length === 0 || section.trim() === '_暂无_') {
     failures.push('待确认问题 produced 0 questions despite 4 explicit unknowns in 需求')

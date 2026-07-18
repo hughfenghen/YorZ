@@ -183,6 +183,63 @@ describe('parseConfirmQuestions', () => {
     }
   })
 
+  it('parses the new `待确认项` heading name', () => {
+    const body = `## 5. 待确认项\n\n### 5.1 用什么数据库？\n1. SQLite (推荐)\n`
+    const out = parseConfirmQuestions(body)
+    expect(out).toHaveLength(1)
+    expect(out[0].kind).toBe('choice')
+    expect(out[0].text).toBe('用什么数据库？')
+  })
+
+  it('tags an unmarked question with candidates as choice', () => {
+    const body = `## 待确认项\n\n### 5.1 用什么数据库？\n1. SQLite (推荐)\n2. Postgres\n`
+    const out = parseConfirmQuestions(body)
+    expect(out[0].kind).toBe('choice')
+  })
+
+  it('parses a `[choice]` marker and strips it from the text', () => {
+    const body = `## 待确认项\n\n### 5.1 [choice] 用什么数据库？\n1. SQLite (推荐)\n2. Postgres\n`
+    const out = parseConfirmQuestions(body)
+    expect(out).toHaveLength(1)
+    expect(out[0].kind).toBe('choice')
+    expect(out[0].text).toBe('用什么数据库？')
+    expect(out[0].options.map((o) => o.label)).toEqual(['SQLite', 'Postgres'])
+  })
+
+  it('parses a `[confirm]` item with 方案/影响 fields and no options', () => {
+    const body = [
+      '## 待确认项',
+      '',
+      '### 5.1 [confirm] 将 UserID 从 int 迁移为 uuid',
+      '',
+      '**方案**：一次性迁移，双写过渡 2 周。',
+      '**影响**：🔴 需停机窗口；对外 API 字段类型变更。',
+      '',
+    ].join('\n')
+    const out = parseConfirmQuestions(body)
+    expect(out).toHaveLength(1)
+    expect(out[0].kind).toBe('confirm')
+    expect(out[0].isFreeform).toBe(false)
+    expect(out[0].options).toEqual([])
+    expect(out[0].text).toBe('将 UserID 从 int 迁移为 uuid')
+    expect(out[0].plan).toBe('一次性迁移，双写过渡 2 周。')
+    expect(out[0].impact).toBe('🔴 需停机窗口；对外 API 字段类型变更。')
+  })
+
+  it('accepts `**代价**` as an alias for the confirm impact field', () => {
+    const body = [
+      '## 待确认项',
+      '',
+      '### 5.1 [confirm] 引入新依赖',
+      '**方案**：引入 zod。',
+      '**代价**：包体积 +20KB。',
+      '',
+    ].join('\n')
+    const out = parseConfirmQuestions(body)
+    expect(out[0].kind).toBe('confirm')
+    expect(out[0].impact).toBe('包体积 +20KB。')
+  })
+
   it('hard-switches away from the old bullet format (legacy input yields 0 questions)', () => {
     const body = [
       '## 5. 待确认问题',

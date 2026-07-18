@@ -131,7 +131,7 @@ export const Home: Component = () => {
   }
 
   return (
-    <section class="overflow-y-auto p-4">
+    <section class="overflow-y-auto p-2">
       <header class="flex items-center justify-between">
         <h1 class="m-0 text-xl">{t('home.specList')}</h1>
         <FocusModeButton />
@@ -165,9 +165,7 @@ export const Home: Component = () => {
         </div>
       </Show>
 
-      <Suspense
-        fallback={<p class=" text-muted-foreground">{t('common.loading')}</p>}
-      >
+      <Suspense fallback={<p class=" text-muted-foreground">{t('common.loading')}</p>}>
         <Show
           when={(specs() ?? []).length > 0}
           fallback={
@@ -184,10 +182,7 @@ export const Home: Component = () => {
             <For each={specs() ?? []}>
               {(spec) => (
                 <li class="group relative rounded-xl border bg-card shadow transition-transform hover:-translate-y-px">
-                  <A
-                    href={projectHref(`specs/${encodeURIComponent(spec.id)}`)}
-                    class="block p-4"
-                  >
+                  <A href={projectHref(`specs/${encodeURIComponent(spec.id)}`)} class="block p-4">
                     <div class="flex items-center justify-between text-sm text-muted-foreground">
                       <Badge
                         class={`border-transparent ${STAGE_BG[spec.stage] ?? 'bg-muted'} text-white uppercase`}

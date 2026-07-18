@@ -234,7 +234,7 @@ export interface AggregatedReport {
   pass: boolean
 }
 
-const REQUIRED_SECTIONS = ['现状分析', '技术实现方案', '待确认问题', '任务清单', '执行记录']
+const REQUIRED_SECTIONS = ['现状分析', '技术实现方案', '待确认项', '任务清单', '执行记录']
 
 function escapeHtml(input: string): string {
   return input

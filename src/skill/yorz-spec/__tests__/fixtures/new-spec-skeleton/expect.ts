@@ -61,7 +61,7 @@ export async function assert(parsed: ParsedSpec): Promise<AssertResult> {
     if (!fm[key]) failures.push(`frontmatter missing ${key}`)
   }
 
-  for (const section of ['现状分析', '技术实现方案', '待确认问题', '任务清单', '执行记录']) {
+  for (const section of ['现状分析', '技术实现方案', '待确认(?:项|问题)', '任务清单', '执行记录']) {
     rules.push(`body has section ## ${section}`)
     // Conventions.md numbers H2 as `## N. 标题`; allow either numbered or bare form.
     const re = new RegExp(`^##\\s+(?:\\d+\\.\\s+)?${section}\\s*$`, 'm')

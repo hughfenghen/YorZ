@@ -17,8 +17,8 @@ describe('buildDraftPrompt', () => {
     // kind → markdown syntax mapping
     expect(prompt).toContain('![<文件名>](attachments/<文件名>)')
     expect(prompt).toContain('[<文件名>](attachments/<文件名>)')
-    // failure fallback into 待确认问题
-    expect(prompt).toContain('## 待确认问题')
+    // failure fallback into 待确认项
+    expect(prompt).toContain('## 待确认项')
     expect(prompt).toMatch(/迁移失败/)
   })
 })

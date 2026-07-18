@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { buildAnswerItem, FREEFORM_SENTINEL } from '../answer-payload.js'
+import {
+  buildAnswerItem,
+  buildConfirmAnswerItem,
+  CONFIRM_DECISIONS,
+  isRejectDecision,
+  FREEFORM_SENTINEL,
+} from '../answer-payload.js'
 
 const q = (overrides: Partial<{ id: string; text: string; isFreeform: boolean }> = {}) => ({
   id: 'q-0',
@@ -61,5 +67,53 @@ describe('buildAnswerItem', () => {
   it('returns null for a freeform question without note', () => {
     const item = buildAnswerItem(q({ isFreeform: true }), { note: '' })
     expect(item).toBeNull()
+  })
+})
+
+describe('buildConfirmAnswerItem', () => {
+  const cq = { id: 'q-0', text: '迁移 UserID 为 uuid' }
+
+  it('accept keeps only the label, note optional', () => {
+    const item = buildConfirmAnswerItem(cq, 'accept', '')
+    expect(item).toEqual({
+      questionId: 'q-0',
+      questionText: '迁移 UserID 为 uuid',
+      selectedOptionLabel: CONFIRM_DECISIONS.accept,
+    })
+    expect(item).not.toHaveProperty('note')
+  })
+
+  it('accept keeps an optional note when provided', () => {
+    const item = buildConfirmAnswerItem(cq, 'accept', '同意，尽快做')
+    expect(item).toEqual({
+      questionId: 'q-0',
+      questionText: '迁移 UserID 为 uuid',
+      selectedOptionLabel: CONFIRM_DECISIONS.accept,
+      note: '同意，尽快做',
+    })
+  })
+
+  it.each([
+    ['rejectAlternative', CONFIRM_DECISIONS.rejectAlternative],
+    ['rejectConstraint', CONFIRM_DECISIONS.rejectConstraint],
+    ['rejectDropGoal', CONFIRM_DECISIONS.rejectDropGoal],
+    ['rejectDropSpec', CONFIRM_DECISIONS.rejectDropSpec],
+  ] as const)('reject decision %s carries label + reason', (key, label) => {
+    const item = buildConfirmAnswerItem(cq, key, '当前无停机窗口')
+    expect(item).toEqual({
+      questionId: 'q-0',
+      questionText: '迁移 UserID 为 uuid',
+      selectedOptionLabel: label,
+      note: '当前无停机窗口',
+    })
+  })
+
+  it('returns null when a reject decision has an empty reason', () => {
+    expect(buildConfirmAnswerItem(cq, 'rejectDropSpec', '   ')).toBeNull()
+  })
+
+  it('isRejectDecision distinguishes accept from rejects', () => {
+    expect(isRejectDecision('accept')).toBe(false)
+    expect(isRejectDecision('rejectDropSpec')).toBe(true)
   })
 })

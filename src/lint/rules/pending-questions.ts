@@ -6,13 +6,16 @@ interface SectionRange {
   endLine: number
 }
 
+// 章节名兼容新旧：`待确认项`（新）/ `待确认问题`（旧存量 spec）。
+const PENDING_SECTION_NAMES = new Set(['待确认项', '待确认问题'])
+
 function findPendingSection(ctx: LintContext): SectionRange | null {
   const headings = collectHeadings(ctx)
   for (let i = 0; i < headings.length; i += 1) {
     const h = headings[i]!
     if (h.level !== 2) continue
     const bare = stripHeadingNumber(h.text)
-    if (bare !== '待确认问题') continue
+    if (!PENDING_SECTION_NAMES.has(bare)) continue
     const next = headings.slice(i + 1).find((x) => x.level === 2)
     const startLine = h.line
     const endLine = next ? next.line - 1 : ctx.rawLines.length
@@ -21,11 +24,31 @@ function findPendingSection(ctx: LintContext): SectionRange | null {
   return null
 }
 
+type QuestionKind = 'choice' | 'confirm' | 'freeform'
+
 interface Question {
   headingLine: number
   headingText: string
+  kind: QuestionKind
   bodyLines: string[]
   bodyStartLine: number
+}
+
+// 类型标记前缀：`[choice]` / `[confirm]`（大小写不敏感）。
+const KIND_MARKER_RE = /^\[(choice|confirm)\]\s*/i
+const FREEFORM_SUFFIX_RE = /（自由文本）\s*$/
+// confirm 字段行：`**方案**` / `**影响**` / `**代价**`。
+const PLAN_FIELD_RE = /^\*\*方案\*\*/
+const IMPACT_FIELD_RE = /^\*\*(?:影响|代价)\*\*/
+
+/** 判定条目类型：`[confirm]` → confirm；`[choice]`/无标记 → choice；`（自由文本）` 后缀 → freeform（标记优先于后缀）。 */
+function classifyKind(headingText: string): QuestionKind {
+  const bare = stripHeadingNumber(headingText)
+  const marker = KIND_MARKER_RE.exec(bare)?.[1]?.toLowerCase()
+  if (marker === 'confirm') return 'confirm'
+  if (marker === 'choice') return 'choice'
+  if (FREEFORM_SUFFIX_RE.test(bare)) return 'freeform'
+  return 'choice'
 }
 
 function collectQuestions(ctx: LintContext, section: SectionRange): Question[] {
@@ -36,9 +59,11 @@ function collectQuestions(ctx: LintContext, section: SectionRange): Question[] {
     const m = /^###\s+(.*)$/.exec(raw)
     if (m) {
       if (current) questions.push(current)
+      const headingText = m[1]!.trim()
       current = {
         headingLine: ln + 1,
-        headingText: m[1]!.trim(),
+        headingText,
+        kind: classifyKind(headingText),
         bodyLines: [],
         bodyStartLine: ln + 2,
       }
@@ -52,7 +77,8 @@ function collectQuestions(ctx: LintContext, section: SectionRange): Question[] {
 
 export const pendingQuestionsStructure: LintRule = {
   id: 'pending-questions/structure',
-  description: '每条问题为 ### N.M 三级标题；候选项用 1. 有序列表；恰 1 个 (推荐)；或标题以 （自由文本）结尾。',
+  description:
+    '抉择型 [choice]：候选用 1. 有序列表 + 恰 1 个 (推荐)；确认型 [confirm]：需 **方案**/**影响** 字段且无候选；或标题以 （自由文本）结尾。',
   kinds: ['spec'],
   check(ctx: LintContext): LintFinding[] {
     const findings: LintFinding[] = []
@@ -60,7 +86,6 @@ export const pendingQuestionsStructure: LintRule = {
     if (!section) return findings
     const questions = collectQuestions(ctx, section)
     for (const q of questions) {
-      const isFreeform = /（自由文本）\s*$/.test(q.headingText)
       // Collect candidate ordered-list items (top-level, non-indented).
       const orderedItems: { line: number; text: string }[] = []
       const unorderedItems: { line: number; text: string }[] = []
@@ -72,7 +97,32 @@ export const pendingQuestionsStructure: LintRule = {
         if (orderedMatch) orderedItems.push({ line: ln, text: orderedMatch[2]! })
         else if (unorderedMatch) unorderedItems.push({ line: ln, text: unorderedMatch[1]! })
       }
-      if (isFreeform) {
+      if (q.kind === 'confirm') {
+        // Confirm: 单方案，禁止候选，必须有 **方案** 与 **影响**/**代价** 字段。
+        if (orderedItems.length > 0 || unorderedItems.length > 0) {
+          findings.push({
+            ruleId: this.id,
+            severity: 'error',
+            message: `确认型 "${q.headingText}" 不应列候选项；请改用 **方案** / **影响** 字段描述单一方案。`,
+            line: q.headingLine,
+          })
+        }
+        const hasPlan = q.bodyLines.some((l) => PLAN_FIELD_RE.test(l.trim()))
+        const hasImpact = q.bodyLines.some((l) => IMPACT_FIELD_RE.test(l.trim()))
+        if (!hasPlan || !hasImpact) {
+          const missing = [!hasPlan ? '**方案**' : '', !hasImpact ? '**影响**（或 **代价**）' : '']
+            .filter(Boolean)
+            .join('、')
+          findings.push({
+            ruleId: this.id,
+            severity: 'error',
+            message: `确认型 "${q.headingText}" 缺少 ${missing} 字段。`,
+            line: q.headingLine,
+          })
+        }
+        continue
+      }
+      if (q.kind === 'freeform') {
         // Freeform: MUST NOT have candidates.
         if (orderedItems.length > 0 || unorderedItems.length > 0) {
           findings.push({
@@ -84,7 +134,7 @@ export const pendingQuestionsStructure: LintRule = {
         }
         continue
       }
-      // Non-freeform: must have ordered-list candidates.
+      // Choice: must have ordered-list candidates.
       if (unorderedItems.length > 0 && orderedItems.length === 0) {
         findings.push({
           ruleId: this.id,

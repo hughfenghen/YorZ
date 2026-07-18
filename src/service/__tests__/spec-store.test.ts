@@ -54,7 +54,7 @@ describe('SpecStore.create', () => {
     expect(raw).toContain('## 2. 需求')
     expect(raw).toContain('## 3. 现状分析')
     expect(raw).toContain('## 4. 技术实现方案')
-    expect(raw).toContain('## 5. 待确认问题')
+    expect(raw).toContain('## 5. 待确认项')
     expect(raw).toContain('## 6. 任务清单')
     expect(raw).toContain('## 7. 执行记录')
   })

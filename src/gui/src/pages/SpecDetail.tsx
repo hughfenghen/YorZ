@@ -316,7 +316,7 @@ export const SpecDetail: Component = () => {
   }
 
   return (
-    <section class="flex min-h-0 flex-1 flex-col gap-4 p-4">
+    <section class="flex min-h-0 flex-1 flex-col gap-2 p-2">
       <Suspense fallback={<p class="text-muted-foreground">{t('common.loading')}</p>}>
         <Show
           when={spec()}
