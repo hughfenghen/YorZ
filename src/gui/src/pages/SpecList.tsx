@@ -30,10 +30,12 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
 } from '../components/ui/dialog.jsx'
+import { Input } from '../components/ui/input.jsx'
 import { toast } from '../components/ui/sonner.jsx'
 import { t } from '../i18n/index.js'
 
@@ -44,7 +46,7 @@ const STAGE_BG: Record<string, string> = {
   done: 'bg-stage-done',
 }
 
-export const Home: Component = () => {
+export const SpecList: Component = () => {
   const navigate = useNavigate()
   const projectId = useCurrentProjectId()
   const [specs, { refetch }] = createResource<SpecListItem[], string>(projectId, (pid) =>
@@ -62,13 +64,19 @@ export const Home: Component = () => {
     if (!cur?.worktree) return true
     return (projects() ?? []).some((p) => p.id === cur.worktree!.mainProjectId)
   })
+  const defaultMergeMessage = createMemo(() => {
+    const cur = current()
+    return cur?.worktree ? `feat(${cur.worktree.branch}): merge from worktree` : ''
+  })
 
   const [merging, setMerging] = createSignal(false)
   const [mergeError, setMergeError] = createSignal<string | null>(null)
+  const [mergeDialogOpen, setMergeDialogOpen] = createSignal(false)
+  const [mergeMessage, setMergeMessage] = createSignal('')
   const [confirmDeleteId, setConfirmDeleteId] = createSignal<string | null>(null)
   const [deleting, setDeleting] = createSignal(false)
   const [deleteError, setDeleteError] = createSignal<string | null>(null)
-  useFocusModePage(() => confirmDeleteId() !== null)
+  useFocusModePage(() => mergeDialogOpen() || confirmDeleteId() !== null)
 
   let cleanupSpecsList: (() => void) | null = null
 
@@ -102,18 +110,25 @@ export const Home: Component = () => {
     cleanupSpecsList = null
   })
 
+  function openMergeDialog() {
+    const cur = current()
+    if (!cur?.worktree) return
+    if (!mainReachable()) return
+    setMergeMessage(defaultMergeMessage())
+    setMergeError(null)
+    setMergeDialogOpen(true)
+  }
+
   async function onMerge() {
     const cur = current()
     if (!cur?.worktree) return
     if (!mainReachable()) return
-    const defaultMsg = `feat(${cur.worktree.branch}): merge from worktree`
-    const msg = window.prompt(t('home.mergeHint'), defaultMsg)
-    if (msg == null) return
-    const message = msg.trim() || defaultMsg
+    const message = mergeMessage().trim() || defaultMergeMessage()
     setMerging(true)
     setMergeError(null)
     try {
       const result = await api.mergeWorktreeToMain(cur.id, { commitMessage: message })
+      setMergeDialogOpen(false)
       if (result.status === 'merged') {
         toast.success(t('home.merged'))
         await refetchProjects()
@@ -167,7 +182,7 @@ export const Home: Component = () => {
           <Button
             variant="default"
             size="sm"
-            onClick={() => void onMerge()}
+            onClick={openMergeDialog}
             disabled={merging() || !mainReachable()}
             title={mainReachable() ? t('home.mergeHint') : t('home.mainUnreachable')}
           >
@@ -245,6 +260,54 @@ export const Home: Component = () => {
           </ul>
         </Show>
       </Suspense>
+
+      <Dialog
+        open={mergeDialogOpen()}
+        onOpenChange={(o) => {
+          setMergeDialogOpen(o)
+          if (!o) setMergeError(null)
+        }}
+      >
+        <DialogContent class="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('home.mergeDialogTitle')}</DialogTitle>
+            <DialogDescription>{t('home.mergeDialogDescription')}</DialogDescription>
+          </DialogHeader>
+          <form
+            class="grid gap-4"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void onMerge()
+            }}
+          >
+            <label class="grid gap-2 text-sm font-medium" for="merge-commit-message">
+              {t('home.mergeCommitMessage')}
+              <Input
+                id="merge-commit-message"
+                value={mergeMessage()}
+                onInput={(e) => setMergeMessage(e.currentTarget.value)}
+                disabled={merging()}
+              />
+            </label>
+            <Show when={mergeError()}>
+              <p class=" text-destructive">{mergeError()}</p>
+            </Show>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setMergeDialogOpen(false)}
+                disabled={merging()}
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit" disabled={merging() || !mainReachable()}>
+                {merging() ? t('home.merging') : t('home.mergeToMain')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={confirmDeleteId() !== null}

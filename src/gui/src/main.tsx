@@ -2,7 +2,7 @@
 import { render } from 'solid-js/web'
 import { Router, Route } from '@solidjs/router'
 import './i18n/config.js'
-import { Home } from './pages/Home.jsx'
+import { SpecList } from './pages/SpecList.jsx'
 import { NewSpec } from './pages/NewSpec.jsx'
 import { SpecDetail } from './pages/SpecDetail.jsx'
 import { SpecReview } from './pages/SpecReview.jsx'
@@ -18,7 +18,7 @@ render(
   () => (
     <Router root={AppShell}>
       <Route path="/" component={ProjectIndexRedirect} />
-      <Route path="/:projectId" component={Home} />
+      <Route path="/:projectId" component={SpecList} />
       <Route path="/:projectId/specs/new" component={NewSpec} />
       <Route path="/:projectId/specs/:id" component={SpecDetail} />
       <Route path="/:projectId/specs/:id/review" component={SpecReview} />
