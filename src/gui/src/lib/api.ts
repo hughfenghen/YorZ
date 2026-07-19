@@ -69,6 +69,8 @@ export interface AppendItemBody {
   sectionPath?: string
   quote?: string
   autoRun?: boolean
+  /** Only meaningful when kind === 'fix': enter Debug mode (yorz-debug skill). */
+  debug?: boolean
 }
 
 export type GitOpsAction = 'commit' | 'discard' | 'stash'
@@ -370,9 +372,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   getSessionMessages: (pid: string, sid: string) =>
-    request<SessionMessage[]>(
-      `${projectBase(pid)}/sessions/${encodeURIComponent(sid)}/messages`,
-    ),
+    request<SessionMessage[]>(`${projectBase(pid)}/sessions/${encodeURIComponent(sid)}/messages`),
   sendSessionMessage: (pid: string, sid: string, prompt: string, draftId?: string) =>
     request<{ runId: string; sessionId: string }>(
       `${projectBase(pid)}/sessions/${encodeURIComponent(sid)}/messages`,
@@ -383,10 +383,9 @@ export const api = {
       },
     ),
   abortSession: (pid: string, sid: string) =>
-    request<{ aborted: boolean }>(
-      `${projectBase(pid)}/sessions/${encodeURIComponent(sid)}/abort`,
-      { method: 'POST' },
-    ),
+    request<{ aborted: boolean }>(`${projectBase(pid)}/sessions/${encodeURIComponent(sid)}/abort`, {
+      method: 'POST',
+    }),
   // Read-only probe: `sessionId` is null when the spec has no session yet
   // (sessions are created lazily, on the first system round).
   getSpecSession: (pid: string, id: string) =>

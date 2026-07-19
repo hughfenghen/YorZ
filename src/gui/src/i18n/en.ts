@@ -233,6 +233,8 @@ export const en = {
     kindFeat: 'feat new/extended requirement',
     kindRefct: 'refct refactor/rewrite/extract',
     kindFix: 'fix bug fix',
+    debugMode: 'debug mode',
+    debugModeHint: 'Deep analysis & debugging — tackle stubborn, hard-to-solve issues',
     description: 'Description',
     descPlaceholder: 'Describe new requirement / refactor intent / bug reproduction…',
     descRequired: 'Description cannot be empty',

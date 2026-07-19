@@ -232,6 +232,8 @@ export const zhCN = {
     kindFeat: 'feat 新增/扩展需求',
     kindRefct: 'refct 重构/重写/抽取',
     kindFix: 'fix 修复缺陷',
+    debugMode: 'debug 模式',
+    debugModeHint: '深度分析调试，尝试解决疑难问题',
     description: '描述',
     descPlaceholder: '详细描述新增需求 / 重构意图 / 缺陷复现…',
     descRequired: '描述不能为空',

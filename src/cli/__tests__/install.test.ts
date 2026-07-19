@@ -25,12 +25,7 @@ afterEach(async () => {
   await rm(cwd, { recursive: true, force: true })
 })
 
-const EXPECTED_SUBDOCS = [
-  'SKILL.md',
-  'index.json',
-  'stages.md',
-  'review.md',
-]
+const EXPECTED_SUBDOCS = ['SKILL.md', 'index.json', 'stages.md', 'review.md']
 
 async function walk(dir: string): Promise<string[]> {
   const out: string[] = []
@@ -129,9 +124,15 @@ describe('skill fingerprint', () => {
 })
 
 describe('ensureSkillsInstalled', () => {
-  it('installs for every agent on first run', async () => {
+  it('installs every skill for every agent on first run', async () => {
     const results = await ensureSkillsInstalled({ home, cwd })
-    expect(results.map((r) => r.agent).sort()).toEqual(['claude', 'codex', 'opencode'])
+    expect([...new Set(results.map((r) => r.agent))].sort()).toEqual([
+      'claude',
+      'codex',
+      'opencode',
+    ])
+    expect([...new Set(results.map((r) => r.skill))].sort()).toEqual(['yorz-debug', 'yorz-spec'])
+    expect(results).toHaveLength(6)
     expect(results.every((r) => r.status === 'installed')).toBe(true)
     for (const r of results) {
       await expect(stat(r.path)).resolves.toBeTruthy()
@@ -144,17 +145,19 @@ describe('ensureSkillsInstalled', () => {
     expect(results.every((r) => r.status === 'up-to-date')).toBe(true)
   })
 
-  it('reports updated when an installed skill is outdated', async () => {
+  it('reports updated only for the outdated skill', async () => {
     await ensureSkillsInstalled({ home, cwd })
     const claudeSkill = join(home, '.claude', 'skills', SKILL_DIR_NAME, 'SKILL.md')
     await writeFile(claudeSkill, 'OUTDATED', 'utf8')
 
     const results = await ensureSkillsInstalled({ home, cwd })
-    const claude = results.find((r) => r.agent === 'claude')!
-    expect(claude.status).toBe('updated')
-    expect(results.filter((r) => r.agent !== 'claude').every((r) => r.status === 'up-to-date')).toBe(
-      true,
-    )
+    const claudeSpec = results.find((r) => r.agent === 'claude' && r.skill === SKILL_DIR_NAME)!
+    expect(claudeSpec.status).toBe('updated')
+    expect(
+      results
+        .filter((r) => !(r.agent === 'claude' && r.skill === SKILL_DIR_NAME))
+        .every((r) => r.status === 'up-to-date'),
+    ).toBe(true)
     // Re-install restored the real content.
     expect(await readInstalledFingerprint(join(home, '.claude', 'skills', SKILL_DIR_NAME))).toBe(
       computeBundledFingerprint(),
@@ -221,15 +224,16 @@ describe('installScopeTip', () => {
 describe('uninstall', () => {
   it('removes an installed skill dir', async () => {
     await install({ agent: 'claude', scope: 'user', home, cwd })
-    const res = await uninstall({ agent: 'claude', scope: 'user', home, cwd })
+    const results = await uninstall({ agent: 'claude', scope: 'user', home, cwd })
 
-    expect(res.removed).toBe(true)
-    await expect(stat(res.path)).rejects.toThrow()
+    const spec = results.find((r) => r.skill === SKILL_DIR_NAME)!
+    expect(spec.removed).toBe(true)
+    await expect(stat(spec.path)).rejects.toThrow()
   })
 
   it('returns removed=false when nothing to remove', async () => {
-    const res = await uninstall({ agent: 'claude', scope: 'user', home, cwd })
-    expect(res.removed).toBe(false)
+    const results = await uninstall({ agent: 'claude', scope: 'user', home, cwd })
+    expect(results.every((r) => !r.removed)).toBe(true)
   })
 
   it('removes a non-empty skill dir (with extra files)', async () => {
@@ -238,8 +242,8 @@ describe('uninstall', () => {
     await mkdir(join(dir, 'nested'), { recursive: true })
     await writeFile(join(dir, 'nested', 'extra.txt'), 'x', 'utf8')
 
-    const res = await uninstall({ agent: 'opencode', scope: 'project', home, cwd })
-    expect(res.removed).toBe(true)
+    const results = await uninstall({ agent: 'opencode', scope: 'project', home, cwd })
+    expect(results.find((r) => r.skill === SKILL_DIR_NAME)!.removed).toBe(true)
     await expect(stat(dir)).rejects.toThrow()
   })
 
@@ -247,8 +251,8 @@ describe('uninstall', () => {
     await install({ agent: 'codex', scope: 'project', home, cwd })
     const dir = join(cwd, '.codex', 'skills', SKILL_DIR_NAME)
 
-    const res = await uninstall({ agent: 'codex', scope: 'project', home, cwd })
-    expect(res.removed).toBe(true)
+    const results = await uninstall({ agent: 'codex', scope: 'project', home, cwd })
+    expect(results.find((r) => r.skill === SKILL_DIR_NAME)!.removed).toBe(true)
     await expect(stat(dir)).rejects.toThrow()
   })
 })

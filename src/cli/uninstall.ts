@@ -2,7 +2,7 @@ import { access, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { getAdapter } from './adapters/index.js'
 import type { AgentName, InstallScope } from './adapters/types.js'
-import { SKILL_DIR_NAME } from './install.js'
+import { SKILL_DIR_NAMES } from './install.js'
 
 export interface UninstallOptions {
   agent: AgentName
@@ -12,21 +12,26 @@ export interface UninstallOptions {
 }
 
 export interface UninstallResult {
+  skill: string
   path: string
   removed: boolean
 }
 
-export async function uninstall(opts: UninstallOptions): Promise<UninstallResult> {
+/** Remove every bundled skill dir ({@link SKILL_DIR_NAMES}) for the given agent. */
+export async function uninstall(opts: UninstallOptions): Promise<UninstallResult[]> {
   const adapter = getAdapter(opts.agent)
   const baseDir = adapter.resolveSkillsDir(opts.scope, { home: opts.home, cwd: opts.cwd })
-  const skillDir = join(baseDir, SKILL_DIR_NAME)
-
-  try {
-    await access(skillDir)
-  } catch {
-    return { path: skillDir, removed: false }
+  const results: UninstallResult[] = []
+  for (const skill of SKILL_DIR_NAMES) {
+    const skillDir = join(baseDir, skill)
+    try {
+      await access(skillDir)
+    } catch {
+      results.push({ skill, path: skillDir, removed: false })
+      continue
+    }
+    await rm(skillDir, { recursive: true, force: true })
+    results.push({ skill, path: skillDir, removed: true })
   }
-
-  await rm(skillDir, { recursive: true, force: true })
-  return { path: skillDir, removed: true }
+  return results
 }

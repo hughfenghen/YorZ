@@ -144,11 +144,11 @@ async function ensureSkillsInstalledWithLog(cwd: string): Promise<void> {
   const results = await ensureSkillsInstalled({ home: homedir(), cwd })
   for (const r of results) {
     if (r.status === 'installed') {
-      console.log(`[skill][${r.agent}] installed: ${r.path}`)
+      console.log(`[skill][${r.agent}] ${r.skill} installed: ${r.path}`)
     } else if (r.status === 'updated') {
-      console.log(`[skill][${r.agent}] updated: ${r.path}`)
+      console.log(`[skill][${r.agent}] ${r.skill} updated: ${r.path}`)
     } else {
-      console.log(`[skill][${r.agent}] yorz-spec is up to date`)
+      console.log(`[skill][${r.agent}] ${r.skill} is up to date`)
     }
   }
 }

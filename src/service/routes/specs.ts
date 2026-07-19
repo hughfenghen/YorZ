@@ -172,10 +172,15 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     }
     if (parsed.autoRun) {
       const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
-      const handle = p.sessions.send(
-        sessionId,
-        `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`,
-      )
+      // Reentry guard: an active debug.md keeps the session in Debug mode even
+      // when this append didn't request it.
+      const debugActive = (await readDebugMdStatus(join(p.specsDir, specId))) === 'debugging'
+      const prompt = parsed.debug
+        ? buildDebugPrompt(p.specsDirRelative, specId, 'new')
+        : debugActive
+          ? buildDebugPrompt(p.specsDirRelative, specId, 'resume')
+          : `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`
+      const handle = p.sessions.send(sessionId, prompt)
       return c.json({ ok: true, runId: handle.runId, sessionId })
     }
     return c.json({ ok: true })
@@ -188,10 +193,12 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     const detail = await p.store.read(specId)
     if (!detail) return c.json({ error: 'spec not found' }, 404)
     const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
-    const handle = p.sessions.send(
-      sessionId,
-      `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`,
-    )
+    // Reentry guard: if a debug session is still active, keep run in Debug mode.
+    const debugActive = (await readDebugMdStatus(join(p.specsDir, specId))) === 'debugging'
+    const prompt = debugActive
+      ? buildDebugPrompt(p.specsDirRelative, specId, 'resume')
+      : `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`
+    const handle = p.sessions.send(sessionId, prompt)
     return c.json({ runId: handle.runId, sessionId })
   })
 
@@ -263,6 +270,57 @@ export function buildDraftPrompt(type: SpecType, requirement: string, draftId?: 
     )
   }
   return lines.join('\n')
+}
+
+/**
+ * Read the `status` frontmatter field of `<specDir>/debug.md`. Returns
+ * `'debugging'` / `'resolved'` when present, or `null` when the file is absent
+ * or has no recognizable status (a pure read-only guard — never throws).
+ */
+export async function readDebugMdStatus(specDir: string): Promise<'debugging' | 'resolved' | null> {
+  const file = join(specDir, 'debug.md')
+  let text: string
+  try {
+    text = await readFile(file, 'utf8')
+  } catch {
+    return null
+  }
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)
+  if (!m) return null
+  const statusLine = m[1].split(/\r?\n/).find((l) => /^status\s*:/.test(l.trim()))
+  if (!statusLine) return null
+  const val = statusLine
+    .slice(statusLine.indexOf(':') + 1)
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+  return val === 'debugging' ? 'debugging' : val === 'resolved' ? 'resolved' : null
+}
+
+/**
+ * Prompt that points the agent at the `yorz-debug` skill. `mode: 'new'` starts a
+ * fresh debug record (create/append a `## Debug NNN` block + snapshot);
+ * `mode: 'resume'` continues the active record block of an existing debugging
+ * `debug.md` (reentry guard for run/append).
+ */
+export function buildDebugPrompt(
+  specsDirRelative: string,
+  specId: string,
+  mode: 'new' | 'resume',
+): string {
+  const specPath = `${specsDirRelative}/${specId}/spec.md`
+  const debugPath = `${specsDirRelative}/${specId}/debug.md`
+  if (mode === 'resume') {
+    return (
+      `请使用 yorz-debug skill 继续调试：spec 目录 ${specsDirRelative}/${specId}（含 ${specPath}）。` +
+      `该目录下已存在处于 debugging 状态的 ${debugPath}，请定位其活跃记录块（frontmatter active 指向的 ## Debug NNN）` +
+      `继续「假设 → 取证 → 验证」循环，勿新建记录块。`
+    )
+  }
+  return (
+    `请使用 yorz-debug skill 进入 Debug 模式：spec 目录 ${specsDirRelative}/${specId}（含 ${specPath}）。` +
+    `若 ${debugPath} 不存在则创建，否则在文末追加新的 ## Debug 记录块；` +
+    `进入后立即 git stash create 打快照写入 Debug 基线，再开始「假设 → 取证 → 验证」循环。`
+  )
 }
 
 type CreateInput = {
@@ -382,6 +440,7 @@ interface AppendInput {
   sectionPath?: string
   quote?: string
   autoRun: boolean
+  debug: boolean
 }
 
 function parseAppendBody(body: unknown): AppendInput | { error: string } {
@@ -395,7 +454,7 @@ function parseAppendBody(body: unknown): AppendInput | { error: string } {
     return { error: 'description required' }
   }
 
-  const out: AppendInput = { kind, description: obj.description, autoRun: true }
+  const out: AppendInput = { kind, description: obj.description, autoRun: true, debug: false }
   if (obj.sectionPath !== undefined) {
     if (typeof obj.sectionPath !== 'string') return { error: 'sectionPath must be a string' }
     if (obj.sectionPath.length > 200) return { error: 'sectionPath too long (max 200)' }
@@ -409,6 +468,11 @@ function parseAppendBody(body: unknown): AppendInput | { error: string } {
   if (obj.autoRun !== undefined) {
     if (typeof obj.autoRun !== 'boolean') return { error: 'autoRun must be a boolean' }
     out.autoRun = obj.autoRun
+  }
+  if (obj.debug !== undefined) {
+    if (typeof obj.debug !== 'boolean') return { error: 'debug must be a boolean' }
+    // Debug mode only applies to fix-type appends.
+    out.debug = obj.debug && kind === 'fix'
   }
   return out
 }

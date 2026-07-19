@@ -55,9 +55,11 @@ uninstallCmd
     const agents = parseAgents(opts.agent)
     const scope = parseScope(opts.scope)
     for (const agent of agents) {
-      const result = await uninstall({ agent, scope, home: homedir(), cwd: process.cwd() })
-      if (result.removed) console.log(`[${agent}] removed: ${result.path}`)
-      else console.log(`[${agent}] not installed at ${result.path}`)
+      const results = await uninstall({ agent, scope, home: homedir(), cwd: process.cwd() })
+      for (const result of results) {
+        if (result.removed) console.log(`[${agent}] ${result.skill} removed: ${result.path}`)
+        else console.log(`[${agent}] ${result.skill} not installed at ${result.path}`)
+      }
     }
   })
 
@@ -95,17 +97,22 @@ program
   .option('--all', 'lint every spec.md / review.md under the project specsDir', false)
   .option('--cwd <path>', 'working directory (default: process.cwd())')
   .option('--skip-mermaid-parse', 'skip mermaid deep-parse rule (fence rule still runs)', false)
-  .action(async (paths: string[], opts: { format?: string; all?: boolean; cwd?: string; skipMermaidParse?: boolean }) => {
-    const format = opts.format === 'json' ? 'json' : 'text'
-    const result = await runLint({
-      paths: paths ?? [],
-      format,
-      all: opts.all === true,
-      cwd: opts.cwd ?? process.cwd(),
-      skipMermaidParse: opts.skipMermaidParse === true,
-    })
-    if (result.exitCode !== 0) process.exit(result.exitCode)
-  })
+  .action(
+    async (
+      paths: string[],
+      opts: { format?: string; all?: boolean; cwd?: string; skipMermaidParse?: boolean },
+    ) => {
+      const format = opts.format === 'json' ? 'json' : 'text'
+      const result = await runLint({
+        paths: paths ?? [],
+        format,
+        all: opts.all === true,
+        cwd: opts.cwd ?? process.cwd(),
+        skipMermaidParse: opts.skipMermaidParse === true,
+      })
+      if (result.exitCode !== 0) process.exit(result.exitCode)
+    },
+  )
 
 const serveCmd = program
   .command('serve')
