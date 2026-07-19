@@ -19,6 +19,7 @@ import {
 } from '../lib/api.js'
 import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/project.js'
 import { useFocusModePage } from '../lib/layout-focus.js'
+import morphdom from 'morphdom'
 import { renderMarkdown } from '../lib/markdown.js'
 import { renderMermaidIn } from '../lib/mermaid.js'
 import { subscribeSpec, subscribeSession, subscribeSessions } from '../lib/sse.js'
@@ -198,15 +199,18 @@ export const SpecDetail: Component = () => {
   // exits unless a page-level popover/dialog should consume the key first.
   useFocusModePage(() => appendOpen() || popoverOpen())
 
-  // Re-render on every spec() change, but DOUBLE-BUFFERED: build the new markdown
-  // and run mermaid to completion in an offscreen node first, then swap the
-  // finished DOM into the visible <article> in one shot. Doing it in place instead
-  // (innerHTML rewrite → async mermaid raw→SVG) made the body height lurch
-  // final→0→raw→SVG on every refresh, which both flickered and — because the
-  // raw→SVG growth above the viewport triggered the browser's scroll anchoring —
-  // ratcheted scrollTop downward, so the reading position drifted off. Rendering
-  // offscreen keeps the old content visible until the new content is fully sized,
-  // so the height never thrashes and scrollTop is restored exactly once.
+  // Re-render on every spec() change via INCREMENTAL DOM DIFF (morphdom): only the
+  // nodes that actually changed are patched; unchanged nodes (including already
+  // rendered mermaid SVGs) stay in place. Because most nodes don't move, the
+  // browser's native scroll anchoring keeps the viewport pinned to the reading
+  // position on its own — so no manual scrollTop record/restore and no offscreen
+  // double-buffer are needed. The earlier full replaceChildren swap collapsed the
+  // body height to 0 on every refresh (no stable anchor), which is why manual
+  // scrollTop was required; a diff never collapses the height.
+  //
+  // `onBeforeElUpdated` skips mermaid nodes whose source is unchanged: morphdom
+  // would otherwise overwrite the rendered SVG with the raw placeholder. Only
+  // new/changed mermaid nodes (raw, without data-processed) are then rendered.
   createEffect(() => {
     const el = articleEl()
     const s = spec()
@@ -216,43 +220,35 @@ export const SpecDetail: Component = () => {
     let active = true
     let cleanupFn: (() => void) | undefined
 
-    // Offscreen buffer. Only the `.markdown` typography class (not `spec-main` or
-    // the layout classes) — carrying `spec-main` would briefly duplicate the
-    // article in the DOM. Match the visible content-box width so line wrapping —
-    // and therefore height — is identical after the swap. Kept VISIBLE (no
-    // visibility:hidden) so mermaid can measure/layout the diagrams.
-    const off = document.createElement('div')
-    off.className = 'markdown'
-    const cs = getComputedStyle(el)
-    const contentWidth =
-      (el.clientWidth || el.offsetWidth || 800) -
-      parseFloat(cs.paddingLeft || '0') -
-      parseFloat(cs.paddingRight || '0')
-    off.style.cssText =
-      `position:absolute; left:-99999px; top:0; overflow:hidden; box-sizing:content-box; width:${contentWidth}px`
-    off.innerHTML = renderMarkdown(s.body, { specId: s.id, projectId: pid || undefined })
-    // Must live in the document so mermaid can measure/layout the diagrams.
-    el.parentElement?.appendChild(off)
+    const html = renderMarkdown(s.body, { specId: s.id, projectId: pid || undefined })
+    morphdom(el, `<article>${html}</article>`, {
+      childrenOnly: true,
+      onBeforeElUpdated: (fromEl, toEl) => {
+        // Preserve an already-rendered mermaid diagram when its source is unchanged:
+        // returning false leaves `fromEl` (the SVG) untouched instead of reverting
+        // it to the incoming raw placeholder.
+        if (
+          fromEl.classList?.contains('mermaid') &&
+          fromEl.getAttribute('data-mermaid-source') ===
+            (toEl as Element).getAttribute?.('data-mermaid-source')
+        ) {
+          return false
+        }
+        return true
+      },
+    })
 
-    void renderMermaidIn(off).then((cleanup) => {
+    void renderMermaidIn(el).then((cleanup) => {
       if (!active) {
         cleanup()
-        off.remove()
         return
       }
       cleanupFn = cleanup
-      // Read the live position right before swapping so a scroll the user made
-      // while we were rendering is honored (we never fight the user).
-      const target = el.scrollTop
-      el.replaceChildren(...Array.from(off.childNodes))
-      off.remove()
-      el.scrollTop = Math.min(target, el.scrollHeight - el.clientHeight)
     })
 
     onCleanup(() => {
       active = false
       cleanupFn?.()
-      off.remove()
     })
   })
 

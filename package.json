@@ -59,6 +59,7 @@
     "jsdom": "^25.0.1",
     "markdown-it": "^14.2.0",
     "mermaid": "^11.0.0",
+    "morphdom": "^2.7.8",
     "timeago.js": "^4.0.2",
     "trash": "^10.1.1"
   },

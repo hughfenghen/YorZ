@@ -11,9 +11,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 async function resolveProjectId(request: import('@playwright/test').APIRequestContext): Promise<string> {
   const res = await request.get('/api/projects')
-  const list = (await res.json()) as { projects: Array<{ id: string }> } | Array<{ id: string }>
+  const list = (await res.json()) as
+    | { projects: Array<{ id: string; name?: string }> }
+    | Array<{ id: string; name?: string }>
   const arr = Array.isArray(list) ? list : list.projects
-  return arr[0]!.id
+  // Select the seeded .tmp-e2e project explicitly: with several registered
+  // projects `arr[0]` is not necessarily the e2e temp project.
+  return (arr.find((p) => p.name === '.tmp-e2e') ?? arr[0]!).id
 }
 
 test('刷新之间移动滚动位置应被跟随，不漂移/不回退', async ({ page, request }) => {
