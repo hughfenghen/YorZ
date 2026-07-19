@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { createReadStream } from 'node:fs'
-import { Codex, type Thread, type ThreadEvent } from '@openai/codex-sdk'
+import { Codex, type Thread, type ThreadEvent, type ThreadOptions } from '@openai/codex-sdk'
 import type {
   AgentContextKind,
   AgentEvent,
@@ -18,6 +18,15 @@ import type {
 } from './types.js'
 
 const SESSIONS_ROOT = join(homedir(), '.codex', 'sessions')
+
+function codexThreadOptions(cwd: string): ThreadOptions {
+  return {
+    workingDirectory: cwd,
+    skipGitRepoCheck: true,
+    sandboxMode: 'danger-full-access',
+    approvalPolicy: 'never',
+  }
+}
 
 function detectAgentContextKind(text: string): AgentContextKind | undefined {
   const trimmed = text.trimStart()
@@ -110,13 +119,11 @@ export class CodexAdapter implements AgentSdkAdapter {
   }
 
   async createSession(): Promise<AgentSession> {
-    return new CodexSession(
-      this.codex.startThread({ workingDirectory: this.cwd, skipGitRepoCheck: true }),
-    )
+    return new CodexSession(this.codex.startThread(codexThreadOptions(this.cwd)))
   }
 
   async resumeSession(id: string): Promise<AgentSession> {
-    return new CodexSession(this.codex.resumeThread(id))
+    return new CodexSession(this.codex.resumeThread(id, codexThreadOptions(this.cwd)))
   }
 
   /** Walk ~/.codex/sessions, keep rollouts whose session_meta.cwd matches this project. */
