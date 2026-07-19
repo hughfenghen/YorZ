@@ -1,9 +1,21 @@
 import { test, expect } from '@playwright/test'
 import { SPEC_ID } from './fixtures/setup.js'
 
+async function resolveProjectId(
+  request: import('@playwright/test').APIRequestContext,
+): Promise<string> {
+  const res = await request.get('/api/projects')
+  expect(res.status()).toBe(200)
+  const list = (await res.json()) as { projects: Array<{ id: string }> } | Array<{ id: string }>
+  const arr = Array.isArray(list) ? list : list.projects
+  expect(arr.length).toBeGreaterThan(0)
+  return arr[0]!.id
+}
+
 test.describe.serial('append task popover', () => {
-  test('点击「追加任务」按钮应弹出 popover 并落在按钮正下方且不越界', async ({ page }) => {
-    await page.goto(`/specs/${SPEC_ID}`)
+  test('点击「追加任务」按钮应弹出 popover 并落在按钮正下方且不越界', async ({ page, request }) => {
+    const pid = await resolveProjectId(request)
+    await page.goto(`/${pid}/specs/${SPEC_ID}`)
 
     const btn = page.locator('button.append-btn')
     await expect(btn).toBeVisible({ timeout: 5_000 })
@@ -29,8 +41,9 @@ test.describe.serial('append task popover', () => {
     }
   })
 
-  test('按 ESC 关闭 popover', async ({ page }) => {
-    await page.goto(`/specs/${SPEC_ID}`)
+  test('按 ESC 关闭 popover', async ({ page, request }) => {
+    const pid = await resolveProjectId(request)
+    await page.goto(`/${pid}/specs/${SPEC_ID}`)
 
     await page.locator('button.append-btn').click()
     const dialog = page.locator('.append-dialog')
@@ -40,8 +53,9 @@ test.describe.serial('append task popover', () => {
     await expect(dialog).toHaveCount(0)
   })
 
-  test('提交追加项后 spec md 写入「## 追加任务」章节', async ({ page }) => {
-    await page.goto(`/specs/${SPEC_ID}`)
+  test('提交追加项后 spec md 写入「## 追加任务」章节', async ({ page, request }) => {
+    const pid = await resolveProjectId(request)
+    await page.goto(`/${pid}/specs/${SPEC_ID}`)
 
     await page.locator('button.append-btn').click()
     const dialog = page.locator('.append-dialog')
@@ -52,7 +66,7 @@ test.describe.serial('append task popover', () => {
 
     const submitPromise = page.waitForResponse(
       (res) =>
-        res.url().includes(`/api/specs/${SPEC_ID}/appends`) && res.request().method() === 'POST',
+        res.url().includes(`/specs/${SPEC_ID}/appends`) && res.request().method() === 'POST',
     )
     await dialog.locator('button[type="submit"]').click()
     const submitRes = await submitPromise
@@ -60,10 +74,11 @@ test.describe.serial('append task popover', () => {
 
     await expect(dialog).toHaveCount(0)
 
-    const detail = await page.request.get(`/api/specs/${SPEC_ID}`)
+    const detail = await page.request.get(`/api/projects/${pid}/specs/${SPEC_ID}`)
     expect(detail.status()).toBe(200)
     const data = (await detail.json()) as { body: string; frontmatter: { stage: string } }
-    expect(data.body).toContain('## 追加任务')
+    // 追加任务 heading carries the auto-assigned section number (e.g. "## 3. 追加任务").
+    expect(data.body).toMatch(/##\s+\d+\.\s+追加任务/)
     expect(data.body).toContain('e2e 追加项：按钮点击无响应的回归用例')
     expect(data.frontmatter.stage).toBe('plan')
   })

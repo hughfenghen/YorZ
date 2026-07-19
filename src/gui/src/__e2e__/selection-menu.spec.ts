@@ -1,9 +1,21 @@
 import { test, expect } from '@playwright/test'
 import { SPEC_ID } from './fixtures/setup.js'
 
+async function resolveProjectId(
+  request: import('@playwright/test').APIRequestContext,
+): Promise<string> {
+  const res = await request.get('/api/projects')
+  expect(res.status()).toBe(200)
+  const list = (await res.json()) as { projects: Array<{ id: string }> } | Array<{ id: string }>
+  const arr = Array.isArray(list) ? list : list.projects
+  expect(arr.length).toBeGreaterThan(0)
+  return arr[0]!.id
+}
+
 test.describe('selection menu', () => {
-  test('选中正文应弹出浮动菜单（含批注与解释按钮）', async ({ page }) => {
-    await page.goto(`/specs/${SPEC_ID}`)
+  test('选中正文应弹出浮动菜单（含批注与解释按钮）', async ({ page, request }) => {
+    const pid = await resolveProjectId(request)
+    await page.goto(`/${pid}/specs/${SPEC_ID}`)
 
     const article = page.locator('article.markdown')
     await expect(article).toBeVisible()
