@@ -6,6 +6,7 @@ import {
   createResource,
   createSignal,
   onCleanup,
+  startTransition,
   type Component,
 } from 'solid-js'
 import { A, useParams } from '@solidjs/router'
@@ -120,7 +121,14 @@ export const SpecDetail: Component = () => {
     const unsub = subscribeSpec(pid, id, {
       onUpdated: () => {
         if (timer) clearTimeout(timer)
-        timer = setTimeout(() => setRefreshTick((t) => t + 1), SSE_DEBOUNCE_MS)
+        // Refresh inside a transition so the resource refetch does NOT re-suspend
+        // <Suspense>: re-suspending detaches and reattaches the <article> scroll
+        // container, and reattaching resets scrollTop to 0. A transition keeps the
+        // current DOM mounted until the new doc is ready, preserving scroll.
+        timer = setTimeout(
+          () => void startTransition(() => setRefreshTick((t) => t + 1)),
+          SSE_DEBOUNCE_MS,
+        )
       },
     })
     onCleanup(() => {
@@ -190,43 +198,61 @@ export const SpecDetail: Component = () => {
   // exits unless a page-level popover/dialog should consume the key first.
   useFocusModePage(() => appendOpen() || popoverOpen())
 
-  // Markdown injection and mermaid rendering live in ONE effect: mermaid must run
-  // against the nodes this very pass produced. Splitting them (innerHTML bound in
-  // JSX, mermaid keyed off `articleEl`) meant an SSE-driven body change re-rendered
-  // the HTML without ever re-running mermaid — diagrams stayed as raw source until
-  // a full page reload remounted the element.
+  // Re-render on every spec() change, but DOUBLE-BUFFERED: build the new markdown
+  // and run mermaid to completion in an offscreen node first, then swap the
+  // finished DOM into the visible <article> in one shot. Doing it in place instead
+  // (innerHTML rewrite → async mermaid raw→SVG) made the body height lurch
+  // final→0→raw→SVG on every refresh, which both flickered and — because the
+  // raw→SVG growth above the viewport triggered the browser's scroll anchoring —
+  // ratcheted scrollTop downward, so the reading position drifted off. Rendering
+  // offscreen keeps the old content visible until the new content is fully sized,
+  // so the height never thrashes and scrollTop is restored exactly once.
   createEffect(() => {
     const el = articleEl()
     const s = spec()
     if (!el || !s) return
     const pid = projectId()
 
-    // An SSE refresh yields a fresh spec() object even when the body is
-    // unchanged, so this effect re-runs and `innerHTML = …` rebuilds every child
-    // — which drops the container's scrollTop to 0. Save it first and restore
-    // after both the synchronous rebuild and the async mermaid injection, each
-    // clamped to the new scrollHeight so a shortened body can't overscroll.
-    const prevTop = el.scrollTop
-    const restoreScroll = () => {
-      el.scrollTop = Math.min(prevTop, el.scrollHeight - el.clientHeight)
-    }
-
-    el.innerHTML = renderMarkdown(s.body, { specId: s.id, projectId: pid || undefined })
-    restoreScroll()
-
     let active = true
     let cleanupFn: (() => void) | undefined
-    void renderMermaidIn(el).then((cleanup) => {
-      if (active) {
-        cleanupFn = cleanup
-        // mermaid swapped raw source for sized svg, shifting content height —
-        // restore once more (only if this pass is still the live one).
-        restoreScroll()
-      } else cleanup()
+
+    // Offscreen buffer. Only the `.markdown` typography class (not `spec-main` or
+    // the layout classes) — carrying `spec-main` would briefly duplicate the
+    // article in the DOM. Match the visible content-box width so line wrapping —
+    // and therefore height — is identical after the swap. Kept VISIBLE (no
+    // visibility:hidden) so mermaid can measure/layout the diagrams.
+    const off = document.createElement('div')
+    off.className = 'markdown'
+    const cs = getComputedStyle(el)
+    const contentWidth =
+      (el.clientWidth || el.offsetWidth || 800) -
+      parseFloat(cs.paddingLeft || '0') -
+      parseFloat(cs.paddingRight || '0')
+    off.style.cssText =
+      `position:absolute; left:-99999px; top:0; overflow:hidden; box-sizing:content-box; width:${contentWidth}px`
+    off.innerHTML = renderMarkdown(s.body, { specId: s.id, projectId: pid || undefined })
+    // Must live in the document so mermaid can measure/layout the diagrams.
+    el.parentElement?.appendChild(off)
+
+    void renderMermaidIn(off).then((cleanup) => {
+      if (!active) {
+        cleanup()
+        off.remove()
+        return
+      }
+      cleanupFn = cleanup
+      // Read the live position right before swapping so a scroll the user made
+      // while we were rendering is honored (we never fight the user).
+      const target = el.scrollTop
+      el.replaceChildren(...Array.from(off.childNodes))
+      off.remove()
+      el.scrollTop = Math.min(target, el.scrollHeight - el.clientHeight)
     })
+
     onCleanup(() => {
       active = false
       cleanupFn?.()
+      off.remove()
     })
   })
 

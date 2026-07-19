@@ -42,7 +42,9 @@ export async function renderMermaidIn(container: HTMLElement): Promise<RenderMer
     }
   }
 
-  void render()
+  // Await the actual render: the returned promise must not resolve until the SVG
+  // has been injected, so callers restoring scroll position see the final height.
+  await render()
 
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
   mediaQuery.addEventListener('change', render)

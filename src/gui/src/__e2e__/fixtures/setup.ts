@@ -9,6 +9,76 @@ export const E2E_CWD = join(REPO_ROOT, '.tmp-e2e')
 export const SPEC_ID = '260616.feat.e2e-seed'
 export const QUESTIONS_SPEC_ID = '260618.feat.e2e-questions'
 export const TASK_LIST_SPEC_ID = '260701.feat.e2e-task-list'
+export const SCROLL_SPEC_ID = '260719.fix.e2e-scroll-preserve'
+export const SCROLL_TEXT_SPEC_ID = '260719.fix.e2e-scroll-text-only'
+
+/** Build a long, mermaid-heavy body so the article scrolls several screens and
+ * mermaid's async SVG injection materially changes content height. `marker`
+ * lets the test mutate the body per write (simulating an agent's live edits). */
+export function buildScrollSpec(marker: string): string {
+  const mermaidBlock = (n: number) => `### ${n}. 章节 ${n}
+
+这是第 ${n} 段说明文字，用于把正文撑高，确保滚动容器出现多屏可滚动内容。${'占位文本 '.repeat(20)}
+
+\`\`\`mermaid
+flowchart TD
+    A${n}[开始节点 ${n}] --> B${n}[处理 ${n}]
+    B${n} --> C${n}{判断 ${n}}
+    C${n} -->|是| D${n}[分支真 ${n}]
+    C${n} -->|否| E${n}[分支假 ${n}]
+    D${n} --> F${n}[汇合 ${n}]
+    E${n} --> F${n}
+\`\`\`
+
+${'更多正文占位，保证每节都足够高。'.repeat(10)}
+`
+  const sections = Array.from({ length: 8 }, (_, i) => mermaidBlock(i + 1)).join('\n')
+  return `---
+stage: plan
+last_action: e2e 滚动保持 ${marker}
+updated_at: '2026-07-19 12:00:00'
+summary: Playwright e2e 用于验证 SSE 刷新后滚动位置保持（mermaid 密集，marker=${marker}）
+---
+
+# E2E 滚动保持（mermaid 密集）
+
+## 1. 背景
+
+用于复现「Agent 持续更新 spec.md 时正文滚动位置被重置到顶部」。marker=${marker}
+
+## 2. 正文
+
+${sections}
+`
+}
+
+/** Text-only control: same length, no mermaid — height is stable across refresh. */
+export function buildScrollTextSpec(marker: string): string {
+  const block = (n: number) => `### ${n}. 章节 ${n}
+
+这是第 ${n} 段纯文本说明。${'占位文本 '.repeat(40)}
+
+${'更多正文占位，保证每节都足够高。'.repeat(15)}
+`
+  const sections = Array.from({ length: 8 }, (_, i) => block(i + 1)).join('\n')
+  return `---
+stage: plan
+last_action: e2e 滚动保持纯文本 ${marker}
+updated_at: '2026-07-19 12:00:00'
+summary: Playwright e2e 纯文本对照组（marker=${marker}）
+---
+
+# E2E 滚动保持（纯文本对照）
+
+## 1. 背景
+
+纯文本对照组，无 mermaid，刷新时高度稳定。marker=${marker}
+
+## 2. 正文
+
+${sections}
+`
+}
 
 const SEED_SPEC = `---
 stage: plan
@@ -94,6 +164,14 @@ function seed(): void {
   mkdirSync(tlDir, { recursive: true })
   writeFileSync(join(tlDir, 'spec.md'), TASK_LIST_SPEC, 'utf8')
   writeFileSync(join(tlDir, 'review.md'), TASK_LIST_REVIEW, 'utf8')
+
+  const scDir = join(E2E_CWD, '.yorz', 'specs', SCROLL_SPEC_ID)
+  mkdirSync(scDir, { recursive: true })
+  writeFileSync(join(scDir, 'spec.md'), buildScrollSpec('seed'), 'utf8')
+
+  const stDir = join(E2E_CWD, '.yorz', 'specs', SCROLL_TEXT_SPEC_ID)
+  mkdirSync(stDir, { recursive: true })
+  writeFileSync(join(stDir, 'spec.md'), buildScrollTextSpec('seed'), 'utf8')
 }
 
 export default async function globalSetup(): Promise<void> {

@@ -1,7 +1,7 @@
 ---
-stage: done
-last_action: 任务全部完成，标记 done
-updated_at: '2026-07-15 15:45:00'
+stage: plan
+last_action: 追加任务（fix）
+updated_at: '2026-07-19 16:21:24'
 summary: 修复 SpecDetail：Agent 实时更新 spec 文档时正文滚动位置被重置到顶部；以及 Agent 运行期间仍渲染问题确认面板，可能触发第二个 session 并发改写文档，期望运行时隐藏该面板。
 ---
 
@@ -163,7 +163,12 @@ _暂无_
 - [x] 需求2-面板门槛：`SpecDetail.tsx` 的 `showPanel` memo 改为 `!running() && (questions().length > 0 || freeforms().length > 0)`，`freeforms` 草稿不清空（验收：运行期间面板隐藏、运行结束后草稿复现）
 - [x] 验证：运行前端 typecheck/构建与服务端测试并记录（验收：`tsc --noEmit`/相关 `vitest` 用例通过）
 
-## 7. 执行记录
+## 7. 追加任务
+
+- [open] [fix] 2026-07-19 16:21:24 | Agent 后台更新 spec 文档内容时， scroll 仍然会跳到顶部，期望保持滚动位置。
+  - 描述：Agent 后台更新 spec 文档内容时， scroll 仍然会跳到顶部，期望保持滚动位置。
+
+## 8. 执行记录
 
 - 需求1（保滚动）：`SpecDetail.tsx` 合并渲染 effect 中新增 `prevTop` 保存与 `restoreScroll()`（钳制到 `scrollHeight - clientHeight`），在 `innerHTML` 重写后同步恢复一次、`renderMermaidIn` resolve 后在 `active` 为真时再恢复一次。
 - 需求2（运行态来源，按 5.1 选项2 覆盖后台运行）：
