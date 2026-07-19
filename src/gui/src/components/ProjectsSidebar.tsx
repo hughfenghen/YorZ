@@ -4,6 +4,7 @@ import {
   createMemo,
   createResource,
   createSignal,
+  onMount,
   onCleanup,
   type Component,
 } from 'solid-js'
@@ -32,6 +33,7 @@ import {
 } from './ui/dialog.jsx'
 import { Checkbox, CheckboxControl, CheckboxLabel } from './ui/checkbox.jsx'
 import { toast } from './ui/sonner.jsx'
+import { subscribeProjectsList } from '../lib/sse.js'
 import { t } from '../i18n/index.js'
 
 const COLLAPSED_KEY = 'yorz.projectsSidebar.collapsed'
@@ -135,6 +137,13 @@ export const ProjectsSidebar: Component = () => {
   let dragState: { startX: number; startW: number; raf: number | null } | null = null
   let docMouseMove: ((e: MouseEvent) => void) | null = null
   let docMouseUp: (() => void) | null = null
+
+  onMount(() => {
+    const unsub = subscribeProjectsList(() => {
+      void refetch()
+    })
+    onCleanup(unsub)
+  })
 
   function beginResize(ev: MouseEvent) {
     if (isCollapsed()) return

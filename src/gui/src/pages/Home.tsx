@@ -3,6 +3,7 @@ import {
   Show,
   Suspense,
   createMemo,
+  createEffect,
   createResource,
   createSignal,
   onMount,
@@ -15,7 +16,7 @@ import { api, type SpecListItem } from '../lib/api.js'
 import type { ProjectListItem } from '../lib/project.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
 import { useFocusModePage } from '../lib/layout-focus.js'
-import { subscribeProjectsList } from '../lib/sse.js'
+import { subscribeProjectsList, subscribeSpecsList } from '../lib/sse.js'
 import { formatSpecUpdatedAt } from '../lib/time.js'
 import { Button } from '../components/ui/button.jsx'
 import { Badge } from '../components/ui/badge.jsx'
@@ -69,6 +70,18 @@ export const Home: Component = () => {
   const [deleteError, setDeleteError] = createSignal<string | null>(null)
   useFocusModePage(() => confirmDeleteId() !== null)
 
+  let cleanupSpecsList: (() => void) | null = null
+
+  createEffect(() => {
+    const pid = projectId()
+    cleanupSpecsList?.()
+    cleanupSpecsList = null
+    if (!pid) return
+    cleanupSpecsList = subscribeSpecsList(pid, () => {
+      void refetch()
+    })
+  })
+
   onMount(() => {
     const unsub = subscribeProjectsList(() => {
       void (async () => {
@@ -82,6 +95,11 @@ export const Home: Component = () => {
       })()
     })
     onCleanup(unsub)
+  })
+
+  onCleanup(() => {
+    cleanupSpecsList?.()
+    cleanupSpecsList = null
   })
 
   async function onMerge() {
