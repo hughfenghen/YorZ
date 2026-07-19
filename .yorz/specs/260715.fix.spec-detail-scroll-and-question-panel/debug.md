@@ -77,6 +77,7 @@ updated_at: '2026-07-19 18:20:00'
 **放大因子（次要）：** 合并渲染 effect 里 `innerHTML` 整体替换本身也会瞬时清空→归零；且 mermaid 异步 SVG 注入使高度翻倍（D2），而 `renderMermaidIn` 早 resolve（D1）使二次恢复早于最终高度。
 
 **修复方向：**
+
 1. 主修复：用 `startTransition` 包裹 `setRefreshTick`（或改读 `spec.latest`），让刷新期间 `<Suspense>` 不再挂起/detach 正文子树，保住滚动容器不被重挂载归零。
 2. 配套修复：保留渲染 effect 的保滚动，并修 D1——让 `renderMermaidIn` `await` 真正的渲染完成，使调用方二次恢复发生在 SVG 注入（最终高度）之后。
 

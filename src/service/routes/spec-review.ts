@@ -2,7 +2,13 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Hono } from 'hono'
-import { listChanges, commit as gitCommit, discard as gitDiscard, stash as gitStash, GitError } from '../git.js'
+import {
+  listChanges,
+  commit as gitCommit,
+  discard as gitDiscard,
+  stash as gitStash,
+  GitError,
+} from '../git.js'
 import type { ProjectInstance } from '../project-registry.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
@@ -83,6 +89,22 @@ export function createSpecReviewRoutes(resolveProject: ResolveProject): Hono {
     }
   })
 
+  app.get('/projects/:projectId/specs/:id/debug', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    const specId = c.req.param('id')
+    const detail = await p.store.read(specId)
+    if (!detail) return c.json({ error: 'spec not found' }, 404)
+    const file = join(p.specsDir, specId, 'debug.md')
+    if (!existsSync(file)) return c.json({ exists: false, text: '' })
+    try {
+      const text = await readFile(file, 'utf8')
+      return c.json({ exists: true, text })
+    } catch {
+      return c.json({ exists: false, text: '' })
+    }
+  })
+
   app.get('/projects/:projectId/specs/:id/changes', async (c) => {
     const p = await need(c)
     if (p instanceof Response) return p
@@ -110,9 +132,12 @@ export function createSpecReviewRoutes(resolveProject: ResolveProject): Hono {
     } catch {
       return c.json({ error: 'invalid JSON body' }, 400)
     }
-    const obj = body && typeof body === 'object' ? (body as { message?: unknown; paths?: unknown }) : {}
+    const obj =
+      body && typeof body === 'object' ? (body as { message?: unknown; paths?: unknown }) : {}
     const message = typeof obj.message === 'string' ? obj.message.trim() : ''
-    const paths = Array.isArray(obj.paths) ? (obj.paths as unknown[]).filter((v): v is string => typeof v === 'string') : []
+    const paths = Array.isArray(obj.paths)
+      ? (obj.paths as unknown[]).filter((v): v is string => typeof v === 'string')
+      : []
     if (!message) return c.json({ error: 'message must not be empty' }, 400)
     if (paths.length === 0) return c.json({ error: 'paths must not be empty' }, 400)
     try {
@@ -137,7 +162,9 @@ export function createSpecReviewRoutes(resolveProject: ResolveProject): Hono {
       return c.json({ error: 'invalid JSON body' }, 400)
     }
     const obj = body && typeof body === 'object' ? (body as { paths?: unknown }) : {}
-    const paths = Array.isArray(obj.paths) ? (obj.paths as unknown[]).filter((v): v is string => typeof v === 'string') : []
+    const paths = Array.isArray(obj.paths)
+      ? (obj.paths as unknown[]).filter((v): v is string => typeof v === 'string')
+      : []
     if (paths.length === 0) return c.json({ error: 'paths must not be empty' }, 400)
     try {
       await gitDiscard(p.path, { paths })
@@ -160,9 +187,12 @@ export function createSpecReviewRoutes(resolveProject: ResolveProject): Hono {
     } catch {
       return c.json({ error: 'invalid JSON body' }, 400)
     }
-    const obj = body && typeof body === 'object' ? (body as { message?: unknown; paths?: unknown }) : {}
+    const obj =
+      body && typeof body === 'object' ? (body as { message?: unknown; paths?: unknown }) : {}
     const message = typeof obj.message === 'string' ? obj.message.trim() : ''
-    const paths = Array.isArray(obj.paths) ? (obj.paths as unknown[]).filter((v): v is string => typeof v === 'string') : []
+    const paths = Array.isArray(obj.paths)
+      ? (obj.paths as unknown[]).filter((v): v is string => typeof v === 'string')
+      : []
     if (paths.length === 0) return c.json({ error: 'paths must not be empty' }, 400)
     try {
       await gitStash(p.path, { message: message || `yorz:${specId}`, paths })

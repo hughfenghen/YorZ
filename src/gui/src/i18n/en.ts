@@ -132,11 +132,15 @@ export const en = {
     appendTask: 'Append Task',
     agentLogs: 'Agent Logs',
     review: 'Review',
+    debug: 'Debug',
     running: 'Running…',
     forceStage: 'Force set spec stage',
     notFound: 'Spec not found or deleted',
     fullscreen: 'Fullscreen (temporarily collapse projects & chat)',
     exitFullscreen: 'Exit fullscreen (Esc)',
+  },
+  specDebug: {
+    empty: 'No debug.md records yet',
   },
   review: {
     backToSpec: 'Back to spec',

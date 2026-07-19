@@ -131,11 +131,15 @@ export const zhCN = {
     appendTask: '追加任务',
     agentLogs: '执行日志',
     review: 'Review',
+    debug: 'Debug',
     running: '运行中…',
     forceStage: '强制设置 spec 状态',
     notFound: 'spec 不存在或已删除',
     fullscreen: '全屏（临时折叠项目列表与对话面板）',
     exitFullscreen: '退出全屏（Esc）',
+  },
+  specDebug: {
+    empty: '暂无 debug.md 记录',
   },
   review: {
     backToSpec: '返回 spec',

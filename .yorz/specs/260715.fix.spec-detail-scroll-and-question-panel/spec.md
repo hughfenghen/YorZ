@@ -1,7 +1,7 @@
 ---
-stage: plan
-last_action: 追加任务（fix）
-updated_at: '2026-07-19 16:21:24'
+stage: done
+last_action: 用户手动置为 done
+updated_at: '2026-07-19 21:34:52'
 summary: 修复 SpecDetail：Agent 实时更新 spec 文档时正文滚动位置被重置到顶部；以及 Agent 运行期间仍渲染问题确认面板，可能触发第二个 session 并发改写文档，期望运行时隐藏该面板。
 ---
 

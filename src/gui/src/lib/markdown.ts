@@ -175,3 +175,14 @@ export function renderMarkdown(source: string, opts: RenderOptions = {}): string
   if (opts.mermaid) env.mermaid = opts.mermaid
   return md.render(source, env)
 }
+
+/**
+ * Remove a leading YAML frontmatter block (`---\n … \n---`) so it isn't rendered
+ * into the document body. Mirrors gray-matter's delimiter rules: only strips
+ * when the source *starts* with the fence (an optional BOM aside); a document
+ * with no closing `---` is returned unchanged, so genuine `---` dividers inside
+ * the body are never touched.
+ */
+export function stripFrontmatter(source: string): string {
+  return source.replace(/^\uFEFF?---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '')
+}

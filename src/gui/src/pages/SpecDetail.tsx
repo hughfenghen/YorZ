@@ -85,6 +85,17 @@ export const SpecDetail: Component = () => {
     () => [projectId(), params.id, refreshTick()] as const,
     async ([pid, id], info) => fetchSpecWithRetry(pid, id, info.value),
   )
+  // Drives the "Debug" entry next to Review: only shown when debug.md exists.
+  const [debugDoc] = createResource(
+    () => [projectId(), params.id, refreshTick()] as const,
+    async ([pid, id]) => {
+      try {
+        return await api.getDebug(pid, id)
+      } catch {
+        return { exists: false, text: '' }
+      }
+    },
+  )
 
   const [snap, setSnap] = createSignal<SelectionSnapshot | null>(null)
   const [popoverOpen, setPopoverOpen] = createSignal(false)
@@ -392,6 +403,14 @@ export const SpecDetail: Component = () => {
                     >
                       {t('specDetail.review')}
                     </A>
+                    <Show when={debugDoc()?.exists}>
+                      <A
+                        class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 font-medium hover:bg-accent hover:text-accent-foreground"
+                        href={projectHref(`specs/${s().id}/debug`)}
+                      >
+                        {t('specDetail.debug')}
+                      </A>
+                    </Show>
                     <Show when={running()}>
                       <Badge variant="secondary">{t('specDetail.running')}</Badge>
                     </Show>

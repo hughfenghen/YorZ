@@ -1,8 +1,8 @@
 ---
 stage: done
-last_action: 任务全部完成，标记 done
-updated_at: '2026-07-19 16:07:30'
-summary: 新增 Debug 模式：SpecDetail 追加任务勾选后由独立 yorz-debug skill 以资深工程师调试思路定位根因；debug.md 活文档支持多次调试记录，靠 git 快照 + 脚手架清单兜住污染，run/append 路由做重入检查。
+last_action: fix（debug 页面 frontmatter）完成，标记 done
+updated_at: '2026-07-19 21:31:40'
+summary: 新增 Debug 模式：SpecDetail 追加任务勾选后由独立 yorz-debug skill 定位根因；debug.md 多记录活文档 + git 快照兜污染 + run/append 重入检查；skill 支持无 spec 独立触发，详情页 Review 右侧加 debug.md 渲染入口。
 ---
 
 # Debug 模式：疑难问题深度调试 skill
@@ -72,9 +72,35 @@ flowchart LR
 
 </details>
 
+### 3.3 追加需求现状：skill 独立触发与详情页 debug.md 入口
+
+追加任务（feat）引入两点，均可复用现有机制、无破坏性：
+
+- **skill 触发本就与 spec UI 解耦**：`yorz-debug` 随 `install.ts` 落到各 agent 的 skills 目录，靠 **description 自动发现 + prompt 显式点名**即可触发（与 yorz-spec 相同）。因此「chat / Agent TUI 直接触发」**无需新增代码**，缺的是 SKILL.md 对「无 spec 上下文」场景的落点说明：现行 `输入约定` 假定有 `spec_dir` 且 `debug.md` 落 spec 目录，独立触发时需要 fallback 落点。
+- **详情页有现成的「路由页 + renderMarkdown」范式可镜像**：Review 入口是 `SpecDetail.tsx` 顶栏的 `<A href=specs/:id/review>`，跳转到 `SpecReview.tsx` 页面，用 `renderMarkdown` 渲染；数据经后端 `GET …/review → { text }` + 客户端 `api.getReview`。debug.md 的渲染入口可**完全照此模式**新增一套。
+
+<details>
+<summary>追加需求精确层：现有 Review 链路关键位置</summary>
+
+- 顶栏 Review 入口：`src/gui/src/pages/SpecDetail.tsx:389-394`（`<A href={projectHref('specs/'+id+'/review')}>`）。
+- Review 页面：`src/gui/src/pages/SpecReview.tsx`（`createResource` 拉 `api.getReview`，`renderMarkdown` 渲染，:19/:75/:122）。
+- 后端读取：`src/service/routes/spec-review.ts:70-84`（`GET …/review`，读 `join(p.specsDir, specId, 'review.md')`，返回 `{ text }`，不存在返回 `{ text: '' }`）。
+- 客户端方法：`src/gui/src/lib/api.ts:291`（`getReview`）。
+- 路由注册：`src/gui/src/main.tsx:23`（`<Route path="/:projectId/specs/:id/review" component={SpecReview} />`）。
+
+</details>
+
+### 3.4 缺陷现状：SpecDebug 把 debug.md 的 frontmatter 渲染进正文
+
+追加任务（fix）报告：debug 页面正文顶部把 `---\nstatus: …\n---` 这段 YAML frontmatter 当成标题/分隔线渲染出来，期望正文**不渲染** frontmatter。
+
+- **根因**：`SpecDebug.tsx` 的 `debugHtml` 直接把后端返回的 debug.md **原文**（含 frontmatter）喂给 `renderMarkdown`。markdown-it 把开头的 `---` 解析为 setext 标题/`<hr>`，把 `status:` 等行当普通文本，于是 frontmatter 冒到正文顶部。
+- **为何其它页面无此问题**：`review.md` 无 frontmatter（Review 页天然免疫）；spec.md 的正文由后端 `spec-store.ts` 用 `gray-matter` 切分后只回传 `body`（SpecDetail 渲染的是无 frontmatter 的 body）。**唯独 debug.md 带 frontmatter 且被原样回传**，故只有 SpecDebug 命中。
+- **修复落点**：渲染前剥掉起始的 YAML frontmatter 块。选前端剥离（`markdown.ts` 加 `stripFrontmatter` helper，SpecDebug 渲染前调用）——保持 `GET …/debug` 端点仍返回整文件（含 frontmatter，便于将来展示 status），把「正文不渲染 frontmatter」这一纯呈现问题收敛在渲染层。
+
 ## 4. 技术实现方案
 
-总体思路：新增独立 `yorz-debug` skill 与 `debug.md` 活文档（**单文件承载多次调试记录**）；入口做 SpecDetail 追加 checkbox，并在 run/append 路由做**重入检查**（存在活跃调试记录时自动切到 yorz-debug）；用 `git stash create` 快照 + 脚手架清单 + `git diff` 兜住污染，在当前分支就地调试。
+总体思路：新增独立 `yorz-debug` skill 与 `debug.md` 活文档（**单文件承载多次调试记录**）；入口做 SpecDetail 追加 checkbox，并在 run/append 路由做**重入检查**（存在活跃调试记录时自动切到 yorz-debug）；用 `git stash create` 快照 + 脚手架清单 + `git diff` 兜住污染，在当前分支就地调试。追加需求：skill 支持无 spec 独立触发（文档层）、详情页 Review 右侧镜像新增 debug.md 渲染入口（4.6 / 4.7）。
 
 ### 4.1 决策一：独立 `yorz-debug` skill + `debug.md` 活文档
 
@@ -181,6 +207,8 @@ flowchart TB
     subgraph 新增
       Skill["src/skill/yorz-debug/*<br/>新 skill"]:::add
       DebugDoc["debug.md 活文档<br/>新产物"]:::add
+      DebugPage["SpecDebug.tsx + 路由<br/>渲染 debug.md"]:::add
+      DebugGet["GET …/debug 端点<br/>+ api.getDebug"]:::add
     end
     subgraph 受影响改动
       Dialog["AppendTaskDialog.tsx<br/>+ Debug checkbox"]:::affected
@@ -189,11 +217,14 @@ flowchart TB
       RunRoute["specs.ts run/append 路由<br/>+ 重入检查（读 debug.md）"]:::affected
       Parse["parseAppendBody<br/>+ 解析 debug"]:::affected
       Install["install.ts glob<br/>纳入新 skill 目录"]:::affected
+      SkillDoc["yorz-debug SKILL.md<br/>+ 独立触发/无 spec 落点"]:::affected
+      DetailEntry["SpecDetail.tsx<br/>+ Review 右侧 debug 入口"]:::affected
       I18n["i18n 文案"]:::affected
     end
     subgraph 不变
       Statemachine["yorz-spec 状态机"]
       Worktree["worktree 流程"]
+      ReviewFlow["Review 路由页范式"]
     end
     classDef add fill:#d3f9d8,stroke:#2f9e44,color:#2b8a3e
     classDef affected fill:#fff3bf,stroke:#f08c00,color:#e67700
@@ -206,9 +237,49 @@ flowchart TB
 - 后端：`src/service/routes/specs.ts` 的 `parseAppendBody`（`:387`）解析 debug、append 分支（`:149-182`）按 debug 分派 prompt；`runAgent`（`:184-196`）与 append 分派前置**重入检查**（读 spec 目录 `debug.md` 的 `status`，为 `debugging` 则切 yorz-debug prompt）。
 - skill：新建 `src/skill/yorz-debug/`（含 SKILL.md 主入口，指导多记录块的创建/追加/收尾）；`src/cli/install.ts:15` 的 glob 纳入新目录（确认 `SKILL_DIR_NAME`/多 skill 安装逻辑是否需扩展）。
 - 产物：`debug.md` 为**多记录活文档**，单文件累积多个 `## Debug NNN` 记录块，收尾保留归档。
-- 无 frontmatter/schema 破坏；`debug?` 为可选字段，旧请求兼容；重入检查为纯读旁路，未进入过 Debug 的 spec 无感。
+- 追加需求（skill 独立触发）：`src/skill/yorz-debug/SKILL.md` 输入约定改 `spec_dir` 为可选 + 无 spec 落点说明；frontmatter description 覆盖独立触发；无代码改动。
+- 追加需求（详情页 debug.md 入口）：后端 `src/service/routes/spec-review.ts`（或 specs.ts）加 `GET …/debug`；`api.ts` 加 `getDebug`；新建 `src/gui/src/pages/SpecDebug.tsx` + `main.tsx` 路由；`SpecDetail.tsx:389` Review `<A>` 右侧加 debug `<A>`（存在时显示）；i18n `specDetail.debug`。
+- 无 frontmatter/schema 破坏；`debug?` 为可选字段，旧请求兼容；重入检查为纯读旁路，未进入过 Debug 的 spec 无感；debug 入口仅在 debug.md 存在时渲染，无 Debug 历史的 spec 无感。
 
 </details>
+
+### 4.6 决策五：yorz-debug skill 支持无 spec 独立触发（文档层）
+
+> 决策说明：触发能力 skill 天生具备（description 自动发现 + prompt 点名），追加需求本质是**补全 SKILL.md 对「无 spec 上下文」的行为约定**，不涉及后端/前端代码。落点选择「当前工作目录」而非新造配置——最小惊讶、与「就地调试」一致，可自证无需询问用户。
+
+- **输入约定改为 `spec_dir` 可选**：有 spec 目录时 `debug.md` 落该目录（不变）；无 spec 上下文（chat / Agent TUI 直接触发）时，`debug.md` 落**当前工作目录**（或用户在 prompt 中显式指定的路径）。多记录模型、快照、脚手架、收尾流程全部不变。
+- **frontmatter `description` 覆盖独立触发**：显式点明「可在 chat / Agent TUI 中直接触发，不必经 spec 详情页 UI」，提高自动发现命中率。
+- **零代码改动**：仅改 `src/skill/yorz-debug/SKILL.md`（安装指纹变化 → serve 启动自动更新）。
+
+### 4.7 决策六：详情页 Review 右侧新增 debug.md 渲染入口
+
+> 决策说明：完全**镜像现有 Review 路由页范式**（后端 GET → `{text}` → 客户端 resource → `renderMarkdown` 路由页），保持一致性，不自造弹窗/抽屉。入口仅在 debug.md 存在时显示，避免对无 Debug 历史的 spec 造成干扰。
+
+```mermaid
+flowchart LR
+    Entry["SpecDetail 顶栏<br/>Review 右侧 debug 入口"] -->|"存在 debug.md 才渲染"| Nav["路由 specs/:id/debug"]
+    Nav --> Page["SpecDebug.tsx<br/>createResource → renderMarkdown"]
+    Page -->|"api.getDebug"| Get["GET …/debug"]
+    Get --> Read["读 join(specsDir, id, debug.md)<br/>返回 { exists, text }"]
+    Exist["SpecDetail: api.getDebug<br/>exists 为真才显示入口"]:::add
+    Entry -.-> Exist
+    classDef add fill:#d3f9d8,stroke:#2f9e44,color:#2b8a3e
+```
+
+- **后端**：新增 `GET /projects/:projectId/specs/:id/debug`，读 `join(p.specsDir, specId, 'debug.md')`，返回 `{ exists: boolean, text: string }`（不存在返回 `{ exists: false, text: '' }`）。挂在 `spec-review.ts`（与 review 端点同文件）或 `specs.ts` 皆可。
+- **客户端**：`api.getDebug(pid, id) → { exists, text }`。
+- **页面**：新建 `src/gui/src/pages/SpecDebug.tsx`，镜像 `SpecReview.tsx` 但**去掉 git ops**，仅 `createResource` 拉 `api.getDebug` → `renderMarkdown` 渲染；空态给占位文案。
+- **路由**：`main.tsx` 注册 `<Route path="/:projectId/specs/:id/debug" component={SpecDebug} />`。
+- **入口**：`SpecDetail.tsx` 顶栏 Review `<A>`（:389）右侧加一个 debug `<A>`；用 `createResource(api.getDebug)` 取 `exists`，`<Show when={exists}>` 才渲染，避免无 Debug 历史时出现空入口。
+- **i18n**：`specDetail.debug`（入口文案，如「Debug 记录」/「Debug」）。
+
+### 4.8 决策七：渲染前剥离 debug.md frontmatter（前端呈现层修复）
+
+> 决策说明：这是纯呈现缺陷，收敛在前端渲染层最小化影响；端点仍返回整文件。剥离规则对齐 gray-matter——**仅当文档以 `---` 起始**才剥离起始 YAML 块，否则原样返回（避免误伤正文里的 `---` 分隔线）。
+
+- `src/gui/src/lib/markdown.ts` 新增并导出 `stripFrontmatter(source)`：用正则移除**起始**的 `---\n … \n---` 块（允许可选 BOM；无闭合分隔符时不剥离）。
+- `src/gui/src/pages/SpecDebug.tsx` 的 `debugHtml` 在 `renderMarkdown` 前先 `stripFrontmatter(text)`。
+- 不改后端 `GET …/debug`（仍回 `{ exists, text }` 整文件）；不影响 Review / SpecDetail（它们不经此路径）。
 
 ## 5. 待确认项
 
@@ -227,8 +298,30 @@ _暂无_
 - [x] 后端 append 分支（`specs.ts:149-182`）：`debug` 为真时把 autoRun prompt 换成指向 `yorz-debug` skill 的措辞（携带 `${p.specsDirRelative}/${specId}`）（验收：debug=true 时发送 yorz-debug prompt）
 - [x] 后端重入检查：新增 helper 读取 `join(p.specsDir, specId, 'debug.md')` 的 frontmatter `status`，在 run（`:184-196`）与 append 分派前，若为 `debugging` 则改发 yorz-debug prompt（验收：存在 status=debugging 的 debug.md 时 run 走 yorz-debug；无文件或 resolved 时走原逻辑）
 - [x] 完整性验证：跑 `tsc --noEmit`（或对应 typecheck）、install 相关单测、GUI 构建可行性检查，并对 spec 目录 `yorz lint`（验收：命令通过或在执行记录写明无法执行的原因）
+- [x] 追加：`src/skill/yorz-debug/SKILL.md` 支持独立触发——「输入约定」把 `spec_dir` 改为可选（无 spec 时 debug.md 落当前工作目录或用户指定路径），frontmatter `description` 显式覆盖「chat / Agent TUI 直接触发」（验收：SKILL.md 含无 spec 落点说明；description 提到独立触发；安装单测仍通过）
+- [x] 追加：后端新增 `GET /projects/:projectId/specs/:id/debug`，读 `join(p.specsDir, specId, 'debug.md')` 返回 `{ exists, text }`（不存在返回 `{ exists:false, text:'' }`），挂在 `spec-review.ts`（验收：存在时返回内容、不存在时 exists=false）
+- [x] 追加：`src/gui/src/lib/api.ts` 新增 `getDebug(pid,id) → { exists, text }`（验收：类型编译通过）
+- [x] 追加：新建 `src/gui/src/pages/SpecDebug.tsx`（镜像 SpecReview，去 git ops，`createResource` 拉 `api.getDebug` + `renderMarkdown` 渲染、空态占位），并在 `src/gui/src/main.tsx` 注册路由 `specs/:id/debug`（验收：tsc 通过，路由可达）
+- [x] 追加：`src/gui/src/pages/SpecDetail.tsx` 在 Review `<A>`（:389）右侧加 debug 入口，`createResource(api.getDebug)` 取 `exists`，`<Show when={exists}>` 才渲染（验收：debug.md 存在才显示入口，点击跳转 SpecDebug）
+- [x] 追加：i18n `zh-CN.ts` / `en.ts` 增加 `specDetail.debug` 入口文案（验收：两语言 key 对齐）
+- [x] 追加完整性验证：`pnpm run typecheck` + `vitest run src/cli src/service src/gui` + 本 spec `yorz lint`（验收：全绿或记录原因）
+- [x] 修复：`src/gui/src/lib/markdown.ts` 新增导出 `stripFrontmatter(source)`——移除**起始**的 `---\n…\n---` YAML 块（允许可选 BOM，无闭合分隔符则不剥离）；`src/gui/src/pages/SpecDebug.tsx` 的 `debugHtml` 在 `renderMarkdown` 前先 `stripFrontmatter`（验收：debug.md 正文顶部不再出现 frontmatter；文档内正文的 `---` 分隔线不被误删）
+- [x] 修复完整性验证：`tsc -b`（本次改动文件零类型错误）、`vitest run src/cli src/service src/gui`、本 spec `yorz lint`（验收：全绿或记录原因）
 
-## 7. 执行记录
+## 7. 追加任务
+
+- [fixed] [feat] 2026-07-19 21:06:31 | 1. @src/skill/yorz-debug/SKILL.md
+  - 描述：1. @src/skill/yorz-debug/SKILL.md
+    这个 skill 应该可以独立工作，即用户在 chat 或 Agent TUI 中直接触发这个 skill，不一定是必须在 spec 详情页通过 UI 触发；
+
+2. spec 如果存在 debug.md , 应该在详情页添加一个入口（Review 右边）来渲染 debug.md
+
+- [fixed] [fix] 2026-07-19 21:27:49 | debug 页面会将 md 文件中的 frontmatter 渲染出来，作为标题样式，示例：@.yorz/specs/260715.fix.spec-detai
+  - 描述：debug 页面会将 md 文件中的 frontmatter 渲染出来，作为标题样式，示例：@.yorz/specs/260715.fix.spec-detail-scroll-and-question-panel/debug.md
+
+期望 GUI 页面文档主体中不渲染 frontmatter
+
+## 8. 执行记录
 
 - 新建 `src/skill/yorz-debug/SKILL.md` + `index.json`：SKILL frontmatter `name: yorz-debug` + description；正文覆盖核心调试循环、二分/控制变量/遍历分支、可证伪假设、禁止无证据修复、人在环路日志纪律、多记录 `debug.md` 生命周期（创建/追加 `## Debug NNN`/单块收尾/文件 status 收敛）、`git stash create` 快照 + 脚手架清单 + `git diff` 退出闸门、更大自由度与收尾核对。验证：`yorz` 安装单测覆盖新 skill 落地。
 - 改造 `src/cli/install.ts`：glob 由 `../skill/yorz-spec/**` 放宽为 `../skill/**`，新增 `SKILL_DIR_NAMES=['yorz-spec','yorz-debug']`；`resolveSkillFiles`/`computeBundledFingerprint`/`readInstalledFingerprint`/`install` 增加 `skillName` 参数（默认 `yorz-spec` 保持向后兼容），`ensureSkillsInstalled` 改为 agent×skill 双层循环、结果新增 `skill` 字段。同步更新 `serve.ts` 日志、`uninstall.ts`（多 skill 移除、返回数组）、`index.ts` 打印与 `install.test.ts` 断言。验证：`vitest run src/cli/__tests__/install.test.ts` 25 passed。
@@ -236,3 +329,21 @@ _暂无_
 - 后端：`parseAppendBody` 解析可选 `debug`（非 boolean 报错，仅 `kind==='fix'` 生效，缺省 false）；append 分支 `debug=true` 发 yorz-debug「new」prompt；新增 `readDebugMdStatus` + `buildDebugPrompt`，run 与 append 分派前做重入检查（`debug.md` `status: debugging` → 发 yorz-debug「resume」prompt）。验证：`vitest run src/service/__tests__/appends-route.test.ts` 6 passed。
 - 完整性验证：`pnpm run typecheck`（tsc -b）通过；`vitest run src/cli src/service src/gui` 283 passed；改动文件 `prettier --write` 已格式化；本 spec `yorz lint` errorCount 0。
 - 收尾：任务清单 11 项全部完成，无待确认项 / 批注 / `[open]`，标记 done。
+
+—— 追加需求（feat）执行 ——
+
+- 追加·skill 独立触发：`src/skill/yorz-debug/SKILL.md` frontmatter description 增「可在 chat / Agent TUI 中直接点名触发」；「何时进入本 skill」新增「独立触发（无需 spec / UI）」条目；「输入约定」把 `spec_dir` 改为可选，新增「debug.md 落点」小节——有 spec 落 spec 目录、无 spec 落当前工作目录（或用户指定），其余流程不变。零代码改动。
+- 追加·后端 debug 读取端点：`src/service/routes/spec-review.ts` 新增 `GET /projects/:projectId/specs/:id/debug`，读 `join(p.specsDir, specId, 'debug.md')` 返回 `{ exists, text }`（不存在 → `{ exists:false, text:'' }`），镜像 review 端点。
+- 追加·客户端：`src/gui/src/lib/api.ts` 新增 `getDebug(pid,id) → { exists, text }`。
+- 追加·渲染页 + 路由：新建 `src/gui/src/pages/SpecDebug.tsx`（镜像 SpecReview、去 git ops，`createResource` 拉 `api.getDebug` + `renderMarkdown` 渲染、空态 `specDebug.empty` 占位）；`src/gui/src/main.tsx` 注册路由 `specs/:id/debug`。
+- 追加·详情页入口：`src/gui/src/pages/SpecDetail.tsx` 新增 `debugDoc` resource（`api.getDebug`，随 refreshTick 刷新），在 Review `<A>` 右侧加 debug `<A>`，`<Show when={debugDoc()?.exists}>` 才渲染，无 Debug 历史的 spec 无入口。
+- 追加·i18n：`zh-CN.ts` / `en.ts` 增 `specDetail.debug` 与 `specDebug.empty`，两语言对齐。
+- 追加·验证：`vitest run src/cli src/service src/gui` 283 passed；`tsc -b` 仅报两处**与本任务无关**的既有报错（`src/gui/src/__e2e__/fixtures/setup.ts` 引用 `./seed.mjs` 缺声明——该 e2e fixture 由外部于本轮之前新增、`git status` 无本人改动），本次改动文件本身零类型错误；本 spec `yorz lint` errorCount 0。
+- 追加收尾：追加任务 `[open] → [fixed]`，任务清单全部完成，无待确认项 / 批注 / 其它 `[open]`，标记 done。
+
+—— 追加任务（fix：debug 页面渲染 frontmatter）执行 ——
+
+- 根因：`SpecDebug.tsx` 把 debug.md 原文（含 YAML frontmatter）直接喂 `renderMarkdown`，markdown-it 把起始 `---` 当 setext 标题/`<hr>`、`status:` 等行当正文，故 frontmatter 冒进正文顶部。review.md 无 frontmatter、spec.md body 已由后端 gray-matter 切分，故仅 SpecDebug 命中。
+- 修复：`src/gui/src/lib/markdown.ts` 新增导出 `stripFrontmatter(source)`——正则 `^﻿?---\n…\n---(\n|$)` 仅剥离**起始** YAML 块（允许可选 BOM；无闭合分隔符则不动，正文内 `---` 分隔线不误删）；`src/gui/src/pages/SpecDebug.tsx` 的 `debugHtml` 在 `renderMarkdown` 前先 `stripFrontmatter`。
+- 验证：node 手测正则 5 组用例全绿（起始 frontmatter/带 BOM 均剥离、无 frontmatter 文档不变、正文内 `---` 保留、无闭合分隔符不误删）；`vitest run src/cli src/service src/gui` 283 passed；`tsc -b` 仅两处**与本任务无关**的既有报错（`__e2e__/fixtures/setup.ts` 引用 `./seed.mjs` 缺声明，非本人改动），本次改动文件零类型错误；改动源文件 prettier 已格式化；本 spec `yorz lint` errorCount 0。
+- 收尾：fix 追加任务 `[open] → [fixed]`，任务清单全部完成，无待确认项 / 批注 / 其它 `[open]`，标记 done。

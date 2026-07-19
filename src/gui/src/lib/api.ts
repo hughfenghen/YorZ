@@ -290,6 +290,10 @@ export const api = {
     }),
   getReview: (pid: string, id: string) =>
     request<{ text: string }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/review`),
+  getDebug: (pid: string, id: string) =>
+    request<{ exists: boolean; text: string }>(
+      `${projectBase(pid)}/specs/${encodeURIComponent(id)}/debug`,
+    ),
   listProjects: () => request<ProjectListItem[]>('/api/projects'),
   removeProject: (id: string) =>
     request<{ ok: boolean }>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),

@@ -1,6 +1,6 @@
 ---
 name: yorz-debug
-description: 以资深工程师的调试纪律定位并修复疑难 bug——假设→取证→验证的证据闭环，靠 debug.md 活文档与 git 快照兜住污染。用于产品的「Debug 模式」：追加任务勾选 Debug、或 spec 目录已存在活跃 debug.md 时被显式点名。
+description: 以资深工程师的调试纪律定位并修复疑难 bug——假设→取证→验证的证据闭环，靠 debug.md 活文档与 git 快照兜住污染。
 ---
 
 # YorZ Debug 深度调试 Skill
@@ -11,13 +11,19 @@ description: 以资深工程师的调试纪律定位并修复疑难 bug——假
 
 ## 何时进入本 skill
 
+- **独立触发（无需 spec / UI）**：用户在 Agent 对话中直接点名「用 yorz-debug 调这个 bug」。此时可能没有任何 spec 上下文——按下方「无 spec 场景」处理 `debug.md` 落点。
 - **追加任务勾选 Debug**：用户在 SpecDetail 追加 `fix` 任务时勾选「Debug 模式」，后端 prompt 指向本 skill。
 - **重入**：spec 目录已存在 `status: debugging` 的 `debug.md`（有未收尾记录块），run/append 路由自动切到本 skill。此时**不新建记录块**，定位活跃记录块（frontmatter `active: NNN`）续跑。
 
 ## 输入约定
 
-- `spec_dir`：spec 目录路径（含 `spec.md`）。`debug.md` 建在此目录，与 `spec.md` 同级。
+- `spec_dir`（**可选**）：spec 目录路径（含 `spec.md`）。给出时 `debug.md` 建在此目录，与 `spec.md` 同级。
 - 待调试 bug 的描述：来自追加任务行 / 用户 prompt。
+
+### debug.md 落点
+
+- **有 spec 上下文**：`debug.md` 落 `spec_dir`（与 `spec.md` 同级）。
+- **无 spec 场景（独立触发）**：没有 `spec_dir` 时，`debug.md` 落**当前工作目录**；若用户在 prompt 中显式指定了路径，则以用户指定为准。其余多记录模型、快照、脚手架、收尾流程与有 spec 时**完全一致**。
 
 ## debug.md：多记录活文档
 
