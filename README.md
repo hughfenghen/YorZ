@@ -15,8 +15,8 @@ YorZ connects requirement analysis, solution decisions, task execution, and chan
 ## Features
 
 - Manage spec-driven development through a graphical interface
-- Structure and present Agent-generated technical plans, tasks, and execution records to improve reading and review efficiency
-- Collect user decisions at key points, letting the Agent execute without making final calls for the user
+- Present Agent-generated technical plans as visual diagrams to improve reading comprehension
+- Minimize user intervention in the flow while preserving authority over key decisions
 - Provide a deep debug mode that uses evidence chains to diagnose hard problems Agents struggle to solve
 - Support mainstream Coding Agents including Claude Code, OpenCode, and Codex
 
@@ -32,7 +32,7 @@ npm install -g @yorz/cli
 
 ## Quick Start
 
-### Step 1 — Start the Service
+### Start the Service
 
 ```bash
 yorz serve
@@ -42,13 +42,13 @@ Start the YorZ Service. It runs in the background by default. Open `http://local
 
 On startup, `yorz serve` automatically checks the `yorz-spec` skill. When it is missing or out of date, YorZ installs or updates it for all supported Agents (Claude Code / OpenCode / Codex), then prints the result before starting the Service.
 
-Stop the background service:
+To stop the background service:
 
 ```bash
 yorz serve stop
 ```
 
-### Step 2 — Add a Project
+### Add a Project
 
 ```bash
 yorz add /path/to/your/project

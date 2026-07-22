@@ -15,8 +15,8 @@ YorZ 通过 spec 文档、可视化界面和 Agent 工作流，把需求分析�
 ## 功能
 
 - 用图形化界面管理 spec 驱动开发流程
-- 将 Agent 生成的技术方案、任务和执行记录结构化展示，提升阅读与 Review 效率
-- 在关键节点收集用户决策，让 Agent 执行但不替用户拍板
+- 用可视化图形展示 Agent 生成的技术方案，提升阅读理解效率
+- 尽量减少用户介入流程，但保留关键决策权
 - 提供深度 debug 模式，用证据链定位 Agent 难以解决的疑难问题
 - 适配 Claude Code、OpenCode、Codex 等主流 Coding Agent
 
@@ -32,7 +32,7 @@ npm install -g @yorz/cli
 
 ## 快速开始
 
-### 第一步 — 启动服务
+### 启动服务
 
 ```bash
 yorz serve
@@ -42,13 +42,13 @@ yorz serve
 
 启动时，`yorz serve` 会自动检测 `yorz-spec` skill：当缺失或非最新时，为所有支持的 Agent（Claude Code / OpenCode / Codex）自动安装或更新，并在服务启动前输出日志。
 
-停止后台服务：
+若需停止后台服务：
 
 ```bash
 yorz serve stop
 ```
 
-### 第二步 — 添加项目
+### 添加项目
 
 ```bash
 yorz add /path/to/your/project
