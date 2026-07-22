@@ -73,6 +73,9 @@ export const zhCN = {
     agentContextCollapsed: 'Agent 上下文 ×{{count}}',
     toolCollapsed: '[工具] ×{{count}}',
     errorMessage: '[错误] {{message}}',
+    copyFilePath: '复制文件路径',
+    filePathCopied: '已复制文件路径',
+    filePathCopyFailed: '复制文件路径失败',
   },
   home: {
     specList: '需求列表',

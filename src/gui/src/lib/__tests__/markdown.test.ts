@@ -56,6 +56,51 @@ describe('renderMarkdown attachment rewrite', () => {
   })
 })
 
+describe('renderMarkdown local file links', () => {
+  it('renders absolute file paths as copy targets when enabled', () => {
+    const html = renderMarkdown('[ChatPanel.tsx](/Users/me/repo/src/ChatPanel.tsx:158)', {
+      fileLinks: 'copy',
+      fileLinkTitle: 'Copy file path',
+    })
+    expect(html).toContain('data-file-link="true"')
+    expect(html).toContain('data-file-path="/Users/me/repo/src/ChatPanel.tsx:158"')
+    expect(html).toContain('role="button"')
+    expect(html).toContain('tabindex="0"')
+    expect(html).toContain('title="Copy file path"')
+    expect(html).not.toContain('href="/Users/me/repo/src/ChatPanel.tsx:158"')
+  })
+
+  it('leaves absolute file paths as normal links unless copy mode is enabled', () => {
+    const html = renderMarkdown('[ChatPanel.tsx](/Users/me/repo/src/ChatPanel.tsx:158)')
+    expect(html).toContain('href="/Users/me/repo/src/ChatPanel.tsx:158"')
+    expect(html).not.toContain('data-file-link="true"')
+  })
+
+  it('supports Windows absolute file paths in copy mode', () => {
+    const html = renderMarkdown('[main.ts](C:/repo/src/main.ts:10)', { fileLinks: 'copy' })
+    expect(html).toContain('data-file-link="true"')
+    expect(html).toContain('data-file-path="C:/repo/src/main.ts:10"')
+    expect(html).not.toContain('href="C:/repo/src/main.ts:10"')
+  })
+
+  it('does not treat ordinary absolute app routes as file links', () => {
+    const html = renderMarkdown('[project](/projects/current)', { fileLinks: 'copy' })
+    expect(html).toContain('href="/projects/current"')
+    expect(html).not.toContain('data-file-link="true"')
+  })
+
+  it('keeps attachment rewrite behavior when file copy mode is enabled', () => {
+    const html = renderMarkdown('[doc](attachments/design.pdf)', {
+      specId: 'x',
+      projectId: 'p1',
+      fileLinks: 'copy',
+    })
+    expect(html).toContain('href="/api/projects/p1/specs/x/attachments/design.pdf"')
+    expect(html).toContain('target="_blank"')
+    expect(html).not.toContain('data-file-link="true"')
+  })
+})
+
 describe('renderMarkdown GFM task lists', () => {
   it('renders "- [ ]" as an unchecked, disabled checkbox with task-list-item class', () => {
     const html = renderMarkdown('- [ ] pending item')

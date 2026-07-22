@@ -71,6 +71,12 @@ export interface RenderOptions {
    *   re-parsed (and fail to draw) on every delta.
    */
   mermaid?: 'diagram' | 'code'
+  /**
+   * Render local file links as non-navigating copy targets. Used by chat output,
+   * where absolute workspace paths are useful text but invalid browser URLs.
+   */
+  fileLinks?: 'copy'
+  fileLinkTitle?: string
 }
 
 const defaultImageRender =
@@ -120,7 +126,45 @@ function rewriteHrefIfAttachment(
   )
 }
 
-type RenderEnv = { specId?: string; projectId?: string; mermaid?: 'diagram' | 'code' }
+type RenderEnv = {
+  specId?: string
+  projectId?: string
+  mermaid?: 'diagram' | 'code'
+  fileLinks?: 'copy'
+  fileLinkTitle?: string
+}
+
+function withoutLineSuffix(href: string): string {
+  return href.replace(/:\d+(?::\d+)?$/, '')
+}
+
+function hasFileLikeBasename(href: string): boolean {
+  const path = withoutLineSuffix(href).replace(/[?#].*$/, '')
+  const basename = path.split(/[\\/]/).filter(Boolean).pop() ?? ''
+  return /^\.[^./\\]+$/.test(basename) || /\.[A-Za-z0-9][A-Za-z0-9_-]{0,15}$/.test(basename)
+}
+
+function isLocalFileHref(href: string): boolean {
+  if (!href) return false
+  if (href.startsWith('#')) return false
+  if (/^([a-z]+:)?\/\//i.test(href)) return false
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href) && !/^[A-Za-z]:[\\/]/.test(href)) return false
+  if (href.startsWith('attachments/')) return false
+  const isAbsolutePath = href.startsWith('/') || /^[A-Za-z]:[\\/]/.test(href)
+  return isAbsolutePath && hasFileLikeBasename(href)
+}
+
+function removeAttr(token: { attrs: [string, string][] | null }, name: string): void {
+  if (!token.attrs) return
+  token.attrs = token.attrs.filter(([key]) => key !== name)
+}
+
+function setAttr(token: { attrs: [string, string][] | null }, name: string, value: string): void {
+  if (!token.attrs) token.attrs = []
+  const existing = token.attrs.find(([key]) => key === name)
+  if (existing) existing[1] = value
+  else token.attrs.push([name, value])
+}
 
 md.renderer.rules.image = function (tokens, idx, options, env, self) {
   const e = env as RenderEnv | undefined
@@ -135,10 +179,25 @@ md.renderer.rules.image = function (tokens, idx, options, env, self) {
 
 md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
   const e = env as RenderEnv | undefined
+  const token = tokens[idx]!
+  const hrefAttr = token.attrs?.find(([k]) => k === 'href')
+  if (e?.fileLinks === 'copy' && hrefAttr && isLocalFileHref(hrefAttr[1])) {
+    const href = hrefAttr[1]
+    removeAttr(token, 'href')
+    removeAttr(token, 'target')
+    removeAttr(token, 'rel')
+    setAttr(token, 'role', 'button')
+    setAttr(token, 'tabindex', '0')
+    setAttr(token, 'data-file-link', 'true')
+    setAttr(token, 'data-file-path', href)
+    if (e.fileLinkTitle) {
+      setAttr(token, 'title', e.fileLinkTitle)
+      setAttr(token, 'aria-label', e.fileLinkTitle)
+    }
+    return defaultLinkOpenRender(tokens, idx, options, env, self)
+  }
   const specId = e?.specId
   if (specId) {
-    const token = tokens[idx]!
-    const hrefAttr = token.attrs?.find(([k]) => k === 'href')
     if (hrefAttr) {
       const rewritten = rewriteHrefIfAttachment(hrefAttr[1], specId, e?.projectId)
       if (rewritten !== hrefAttr[1]) {
@@ -173,6 +232,8 @@ export function renderMarkdown(source: string, opts: RenderOptions = {}): string
   if (opts.specId) env.specId = opts.specId
   if (opts.projectId) env.projectId = opts.projectId
   if (opts.mermaid) env.mermaid = opts.mermaid
+  if (opts.fileLinks) env.fileLinks = opts.fileLinks
+  if (opts.fileLinkTitle) env.fileLinkTitle = opts.fileLinkTitle
   return md.render(source, env)
 }
 

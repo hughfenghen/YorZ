@@ -415,6 +415,24 @@
   .chat-md code {
     font-size: 0.8rem;
   }
+  .chat-md [data-file-link='true'] {
+    display: inline;
+    border: 1px solid hsl(var(--border));
+    border-radius: 4px;
+    background: hsl(var(--muted));
+    padding: 0.05rem 0.25rem;
+    color: hsl(var(--foreground));
+    color: #1f6feb;
+    text-decoration: none;
+    cursor: copy;
+    overflow-wrap: anywhere;
+  }
+  .chat-md [data-file-link='true']:hover,
+  .chat-md [data-file-link='true']:focus-visible {
+    border-color: hsl(var(--primary) / 0.5);
+    background: hsl(var(--accent));
+    outline: none;
+  }
   .chat-md blockquote {
     margin: 0.5rem 0;
     padding-left: 0.6rem;

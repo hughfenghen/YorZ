@@ -73,6 +73,9 @@ export const en = {
     agentContextCollapsed: 'Agent context ×{{count}}',
     toolCollapsed: '[Tool] ×{{count}}',
     errorMessage: '[Error] {{message}}',
+    copyFilePath: 'Copy file path',
+    filePathCopied: 'File path copied',
+    filePathCopyFailed: 'Failed to copy file path',
   },
   home: {
     specList: 'Specs',

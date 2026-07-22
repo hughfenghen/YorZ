@@ -33,6 +33,7 @@ import { renderMarkdown } from '../lib/markdown.js'
 import { t, useTranslation } from '../i18n/index.js'
 import { Button } from './ui/button.jsx'
 import { Card } from './ui/card.jsx'
+import { toast } from './ui/sonner.jsx'
 import { MentionTextarea } from './MentionTextarea.jsx'
 import { ChatToolBlock } from './ChatToolBlock.jsx'
 import { ChatContextBlock } from './ChatContextBlock.jsx'
@@ -89,6 +90,11 @@ function clampWidth(n: number): number {
 function defaultWidth(): number {
   if (typeof window === 'undefined') return DEFAULT_WIDTH
   return clampWidth(window.innerWidth * DEFAULT_WIDTH_RATIO)
+}
+
+function closestFileLink(target: EventTarget | null): HTMLElement | null {
+  if (!(target instanceof Element)) return null
+  return target.closest<HTMLElement>('[data-file-link="true"]')
 }
 
 function readWidth(): number {
@@ -458,6 +464,35 @@ export const ChatPanel: Component = () => {
     return new Date(ts).toLocaleString(lng())
   }
 
+  async function copyFilePath(path: string): Promise<void> {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable')
+      await navigator.clipboard.writeText(path)
+      toast.success(t('chat.filePathCopied'))
+    } catch {
+      toast.error(t('chat.filePathCopyFailed'))
+    }
+  }
+
+  function onMessagesClick(e: MouseEvent): void {
+    const link = closestFileLink(e.target)
+    if (!link || (messagesEl && !messagesEl.contains(link))) return
+    const path = link.dataset.filePath
+    if (!path) return
+    e.preventDefault()
+    void copyFilePath(path)
+  }
+
+  function onMessagesKeyDown(e: KeyboardEvent): void {
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    const link = closestFileLink(e.target)
+    if (!link || (messagesEl && !messagesEl.contains(link))) return
+    const path = link.dataset.filePath
+    if (!path) return
+    e.preventDefault()
+    void copyFilePath(path)
+  }
+
   // --- streaming delta buffer -------------------------------------------------
   /** Deltas seen since the last flush. Never read outside flushDeltas(). */
   let pendingDelta = ''
@@ -753,6 +788,8 @@ export const ChatPanel: Component = () => {
           <div
             ref={messagesEl}
             class="min-h-0 flex-1 overflow-y-auto px-2.5 py-2"
+            onClick={onMessagesClick}
+            onKeyDown={onMessagesKeyDown}
             onScroll={onMessagesScroll}
           >
             <Show
@@ -795,6 +832,8 @@ export const ChatPanel: Component = () => {
                                       // eslint-disable-next-line solid/no-innerhtml -- renderMarkdown escapes all raw HTML outside a details/summary whitelist
                                       innerHTML={renderMarkdown((seg as { text: string }).text, {
                                         mermaid: 'code',
+                                        fileLinks: 'copy',
+                                        fileLinkTitle: t('chat.copyFilePath'),
                                       })}
                                     />
                                   }
