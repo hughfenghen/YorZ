@@ -74,8 +74,17 @@ class ClaudeSession implements AgentSession {
 
     try {
       const q = query({ prompt, options })
+      let usage: unknown
+      let completed = false
       for await (const msg of q as AsyncIterable<SDKMessage>) {
-        const m = msg as { type: string; session_id?: string; message?: unknown; usage?: unknown }
+        const m = msg as {
+          type: string
+          subtype?: string
+          state?: string
+          session_id?: string
+          message?: unknown
+          usage?: unknown
+        }
         if (!this.started && typeof m.session_id === 'string') {
           this.started = true
           if (m.session_id !== this.id) this.id = m.session_id
@@ -96,9 +105,17 @@ class ClaudeSession implements AgentSession {
             }
           }
         } else if (m.type === 'result') {
-          yield { type: 'turn-completed', usage: m.usage }
+          usage = m.usage
+        } else if (
+          m.type === 'system' &&
+          m.subtype === 'session_state_changed' &&
+          m.state === 'idle'
+        ) {
+          completed = true
+          yield { type: 'turn-completed', usage }
         }
       }
+      if (!completed) yield { type: 'turn-completed', usage }
     } catch (err) {
       if (ctrl.signal.aborted) return
       yield { type: 'error', message: err instanceof Error ? err.message : String(err) }
