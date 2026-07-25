@@ -34,20 +34,62 @@ const IGNORE_FILES = new Set(['.DS_Store', 'Thumbs.db'])
 const MAX_RESULTS = 100
 const MAX_DEPTH = 15
 const MAX_SCAN = 5000
+const SCORE_MATCH = 16
+const SCORE_CASE_MATCH = 2
+const SCORE_BOUNDARY = 8
+const SCORE_CONSECUTIVE = 24
+const PENALTY_LEADING_CAP = 32
 
 function toPosix(p: string): string {
   return p.split(sep).join('/')
 }
 
-function fuzzyMatch(query: string, target: string): boolean {
-  if (!query) return true
+function isBoundary(target: string, index: number): boolean {
+  if (index === 0) return true
+  return /[/_.-]/.test(target[index - 1] ?? '')
+}
+
+export function scoreFuzzyPath(query: string, target: string): number | null {
+  if (!query) return 0
   const q = query.toLowerCase()
   const t = target.toLowerCase()
-  let qi = 0
-  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-    if (t[ti] === q[qi]) qi++
+  let prev: number[] = []
+
+  for (let qi = 0; qi < q.length; qi++) {
+    const current = new Array<number>(t.length).fill(Number.NEGATIVE_INFINITY)
+    let bestPrev = Number.NEGATIVE_INFINITY
+
+    for (let ti = 0; ti < t.length; ti++) {
+      if (qi > 0 && prev[ti - 1] !== undefined) {
+        bestPrev = Math.max(bestPrev, prev[ti - 1] + ti)
+      }
+
+      if (t[ti] !== q[qi]) continue
+
+      const base =
+        SCORE_MATCH +
+        (target[ti] === query[qi] ? SCORE_CASE_MATCH : 0) +
+        (isBoundary(target, ti) ? SCORE_BOUNDARY : 0)
+
+      if (qi === 0) {
+        current[ti] = base - Math.min(ti, PENALTY_LEADING_CAP)
+      } else {
+        const consecutive =
+          ti > 0 && Number.isFinite(prev[ti - 1])
+            ? prev[ti - 1] + base + SCORE_CONSECUTIVE
+            : Number.NEGATIVE_INFINITY
+        const gapped = Number.isFinite(bestPrev) ? bestPrev + base - ti : Number.NEGATIVE_INFINITY
+        current[ti] = Math.max(consecutive, gapped)
+      }
+    }
+
+    if (!current.some(Number.isFinite)) return null
+    prev = current
   }
-  return qi === q.length
+
+  const best = Math.max(...prev)
+  if (!Number.isFinite(best)) return null
+  return best - target.length * 0.01
 }
 
 function globToRegex(pattern: string): RegExp {
@@ -101,6 +143,7 @@ interface CollectedFile {
   path: string
   depth: number
   mtime: number
+  score: number
 }
 
 async function walk(
@@ -138,12 +181,13 @@ async function walk(
     } else if (entry.isFile()) {
       if (IGNORE_FILES.has(entry.name)) continue
       if (isIgnored(relPath, combined)) continue
-      if (query && !fuzzyMatch(query, relPath)) continue
+      const score = scoreFuzzyPath(query, relPath)
+      if (score === null) continue
       try {
         const s = await stat(fullPath)
-        results.push({ path: relPath, depth, mtime: s.mtimeMs })
+        results.push({ path: relPath, depth, mtime: s.mtimeMs, score })
       } catch {
-        results.push({ path: relPath, depth, mtime: 0 })
+        results.push({ path: relPath, depth, mtime: 0, score })
       }
     }
   }
@@ -178,6 +222,7 @@ export function createProjectFilesRoutes(resolveProject: ResolveProject): Hono {
 
     if (query) {
       results.sort((a, b) => {
+        if (a.score !== b.score) return b.score - a.score
         if (a.depth !== b.depth) return a.depth - b.depth
         return a.path.localeCompare(b.path)
       })
