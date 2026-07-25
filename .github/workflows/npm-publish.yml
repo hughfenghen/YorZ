@@ -1,0 +1,124 @@
+name: Publish npm
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine publish eligibility
+        id: eligibility
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          semver_regex='^v[0-9]+\.[0-9]+\.[0-9]+$'
+          should_publish=false
+          release_version=''
+          reason='No release marker found.'
+
+          if [[ "$REF_TYPE" == 'branch' && "$REF_NAME" == 'main' ]]; then
+            if [[ "$HEAD_COMMIT_MESSAGE" =~ $semver_regex ]]; then
+              should_publish=true
+              release_version="${HEAD_COMMIT_MESSAGE#v}"
+              reason='main head commit message matches vX.Y.Z.'
+            else
+              reason='main head commit message does not match vX.Y.Z.'
+            fi
+          elif [[ "$REF_TYPE" == 'tag' ]]; then
+            if [[ "$REF_NAME" =~ $semver_regex ]]; then
+              git fetch origin main:refs/remotes/origin/main --prune
+
+              if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+                should_publish=true
+                release_version="${REF_NAME#v}"
+                reason='tag matches vX.Y.Z and points to a commit contained in main.'
+              else
+                reason='tag matches vX.Y.Z but its commit is not contained in main.'
+              fi
+            else
+              reason='tag does not match vX.Y.Z.'
+            fi
+          fi
+
+          echo "should_publish=$should_publish" >> "$GITHUB_OUTPUT"
+          echo "release_version=$release_version" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "$reason"
+
+      - name: Setup pnpm
+        if: steps.eligibility.outputs.should_publish == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        if: steps.eligibility.outputs.should_publish == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.eligibility.outputs.should_publish == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate
+        if: steps.eligibility.outputs.should_publish == 'true'
+        run: |
+          pnpm run typecheck
+          pnpm test
+
+      - name: Build
+        if: steps.eligibility.outputs.should_publish == 'true'
+        run: pnpm run build
+
+      - name: Check npm version
+        if: steps.eligibility.outputs.should_publish == 'true'
+        id: npm-version
+        env:
+          RELEASE_VERSION: ${{ steps.eligibility.outputs.release_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          package_name="$(node -p "require('./package.json').name")"
+          package_version="$(node -p "require('./package.json').version")"
+
+          if [[ "$package_version" != "$RELEASE_VERSION" ]]; then
+            echo "Release marker v$RELEASE_VERSION does not match package.json version $package_version." >&2
+            exit 1
+          fi
+
+          if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
+            echo 'already_published=true' >> "$GITHUB_OUTPUT"
+            echo "$package_name@$package_version is already published. Skipping npm publish."
+          else
+            echo 'already_published=false' >> "$GITHUB_OUTPUT"
+            echo "$package_name@$package_version is not published yet."
+          fi
+
+      - name: Publish
+        if: steps.eligibility.outputs.should_publish == 'true' && steps.npm-version.outputs.already_published == 'false'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish
