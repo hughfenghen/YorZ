@@ -6,9 +6,9 @@ English | [中文](./README_CN.md)
 
 ## Philosophy
 
-YorZ believes a product is not just the final code, but the accumulated result of the initial idea and every key decision along the way.
-
 YorZ connects requirement analysis, solution decisions, task execution, and change review into a traceable development path through spec documents, a visual interface, and Agent workflows.
+
+YorZ believes a product is not just the final code, but the accumulated result of the initial idea and every key decision along the way.
 
 ![preview](./docs/preview.png)
 
@@ -24,9 +24,9 @@ YorZ connects requirement analysis, solution decisions, task execution, and chan
 
 ```bash
 pnpm add -g @yorz/cli
-```
 
-```bash
+# or
+
 npm install -g @yorz/cli
 ```
 
@@ -60,11 +60,11 @@ The `yorz-spec` skill teaches your AI Agent how to drive spec documents through 
 
 ## Command Reference
 
-| Command           | Description                                                      |
-| ----------------- | ---------------------------------------------------------------- |
+| Command           | Description                                                       |
+| ----------------- | ----------------------------------------------------------------- |
 | `yorz serve`      | Start or reuse the YorZ Service in the background. Multi-project. |
-| `yorz serve stop` | Stop the background YorZ Service.                                |
-| `yorz add <path>` | Initialize and register a directory as a YorZ project.           |
+| `yorz serve stop` | Stop the background YorZ Service.                                 |
+| `yorz add <path>` | Initialize and register a directory as a YorZ project.            |
 
 ### Global Options
 

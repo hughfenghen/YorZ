@@ -143,6 +143,9 @@ export const zhCN = {
     notFound: 'spec 不存在或已删除',
     fullscreen: '全屏（临时折叠项目列表与对话面板）',
     exitFullscreen: '退出全屏（Esc）',
+    copySpecPath: '复制 spec 文件路径',
+    specPathCopied: '已复制 spec 文件路径',
+    specPathCopyFailed: '复制 spec 文件路径失败',
   },
   specDebug: {
     empty: '暂无 debug.md 记录',

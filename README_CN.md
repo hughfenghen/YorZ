@@ -6,9 +6,9 @@
 
 ## 理念
 
-YorZ 认为，一个产品不只是最终代码，而是「初始创意」和「每一次关键决策」共同累积的结果。
-
 YorZ 通过 spec 文档、可视化界面和 Agent 工作流，把需求分析、方案决策、任务执行和变更 Review 串成一条可追踪的开发路径。
+
+YorZ 认为，一个产品不只是最终代码，而是「初始创意」和「每一次关键决策」共同累积的结果。
 
 ![preview](./docs/preview.png)
 
@@ -24,9 +24,9 @@ YorZ 通过 spec 文档、可视化界面和 Agent 工作流，把需求分析�
 
 ```bash
 pnpm add -g @yorz/cli
-```
 
-```bash
+# or
+
 npm install -g @yorz/cli
 ```
 

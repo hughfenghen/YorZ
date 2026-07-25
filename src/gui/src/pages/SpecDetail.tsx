@@ -17,6 +17,7 @@ import {
   type SpecDetail as SpecDetailDoc,
   type SpecStage,
 } from '../lib/api.js'
+import { Copy } from 'lucide-solid'
 import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/project.js'
 import { useFocusModePage } from '../lib/layout-focus.js'
 import morphdom from 'morphdom'
@@ -34,6 +35,7 @@ import { Breadcrumb } from '../components/Breadcrumb.jsx'
 import { FocusModeButton } from '../components/FocusModeButton.jsx'
 import { Button } from '../components/ui/button.jsx'
 import { Badge } from '../components/ui/badge.jsx'
+import { toast } from '../components/ui/sonner.jsx'
 import { t } from '../i18n/index.js'
 
 const STAGE_BG: Record<string, string> = {
@@ -112,6 +114,7 @@ export const SpecDetail: Component = () => {
     if (!s) return []
     return parseConfirmQuestions(s.body)
   })
+  const specFilePath = createMemo(() => `@.yorz/specs/${params.id}/spec.md`)
 
   // Annotations are drafted at any stage, so the panel is gated on having
   // something to submit — but NEVER while the spec's agent is running: a visible
@@ -287,6 +290,16 @@ export const SpecDetail: Component = () => {
     }
   }
 
+  async function copySpecPath() {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable')
+      await navigator.clipboard.writeText(specFilePath())
+      toast.success(t('specDetail.specPathCopied'))
+    } catch {
+      toast.error(t('specDetail.specPathCopyFailed'))
+    }
+  }
+
   function openAnnotate(s: SelectionSnapshot) {
     setPopoverSnap(s)
     setPopoverOpen(true)
@@ -360,12 +373,24 @@ export const SpecDetail: Component = () => {
               <>
                 <header class="flex flex-col items-start justify-between gap-2">
                   <div class="flex w-full items-center justify-between gap-2">
-                    <Breadcrumb
-                      items={[
-                        { label: t('breadcrumb.specList'), href: projectHref('') },
-                        { label: s().id },
-                      ]}
-                    />
+                    <div class="flex min-w-0 items-center gap-1">
+                      <Breadcrumb
+                        items={[
+                          { label: t('breadcrumb.specList'), href: projectHref('') },
+                          { label: s().id },
+                        ]}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="h-7 w-7 shrink-0"
+                        title={t('specDetail.copySpecPath')}
+                        aria-label={t('specDetail.copySpecPath')}
+                        onClick={() => void copySpecPath()}
+                      >
+                        <Copy class="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                     <FocusModeButton />
                   </div>
                   <div>

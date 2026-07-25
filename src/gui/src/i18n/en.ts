@@ -144,6 +144,9 @@ export const en = {
     notFound: 'Spec not found or deleted',
     fullscreen: 'Fullscreen (temporarily collapse projects & chat)',
     exitFullscreen: 'Exit fullscreen (Esc)',
+    copySpecPath: 'Copy spec file path',
+    specPathCopied: 'Spec file path copied',
+    specPathCopyFailed: 'Failed to copy spec file path',
   },
   specDebug: {
     empty: 'No debug.md records yet',

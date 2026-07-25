@@ -46,6 +46,18 @@ const STAGE_BG: Record<string, string> = {
   done: 'bg-stage-done',
 }
 
+const SPEC_TYPE_TEXT: Record<string, string> = {
+  feat: 'text-emerald-600 dark:text-emerald-400',
+  refct: 'text-sky-600 dark:text-sky-400',
+  fix: 'text-rose-600 dark:text-rose-400',
+}
+
+function splitSpecId(id: string): { prefix: string; type: string; suffix: string } | null {
+  const [prefix, type, ...rest] = id.split('.')
+  if (!prefix || !type || rest.length === 0) return null
+  return { prefix, type, suffix: rest.join('.') }
+}
+
 export const SpecList: Component = () => {
   const navigate = useNavigate()
   const projectId = useCurrentProjectId()
@@ -213,49 +225,69 @@ export const SpecList: Component = () => {
         >
           <ul class="mt-4 grid list-none gap-3 p-0 [grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr))]">
             <For each={specs() ?? []}>
-              {(spec) => (
-                <li class="group relative rounded-xl border bg-card shadow transition-transform hover:-translate-y-px">
-                  <A href={projectHref(`specs/${encodeURIComponent(spec.id)}`)} class="block p-4">
-                    <div class="flex items-center justify-between text-sm text-muted-foreground">
-                      <Badge
-                        class={`border-transparent ${STAGE_BG[spec.stage] ?? 'bg-muted'} text-white uppercase`}
-                      >
-                        {spec.stage}
-                      </Badge>
-                      <time>{formatSpecUpdatedAt(spec.updated_at)}</time>
-                    </div>
-                    <h2 class="my-1.5 text-base font-semibold">
-                      {spec.title || t('common.pendingAgent')}
-                    </h2>
-                    <p class="m-0 mb-2 text-muted-foreground">
-                      {spec.summary || t('common.pendingAgent')}
-                    </p>
-                    <code class="font-mono text-sm text-muted-foreground">{spec.id}</code>
-                  </A>
-
-                  <div class="absolute right-1.5 top-1.5 z-[2] opacity-0 transition-opacity group-hover:opacity-100">
-                    <DropdownMenu placement="bottom-end">
-                      <DropdownMenuTrigger
-                        as={Button}
-                        variant="ghost"
-                        size="icon"
-                        class="h-7 w-7"
-                        title={t('home.moreActions')}
-                      >
-                        <MoreHorizontal class="h-4 w-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem
-                          class="text-destructive focus:text-destructive"
-                          onSelect={() => setConfirmDeleteId(spec.id)}
+              {(spec) => {
+                const idParts = splitSpecId(spec.id)
+                return (
+                  <li class="group relative flex rounded-xl border bg-card shadow transition-transform hover:-translate-y-px">
+                    <A
+                      href={projectHref(`specs/${encodeURIComponent(spec.id)}`)}
+                      class="flex min-h-40 flex-1 flex-col p-4"
+                    >
+                      <div class="flex items-center justify-between text-sm text-muted-foreground">
+                        <Badge
+                          class={`border-transparent ${STAGE_BG[spec.stage] ?? 'bg-muted'} text-white uppercase`}
                         >
-                          {t('common.delete')}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </li>
-              )}
+                          {spec.stage}
+                        </Badge>
+                        <time>{formatSpecUpdatedAt(spec.updated_at)}</time>
+                      </div>
+                      <h2 class="my-1.5 text-base font-semibold">
+                        {spec.title || t('common.pendingAgent')}
+                      </h2>
+                      <p class="m-0 mb-3 flex-1 text-muted-foreground">
+                        {spec.summary || t('common.pendingAgent')}
+                      </p>
+                      <code class="mt-auto block break-all font-mono text-sm text-muted-foreground">
+                        <Show when={idParts} fallback={spec.id}>
+                          {(parts) => (
+                            <>
+                              <span>{parts().prefix}.</span>
+                              <span
+                                class={`font-semibold ${SPEC_TYPE_TEXT[parts().type] ?? 'text-foreground'}`}
+                              >
+                                {parts().type}
+                              </span>
+                              <span>.{parts().suffix}</span>
+                            </>
+                          )}
+                        </Show>
+                      </code>
+                    </A>
+
+                    <div class="absolute right-1.5 top-1.5 z-[2] opacity-0 transition-opacity group-hover:opacity-100">
+                      <DropdownMenu placement="bottom-end">
+                        <DropdownMenuTrigger
+                          as={Button}
+                          variant="ghost"
+                          size="icon"
+                          class="h-7 w-7"
+                          title={t('home.moreActions')}
+                        >
+                          <MoreHorizontal class="h-4 w-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem
+                            class="text-destructive focus:text-destructive"
+                            onSelect={() => setConfirmDeleteId(spec.id)}
+                          >
+                            {t('common.delete')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </li>
+                )
+              }}
             </For>
           </ul>
         </Show>
