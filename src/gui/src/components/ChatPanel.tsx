@@ -38,14 +38,24 @@ import { MentionTextarea } from './MentionTextarea.jsx'
 import { ChatToolBlock } from './ChatToolBlock.jsx'
 import { ChatContextBlock } from './ChatContextBlock.jsx'
 import { Collapsible, CollapsibleContent } from './ui/collapsible.jsx'
-import { Checkbox, CheckboxControl, CheckboxLabel } from './ui/checkbox.jsx'
+import {
+  RadioGroup,
+  RadioGroupItem,
+  RadioGroupItemControl,
+  RadioGroupItemInput,
+  RadioGroupItemLabel,
+} from './ui/radio-group.jsx'
 import { AttachmentList } from './AttachmentList.jsx'
 import { ACCEPT_MIME, MAX_COUNT, createAttachments } from '../lib/attachments.js'
 
 const COLLAPSED_KEY = 'yorz.layout.col2.collapsed'
 const WIDTH_KEY = 'yorz.layout.col2.width'
 const LIST_COLLAPSED_KEY = 'yorz.chat.sessionList.collapsed'
+const SESSION_LIST_ROWS_KEY = 'yorz.chat.sessionList.rows'
+const LEGACY_SESSION_LIST_LIMIT_KEY = 'yorz.chat.sessionList.limit'
 const SHOW_HISTORY_KEY = 'yorz.chat.sessionList.showHistory'
+const SESSION_LIST_ROW_OPTIONS = [3, 5, 10] as const
+const SESSION_ROW_HEIGHT_PX = 34
 const DEFAULT_WIDTH = 340
 const DEFAULT_WIDTH_RATIO = 0.4
 const MIN_WIDTH = 260
@@ -54,8 +64,7 @@ const FALLBACK_MAX_WIDTH = 960
 /** Chat may be dragged out to 80% of the viewport. */
 const MAX_WIDTH_RATIO = 0.8
 const AUTO_SCROLL_THRESHOLD = 96
-/** "Show history" reveals sessions touched within the last week. */
-const HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 /**
  * How long a draft's first send waits for its session subscription to attach.
  * On timeout we POST anyway: losing a few early deltas (they are still in the
@@ -125,6 +134,20 @@ function writeLocal(key: string, value: string): void {
   }
 }
 
+type SessionListRows = (typeof SESSION_LIST_ROW_OPTIONS)[number]
+
+function isSessionListRows(value: number): value is SessionListRows {
+  return SESSION_LIST_ROW_OPTIONS.includes(value as SessionListRows)
+}
+
+function readSessionListRows(): SessionListRows {
+  const raw = Number(readLocal(SESSION_LIST_ROWS_KEY, ''))
+  if (isSessionListRows(raw)) return raw
+  const legacyRaw = Number(readLocal(LEGACY_SESSION_LIST_LIMIT_KEY, ''))
+  if (isSessionListRows(legacyRaw)) return legacyRaw
+  return readLocal(SHOW_HISTORY_KEY, '0') === '1' ? 10 : 3
+}
+
 export const ChatPanel: Component = () => {
   let messagesEl: HTMLDivElement | undefined
   let fileInputEl: HTMLInputElement | undefined
@@ -138,9 +161,9 @@ export const ChatPanel: Component = () => {
   const [collapsed, setCollapsed] = createSignal(readLocal(COLLAPSED_KEY, '0') === '1')
   const [width, setWidth] = createSignal(readWidth())
   // Expanded by default (localStorage memory wins): the list now carries the
-  // "show history" control, so it must be discoverable without a click.
+  // session-list height control, so it must be discoverable without a click.
   const [listOpen, setListOpen] = createSignal(readLocal(LIST_COLLAPSED_KEY, '0') !== '1')
-  const [showHistory, setShowHistory] = createSignal(readLocal(SHOW_HISTORY_KEY, '0') === '1')
+  const [sessionListRows, setSessionListRows] = createSignal<SessionListRows>(readSessionListRows())
   /**
    * `''` is the Untitled (draft) session: a fully usable panel whose session does
    * not exist server-side yet — it is created on the first send. Panel usability
@@ -253,18 +276,7 @@ export const ChatPanel: Component = () => {
   })
   const runningCount = createMemo(() => (sessions() ?? []).filter((s) => isRunning(s.id)).length)
 
-  /**
-   * Default view is "what is running now". Ticking "history" widens it to the
-   * last week. The active session is always kept, whatever the filter says:
-   * opening a history session and then unticking the box must not make the
-   * conversation you are looking at vanish from the list.
-   */
-  const visibleSessions = createMemo(() => {
-    const list = sessions() ?? []
-    const sid = activeSid()
-    const cutoff = showHistory() ? timeTick() - HISTORY_WINDOW_MS : Number.POSITIVE_INFINITY
-    return list.filter((s) => isRunning(s.id) || s.id === sid || s.updatedAt >= cutoff)
-  })
+  const visibleSessions = createMemo(() => sessions() ?? [])
 
   /**
    * The single entry point for switching sessions (list click, spec-page request,
@@ -312,9 +324,22 @@ export const ChatPanel: Component = () => {
     writeLocal(LIST_COLLAPSED_KEY, open ? '0' : '1')
   }
 
-  function toggleShowHistory(on: boolean) {
-    setShowHistory(on)
-    writeLocal(SHOW_HISTORY_KEY, on ? '1' : '0')
+  function changeSessionListRows(value: string) {
+    const next = Number(value)
+    if (!isSessionListRows(next)) return
+    setSessionListRows(next)
+    writeLocal(SESSION_LIST_ROWS_KEY, String(next))
+  }
+
+  function sessionListRowsLabel(rows: SessionListRows): string {
+    if (rows === 3) return t('chat.sessionListRows3')
+    if (rows === 5) return t('chat.sessionListRows5')
+    return t('chat.sessionListRows10')
+  }
+
+  function displaySessionTitle(s: SessionInfo): string {
+    const title = s.title.trim()
+    return title && title !== s.id && !UUID_RE.test(title) ? title : t('chat.untitledSession')
   }
 
   // The 80% cap is viewport-relative: re-clamp when the window shrinks.
@@ -693,11 +718,11 @@ export const ChatPanel: Component = () => {
       <Show when={!isCollapsed()}>
         <div class="flex min-h-0 flex-1 flex-col">
           {/* Rendered whenever a project is open — even with zero visible sessions,
-              the user needs the "history" checkbox to widen the filter. */}
+              the user needs the height control to widen the list. */}
           <Show when={activeProjectId()}>
             <Card class="m-2 rounded-lg shadow-none">
               <Collapsible open={listOpen()} onOpenChange={toggleList}>
-                {/* Hand-rolled trigger row: the checkbox is an interactive element and
+                {/* Hand-rolled trigger row: the radio group is interactive and
                     must not nest inside CollapsibleTrigger's <button>. */}
                 <div class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm">
                   <button
@@ -713,16 +738,24 @@ export const ChatPanel: Component = () => {
                       <span>{t('chat.sessionsLabel', { count: runningCount() })}</span>
                     </Show>
                   </button>
-                  <Checkbox
-                    class="flex shrink-0 items-center gap-1.5"
-                    checked={showHistory()}
-                    onChange={toggleShowHistory}
+                  <RadioGroup
+                    class="flex shrink-0 items-center gap-2"
+                    value={String(sessionListRows())}
+                    onChange={changeSessionListRows}
+                    aria-label={t('chat.sessionListRows')}
                   >
-                    <CheckboxControl class="h-3.5 w-3.5" />
-                    <CheckboxLabel class="cursor-pointer text-xs text-muted-foreground">
-                      {t('chat.showHistory')}
-                    </CheckboxLabel>
-                  </Checkbox>
+                    <For each={SESSION_LIST_ROW_OPTIONS}>
+                      {(rows) => (
+                        <RadioGroupItem value={String(rows)} class="flex items-center gap-1">
+                          <RadioGroupItemInput />
+                          <RadioGroupItemControl class="h-3 w-3" />
+                          <RadioGroupItemLabel class="cursor-pointer text-xs text-muted-foreground">
+                            {sessionListRowsLabel(rows)}
+                          </RadioGroupItemLabel>
+                        </RadioGroupItem>
+                      )}
+                    </For>
+                  </RadioGroup>
                   <button
                     type="button"
                     class="shrink-0"
@@ -737,7 +770,10 @@ export const ChatPanel: Component = () => {
                   </button>
                 </div>
                 <CollapsibleContent>
-                  <ul class="m-0 max-h-64 list-none overflow-y-auto border-t py-1">
+                  <ul
+                    class="m-0 list-none overflow-y-auto border-t py-1"
+                    style={{ 'max-height': `${sessionListRows() * SESSION_ROW_HEIGHT_PX}px` }}
+                  >
                     <Show
                       when={visibleSessions().length > 0}
                       fallback={
@@ -767,7 +803,7 @@ export const ChatPanel: Component = () => {
                                 <Loader2 class="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
                               </Show>
                               <span class="shrink-0 text-xs text-muted-foreground">[{s.kind}]</span>
-                              <span class="min-w-0 flex-1 truncate">{s.title || s.id}</span>
+                              <span class="min-w-0 flex-1 truncate">{displaySessionTitle(s)}</span>
                               <span
                                 class="ml-auto max-w-20 shrink-0 truncate pl-2 text-right text-[11px] font-normal tabular-nums text-muted-foreground"
                                 title={exactSessionUpdatedAt(s.updatedAt)}

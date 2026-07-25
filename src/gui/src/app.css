@@ -429,8 +429,6 @@
   }
   .chat-md [data-file-link='true']:hover,
   .chat-md [data-file-link='true']:focus-visible {
-    border-color: hsl(var(--primary) / 0.5);
-    background: hsl(var(--accent));
     outline: none;
   }
   .chat-md blockquote {
