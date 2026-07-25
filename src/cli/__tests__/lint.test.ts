@@ -2,9 +2,10 @@ import { spawnSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 
-const CLI = resolve(__dirname, '..', '..', '..', 'dist', 'cli', 'index.js')
+const ROOT = resolve(__dirname, '..', '..', '..')
+const CLI = resolve(ROOT, 'dist', 'cli', 'index.js')
 
 const GOOD_SPEC = [
   '---',
@@ -55,6 +56,26 @@ const BAD_SPEC = [
 ].join('\n')
 
 describe('yorz lint CLI', () => {
+  beforeAll(() => {
+    const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
+    const result = spawnSync(pnpm, ['run', 'build:cli'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+    })
+    if (result.status !== 0) {
+      throw new Error(
+        [
+          `Failed to build CLI before lint CLI tests (exit ${result.status}).`,
+          result.error?.message,
+          result.stdout,
+          result.stderr,
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      )
+    }
+  }, 30_000)
+
   it('exits 0 with clean JSON when spec is good', () => {
     const dir = mkdtempSync(join(tmpdir(), 'yorz-lint-'))
     const specPath = join(dir, 'spec.md')
