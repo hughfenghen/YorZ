@@ -30,26 +30,28 @@ jobs:
         run: |
           set -euo pipefail
 
-          semver_regex='^v[0-9]+\.[0-9]+\.[0-9]+$'
+          branch_release_regex='^v?([0-9]+\.[0-9]+\.[0-9]+)$'
+          tag_release_regex='^v([0-9]+\.[0-9]+\.[0-9]+)$'
+          head_commit_subject="${HEAD_COMMIT_MESSAGE%%$'\n'*}"
           should_publish=false
           release_version=''
           reason='No release marker found.'
 
           if [[ "$REF_TYPE" == 'branch' && "$REF_NAME" == 'main' ]]; then
-            if [[ "$HEAD_COMMIT_MESSAGE" =~ $semver_regex ]]; then
+            if [[ "$head_commit_subject" =~ $branch_release_regex ]]; then
               should_publish=true
-              release_version="${HEAD_COMMIT_MESSAGE#v}"
-              reason='main head commit message matches vX.Y.Z.'
+              release_version="${BASH_REMATCH[1]}"
+              reason='main head commit message matches X.Y.Z or vX.Y.Z.'
             else
-              reason='main head commit message does not match vX.Y.Z.'
+              reason='main head commit message does not match X.Y.Z or vX.Y.Z.'
             fi
           elif [[ "$REF_TYPE" == 'tag' ]]; then
-            if [[ "$REF_NAME" =~ $semver_regex ]]; then
+            if [[ "$REF_NAME" =~ $tag_release_regex ]]; then
               git fetch origin main:refs/remotes/origin/main --prune
 
               if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
                 should_publish=true
-                release_version="${REF_NAME#v}"
+                release_version="${BASH_REMATCH[1]}"
                 reason='tag matches vX.Y.Z and points to a commit contained in main.'
               else
                 reason='tag matches vX.Y.Z but its commit is not contained in main.'
