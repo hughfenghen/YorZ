@@ -30,6 +30,30 @@ interface LiveSession {
 
 /** Cap the merged session list — adapters can enumerate hundreds of transcripts. */
 export const SESSION_LIST_LIMIT = 30
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const TITLE_MAX_LENGTH = 64
+
+function isOpaqueTitle(title: string | undefined, id: string): boolean {
+  const t = title?.trim()
+  return !t || t === id || UUID_RE.test(t)
+}
+
+function summarizePromptForTitle(prompt: string): string {
+  const [body] = prompt.split(/^\s*---\s*$/m)
+  const cleaned = body
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && line !== '---' && !line.startsWith('- ![') && !line.startsWith('- ['))
+    .join(' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*]\([^)]+\)/g, '')
+    .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
+    .replace(/[@#>*_~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!cleaned) return ''
+  return cleaned.length > TITLE_MAX_LENGTH ? `${cleaned.slice(0, TITLE_MAX_LENGTH - 1)}…` : cleaned
+}
 
 /**
  * Per-project owner of agent sessions. Bridges the streaming AgentEvent model
@@ -75,7 +99,7 @@ export class SessionManager {
     // reconcile once `session-started` surfaces the real thread id.
     const sessionId = session.id || randomUUID()
     this.live.set(sessionId, { kind: k, session })
-    await this.store.create(k, sessionId, title ?? sessionId, specId)
+    await this.store.create(k, sessionId, title ?? '', specId)
     return { sessionId, kind: k }
   }
 
@@ -114,7 +138,20 @@ export class SessionManager {
       try {
         for (const info of await adapter.listSessions()) {
           nativeIds.add(info.id)
-          if (!byId.has(info.id)) byId.set(info.id, info)
+          const indexed = byId.get(info.id)
+          if (!indexed) {
+            byId.set(info.id, info)
+          } else if (
+            isOpaqueTitle(indexed.title, indexed.id) &&
+            !isOpaqueTitle(info.title, info.id)
+          ) {
+            byId.set(info.id, {
+              ...indexed,
+              title: info.title,
+              createdAt: Math.min(indexed.createdAt, info.createdAt),
+              updatedAt: Math.max(indexed.updatedAt, info.updatedAt),
+            })
+          }
         }
       } catch {
         // adapter unavailable (e.g. not authenticated); skip
@@ -153,6 +190,14 @@ export class SessionManager {
     this.statusEmitter.emit('status', { sessionId: sid, running } satisfies SessionStatusEvent)
   }
 
+  private async maybeUpdateTitleFromPrompt(sid: string, prompt: string): Promise<void> {
+    const indexed = await this.store.get(sid)
+    if (!indexed || !isOpaqueTitle(indexed.title, indexed.id)) return
+    const title = summarizePromptForTitle(prompt)
+    if (!title || isOpaqueTitle(title, sid)) return
+    await this.store.updateTitle(sid, title)
+  }
+
   async getMessages(sid: string): Promise<NormalizedMessage[]> {
     const kind = (await this.store.get(sid))?.kind ?? this.live.get(sid)?.kind ?? this.defaultKind
     const adapter = this.adapters.get(kind)
@@ -171,12 +216,13 @@ export class SessionManager {
     return ls
   }
 
-  send(sid: string, prompt: string): SessionRunHandle {
+  async send(sid: string, prompt: string): Promise<SessionRunHandle> {
     const runId = randomUUID()
     const emitter = this.emitterFor(sid)
     // `sid` may be rewritten mid-run by reconcile() (codex assigns the real
     // thread id on `session-started`); track the live id for status bookkeeping.
     let currentSid = sid
+    await this.maybeUpdateTitleFromPrompt(currentSid, prompt).catch(() => {})
     this.setRunning(sid, true)
     void (async () => {
       try {

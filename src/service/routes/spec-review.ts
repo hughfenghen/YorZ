@@ -43,7 +43,7 @@ export function createSpecReviewRoutes(resolveProject: ResolveProject): Hono {
       `- 必含 4 节：变更总结 / 影响范围 / 风险提醒 / 变更文件清单\n` +
       `- 触发时间使用本机当前时间，格式 \`YYYY-MM-DD HH:mm:ss\`\n`
     const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
-    const handle = p.sessions.send(sessionId, prompt)
+    const handle = await p.sessions.send(sessionId, prompt)
     return c.json({ runId: handle.runId, sessionId })
   })
 
@@ -69,7 +69,7 @@ export function createSpecReviewRoutes(resolveProject: ResolveProject): Hono {
     const reviewRel = `${p.specsDirRelative}/${specId}/review.md`
     const prompt = buildGitOpsPrompt(action as GitOpsAction, specId, specRel, reviewRel)
     const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
-    const handle = p.sessions.send(sessionId, prompt)
+    const handle = await p.sessions.send(sessionId, prompt)
     return c.json({ runId: handle.runId, sessionId })
   })
 

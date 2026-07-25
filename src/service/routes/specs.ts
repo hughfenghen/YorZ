@@ -40,7 +40,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     if (!input.title && input.requirement) {
       const prompt = buildDraftPrompt(input.type, input.requirement, input.draftId)
       const { sessionId } = await p.sessions.createSession()
-      const handle = p.sessions.send(sessionId, prompt)
+      const handle = await p.sessions.send(sessionId, prompt)
       return c.json({ runId: handle.runId, sessionId, draft: true }, 202)
     }
     try {
@@ -180,7 +180,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
         : debugActive
           ? buildDebugPrompt(p.specsDirRelative, specId, 'resume')
           : `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`
-      const handle = p.sessions.send(sessionId, prompt)
+      const handle = await p.sessions.send(sessionId, prompt)
       return c.json({ ok: true, runId: handle.runId, sessionId })
     }
     return c.json({ ok: true })
@@ -198,7 +198,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     const prompt = debugActive
       ? buildDebugPrompt(p.specsDirRelative, specId, 'resume')
       : `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`
-    const handle = p.sessions.send(sessionId, prompt)
+    const handle = await p.sessions.send(sessionId, prompt)
     return c.json({ runId: handle.runId, sessionId })
   })
 
@@ -226,7 +226,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
       `请用中文简洁解释其含义、背景与可能的实施影响。**不要**修改任何文件，只在终端输出解释文本。\n\n` +
       `引用：\n"""\n${text}\n"""\n`
     const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
-    const handle = p.sessions.send(sessionId, prompt)
+    const handle = await p.sessions.send(sessionId, prompt)
     return c.json({ runId: handle.runId, sessionId })
   })
 

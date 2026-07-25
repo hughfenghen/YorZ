@@ -17,7 +17,8 @@ import type {
   SessionInfo,
 } from './types.js'
 
-const SESSIONS_ROOT = join(homedir(), '.codex', 'sessions')
+const DEFAULT_CODEX_STORAGE_ROOT = join(homedir(), '.codex')
+const TITLE_MAX_LENGTH = 64
 
 function codexThreadOptions(cwd: string): ThreadOptions {
   return {
@@ -30,10 +31,7 @@ function codexThreadOptions(cwd: string): ThreadOptions {
 
 function detectAgentContextKind(text: string): AgentContextKind | undefined {
   const trimmed = text.trimStart()
-  if (
-    trimmed.startsWith('<recommended_plugins>') &&
-    trimmed.includes('</recommended_plugins>')
-  ) {
+  if (trimmed.startsWith('<recommended_plugins>') && trimmed.includes('</recommended_plugins>')) {
     return 'recommended_plugins'
   }
   if (
@@ -43,13 +41,57 @@ function detectAgentContextKind(text: string): AgentContextKind | undefined {
   ) {
     return 'agents_instructions'
   }
-  if (
-    trimmed.startsWith('<environment_context>') &&
-    trimmed.includes('</environment_context>')
-  ) {
+  if (trimmed.startsWith('<environment_context>') && trimmed.includes('</environment_context>')) {
     return 'environment_context'
   }
   return undefined
+}
+
+function textFromMessagePayload(payload: Record<string, unknown>): string {
+  const content = payload.content
+  if (!Array.isArray(content)) return ''
+  const parts: string[] = []
+  for (const c of content) {
+    const text = (c as { text?: unknown })?.text
+    if (typeof text === 'string' && text.trim()) parts.push(text)
+  }
+  return parts.join('\n').trim()
+}
+
+export function summarizeCodexPromptForTitle(text: string): string {
+  const [body] = text.split(/^\s*---\s*$/m)
+  const cleaned = body
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && line !== '---' && !line.startsWith('- ![') && !line.startsWith('- ['))
+    .join(' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*]\([^)]+\)/g, '')
+    .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
+    .replace(/[@#>*_~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!cleaned) return ''
+  return cleaned.length > TITLE_MAX_LENGTH ? `${cleaned.slice(0, TITLE_MAX_LENGTH - 1)}…` : cleaned
+}
+
+export function parseCodexSessionIndex(text: string): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    let obj: unknown
+    try {
+      obj = JSON.parse(trimmed)
+    } catch {
+      continue
+    }
+    const rec = obj as { id?: unknown; thread_name?: unknown }
+    const id = typeof rec.id === 'string' ? rec.id.trim() : ''
+    const title = typeof rec.thread_name === 'string' ? rec.thread_name.trim() : ''
+    if (id && title) out.set(id, title)
+  }
+  return out
 }
 
 class CodexSession implements AgentSession {
@@ -114,7 +156,10 @@ class CodexSession implements AgentSession {
 export class CodexAdapter implements AgentSdkAdapter {
   readonly kind = 'codex' as const
   private readonly codex: Codex
-  constructor(private readonly cwd: string) {
+  constructor(
+    private readonly cwd: string,
+    private readonly storageRoot = DEFAULT_CODEX_STORAGE_ROOT,
+  ) {
     this.codex = new Codex()
   }
 
@@ -129,9 +174,10 @@ export class CodexAdapter implements AgentSdkAdapter {
   /** Walk ~/.codex/sessions, keep rollouts whose session_meta.cwd matches this project. */
   async listSessions(): Promise<SessionInfo[]> {
     const files = await this.walkRollouts()
+    const titleIndex = await this.readSessionIndex()
     const out: SessionInfo[] = []
     for (const file of files) {
-      const meta = await this.readMeta(file)
+      const meta = await this.readMeta(file, titleIndex)
       if (!meta || meta.cwd !== this.cwd) continue
       out.push({
         id: meta.id,
@@ -170,9 +216,7 @@ export class CodexAdapter implements AgentSdkAdapter {
           const text = (c as { text?: unknown })?.text
           if (typeof text === 'string' && text) {
             const contextKind = role === 'user' ? detectAgentContextKind(text) : undefined
-            parts.push(
-              contextKind ? { type: 'text', text, contextKind } : { type: 'text', text },
-            )
+            parts.push(contextKind ? { type: 'text', text, contextKind } : { type: 'text', text })
           }
         }
       }
@@ -201,15 +245,28 @@ export class CodexAdapter implements AgentSdkAdapter {
           out.push(full)
       }
     }
-    await walk(SESSIONS_ROOT)
+    await walk(join(this.storageRoot, 'sessions'))
     return out
+  }
+
+  private async readSessionIndex(): Promise<Map<string, string>> {
+    try {
+      return parseCodexSessionIndex(
+        await readFile(join(this.storageRoot, 'session_index.jsonl'), 'utf8'),
+      )
+    } catch {
+      return new Map()
+    }
   }
 
   private async readMeta(
     file: string,
+    titleIndex: Map<string, string>,
   ): Promise<{ id: string; cwd: string; ts: number; title: string } | null> {
     return new Promise((resolve) => {
       let settled = false
+      let meta: { id: string; cwd: string; ts: number } | null = null
+      let title = ''
       const finish = (v: { id: string; cwd: string; ts: number; title: string } | null) => {
         if (settled) return
         settled = true
@@ -230,17 +287,24 @@ export class CodexAdapter implements AgentSdkAdapter {
           return
         }
         const rec = obj as { type?: string; payload?: Record<string, unknown> }
-        if (rec.type !== 'session_meta' || !rec.payload) {
-          finish(null)
+        if (rec.type === 'session_meta' && rec.payload) {
+          const id = String(rec.payload.id ?? '')
+          const cwd = String(rec.payload.cwd ?? '')
+          const tsRaw = rec.payload.timestamp
+          const ts = typeof tsRaw === 'string' ? Date.parse(tsRaw) : Date.now()
+          meta = { id, cwd, ts: Number.isNaN(ts) ? Date.now() : ts }
           return
         }
-        const id = String(rec.payload.id ?? '')
-        const cwd = String(rec.payload.cwd ?? '')
-        const tsRaw = rec.payload.timestamp
-        const ts = typeof tsRaw === 'string' ? Date.parse(tsRaw) : Date.now()
-        finish({ id, cwd, ts: Number.isNaN(ts) ? Date.now() : ts, title: id })
+        if (!meta || title || rec.type !== 'response_item' || !rec.payload) return
+        if (rec.payload.type !== 'message' || rec.payload.role !== 'user') return
+        const text = textFromMessagePayload(rec.payload)
+        if (!text || detectAgentContextKind(text)) return
+        title = summarizeCodexPromptForTitle(text)
       })
-      rl.on('close', () => finish(null))
+      rl.on('close', () => {
+        if (!meta) finish(null)
+        else finish({ ...meta, title: titleIndex.get(meta.id) || title || meta.id })
+      })
     })
   }
 
@@ -249,8 +313,9 @@ export class CodexAdapter implements AgentSdkAdapter {
     // Rollout filenames embed the session UUID: rollout-<ts>-<uuid>.jsonl
     const match = files.find((f) => f.includes(id))
     if (match) return match
+    const titleIndex = await this.readSessionIndex()
     for (const f of files) {
-      const meta = await this.readMeta(f)
+      const meta = await this.readMeta(f, titleIndex)
       if (meta?.id === id) return f
     }
     return null

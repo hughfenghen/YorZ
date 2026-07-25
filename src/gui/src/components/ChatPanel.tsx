@@ -64,7 +64,7 @@ const FALLBACK_MAX_WIDTH = 960
 /** Chat may be dragged out to 80% of the viewport. */
 const MAX_WIDTH_RATIO = 0.8
 const AUTO_SCROLL_THRESHOLD = 96
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 /**
  * How long a draft's first send waits for its session subscription to attach.
  * On timeout we POST anyway: losing a few early deltas (they are still in the
@@ -339,7 +339,7 @@ export const ChatPanel: Component = () => {
 
   function displaySessionTitle(s: SessionInfo): string {
     const title = s.title.trim()
-    return title && title !== s.id && !UUID_RE.test(title) ? title : t('chat.untitledSession')
+    return title && title !== s.id && !UUID_RE.test(title) ? title : s.id
   }
 
   // The 80% cap is viewport-relative: re-clamp when the window shrinks.

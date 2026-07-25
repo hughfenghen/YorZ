@@ -37,7 +37,7 @@ export function createApp(opts: CreateAppOptions): Hono {
         return
       }
       const { sessionId } = await main.sessions.ensureSessionForSpec(specId)
-      main.sessions.send(
+      void main.sessions.send(
         sessionId,
         `请使用 yorz-spec skill 处理 spec：${main.specsDirRelative}/${specId}/spec.md`,
       )

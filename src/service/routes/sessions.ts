@@ -127,7 +127,7 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
       }
     }
 
-    const handle = p.sessions.send(c.req.param('sid'), finalPrompt)
+    const handle = await p.sessions.send(c.req.param('sid'), finalPrompt)
     return c.json({ runId: handle.runId, sessionId: handle.sessionId }, 202)
   })
 

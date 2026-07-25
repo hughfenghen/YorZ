@@ -108,6 +108,36 @@ describe('SessionManager.listSessions', () => {
     expect(list[0].id).toBe(`n${SESSION_LIST_LIMIT + 11}`)
     expect(list.map((s) => s.id)).not.toContain('n0')
   })
+
+  it('prefers native readable titles over indexed UUID titles', async () => {
+    const id = '7a8bf735-f701-4dfc-a5da-e68bc8b19761'
+    const native = [info({ id, title: 'Improve chat session list', createdAt: 5, updatedAt: 9 })]
+    const { mgr, store } = await makeManager(fakeAdapter({ native }))
+    await store.upsert(info({ id, title: id, createdAt: 5, updatedAt: 12 }))
+
+    const list = await mgr.listSessions()
+
+    expect(list.find((s) => s.id === id)?.title).toBe('Improve chat session list')
+    expect(list.find((s) => s.id === id)?.updatedAt).toBe(12)
+  })
+
+  it('treats UUIDv7-looking titles as opaque when merging native titles', async () => {
+    const id = '019f9858-1fa6-7550-b514-7de5300c3a0b'
+    const native = [info({ id, title: 'hello', createdAt: 5, updatedAt: 9 })]
+    const { mgr, store } = await makeManager(fakeAdapter({ native }))
+    await store.upsert(
+      info({
+        id,
+        title: '019f9820-75ce-79a2-acb7-3d64a61f64d7',
+        createdAt: 5,
+        updatedAt: 12,
+      }),
+    )
+
+    const list = await mgr.listSessions()
+
+    expect(list.find((s) => s.id === id)?.title).toBe('hello')
+  })
 })
 
 describe('SessionManager per-spec sessions', () => {
@@ -131,6 +161,24 @@ describe('SessionManager per-spec sessions', () => {
 })
 
 describe('SessionManager run status', () => {
+  it('uses the first prompt as the title for an untitled Codex draft session', async () => {
+    const realId = '019f9858-1fa6-7550-b514-7de5300c3a0b'
+    const adapter = fakeAdapter({
+      onSend: async function* () {
+        yield { type: 'session-started', sessionId: realId } satisfies AgentEvent
+        yield { type: 'turn-completed' } satisfies AgentEvent
+      },
+    })
+    const { mgr, store } = await makeManager(adapter)
+    const created = await mgr.createSession()
+
+    const handle = await mgr.send(created.sessionId, 'hello')
+    await new Promise<void>((r) => handle.onDone(() => r()))
+
+    expect(await store.get(created.sessionId)).toBeUndefined()
+    expect((await store.get(realId))?.title).toBe('hello')
+  })
+
   it('marks a session running for the duration of a turn and broadcasts both edges', async () => {
     // Definite assignment: the Promise executor runs synchronously, so `release`
     // is always set before the test body calls it.
@@ -152,7 +200,7 @@ describe('SessionManager run status', () => {
     const events: Array<{ sessionId: string; running: boolean }> = []
     mgr.subscribeStatus((ev) => events.push(ev))
 
-    const handle = mgr.send('sid-1', 'hello')
+    const handle = await mgr.send('sid-1', 'hello')
     expect(mgr.isRunning('sid-1')).toBe(true)
     expect(events).toEqual([{ sessionId: 'sid-1', running: true }])
     expect((await mgr.listSessions()).find((s) => s.id === 'sid-1')?.running).toBe(true)
