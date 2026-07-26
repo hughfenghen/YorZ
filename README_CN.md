@@ -1,14 +1,16 @@
 # YorZ
 
-[English](./README.md) | [中文](./README_CN.md)
+[English](./README.md) | **中文**
 
 ---
 
-## 理念
+## 动机
 
-YorZ（柚子）通过 spec 文档、可视化界面和 Agent 工作流，把需求分析、方案决策、任务执行和变更 Review 串成一条可追踪的开发路径。
+YorZ（柚子）解决 SDD （spec 驱动开发）工作流中，开发者不看 spec 的问题。
 
-YorZ 认为，一个产品不只是最终代码，而是「初始创意」和「每一次关键决策」共同累积的结果。
+Agent 输出文档的速度也会导致开发者信息过载，从而将开发者排挤出工作流。
+
+YorZ 将 spec.md 文档信息进行图形化升维，并为 SDD 工作流定制 UI，以降低开发者负载，最大化 Agent 输出功率。
 
 ![preview](./docs/preview.png)
 

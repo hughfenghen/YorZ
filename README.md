@@ -1,14 +1,16 @@
 # YorZ
 
-English | [中文](./README_CN.md)
+**English** | [中文](./README_CN.md)
 
 ---
 
-## Philosophy
+## Motivation
 
-YorZ connects requirement analysis, solution decisions, task execution, and change review into a traceable development path through spec documents, a visual interface, and Agent workflows.
+YorZ solves the problem that developers do not read specs in SDD (spec-driven development) workflows.
 
-YorZ believes a product is not just the final code, but the accumulated result of the initial idea and every key decision along the way.
+The speed at which Agents produce documents can also overload developers with information, pushing them out of the workflow.
+
+YorZ lifts the information in spec.md documents into a graphical representation and provides a UI tailored to SDD workflows, reducing developer load and maximizing Agent output throughput.
 
 ![preview](./docs/preview.png)
 
