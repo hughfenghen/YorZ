@@ -10,7 +10,7 @@ YorZ（柚子）解决 SDD （spec 驱动开发）工作流中，开发者不看
 
 Agent 输出文档的速度也会导致开发者信息过载，从而将开发者排挤出工作流。
 
-YorZ 将 spec.md 文档信息进行图形化升维，并为 SDD 工作流定制 UI，以降低开发者负载，最大化 Agent 输出功率。
+YorZ 将 spec 文档信息进行图形化升维，并为 SDD 工作流定制 UI，以降低开发者负载，最大化 Agent 输出功率。
 
 ![preview](./docs/preview.png)
 
@@ -21,6 +21,8 @@ YorZ 将 spec.md 文档信息进行图形化升维，并为 SDD 工作流定制 
 - 尽量减少用户介入流程，但保留关键决策权
 - 提供深度 debug 模式，用证据链定位 Agent 难以解决的疑难问题
 - 适配 Claude Code、OpenCode、Codex 等主流 Coding Agent
+
+[_使用指南_](./docs/User-Guide-CN.md)
 
 ## 安装
 

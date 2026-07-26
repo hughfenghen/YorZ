@@ -10,7 +10,7 @@ YorZ solves the problem that developers do not read specs in SDD (spec-driven de
 
 The speed at which Agents produce documents can also overload developers with information, pushing them out of the workflow.
 
-YorZ lifts the information in spec.md documents into a graphical representation and provides a UI tailored to SDD workflows, reducing developer load and maximizing Agent output throughput.
+YorZ lifts the information in spec documents into a graphical representation and provides a UI tailored to SDD workflows, reducing developer load and maximizing Agent output throughput.
 
 ![preview](./docs/preview.png)
 
@@ -21,6 +21,8 @@ YorZ lifts the information in spec.md documents into a graphical representation 
 - Minimize user intervention in the flow while preserving authority over key decisions
 - Provide a deep debug mode that uses evidence chains to diagnose hard problems Agents struggle to solve
 - Support mainstream Coding Agents including Claude Code, OpenCode, and Codex
+
+[_User Guide_](./docs/User-Guide.md)
 
 ## Installation
 
