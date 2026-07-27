@@ -286,3 +286,9 @@ yorz add /path/to/your/project
 4. 填写缺陷复现、现象、期望结果。
 5. 点击“发送”，等待 Agent 进入 Debug 流程。
 6. 在 “Debug” 页面查看 `debug.md` 记录。
+
+## 8. 交流群
+
+_欢迎加入交流群：QQ 群 `224778869`_
+
+<img src="./qq-group.png" width="200px"> <img src="./wechat-group.png" width="200px">
