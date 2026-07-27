@@ -17,6 +17,7 @@ export const QUESTIONS_SPEC_ID = '260618.feat.e2e-questions'
 // instead of sharing QUESTIONS_SPEC_ID with the structured-answer test.
 export const QUESTIONS_FREEFORM_SPEC_ID = '260618.feat.e2e-questions-freeform'
 export const TASK_LIST_SPEC_ID = '260701.feat.e2e-task-list'
+export const NO_REVIEW_SPEC_ID = '260701.feat.e2e-no-review'
 export const SCROLL_SPEC_ID = '260719.fix.e2e-scroll-preserve'
 export const SCROLL_TEXT_SPEC_ID = '260719.fix.e2e-scroll-text-only'
 
@@ -176,6 +177,10 @@ export function seed() {
   mkdirSync(tlDir, { recursive: true })
   writeFileSync(join(tlDir, 'spec.md'), TASK_LIST_SPEC, 'utf8')
   writeFileSync(join(tlDir, 'review.md'), TASK_LIST_REVIEW, 'utf8')
+
+  const nrDir = join(E2E_CWD, '.yorz', 'specs', NO_REVIEW_SPEC_ID)
+  mkdirSync(nrDir, { recursive: true })
+  writeFileSync(join(nrDir, 'spec.md'), TASK_LIST_SPEC, 'utf8')
 
   const scDir = join(E2E_CWD, '.yorz', 'specs', SCROLL_SPEC_ID)
   mkdirSync(scDir, { recursive: true })

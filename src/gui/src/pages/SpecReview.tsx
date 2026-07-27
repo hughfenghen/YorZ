@@ -124,6 +124,7 @@ export const SpecReview: Component = () => {
     if (!text.trim()) return ''
     return renderMarkdown(text, { specId: params.id, projectId: projectId() })
   })
+  const shouldShowReviewPane = createMemo(() => review.loading || Boolean(reviewHtml()))
   const lastReviewTime = createMemo(() => extractLastReviewTime(review()?.text ?? ''))
 
   const defaultCommitMessage = createMemo(() => {
@@ -310,7 +311,10 @@ export const SpecReview: Component = () => {
         </header>
 
         <div class="flex min-h-0 flex-1 gap-4">
-          <section class="flex min-h-0 flex-[4] min-w-0 flex-col gap-3">
+          <section
+            data-testid="review-controls-pane"
+            class={`flex min-h-0 min-w-0 flex-col gap-3 ${shouldShowReviewPane() ? 'flex-[4]' : 'flex-1'}`}
+          >
             <div class="flex flex-wrap items-center gap-2">
               <Button
                 variant="default"
@@ -451,28 +455,24 @@ export const SpecReview: Component = () => {
             </Show>
           </section>
 
-          <section class="flex min-h-0 min-w-0 flex-[6] flex-col gap-2">
-            <Show
-              when={review.loading}
-              fallback={
-                <Show
-                  when={reviewHtml()}
-                  fallback={
-                    <div class="flex flex-1 items-center justify-center text-muted-foreground">
-                      {t('review.noReport')}
-                    </div>
-                  }
-                >
+          <Show when={shouldShowReviewPane()}>
+            <section
+              data-testid="review-report-pane"
+              class="flex min-h-0 min-w-0 flex-[6] flex-col gap-2"
+            >
+              <Show
+                when={review.loading}
+                fallback={
                   <article
                     class="markdown review-md flex-1 overflow-auto rounded-xl border bg-card p-4 shadow"
                     innerHTML={reviewHtml()}
                   />
-                </Show>
-              }
-            >
-              <p class="text-muted-foreground">{t('common.loading')}</p>
-            </Show>
-          </section>
+                }
+              >
+                <p class="text-muted-foreground">{t('common.loading')}</p>
+              </Show>
+            </section>
+          </Show>
         </div>
       </Suspense>
 

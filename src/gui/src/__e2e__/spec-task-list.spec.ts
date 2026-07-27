@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test'
-import { TASK_LIST_SPEC_ID } from './fixtures/setup.js'
+import { NO_REVIEW_SPEC_ID, TASK_LIST_SPEC_ID } from './fixtures/setup.js'
 
-async function resolveProjectId(request: import('@playwright/test').APIRequestContext): Promise<string> {
+async function resolveProjectId(
+  request: import('@playwright/test').APIRequestContext,
+): Promise<string> {
   const res = await request.get('/api/projects')
   expect(res.status()).toBe(200)
   const list = (await res.json()) as
@@ -55,5 +57,19 @@ test.describe.serial('markdown GFM task list rendering', () => {
       .locator('input.task-list-item-checkbox[disabled]')
       .count()
     expect(disabledCount).toBe(2)
+  })
+
+  test('SpecReview 在 review.md 不存在时隐藏报告面板', async ({ page, request }) => {
+    const pid = await resolveProjectId(request)
+    await page.goto(`/${pid}/specs/${NO_REVIEW_SPEC_ID}/review`)
+
+    const controlsPane = page.locator('[data-testid="review-controls-pane"]')
+    await expect(controlsPane).toBeVisible({ timeout: 5_000 })
+    await expect(page.locator('[data-testid="review-report-pane"]')).toHaveCount(0)
+    await expect(page.getByText('尚无 review 报告')).toHaveCount(0)
+
+    const controlsBox = await controlsPane.boundingBox()
+    const mainBox = await page.locator('main').boundingBox()
+    expect(controlsBox?.width).toBeGreaterThan((mainBox?.width ?? 0) * 0.95)
   })
 })
