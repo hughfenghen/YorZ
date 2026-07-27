@@ -4,20 +4,21 @@
 
 ---
 
-## 动机
+## 为什么需要 YorZ
 
-YorZ（柚子）解决 SDD （spec 驱动开发）工作流中，开发者不看 spec 的问题。
+YorZ（柚子）避免 vibe coding 将程序编成黑盒；  
+YorZ 解决 SDD （spec 驱动开发）工作流中，开发者不看 spec 的问题。
 
-Agent 输出文档的速度也会导致开发者信息过载，从而将开发者排挤出工作流。
-
+Agent 输出文档的速度也会导致开发者信息过载，从而将开发者排挤出工作流；  
 YorZ 将 spec 文档信息进行图形化升维，并为 SDD 工作流定制 UI，以降低开发者负载，最大化 Agent 输出功率。
 
 ![preview](./docs/preview.png)
 
 ## 功能
 
-- 用图形化界面管理 spec 驱动开发流程
-- 用可视化图形展示 Agent 生成的技术方案，提升阅读理解效率
+- 内置轻量级 SDD skill
+- 为 SDD 工作流定制 UI
+- 用可视化图形对 Agent 输出信息进行升维，提升阅读理解效率
 - 尽量减少用户介入流程，但保留关键决策权
 - 提供深度 debug 模式，用证据链定位 Agent 难以解决的疑难问题
 - 适配 Claude Code、OpenCode、Codex 等主流 Coding Agent

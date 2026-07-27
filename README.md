@@ -4,20 +4,21 @@
 
 ---
 
-## Motivation
+## Why YorZ
 
+YorZ (Youzi) prevents vibe coding from turning programs into black boxes;  
 YorZ solves the problem that developers do not read specs in SDD (spec-driven development) workflows.
 
-The speed at which Agents produce documents can also overload developers with information, pushing them out of the workflow.
-
-YorZ lifts the information in spec documents into a graphical representation and provides a UI tailored to SDD workflows, reducing developer load and maximizing Agent output throughput.
+The speed at which Agents produce documents can also overload developers with information, pushing them out of the workflow;  
+YorZ lifts the information in spec documents into a graphical representation and provides a UI tailored to SDD workflows, reducing developer load and maximizing Agent output power.
 
 ![preview](./docs/preview.png)
 
 ## Features
 
-- Manage spec-driven development through a graphical interface
-- Present Agent-generated technical plans as visual diagrams to improve reading comprehension
+- Built-in lightweight SDD skill
+- UI tailored to SDD workflows
+- Lift Agent output information into visual diagrams to improve reading comprehension
 - Minimize user intervention in the flow while preserving authority over key decisions
 - Provide a deep debug mode that uses evidence chains to diagnose hard problems Agents struggle to solve
 - Support mainstream Coding Agents including Claude Code, OpenCode, and Codex
