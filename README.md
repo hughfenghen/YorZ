@@ -6,22 +6,22 @@
 
 ## Why YorZ
 
-YorZ (Youzi) prevents vibe coding from turning programs into black boxes;  
-YorZ solves the problem that developers do not read specs in SDD (spec-driven development) workflows.
+YorZ (Youzi) keeps vibe coding from turning your codebase into a black box.  
+It also addresses a common failure mode in SDD (spec-driven development): developers stop reading the specs.
 
-The speed at which Agents produce documents can also overload developers with information, pushing them out of the workflow;  
-YorZ lifts the information in spec documents into a graphical representation and provides a UI tailored to SDD workflows, reducing developer load and maximizing Agent output power.
+Agents can generate documents so quickly that developers get overloaded and pushed out of the workflow.  
+YorZ turns spec information into visual, structured views and provides an SDD-focused UI, so Agents can work at full speed without burying developers in text.
 
 ![preview](./docs/preview.png)
 
 ## Features
 
-- Built-in lightweight SDD skill
-- UI tailored to SDD workflows
-- Lift Agent output information into visual diagrams to improve reading comprehension
-- Minimize user intervention in the flow while preserving authority over key decisions
-- Provide a deep debug mode that uses evidence chains to diagnose hard problems Agents struggle to solve
-- Support mainstream Coding Agents including Claude Code, OpenCode, and Codex
+- A built-in lightweight SDD skill with a UI tailored to SDD workflows
+- Visual diagrams that make Agent output easier to read and understand
+- One-click git worktree isolation, with concurrent Agents running on separate tasks
+- Minimal user intervention while key decisions stay under user control
+- Deep debug mode that uses evidence chains to diagnose hard problems Agents struggle to solve
+- Works with mainstream Coding Agents including Claude Code, OpenCode, and Codex
 
 [_User Guide_](./docs/User-Guide.md)
 
@@ -45,7 +45,7 @@ yorz serve
 
 Start the YorZ Service. It runs in the background by default. Open `http://localhost:7423` in your browser to access the dashboard.
 
-On startup, `yorz serve` automatically checks the `yorz-spec` skill. When it is missing or out of date, YorZ installs or updates it for all supported Agents (Claude Code / OpenCode / Codex), then prints the result before starting the Service.
+On startup, `yorz serve` automatically checks the `yorz-spec` skill. If it is missing or out of date, YorZ installs or updates it for every supported Agent (Claude Code / OpenCode / Codex) and prints the result before starting the Service.
 
 To stop the background service:
 
@@ -61,15 +61,15 @@ yorz add /path/to/your/project
 
 Initialize the directory as a YorZ project by creating `.yorz/` config, registering it with the Service, and adding `.yorz/tmp` to `.gitignore`.
 
-The `yorz-spec` skill teaches your AI Agent how to drive spec documents through the plan / tasks / execute / done stages. It is installed and kept up to date automatically by `yorz serve` (see Step 1), so no manual installation is required.
+The `yorz-spec` skill teaches your AI Agent how to drive spec documents through the plan / tasks / execute / done stages. It is installed and kept up to date automatically by `yorz serve` as described above, so no manual installation is required.
 
 ## Command Reference
 
-| Command           | Description                                                       |
-| ----------------- | ----------------------------------------------------------------- |
-| `yorz serve`      | Start or reuse the YorZ Service in the background. Multi-project. |
-| `yorz serve stop` | Stop the background YorZ Service.                                 |
-| `yorz add <path>` | Initialize and register a directory as a YorZ project.            |
+| Command           | Description                                                            |
+| ----------------- | ---------------------------------------------------------------------- |
+| `yorz serve`      | Start or reuse the background YorZ Service with multi-project support. |
+| `yorz serve stop` | Stop the background YorZ Service.                                      |
+| `yorz add <path>` | Initialize and register a directory as a YorZ project.                 |
 
 ### Global Options
 
