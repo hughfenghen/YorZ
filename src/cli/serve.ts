@@ -7,6 +7,7 @@ import { promisify } from 'node:util'
 import { start, type ServeHandle } from '../service/index.js'
 import { resolveGlobalConfigDir } from '../service/global-config.js'
 import { configureLogger, getLogger, resolveLogDir, STDIO_LOG_FILE } from '../service/logger.js'
+import { spawnWithoutWindow } from '../service/process.js'
 import { cleanupLegacyAgentSkills, ensureSkillsInstalled } from './install.js'
 
 const log = () => getLogger().child('serve')
@@ -180,7 +181,7 @@ function startBackgroundServe(opts: ServeCommandOptions): Promise<BackgroundServ
     if (!entry) throw new Error('Cannot resolve CLI entrypoint for background service')
 
     const stdio = backgroundStdio()
-    const child = spawn(process.execPath, [entry, 'serve', ...backgroundArgs(opts)], {
+    const child = spawnWithoutWindow(process.execPath, [entry, 'serve', ...backgroundArgs(opts)], {
       detached: true,
       stdio: stdio.stdio,
     })

@@ -10,6 +10,7 @@ import { HEARTBEAT_INTERVAL_MS } from './routes/events.js'
 import { getLogger } from './logger.js'
 import { SystemNotificationCenter } from './system-notifications.js'
 import pkg from '../../package.json' with { type: 'json' }
+import { resolveBrowserOpenInvocation, spawnWithoutWindow } from './process.js'
 
 export interface ServeOptions {
   port?: number
@@ -175,12 +176,22 @@ function listLanUrls(port: number): string[] {
   return urls
 }
 
+/**
+ * 使用各平台原生启动器打开默认浏览器；失败属于非关键能力，不阻断 Service 启动。
+ *
+ * @param url Service 已监听成功的本地地址。
+ * @returns 浏览器进程完成派生后结束，不等待浏览器生命周期。
+ */
 async function tryOpenBrowser(url: string): Promise<void> {
-  const { spawn } = await import('node:child_process')
-  const cmd =
-    process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open'
+  const invocation = resolveBrowserOpenInvocation(process.platform, url)
   try {
-    spawn(cmd, [url], { stdio: 'ignore', detached: true }).unref()
+    const child = spawnWithoutWindow(invocation.command, invocation.args, {
+      stdio: 'ignore',
+      detached: true,
+    })
+    // spawn 的 ENOENT 等错误是异步事件；吞掉它以保持 --open 的 best-effort 语义。
+    child.once('error', () => {})
+    child.unref()
   } catch {
     // best-effort, ignore failures
   }

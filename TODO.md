@@ -30,3 +30,6 @@
   - [ ] UI 主题色、美观度
 
 ## Bug
+
+- [ ] 刷新登录态
+- [ ] [Windows 兼容与跨平台稳定性修复](docs/Windows-Compatibility-TODO.md)
