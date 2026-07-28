@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { closeSync } from 'node:fs'
 import { execFile, spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
@@ -93,15 +93,14 @@ describe('serve', () => {
 
   it("falls back to 'ignore' when the log dir cannot be opened", async () => {
     await withYorzHome(async (home) => {
-      // make the home dir read-only so `logs/` cannot be created
-      await chmod(home, 0o500)
-      try {
-        const result = backgroundStdio()
-        expect(result.stdio).toBe('ignore')
-        expect(result.path).toBeNull()
-      } finally {
-        await chmod(home, 0o700)
-      }
+      // 普通文件下无法创建 `logs/` 子目录，可跨平台稳定触发回退分支。
+      const blockedHome = join(home, 'not-a-directory')
+      await writeFile(blockedHome, 'blocker', 'utf8')
+      process.env.YORZ_HOME = blockedHome
+
+      const result = backgroundStdio()
+      expect(result.stdio).toBe('ignore')
+      expect(result.path).toBeNull()
     })
   })
 
