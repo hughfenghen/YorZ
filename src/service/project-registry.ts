@@ -5,8 +5,13 @@ import { SpecWatcher } from './watcher.js'
 import { AttachmentStore } from './attachment-store.js'
 import { SessionManager } from './session-manager.js'
 import { SessionStore } from './session-store.js'
-import { resolveAgentKind } from './agent-config.js'
-import { ensureSpecsDirExists, loadProjectConfig, resolveSpecsDir } from './project-config.js'
+import { createSessionEndNotifier } from './session-end-notifier.js'
+import {
+  ensureSpecsDirExists,
+  loadProjectConfig,
+  resolveSpecsDir,
+  type AgentConfig,
+} from './project-config.js'
 import {
   addProject,
   generateProjectId,
@@ -14,9 +19,11 @@ import {
   prepareProjectDir,
   removeProject,
   resolveGlobalConfigPath,
+  type GlobalAgentKind,
   type GlobalProjectEntry,
   type WorktreeMeta,
 } from './global-config.js'
+import type { AgentKind } from './agent-sdk/types.js'
 
 export interface ProjectInstance {
   id: string
@@ -167,6 +174,7 @@ export class ProjectRegistry {
 
   private async materialize(input: ProjectInstanceInput): Promise<ProjectInstance> {
     const cfg = await loadProjectConfig(input.path)
+    const globalCfg = await loadGlobalConfig(this.globalConfigPath)
     const specsDir = resolveSpecsDir(input.path, cfg)
     const specsDirRelative = posixRelative(input.path, specsDir)
     await ensureSpecsDirExists(specsDir)
@@ -178,7 +186,11 @@ export class ProjectRegistry {
     })
     const attachments = new AttachmentStore({ cwd: input.path })
     const sessionStore = new SessionStore(input.path)
-    const sessions = new SessionManager(input.path, resolveAgentKind(input.path), sessionStore)
+    const notifySessionEnded = createSessionEndNotifier({ globalConfigPath: this.globalConfigPath })
+    const defaultKind = resolveProjectAgentKind(cfg.agent, globalCfg.agent.defaultKind)
+    const sessions = new SessionManager(input.path, defaultKind, sessionStore, {
+      onSessionEnd: notifySessionEnded,
+    })
 
     let closed = false
     const instance: ProjectInstance = {
@@ -209,6 +221,15 @@ export class ProjectRegistry {
     await startPromise
     return instance
   }
+}
+
+export function resolveProjectAgentKind(
+  projectAgent: AgentConfig,
+  globalDefault: GlobalAgentKind,
+): AgentKind {
+  if (projectAgent.kind === 'inherit') return globalDefault
+  if (projectAgent.kind === 'codex' || projectAgent.kind === 'opencode') return projectAgent.kind
+  return 'claude'
 }
 
 function basename(p: string): string {

@@ -113,6 +113,7 @@ export type MergeWorktreeResponse =
     }
 
 export type AgentConfig =
+  | { kind: 'inherit' }
   | { kind: 'claude' }
   | { kind: 'opencode' }
   | { kind: 'codex' }
@@ -122,6 +123,18 @@ export interface ProjectConfig {
   version: 1
   agent: AgentConfig
   specsDir: string
+}
+
+export interface GlobalConfig {
+  agent: {
+    defaultKind: 'claude' | 'opencode' | 'codex'
+  }
+  notifications: {
+    sessionEnd: {
+      banner: boolean
+      sound: boolean
+    }
+  }
 }
 
 export interface FileCompletionResult {
@@ -324,6 +337,13 @@ export const api = {
         body: JSON.stringify(body),
       },
     ),
+  getGlobalConfig: () => request<GlobalConfig>('/api/global-config'),
+  updateGlobalConfig: (body: GlobalConfig) =>
+    request<{ ok: true; config: GlobalConfig }>('/api/global-config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
   createDraft: (pid: string) =>
     request<{ draftId: string }>(`${projectBase(pid)}/spec-drafts`, {
       method: 'POST',

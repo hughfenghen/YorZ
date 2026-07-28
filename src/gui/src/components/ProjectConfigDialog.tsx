@@ -14,19 +14,12 @@ interface Props {
   onSaved?: (message: string) => void
 }
 
-type AgentKind = 'claude' | 'opencode' | 'codex' | 'custom'
-
-const KIND_LABEL: Record<AgentKind, string> = {
-  claude: 'ClaudeCode',
-  opencode: 'OpenCode',
-  codex: 'Codex',
-  custom: t('projectConfig.custom'),
-}
+type AgentKind = 'inherit' | 'claude' | 'opencode' | 'codex' | 'custom'
 
 const DEFAULT_SPECS_DIR = '.yorz/specs'
 
 export const ProjectConfigDialog: Component<Props> = (props) => {
-  const [kind, setKind] = createSignal<AgentKind>('claude')
+  const [kind, setKind] = createSignal<AgentKind>('inherit')
   const [customCmd, setCustomCmd] = createSignal('')
   const [customArgs, setCustomArgs] = createSignal('')
   const [specsDir, setSpecsDir] = createSignal(DEFAULT_SPECS_DIR)
@@ -74,12 +67,21 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
 
   function buildAgent(): AgentConfig | { error: string } {
     const k = kind()
+    if (k === 'inherit') return { kind: 'inherit' }
     if (k === 'claude') return { kind: 'claude' }
     if (k === 'opencode') return { kind: 'opencode' }
     if (k === 'codex') return { kind: 'codex' }
     const cmd = customCmd().trim()
     if (!cmd) return { error: t('projectConfig.cmdRequired') }
     return { kind: 'custom', cmd, args: parseArgs(customArgs()) }
+  }
+
+  function agentLabel(k: AgentKind): string {
+    if (k === 'inherit') return t('projectConfig.inheritGlobal')
+    if (k === 'custom') return t('projectConfig.custom')
+    if (k === 'codex') return t('projectConfig.agentCodex')
+    if (k === 'opencode') return t('projectConfig.agentOpencode')
+    return t('projectConfig.agentClaude')
   }
 
   async function submit(e: Event) {
@@ -127,7 +129,7 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
           <form onSubmit={submit} class="flex flex-col gap-4">
             <fieldset class="m-0 flex flex-wrap gap-2 border-0 p-0">
               <legend class="mb-1.5 font-medium">{t('projectConfig.agent')}</legend>
-              {(['claude', 'opencode', 'codex', 'custom'] as const).map((k) => (
+              {(['inherit', 'claude', 'opencode', 'codex', 'custom'] as const).map((k) => (
                 <label class="flex cursor-pointer items-center gap-1.5 ">
                   <input
                     type="radio"
@@ -137,7 +139,7 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
                     onChange={() => setKind(k)}
                     disabled={busy()}
                   />
-                  <span>{KIND_LABEL[k]}</span>
+                  <span>{agentLabel(k)}</span>
                 </label>
               ))}
             </fieldset>

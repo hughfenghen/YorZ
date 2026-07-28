@@ -5,6 +5,7 @@ import { createSpecReviewRoutes } from './routes/spec-review.js'
 import { createEventsRoutes } from './routes/events.js'
 import { createProjectRoutes } from './routes/project.js'
 import { createProjectConfigRoutes } from './routes/project-config.js'
+import { createGlobalConfigRoutes } from './routes/global-config.js'
 import { createSpecDraftsRoutes } from './routes/spec-drafts.js'
 import { createWorktreeRoutes } from './routes/worktree.js'
 import { createProjectFilesRoutes } from './routes/project-files.js'
@@ -67,6 +68,7 @@ export function createApp(opts: CreateAppOptions): Hono {
   })
 
   api.route('/', createProjectRoutes(opts.registry, worktreeManager))
+  api.route('/', createGlobalConfigRoutes(opts.registry.configPath()))
   api.route('/', createProjectConfigRoutes(opts.registry))
   api.route('/', createSpecsRoutes(resolveProject))
   api.route('/', createSessionsRoutes(resolveProject))

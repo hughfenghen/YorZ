@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, afterEach } from 'vitest'
 import { ProjectRegistry } from '../project-registry.js'
+import { saveGlobalConfig } from '../global-config.js'
 
 const registries: ProjectRegistry[] = []
 
@@ -11,6 +12,14 @@ async function newRegistry(): Promise<ProjectRegistry> {
   const reg = new ProjectRegistry({ globalConfigPath: join(cfgDir, 'projects.json') })
   registries.push(reg)
   return reg
+}
+
+async function newRegistryWithConfigPath(): Promise<{ reg: ProjectRegistry; configPath: string }> {
+  const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-registry-cfg-'))
+  const configPath = join(cfgDir, 'projects.json')
+  const reg = new ProjectRegistry({ globalConfigPath: configPath })
+  registries.push(reg)
+  return { reg, configPath }
 }
 
 async function newProjectDir(prefix = 'yorz-registry-proj-'): Promise<string> {
@@ -59,5 +68,23 @@ describe('ProjectRegistry', () => {
     const reg = await newRegistry()
     const got = await reg.getOrCreate('no-such-id')
     expect(got).toBeNull()
+  })
+
+  it('project agent inherits the global default in service runtime', async () => {
+    const { reg, configPath } = await newRegistryWithConfigPath()
+    await saveGlobalConfig(
+      {
+        version: 1,
+        projects: [],
+        agent: { defaultKind: 'codex' },
+        notifications: { sessionEnd: { banner: false, sound: false } },
+      },
+      configPath,
+    )
+    const projDir = await newProjectDir()
+    const { entry } = await reg.add(projDir)
+    const instance = await reg.getOrCreate(entry.id)
+    const session = await instance!.sessions.ensureSessionForSpec('spec-a')
+    expect(session.kind).toBe('codex')
   })
 })

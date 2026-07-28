@@ -1,22 +1,32 @@
 import { A, useLocation } from '@solidjs/router'
-import { Show, createEffect, createMemo, type JSX, type ParentComponent } from 'solid-js'
-import { Languages, Check, Plus } from 'lucide-solid'
+import {
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  type JSX,
+  type ParentComponent,
+} from 'solid-js'
+import { Check, Languages, Menu, Plus, Settings } from 'lucide-solid'
 import { ProjectsSidebar } from './components/ProjectsSidebar.jsx'
 import { ChatPanel } from './components/ChatPanel.jsx'
+import { GlobalConfigDialog } from './components/GlobalConfigDialog.jsx'
 import { Button } from './components/ui/button.jsx'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
 } from './components/ui/dropdown-menu.jsx'
-import { Toaster } from './components/ui/sonner.jsx'
+import { toast, Toaster } from './components/ui/sonner.jsx'
 import { activeProjectId, projectHref, setActiveProjectId } from './lib/project.js'
 import { t, useTranslation } from './i18n/index.js'
 
 export const AppShell: ParentComponent = (props): JSX.Element => {
   const location = useLocation()
   const { lng, changeLanguage } = useTranslation()
+  const [globalConfigOpen, setGlobalConfigOpen] = createSignal(false)
 
   // Already on the New Spec page? A same-route navigation would be a no-op, so
   // open a fresh tab instead — that's the only way "new spec" does something here.
@@ -58,11 +68,15 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
               as={Button}
               variant="ghost"
               size="icon"
-              title={t('shell.languageSwitch')}
+              title={t('shell.settingsMenu')}
             >
-              <Languages class="h-4 w-4" />
+              <Menu class="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent>
+              <DropdownMenuItem class="font-medium text-muted-foreground" disabled>
+                <Languages class="mr-2 h-4 w-4" />
+                {t('shell.languageSwitch')}
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => selectLanguage('zh-CN')}>
                 <Check class={`mr-2 h-4 w-4 ${lng() === 'zh-CN' ? 'opacity-100' : 'opacity-0'}`} />
                 {t('shell.langZh')}
@@ -70,6 +84,11 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
               <DropdownMenuItem onSelect={() => selectLanguage('en')}>
                 <Check class={`mr-2 h-4 w-4 ${lng() === 'en' ? 'opacity-100' : 'opacity-0'}`} />
                 {t('shell.langEn')}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setGlobalConfigOpen(true)}>
+                <Settings class="mr-2 h-4 w-4" />
+                {t('shell.globalConfig')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -81,6 +100,11 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
         <main class="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">{props.children}</main>
       </div>
       <Toaster position="top-center" />
+      <GlobalConfigDialog
+        open={globalConfigOpen()}
+        onClose={() => setGlobalConfigOpen(false)}
+        onSaved={(message) => toast.success(message)}
+      />
     </div>
   )
 }

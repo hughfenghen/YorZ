@@ -85,6 +85,7 @@ function parseAgent(value: unknown): { value: AgentConfig } | { error: string } 
   }
   const obj = value as Record<string, unknown>
   const kind = obj.kind
+  if (kind === 'inherit') return { value: { kind: 'inherit' } }
   if (kind === 'claude') return { value: { kind: 'claude' } }
   if (kind === 'opencode') return { value: { kind: 'opencode' } }
   if (kind === 'codex') return { value: { kind: 'codex' } }
@@ -108,7 +109,7 @@ function parseAgent(value: unknown): { value: AgentConfig } | { error: string } 
     }
     return { value: { kind: 'custom', cmd: cmd.trim(), args } }
   }
-  return { error: 'agent.kind must be claude | opencode | codex | custom' }
+  return { error: 'agent.kind must be inherit | claude | opencode | codex | custom' }
 }
 
 function parseSpecsDir(value: unknown): { value: string } | { error: string } {

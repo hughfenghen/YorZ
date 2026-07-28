@@ -20,9 +20,11 @@ export const en = {
   },
   shell: {
     newSpec: 'New Spec',
+    settingsMenu: 'Settings',
     languageSwitch: 'Switch Language',
     langZh: '中文',
     langEn: 'English',
+    globalConfig: 'Global Settings',
   },
   welcome: {
     title: 'Welcome to YorZ',
@@ -262,6 +264,10 @@ export const en = {
   },
   projectConfig: {
     title: 'Project Config',
+    inheritGlobal: 'Use global default',
+    agentClaude: 'ClaudeCode',
+    agentOpencode: 'OpenCode',
+    agentCodex: 'Codex',
     custom: 'Custom',
     agent: 'Agent',
     cmd: 'Command (cmd)',
@@ -273,6 +279,15 @@ export const en = {
     invalidPath: 'Spec directory cannot contain ".."',
     saved: 'Configuration saved',
     oldSpecsHint: '. Old specs remain in original directory, please migrate manually',
+    save: 'Save',
+  },
+  globalConfig: {
+    title: 'Global Settings',
+    agentDefault: 'Default Agent',
+    sessionEnd: 'Session end alerts',
+    banner: 'Banner alert',
+    sound: 'Sound alert',
+    saved: 'Global settings saved',
     save: 'Save',
   },
   errors: {
