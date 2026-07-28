@@ -6,6 +6,9 @@ import { TextDecoder } from 'node:util'
 import { promisify } from 'node:util'
 import { afterAll, afterEach, describe, expect, it } from 'vitest'
 import { start, type ServeHandle } from '../index.js'
+import { createApp } from '../server.js'
+import { ProjectRegistry } from '../project-registry.js'
+import { configureLogger, getLogger } from '../logger.js'
 
 const execFileP = promisify(execFile)
 const previousWatchUsePolling = process.env.YORZ_WATCH_USE_POLLING
@@ -309,3 +312,78 @@ async function readUntil(
   }
   throw new Error(`SSE predicate not satisfied; received: ${accumulated}`)
 }
+
+
+describe('service logging', () => {
+  /** Point the process-wide logger at a throwaway dir for the duration of `fn`. */
+  async function withLogDir(fn: (dir: string) => Promise<void>): Promise<void> {
+    const previousDir = getLogger().dir
+    const dir = await mkdtemp(join(tmpdir(), 'yorz-service-logs-'))
+    configureLogger({ dir, level: 'debug', mirrorConsole: false })
+    try {
+      await fn(dir)
+    } finally {
+      configureLogger({ dir: previousDir, level: 'info', mirrorConsole: false })
+      await rm(dir, { recursive: true, force: true })
+    }
+  }
+
+  it('writes a startup line to serve.log', async () => {
+    await withLogDir(async (dir) => {
+      await startInTmp()
+      await getLogger().flush()
+      const body = await readFile(join(dir, 'serve.log'), 'utf8')
+      expect(body).toContain('[info] [serve] service ready')
+      expect(body).toContain(`"port":${handle!.port}`)
+      expect(body).toContain(`"pid":${process.pid}`)
+    })
+  })
+
+  it('logs route errors at [error] [http] with method and path', async () => {
+    await withLogDir(async (dir) => {
+      const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-service-cfg-'))
+      const registry = new ProjectRegistry({ globalConfigPath: join(cfgDir, 'projects.json') })
+      const app = createApp({ registry })
+      // POST is not claimed by the API sub-app nor the static SPA fallback, so
+      // this reaches our handler and exercises the real `app.onError`.
+      app.post('/boom', () => {
+        throw new Error('exploded on purpose')
+      })
+
+      const res = await app.request('/boom', { method: 'POST' })
+      expect(res.status).toBe(500)
+      await getLogger().flush()
+
+      const body = await readFile(join(dir, 'serve.log'), 'utf8')
+      expect(body).toContain('[error] [http] route error')
+      expect(body).toContain('"path":"/boom"')
+      expect(body).toContain('exploded on purpose')
+      await registry.closeAll()
+    })
+  })
+
+  it('records non-2xx responses at warn and successful ones at debug', async () => {
+    await withLogDir(async (dir) => {
+      const { apiRoot } = await startInTmp()
+      await fetch(`${apiRoot}/projects`)
+      await fetch(`${apiRoot}/definitely-not-a-route`)
+      await getLogger().flush()
+
+      const body = await readFile(join(dir, 'serve.log'), 'utf8')
+      expect(body).toContain('[debug] [http] request {"method":"GET","path":"/api/projects"')
+      expect(body).toContain('[warn] [http] request failed')
+      expect(body).toContain('"path":"/api/definitely-not-a-route"')
+    })
+  })
+
+  it('never writes prompt bodies for agent dispatch logs', async () => {
+    await withLogDir(async (dir) => {
+      const logger = getLogger().child('agent')
+      logger.info('dispatch start', { sessionId: 's1', runId: 'r1', promptLength: 4096 })
+      await getLogger().flush()
+      const body = await readFile(join(dir, 'serve.log'), 'utf8')
+      expect(body).toContain('"promptLength":4096')
+      expect(body).not.toContain('prompt"')
+    })
+  })
+})

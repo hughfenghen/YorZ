@@ -1,5 +1,4 @@
 import { existsSync } from 'node:fs'
-import { appendFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { networkInterfaces } from 'node:os'
 import { serve } from '@hono/node-server'
@@ -7,7 +6,8 @@ import type { AddressInfo } from 'node:net'
 import { createApp } from './server.js'
 import { ProjectRegistry } from './project-registry.js'
 import { HEARTBEAT_INTERVAL_MS } from './routes/events.js'
-import { resolveGlobalConfigDir } from './global-config.js'
+import { getLogger } from './logger.js'
+import pkg from '../../package.json' with { type: 'json' }
 
 export interface ServeOptions {
   port?: number
@@ -30,6 +30,8 @@ export interface ServeHandle {
 
 const DEFAULT_PORT = 7423
 const MAX_PORT_TRIES = 10
+
+const log = () => getLogger().child('serve')
 
 export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
   const registry = new ProjectRegistry({ globalConfigPath: opts.globalConfigPath })
@@ -56,6 +58,16 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
     console.log(`  - ${p.name} -> ${p.path}`)
   }
   console.log(`agent heartbeat enabled (interval=${HEARTBEAT_INTERVAL_MS / 1000}s)`)
+
+  log().info('service ready', {
+    pid: process.pid,
+    port: port.port,
+    url,
+    projects: projects.length,
+    node: process.version,
+    cli: pkg.version,
+    logFile: getLogger().filePath,
+  })
 
   installGlobalErrorHandlers()
 
@@ -105,10 +117,18 @@ async function listen(
       )
     } catch (err) {
       lastErr = err as Error
-      if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE') break
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'EADDRINUSE') {
+        log().warn('port in use, retrying', { port: tryPort, attempt: i + 1, max: MAX_PORT_TRIES })
+      } else {
+        log().warn('listen failed', { port: tryPort, code, err: lastErr })
+        break
+      }
     }
   }
-  throw lastErr ?? new Error(`failed to bind port near ${preferredPort}`)
+  const fatal = lastErr ?? new Error(`failed to bind port near ${preferredPort}`)
+  log().error('failed to bind any port', { preferredPort, tries: MAX_PORT_TRIES, err: fatal })
+  throw fatal
 }
 
 function listLanUrls(port: number): string[] {
@@ -135,25 +155,14 @@ async function tryOpenBrowser(url: string): Promise<void> {
   }
 }
 
-let errorLogReady = false
-
-async function ensureErrorLogDir(): Promise<string> {
-  const dir = join(resolveGlobalConfigDir(), 'logs')
-  if (!errorLogReady) {
-    await mkdir(dir, { recursive: true })
-    errorLogReady = true
-  }
-  return join(dir, 'serve-errors.log')
-}
-
+/**
+ * Crash lines now land in the shared, size-capped `serve.log` instead of the
+ * unbounded `serve-errors.log`. Any pre-existing `serve-errors.log` is left on
+ * disk untouched so we never destroy a user's evidence.
+ */
 function logCrash(kind: string, payload: unknown): void {
-  const ts = new Date().toISOString()
-  const body = payload instanceof Error ? payload.stack ?? payload.message : String(payload)
-  const line = `[${ts}] [${kind}] ${body}\n`
-  console.error(`[yorz] ${kind}:`, payload)
-  void ensureErrorLogDir()
-    .then((fp) => appendFile(fp, line, 'utf8'))
-    .catch(() => {})
+  const body = payload instanceof Error ? (payload.stack ?? payload.message) : String(payload)
+  log().error(kind, { detail: body })
 }
 
 export function installGlobalErrorHandlers(): void {

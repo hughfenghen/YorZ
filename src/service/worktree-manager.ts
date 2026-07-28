@@ -12,6 +12,9 @@ import {
   type WorktreeMeta,
 } from './global-config.js'
 import { configPath as projectConfigPath } from './project-config.js'
+import { getLogger } from './logger.js'
+
+const worktreeLog = () => getLogger().child('worktree')
 import type { ProjectRegistry } from './project-registry.js'
 
 export interface CreateWorktreeInput {
@@ -117,6 +120,13 @@ export class WorktreeManager {
     }
     await setProjectWorktree(entry.id, meta, this.globalConfigPath)
     const updated = (await this.registry.findEntry(entry.id)) ?? { ...entry, worktree: meta }
+    worktreeLog().info('worktree created', {
+      mainProjectId: main.id,
+      worktreeProjectId: entry.id,
+      branch,
+      path: wtPath,
+      baseRef,
+    })
     return { entry: updated, branch, path: wtPath, baseRef }
   }
 
@@ -164,6 +174,12 @@ export class WorktreeManager {
         globalConfigPath: this.globalConfigPath ?? resolveGlobalConfigPath(),
         now: input.now ?? (() => new Date()),
       })
+      worktreeLog().warn('merge back hit conflicts', {
+        worktreeProjectId: entry.id,
+        branch,
+        mainPath,
+        conflictSpecId: 'conflictSpecId' in conflict ? conflict.conflictSpecId : undefined,
+      })
       return conflict
     }
 
@@ -184,6 +200,12 @@ export class WorktreeManager {
     }
     this.onProjectsChanged?.()
 
+    worktreeLog().info('worktree merged back', {
+      worktreeProjectId: entry.id,
+      mainProjectId: mainEntry?.id ?? entry.worktree.mainProjectId,
+      branch,
+      mergeCommit,
+    })
     return {
       status: 'merged',
       mainProjectId: mainEntry?.id ?? entry.worktree.mainProjectId,
@@ -215,6 +237,7 @@ export class WorktreeManager {
 
     await this.registry.remove(worktreeProjectId)
     this.onProjectsChanged?.()
+    worktreeLog().info('worktree removed', { worktreeProjectId, branch, path: wtPath })
   }
 
   async listWorktreesOf(mainProjectId: string): Promise<GlobalProjectEntry[]> {
@@ -297,9 +320,10 @@ export class WorktreeManager {
     if (this.triggerConflictAgent) {
       await this.triggerConflictAgent(args.mainProjectId, specId)
     } else {
-      console.warn(
-        `[worktree] triggerConflictAgent not configured; conflict spec ${specId} created at ${specPath} but no Agent was launched`,
-      )
+      worktreeLog().warn('triggerConflictAgent not configured; no Agent launched', {
+        specId,
+        specPath,
+      })
     }
 
     return {

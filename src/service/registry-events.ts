@@ -1,7 +1,10 @@
 import { mkdirSync, watch, type FSWatcher } from 'node:fs'
 import { basename, dirname } from 'node:path'
+import { getLogger } from './logger.js'
 
 const DEBOUNCE_MS = 200
+
+const registryLog = () => getLogger().child('registry')
 
 /**
  * Tiny pub/sub for "the global project registry just changed". Subscribers (SSE
@@ -50,7 +53,7 @@ export class RegistryEventBus {
         this.scheduleEmit()
       })
     } catch (err) {
-      console.warn(`[registry-events] watch failed: ${(err as Error).message}`)
+      registryLog().warn('projects.json watch failed', { dir, message: (err as Error).message })
     }
   }
 

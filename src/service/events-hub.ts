@@ -2,6 +2,9 @@ import type { SSEStreamingApi } from 'hono/streaming'
 import { listChanges } from './git.js'
 import type { ProjectInstance, ProjectRegistry } from './project-registry.js'
 import type { RegistryEventBus } from './registry-events.js'
+import { getLogger } from './logger.js'
+
+const sseLog = () => getLogger().child('sse')
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
@@ -228,7 +231,7 @@ export class EventsHub {
         s.queue.push(frame)
       }
     } catch (err) {
-      console.error('[yorz] SSE emit error:', err)
+      sseLog().warn('emit failed', { topic, err })
     }
   }
 

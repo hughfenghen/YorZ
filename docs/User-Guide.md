@@ -5,24 +5,25 @@ This guide is for users who are connecting a project to YorZ for the first time.
 - [1. Installation](#1-installation)
 - [2. Start the Service](#2-start-the-service)
 - [3. Stop the Service](#3-stop-the-service)
-- [4. Add a Project](#4-add-a-project)
-- [5. Configuration Directories](#5-configuration-directories)
-  - [5.1 Project-level `.yorz/`](#51-project-level-yorz)
-  - [5.2 Global Configuration Directory](#52-global-configuration-directory)
-- [6. GUI Features](#6-gui-features)
-  - [6.1 Configure the Default Agent Method](#61-configure-the-default-agent-method)
-  - [6.2 Create a New spec](#62-create-a-new-spec)
-  - [6.3 Parallel Work in a New Project](#63-parallel-work-in-a-new-project)
-  - [6.4 Append Tasks](#64-append-tasks)
-  - [6.5 Debug Mode](#65-debug-mode)
-  - [6.6 Content Annotations](#66-content-annotations)
-  - [6.7 plan Decisions and Pending Confirmations](#67-plan-decisions-and-pending-confirmations)
-  - [6.8 Review](#68-review)
-- [7. Common Workflows](#7-common-workflows)
-  - [7.1 Connect a Project for the First Time](#71-connect-a-project-for-the-first-time)
-  - [7.2 Handle a New Requirement](#72-handle-a-new-requirement)
-  - [7.3 Work on Multiple Requirements in Parallel](#73-work-on-multiple-requirements-in-parallel)
-  - [7.4 Append a Bug and Enter Debug Mode](#74-append-a-bug-and-enter-debug-mode)
+- [4. View Service Logs](#4-view-service-logs)
+- [5. Add a Project](#5-add-a-project)
+- [6. Configuration Directories](#6-configuration-directories)
+  - [6.1 Project-level `.yorz/`](#61-project-level-yorz)
+  - [6.2 Global Configuration Directory](#62-global-configuration-directory)
+- [7. GUI Features](#7-gui-features)
+  - [7.1 Configure the Default Agent Method](#71-configure-the-default-agent-method)
+  - [7.2 Create a New spec](#72-create-a-new-spec)
+  - [7.3 Parallel Work in a New Project](#73-parallel-work-in-a-new-project)
+  - [7.4 Append Tasks](#74-append-tasks)
+  - [7.5 Debug Mode](#75-debug-mode)
+  - [7.6 Content Annotations](#76-content-annotations)
+  - [7.7 plan Decisions and Pending Confirmations](#77-plan-decisions-and-pending-confirmations)
+  - [7.8 Review](#78-review)
+- [8. Common Workflows](#8-common-workflows)
+  - [8.1 Connect a Project for the First Time](#81-connect-a-project-for-the-first-time)
+  - [8.2 Handle a New Requirement](#82-handle-a-new-requirement)
+  - [8.3 Work on Multiple Requirements in Parallel](#83-work-on-multiple-requirements-in-parallel)
+  - [8.4 Append a Bug and Enter Debug Mode](#84-append-a-bug-and-enter-debug-mode)
 
 ## 1. Installation
 
@@ -82,7 +83,50 @@ yorz serve stop
 
 If no background service is running, the command reports that the service is not currently running. If stale runtime records exist, YorZ cleans them up.
 
-## 4. Add a Project
+## 4. View Service Logs
+
+`yorz serve` runs in the background for long stretches, so the service writes its logs to `logs/` inside the global configuration directory:
+
+```text
+~/.config/yorz/logs/
+```
+
+The log directory follows the same resolution rules as the global configuration directory: with `XDG_CONFIG_HOME` set it becomes `$XDG_CONFIG_HOME/yorz/logs/`, and `YORZ_HOME` takes precedence over both, giving `$YORZ_HOME/logs/`.
+
+The directory holds two files with distinct roles:
+
+| File              | Contents                                                                                                                          | Size control                                   |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `serve.log`       | **Main log**: service startup and shutdown, HTTP route errors and slow requests, Agent dispatch and failures, file watching, worktree operations, crash stack traces | Capped at 5MB per file, rotated with 1 archive |
+| `serve-stdio.log` | Fallback capture of the background child process stdout/stderr (third-party libraries printing directly, fatal Node errors)        | Truncated on every start, so it never grows    |
+
+Once `serve.log` reaches 5MB it is renamed to `serve.log.1` (overwriting the previous archive) and a fresh empty `serve.log` takes over. The log directory therefore occupies at most about 10MB and never grows without bound.
+
+Every line uses a fixed format that is easy to filter with `grep`:
+
+```text
+[2026-07-28T12:00:00.000Z] [error] [http] route error {"method":"GET","path":"/api/projects","status":500}
+```
+
+The fields are, in order: ISO timestamp, log level (`debug` / `info` / `warn` / `error`), source module, message, and structured metadata.
+
+Follow the log in real time:
+
+```bash
+tail -f ~/.config/yorz/logs/serve.log
+```
+
+To increase verbosity while troubleshooting, set the level and restart the service:
+
+```bash
+YORZ_LOG_LEVEL=debug yorz serve
+```
+
+`YORZ_LOG_LEVEL` accepts `debug` / `info` / `warn` / `error` and defaults to `info`. At `debug`, every HTTP request and every spec file change event is recorded as well.
+
+> When reporting an issue, attach `serve.log` first. If the service exits immediately on startup, or no `serve.log` is produced at all, attach `serve-stdio.log` as well. The logs only record metadata such as sessionId, prompt length, and duration — prompt bodies and Agent output are never written to disk.
+
+## 5. Add a Project
 
 Before using the GUI for the first time, register your project directory with YorZ:
 
@@ -99,11 +143,11 @@ yorz add /path/to/your/project
 
 After adding the project, refresh the GUI. The project will appear in the project list on the left.
 
-## 5. Configuration Directories
+## 6. Configuration Directories
 
 YorZ mainly uses the project-level directory to store spec documents, and the global directory to store the project list and service runtime state.
 
-### 5.1 Project-level `.yorz/`
+### 6.1 Project-level `.yorz/`
 
 The `.yorz/` directory at the project root is the YorZ working directory for the current project.
 
@@ -117,7 +161,7 @@ Common contents:
 
 If you change the spec document directory in the GUI Project Configuration, new specs are written to the new directory. Existing specs remain in the old directory and need to be migrated manually when prompted.
 
-### 5.2 Global Configuration Directory
+### 6.2 Global Configuration Directory
 
 YorZ's global configuration directory defaults to:
 
@@ -137,12 +181,13 @@ Common global files:
 
 - `projects.json`: the list of added projects.
 - `runtime.json`: runtime records for the background Service.
+- `logs/`: the service log directory, containing `serve.log` (the rotating main log) and `serve-stdio.log`. See [4. View Service Logs](#4-view-service-logs).
 
 You usually do not need to edit the global configuration directory manually. Prefer managing it through `yorz add`, the GUI project list, and `yorz serve stop`.
 
-## 6. GUI Features
+## 7. GUI Features
 
-### 6.1 Configure the Default Agent Method
+### 7.1 Configure the Default Agent Method
 
 In the project list on the left side of the GUI, click the configuration entry next to a project to open Project Configuration.
 
@@ -154,7 +199,7 @@ You can configure:
 
 After saving, new specs, spec reruns, appended tasks, and Review for this project will use the Agent configured here.
 
-### 6.2 Create a New spec
+### 7.2 Create a New spec
 
 On the project home page, click "New spec" to open the creation page.
 
@@ -166,7 +211,7 @@ When creating a spec, fill in:
 
 After clicking "Send", the Agent creates the spec document according to the `yorz-spec` skill and automatically enters the plan stage. After the document is written, the GUI navigates to the spec detail page.
 
-### 6.3 Parallel Work in a New Project
+### 7.3 Parallel Work in a New Project
 
 When creating a new spec, you can enable "New project for parallel work".
 
@@ -180,7 +225,7 @@ It is suitable when:
 
 After the parallel project is complete, use "Merge into main project" on the list page to merge the worktree changes back.
 
-### 6.4 Append Tasks
+### 7.4 Append Tasks
 
 On the spec detail page, click "Append task" to add a new requirement, refactor, or bug fix to an existing spec.
 
@@ -194,7 +239,7 @@ After submission, YorZ writes the appended content into the spec and automatical
 
 If you select text in the body before appending a task, the appended record includes the referenced section and selected text so the Agent can understand the context.
 
-### 6.5 Debug Mode
+### 7.5 Debug Mode
 
 When appending a `fix` task, you can enable "debug mode".
 
@@ -208,7 +253,7 @@ It is suitable when:
 
 When the current spec has a `debug.md`, the detail page shows a "Debug" entry where you can view the records.
 
-### 6.6 Content Annotations
+### 7.6 Content Annotations
 
 On the spec detail page, select a piece of text in the document. An action menu appears.
 
@@ -219,7 +264,7 @@ Available actions:
 
 Annotations are written back to the spec document and trigger the Agent to process it again. Use them to correct the Agent's understanding, add constraints, or point out inaccurate task descriptions.
 
-### 6.7 plan Decisions and Pending Confirmations
+### 7.7 plan Decisions and Pending Confirmations
 
 During the plan stage, the Agent fills in "Current Analysis", "Technical Implementation Plan", and "Pending Confirmations".
 
@@ -233,7 +278,7 @@ Common pending confirmation types:
 
 You can fill in and send all answers from the pending confirmation panel at once. After sending, the Agent reads the responses, updates the plan, and continues to the tasks or execute stage.
 
-### 6.8 Review
+### 7.8 Review
 
 On the spec detail page, click "Review" to open the Review page.
 
@@ -250,9 +295,9 @@ Main features:
 
 After a spec is complete and verified, it is recommended to open the Review page, generate a review report first, then decide whether to commit, stage, or discard changes.
 
-## 7. Common Workflows
+## 8. Common Workflows
 
-### 7.1 Connect a Project for the First Time
+### 8.1 Connect a Project for the First Time
 
 ```bash
 npm install -g @yorz/cli
@@ -262,7 +307,7 @@ yorz add /path/to/your/project
 
 Then open `http://localhost:7423` and select the project on the left.
 
-### 7.2 Handle a New Requirement
+### 8.2 Handle a New Requirement
 
 1. Click "New spec" on the project home page.
 2. Choose `feat` and fill in the requirement content.
@@ -271,14 +316,14 @@ Then open `http://localhost:7423` and select the project on the left.
 5. The Agent continues task breakdown and execution.
 6. After completion, open the "Review" page to generate a review report and process the changes.
 
-### 7.3 Work on Multiple Requirements in Parallel
+### 8.3 Work on Multiple Requirements in Parallel
 
 1. Enable "New project for parallel work" when creating a spec.
 2. Let the Agent work on the task in the new worktree project.
 3. The main project can continue handling other work.
 4. After completion, use "Merge into main project" on the list page.
 
-### 7.4 Append a Bug and Enter Debug Mode
+### 8.4 Append a Bug and Enter Debug Mode
 
 1. Click "Append task" on the spec detail page.
 2. Choose `fix Bug fix`.

@@ -9,6 +9,14 @@ import type {
   SessionInfo,
 } from './agent-sdk/types.js'
 import { SessionStore } from './session-store.js'
+import { getLogger } from './logger.js'
+
+/**
+ * Agent-scoped logger. Never logs prompt or agent output bodies — only
+ * metadata (ids, lengths, durations), because users paste these logs verbatim
+ * into issue reports.
+ */
+const agentLog = () => getLogger().child('agent')
 
 export interface SessionRunHandle {
   runId: string
@@ -222,8 +230,10 @@ export class SessionManager {
     // `sid` may be rewritten mid-run by reconcile() (codex assigns the real
     // thread id on `session-started`); track the live id for status bookkeeping.
     let currentSid = sid
+    const startedAt = Date.now()
     await this.maybeUpdateTitleFromPrompt(currentSid, prompt).catch(() => {})
     this.setRunning(sid, true)
+    agentLog().info('dispatch start', { sessionId: sid, runId, promptLength: prompt.length })
     void (async () => {
       try {
         const ls = await this.ensureLive(sid)
@@ -236,11 +246,25 @@ export class SessionManager {
           emitter.emit('event', ev)
         }
       } catch (err) {
+        // This used to be swallowed into an SSE event and never persisted —
+        // the main blind spot when an Agent dispatch fails.
+        agentLog().error('dispatch failed', {
+          sessionId: currentSid,
+          runId,
+          durationMs: Date.now() - startedAt,
+          message: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        })
         emitter.emit('event', {
           type: 'error',
           message: err instanceof Error ? err.message : String(err),
         } satisfies AgentEvent)
       } finally {
+        agentLog().info('dispatch end', {
+          sessionId: currentSid,
+          runId,
+          durationMs: Date.now() - startedAt,
+        })
         await this.store.touch(currentSid).catch(() => {})
         this.setRunning(currentSid, false)
         emitter.emit('done')
@@ -268,6 +292,7 @@ export class SessionManager {
   }
 
   private async reconcile(oldId: string, newId: string): Promise<void> {
+    agentLog().debug('reconcile sessionId', { from: oldId, to: newId })
     const ls = this.live.get(oldId)
     if (ls) {
       this.live.delete(oldId)

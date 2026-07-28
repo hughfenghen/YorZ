@@ -2,6 +2,9 @@ import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { basename, join, relative, sep } from 'node:path'
 import chokidar, { type FSWatcher } from 'chokidar'
+import { getLogger } from './logger.js'
+
+const watcherLog = () => getLogger().child('watcher')
 
 export type WatcherEvent = 'updated' | 'removed'
 export type DetailListener = (evt: WatcherEvent, mtime: number) => void
@@ -50,13 +53,15 @@ export class SpecWatcher {
       depth: 2,
       ...(usePolling ? { usePolling: true, interval: 100 } : {}),
     })
-    this.watcher.on('add', (p) => this.handle(p, 'updated'))
-    this.watcher.on('change', (p) => this.handle(p, 'updated'))
-    this.watcher.on('unlink', (p) => this.handle(p, 'removed'))
+    this.watcher.on('add', (p) => this.handle(p, 'updated', 'add'))
+    this.watcher.on('change', (p) => this.handle(p, 'updated', 'change'))
+    this.watcher.on('unlink', (p) => this.handle(p, 'removed', 'unlink'))
+    this.watcher.on('error', (err) => watcherLog().warn('watch error', { root: this.root, err }))
     await new Promise<void>((resolve, reject) => {
       this.watcher!.once('ready', () => resolve())
       this.watcher!.once('error', (err) => reject(err))
     })
+    watcherLog().debug('watching specs dir', { root: this.root, usePolling })
   }
 
   async close(): Promise<void> {
@@ -90,10 +95,15 @@ export class SpecWatcher {
     return () => this.listListeners.delete(cb)
   }
 
-  private async handle(filePath: string, evt: WatcherEvent): Promise<void> {
+  private async handle(
+    filePath: string,
+    evt: WatcherEvent,
+    raw: 'add' | 'change' | 'unlink',
+  ): Promise<void> {
     if (basename(filePath) !== 'spec.md') return
     const id = this.idForPath(filePath)
     if (!id) return
+    watcherLog().debug('spec file event', { event: raw, specId: id, path: filePath })
 
     if (evt === 'removed') {
       this.scheduleUnlink(id, filePath)

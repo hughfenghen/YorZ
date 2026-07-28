@@ -12,14 +12,35 @@ import { createStaticRoutes } from './static.js'
 import type { ProjectRegistry } from './project-registry.js'
 import { RegistryEventBus } from './registry-events.js'
 import { WorktreeManager } from './worktree-manager.js'
+import { getLogger } from './logger.js'
 
 export interface CreateAppOptions {
   registry: ProjectRegistry
   guiRoot?: string
 }
 
+/** Requests slower than this are surfaced at `warn` even when they succeed. */
+const SLOW_REQUEST_MS = 1000
+
 export function createApp(opts: CreateAppOptions): Hono {
   const app = new Hono()
+  const httpLog = getLogger().child('http')
+  const worktreeLog = getLogger().child('worktree')
+
+  app.use('*', async (c, next) => {
+    const startedAt = Date.now()
+    await next()
+    const durationMs = Date.now() - startedAt
+    const meta = {
+      method: c.req.method,
+      path: c.req.path,
+      status: c.res.status,
+      durationMs,
+    }
+    if (c.res.status >= 400) httpLog.warn('request failed', meta)
+    else if (durationMs >= SLOW_REQUEST_MS) httpLog.warn('slow request', meta)
+    else httpLog.debug('request', meta)
+  })
 
   const api = new Hono()
   const resolveProject = (id: string) => opts.registry.getOrCreate(id)
@@ -31,9 +52,10 @@ export function createApp(opts: CreateAppOptions): Hono {
     triggerConflictAgent: async (mainProjectId, specId) => {
       const main = await opts.registry.getOrCreate(mainProjectId)
       if (!main) {
-        console.warn(
-          `[worktree] cannot launch conflict Agent: main project ${mainProjectId} not resolvable`,
-        )
+        worktreeLog.warn('cannot launch conflict Agent: main project not resolvable', {
+          mainProjectId,
+          specId,
+        })
         return
       }
       const { sessionId } = await main.sessions.ensureSessionForSpec(specId)
@@ -58,7 +80,13 @@ export function createApp(opts: CreateAppOptions): Hono {
   app.route('/', createStaticRoutes(opts.guiRoot))
 
   app.onError((err, c) => {
-    console.error('[yorz] route error:', err)
+    httpLog.error('route error', {
+      method: c.req.method,
+      path: c.req.path,
+      status: 500,
+      message: err.message,
+      stack: err.stack,
+    })
     return c.json({ error: 'Internal Server Error', message: err.message }, 500)
   })
 

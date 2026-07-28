@@ -1,11 +1,25 @@
-import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { spawn, type StdioOptions } from 'node:child_process'
+import { existsSync, mkdirSync, openSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { start, type ServeHandle } from '../service/index.js'
 import { resolveGlobalConfigDir } from '../service/global-config.js'
+import { configureLogger, getLogger, resolveLogDir, STDIO_LOG_FILE } from '../service/logger.js'
 import { ensureSkillsInstalled } from './install.js'
+
+const log = () => getLogger().child('serve')
+
+/**
+ * `yorz serve` (background launcher) and `yorz serve stop` are pure CLI
+ * operations: this process never hosts the service, and it already prints its
+ * own user-facing messages. Mirroring the internal serve log on top of those
+ * would clutter the terminal, so file-only here. Foreground mode does NOT go
+ * through these paths and keeps console mirroring.
+ */
+function silenceConsoleMirror(): void {
+  configureLogger({ mirrorConsole: false })
+}
 
 export interface ServeCommandOptions {
   port?: number
@@ -43,6 +57,36 @@ const DEFAULT_SERVE_PORT = 7423
 const RUNTIME_FILE = 'runtime.json'
 const START_LOCK_DIR = 'serve.lock'
 const START_WAIT_MS = 5000
+
+export interface BackgroundStdio {
+  stdio: StdioOptions
+  /** Path of the stdio fallback file, or `null` when we fell back to `'ignore'`. */
+  path: string | null
+}
+
+/**
+ * stdio target for the detached child. Anything the logger does not own — a
+ * dependency printing straight to stdout, a Node fatal error stack, an OOM
+ * notice — would otherwise vanish into `/dev/null`.
+ *
+ * Opened with `'w'` so every start truncates it: bounded by construction, no
+ * rotation needed. Deliberately NOT `serve.log` — rotation renames that file
+ * and the child's fd would keep writing into the archived inode.
+ *
+ * Any failure (unwritable dir, fd exhaustion) falls back to the previous
+ * `'ignore'` behaviour rather than blocking startup.
+ */
+export function backgroundStdio(): BackgroundStdio {
+  try {
+    const dir = resolveLogDir()
+    mkdirSync(dir, { recursive: true })
+    const filePath = join(dir, STDIO_LOG_FILE)
+    const fd = openSync(filePath, 'w')
+    return { stdio: ['ignore', fd, fd], path: filePath }
+  } catch {
+    return { stdio: 'ignore', path: null }
+  }
+}
 
 export async function runServe(
   opts: ServeCommandOptions,
@@ -87,6 +131,7 @@ export async function runServe(
 }
 
 function startBackgroundServe(opts: ServeCommandOptions): Promise<BackgroundServeResult> {
+  silenceConsoleMirror()
   return withStartLock(async () => {
     const live = await readLiveProcesses()
     if (live.length > 0) {
@@ -106,13 +151,25 @@ function startBackgroundServe(opts: ServeCommandOptions): Promise<BackgroundServ
     const entry = process.argv[1]
     if (!entry) throw new Error('Cannot resolve CLI entrypoint for background service')
 
+    const stdio = backgroundStdio()
     const child = spawn(process.execPath, [entry, 'serve', ...backgroundArgs(opts)], {
       detached: true,
-      stdio: 'ignore',
+      stdio: stdio.stdio,
     })
     child.unref()
+    log().info('background service spawned', {
+      pid: child.pid,
+      stdioFile: stdio.path,
+      logFile: getLogger().filePath,
+    })
 
     const runtime = await waitForRuntime(child.pid, START_WAIT_MS)
+    if (!runtime) {
+      log().warn('timed out waiting for runtime.json', {
+        pid: child.pid,
+        timeoutMs: START_WAIT_MS,
+      })
+    }
     const port = runtime?.port ?? opts.port ?? DEFAULT_SERVE_PORT
     const url = runtime?.url ?? `http://localhost:${port}/`
     console.log(`YorZ Service started in background (pid=${child.pid ?? 'unknown'}).`)
@@ -154,6 +211,7 @@ async function ensureSkillsInstalledWithLog(cwd: string): Promise<void> {
 }
 
 export async function runStopServe(): Promise<StopServeResult> {
+  silenceConsoleMirror()
   const all = await readAllProcesses()
   if (all.length === 0) {
     return {
@@ -169,6 +227,7 @@ export async function runStopServe(): Promise<StopServeResult> {
 
   if (alive.length === 0) {
     await removeRuntime()
+    log().warn('cleared stale runtime records', { pids: dead.map((p) => p.pid) })
     const deadPidList = dead.map((p) => `pid=${p.pid}`).join(', ')
     return {
       stopped: false,
@@ -185,13 +244,16 @@ export async function runStopServe(): Promise<StopServeResult> {
   for (const proc of alive) {
     try {
       process.kill(proc.pid, 'SIGTERM')
-    } catch {
+      log().info('sent SIGTERM', { pid: proc.pid, url: proc.url })
+    } catch (err) {
+      log().warn('SIGTERM failed', { pid: proc.pid, err })
       failedPids.push(proc.pid)
       continue
     }
 
     let stopped = await waitForProcessExit(proc.pid, 2000)
     if (!stopped) {
+      log().warn('still alive after SIGTERM, escalating to SIGKILL', { pid: proc.pid })
       try {
         process.kill(proc.pid, 'SIGKILL')
       } catch {
@@ -204,6 +266,7 @@ export async function runStopServe(): Promise<StopServeResult> {
       stoppedPids.push(proc.pid)
       stoppedUrls.push(proc.url)
     } else {
+      log().warn('process did not exit', { pid: proc.pid })
       failedPids.push(proc.pid)
     }
   }

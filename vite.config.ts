@@ -54,6 +54,7 @@ export default defineConfig({
   ],
   test: {
     environment: 'node',
+    setupFiles: ['./vitest.setup.ts'],
     include: ['src/**/*.test.ts'],
     // Real-Agent driven cases live under src/skill/yorz-spec/__tests__/ and are
     // intentionally excluded from `pnpm test`; they run via `pnpm test:agent`.
