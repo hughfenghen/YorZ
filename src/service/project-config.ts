@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 export type AgentConfig =
+  | { kind: 'inherit' }
   | { kind: 'claude' }
   | { kind: 'opencode' }
   | { kind: 'codex' }
@@ -18,7 +19,7 @@ const CURRENT_VERSION = 1 as const
 export const DEFAULT_SPECS_DIR = '.yorz/specs'
 
 export function defaultProjectConfig(): ProjectConfig {
-  return { version: CURRENT_VERSION, agent: { kind: 'claude' }, specsDir: DEFAULT_SPECS_DIR }
+  return { version: CURRENT_VERSION, agent: { kind: 'inherit' }, specsDir: DEFAULT_SPECS_DIR }
 }
 
 export function configPath(cwd: string): string {
@@ -97,6 +98,7 @@ function normalizeAgent(value: unknown): AgentConfig {
   if (!value || typeof value !== 'object') return { kind: 'claude' }
   const obj = value as Record<string, unknown>
   const kind = obj.kind
+  if (kind === 'inherit') return { kind: 'inherit' }
   if (kind === 'opencode') return { kind: 'opencode' }
   if (kind === 'codex') return { kind: 'codex' }
   if (kind === 'custom') {

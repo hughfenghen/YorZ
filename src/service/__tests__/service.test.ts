@@ -192,9 +192,7 @@ describe('YorZ Service HTTP', () => {
     })
     const { id } = (await create.json()) as { id: string }
 
-    const { reader, decoder } = await openMultiplex(apiRoot, [
-      `project:${projectId}:spec:${id}`,
-    ])
+    const { reader, decoder } = await openMultiplex(apiRoot, [`project:${projectId}:spec:${id}`])
     try {
       const ready = await readUntil(reader, decoder, (t) => t.includes('"event":"ready"'))
       expect(ready).toContain('"event":"ready"')
@@ -211,7 +209,12 @@ describe('YorZ Service HTTP', () => {
       })()
 
       try {
-        const updated = await readUntil(reader, decoder, (t) => t.includes('"event":"updated"'), 8000)
+        const updated = await readUntil(
+          reader,
+          decoder,
+          (t) => t.includes('"event":"updated"'),
+          8000,
+        )
         expect(updated).toContain('"event":"updated"')
       } finally {
         keepWriting = false
@@ -267,6 +270,45 @@ describe('YorZ Service HTTP', () => {
     } finally {
       await reader.cancel().catch(() => {})
     }
+  })
+
+  it('GET/PUT /api/global-config reads and saves session end notifications', async () => {
+    const { apiRoot } = await startInTmp()
+    const initial = await fetch(`${apiRoot}/global-config`)
+    expect(initial.status).toBe(200)
+    expect(await initial.json()).toEqual({
+      agent: { defaultKind: 'claude' },
+      notifications: { sessionEnd: { banner: false, sound: false } },
+    })
+
+    const update = await fetch(`${apiRoot}/global-config`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        agent: { defaultKind: 'codex' },
+        notifications: { sessionEnd: { banner: true, sound: true } },
+      }),
+    })
+    expect(update.status).toBe(200)
+
+    const saved = await fetch(`${apiRoot}/global-config`)
+    expect(await saved.json()).toEqual({
+      agent: { defaultKind: 'codex' },
+      notifications: { sessionEnd: { banner: true, sound: true } },
+    })
+  })
+
+  it('PUT /api/global-config rejects non-boolean notification values', async () => {
+    const { apiRoot } = await startInTmp()
+    const res = await fetch(`${apiRoot}/global-config`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        agent: { defaultKind: 'claude' },
+        notifications: { sessionEnd: { banner: 'yes', sound: false } },
+      }),
+    })
+    expect(res.status).toBe(400)
   })
 
   it('400 when annotate body is missing required fields', async () => {

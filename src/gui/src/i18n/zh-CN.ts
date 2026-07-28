@@ -20,9 +20,11 @@ export const zhCN = {
   },
   shell: {
     newSpec: '新建 spec',
+    settingsMenu: '配置',
     languageSwitch: '切换语言',
     langZh: '中文',
     langEn: 'English',
+    globalConfig: '全局配置',
   },
   welcome: {
     title: '欢迎使用 YorZ',
@@ -261,6 +263,10 @@ export const zhCN = {
   },
   projectConfig: {
     title: '项目配置',
+    inheritGlobal: '继承全局默认',
+    agentClaude: 'ClaudeCode',
+    agentOpencode: 'OpenCode',
+    agentCodex: 'Codex',
     custom: '自定义',
     agent: 'Agent',
     cmd: '命令 (cmd)',
@@ -272,6 +278,15 @@ export const zhCN = {
     invalidPath: 'spec 目录不能包含 ".." 段',
     saved: '配置已保存',
     oldSpecsHint: '。旧 spec 仍在原目录，请手工迁移',
+    save: '保存',
+  },
+  globalConfig: {
+    title: '全局配置',
+    agentDefault: '默认 Agent',
+    sessionEnd: '会话结束提示',
+    banner: '横幅提示',
+    sound: '声音提示',
+    saved: '全局配置已保存',
     save: '保存',
   },
   errors: {

@@ -24,9 +24,30 @@ export interface GlobalProjectEntry {
 export interface GlobalConfig {
   version: 1
   projects: GlobalProjectEntry[]
+  agent: GlobalAgentConfig
+  notifications: GlobalNotificationsConfig
+}
+
+export interface GlobalAgentConfig {
+  defaultKind: GlobalAgentKind
+}
+
+export type GlobalAgentKind = 'claude' | 'opencode' | 'codex'
+
+export interface GlobalNotificationsConfig {
+  sessionEnd: SessionEndNotificationsConfig
+}
+
+export interface SessionEndNotificationsConfig {
+  banner: boolean
+  sound: boolean
 }
 
 const CURRENT_VERSION = 1 as const
+export const DEFAULT_GLOBAL_AGENT: GlobalAgentConfig = { defaultKind: 'claude' }
+export const DEFAULT_NOTIFICATIONS: GlobalNotificationsConfig = {
+  sessionEnd: { banner: false, sound: false },
+}
 
 export function resolveGlobalConfigDir(env: NodeJS.ProcessEnv = process.env): string {
   if (env.YORZ_HOME && env.YORZ_HOME.trim()) return env.YORZ_HOME.trim()
@@ -41,19 +62,19 @@ export function resolveGlobalConfigPath(env: NodeJS.ProcessEnv = process.env): s
 
 export async function loadGlobalConfig(filePath?: string): Promise<GlobalConfig> {
   const fp = filePath ?? resolveGlobalConfigPath()
-  if (!existsSync(fp)) return { version: CURRENT_VERSION, projects: [] }
+  if (!existsSync(fp)) return defaultGlobalConfig()
   let raw: string
   try {
     raw = await readFile(fp, 'utf8')
   } catch {
-    return { version: CURRENT_VERSION, projects: [] }
+    return defaultGlobalConfig()
   }
-  if (!raw.trim()) return { version: CURRENT_VERSION, projects: [] }
+  if (!raw.trim()) return defaultGlobalConfig()
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   } catch {
-    return { version: CURRENT_VERSION, projects: [] }
+    return defaultGlobalConfig()
   }
   return normalizeConfig(parsed)
 }
@@ -69,7 +90,7 @@ export async function saveGlobalConfig(config: GlobalConfig, filePath?: string):
 }
 
 function normalizeConfig(value: unknown): GlobalConfig {
-  if (!value || typeof value !== 'object') return { version: CURRENT_VERSION, projects: [] }
+  if (!value || typeof value !== 'object') return defaultGlobalConfig()
   const obj = value as Record<string, unknown>
   const projectsRaw = Array.isArray(obj.projects) ? obj.projects : []
   const projects: GlobalProjectEntry[] = []
@@ -86,7 +107,55 @@ function normalizeConfig(value: unknown): GlobalConfig {
     if (worktree) entry.worktree = worktree
     projects.push(entry)
   }
-  return { version: CURRENT_VERSION, projects }
+  return {
+    version: CURRENT_VERSION,
+    projects,
+    agent: normalizeAgent(obj.agent),
+    notifications: normalizeNotifications(obj.notifications),
+  }
+}
+
+export function defaultGlobalConfig(): GlobalConfig {
+  return {
+    version: CURRENT_VERSION,
+    projects: [],
+    agent: { defaultKind: DEFAULT_GLOBAL_AGENT.defaultKind },
+    notifications: {
+      sessionEnd: {
+        banner: DEFAULT_NOTIFICATIONS.sessionEnd.banner,
+        sound: DEFAULT_NOTIFICATIONS.sessionEnd.sound,
+      },
+    },
+  }
+}
+
+function normalizeAgent(value: unknown): GlobalAgentConfig {
+  if (!value || typeof value !== 'object') return { defaultKind: DEFAULT_GLOBAL_AGENT.defaultKind }
+  const obj = value as Record<string, unknown>
+  const defaultKind = obj.defaultKind
+  if (defaultKind === 'opencode' || defaultKind === 'codex') return { defaultKind }
+  return { defaultKind: 'claude' }
+}
+
+function normalizeNotifications(value: unknown): GlobalNotificationsConfig {
+  if (!value || typeof value !== 'object') return defaultGlobalConfig().notifications
+  const obj = value as Record<string, unknown>
+  const sessionEndRaw = obj.sessionEnd
+  if (!sessionEndRaw || typeof sessionEndRaw !== 'object')
+    return defaultGlobalConfig().notifications
+  const sessionEndObj = sessionEndRaw as Record<string, unknown>
+  return {
+    sessionEnd: {
+      banner:
+        typeof sessionEndObj.banner === 'boolean'
+          ? sessionEndObj.banner
+          : DEFAULT_NOTIFICATIONS.sessionEnd.banner,
+      sound:
+        typeof sessionEndObj.sound === 'boolean'
+          ? sessionEndObj.sound
+          : DEFAULT_NOTIFICATIONS.sessionEnd.sound,
+    },
+  }
 }
 
 function normalizeWorktree(value: unknown): WorktreeMeta | undefined {

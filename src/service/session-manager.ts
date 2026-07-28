@@ -23,6 +23,10 @@ export interface SessionStatusEvent {
   running: boolean
 }
 
+export interface SessionManagerOptions {
+  onSessionEnd?: (sessionId: string) => Promise<void> | void
+}
+
 interface LiveSession {
   kind: AgentKind
   session: AgentSession
@@ -72,6 +76,7 @@ export class SessionManager {
     private readonly cwd: string,
     private readonly defaultKind: AgentKind,
     private readonly store: SessionStore,
+    private readonly opts: SessionManagerOptions = {},
   ) {
     this.adapters = new AdapterRegistry(cwd)
     this.statusEmitter.setMaxListeners(0)
@@ -243,6 +248,7 @@ export class SessionManager {
       } finally {
         await this.store.touch(currentSid).catch(() => {})
         this.setRunning(currentSid, false)
+        void Promise.resolve(this.opts.onSessionEnd?.(currentSid)).catch(() => {})
         emitter.emit('done')
       }
     })()

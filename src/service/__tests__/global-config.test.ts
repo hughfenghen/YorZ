@@ -44,6 +44,8 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     const cfg = await loadGlobalConfig(fp)
     expect(cfg.version).toBe(1)
     expect(cfg.projects).toEqual([])
+    expect(cfg.agent).toEqual({ defaultKind: 'claude' })
+    expect(cfg.notifications.sessionEnd).toEqual({ banner: false, sound: false })
   })
 
   it('roundtrips via atomic save', async () => {
@@ -52,6 +54,8 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
       {
         version: 1,
         projects: [{ id: 'x-abc123', path: '/tmp/x', addedAt: '2026-06-24', lastActivityAt: null }],
+        agent: { defaultKind: 'claude' },
+        notifications: { sessionEnd: { banner: false, sound: false } },
       },
       fp,
     )
@@ -61,6 +65,8 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     expect(cfg.projects).toEqual([
       { id: 'x-abc123', path: '/tmp/x', addedAt: '2026-06-24', lastActivityAt: null },
     ])
+    expect(cfg.agent).toEqual({ defaultKind: 'claude' })
+    expect(cfg.notifications.sessionEnd).toEqual({ banner: false, sound: false })
   })
 
   it('returns empty list when file is malformed JSON', async () => {
@@ -68,6 +74,54 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     await writeFile(fp, 'not-json', 'utf8')
     const cfg = await loadGlobalConfig(fp)
     expect(cfg.projects).toEqual([])
+    expect(cfg.agent).toEqual({ defaultKind: 'claude' })
+    expect(cfg.notifications.sessionEnd).toEqual({ banner: false, sound: false })
+  })
+
+  it('roundtrips session end notification preferences', async () => {
+    const fp = await tmpConfigPath()
+    await saveGlobalConfig(
+      {
+        version: 1,
+        projects: [],
+        agent: { defaultKind: 'claude' },
+        notifications: { sessionEnd: { banner: true, sound: true } },
+      },
+      fp,
+    )
+    const cfg = await loadGlobalConfig(fp)
+    expect(cfg.notifications.sessionEnd).toEqual({ banner: true, sound: true })
+  })
+
+  it('roundtrips global agent default', async () => {
+    const fp = await tmpConfigPath()
+    await saveGlobalConfig(
+      {
+        version: 1,
+        projects: [],
+        agent: { defaultKind: 'codex' },
+        notifications: { sessionEnd: { banner: false, sound: false } },
+      },
+      fp,
+    )
+    const cfg = await loadGlobalConfig(fp)
+    expect(cfg.agent).toEqual({ defaultKind: 'codex' })
+  })
+
+  it('normalizes legacy config without notifications', async () => {
+    const fp = await tmpConfigPath()
+    await writeFile(
+      fp,
+      JSON.stringify({
+        version: 1,
+        projects: [{ id: 'legacy', path: '/tmp/legacy', addedAt: 'x', lastActivityAt: null }],
+      }),
+      'utf8',
+    )
+    const cfg = await loadGlobalConfig(fp)
+    expect(cfg.projects[0]!.id).toBe('legacy')
+    expect(cfg.agent).toEqual({ defaultKind: 'claude' })
+    expect(cfg.notifications.sessionEnd).toEqual({ banner: false, sound: false })
   })
 })
 
