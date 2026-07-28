@@ -11,14 +11,15 @@ This guide is for users who are connecting a project to YorZ for the first time.
   - [6.1 Project-level `.yorz/`](#61-project-level-yorz)
   - [6.2 Global Configuration Directory](#62-global-configuration-directory)
 - [7. GUI Features](#7-gui-features)
-  - [7.1 Configure the Default Agent Method](#71-configure-the-default-agent-method)
-  - [7.2 Create a New spec](#72-create-a-new-spec)
-  - [7.3 Parallel Work in a New Project](#73-parallel-work-in-a-new-project)
-  - [7.4 Append Tasks](#74-append-tasks)
-  - [7.5 Debug Mode](#75-debug-mode)
-  - [7.6 Content Annotations](#76-content-annotations)
-  - [7.7 plan Decisions and Pending Confirmations](#77-plan-decisions-and-pending-confirmations)
-  - [7.8 Review](#78-review)
+  - [7.1 Global Configuration](#71-global-configuration)
+  - [7.2 Configure the Agent Method](#72-configure-the-agent-method)
+  - [7.3 Create a New spec](#73-create-a-new-spec)
+  - [7.4 Parallel Work in a New Project](#74-parallel-work-in-a-new-project)
+  - [7.5 Append Tasks](#75-append-tasks)
+  - [7.6 Debug Mode](#76-debug-mode)
+  - [7.7 Content Annotations](#77-content-annotations)
+  - [7.8 plan Decisions and Pending Confirmations](#78-plan-decisions-and-pending-confirmations)
+  - [7.9 Review](#79-review)
 - [8. Common Workflows](#8-common-workflows)
   - [8.1 Connect a Project for the First Time](#81-connect-a-project-for-the-first-time)
   - [8.2 Handle a New Requirement](#82-handle-a-new-requirement)
@@ -153,7 +154,7 @@ The `.yorz/` directory at the project root is the YorZ working directory for the
 
 Common contents:
 
-- `.yorz/config.json`: project configuration, including the default Agent and the spec document directory.
+- `.yorz/config.json`: project configuration, including the project Agent override mode and the spec document directory. The default Agent can be inherited from global configuration.
 - `.yorz/specs/`: the default spec document directory. Each spec is usually stored at `.yorz/specs/<spec-id>/spec.md`.
 - `.yorz/specs/<spec-id>/debug.md`: the Debug mode record file. It appears only after the corresponding spec enters the Debug workflow.
 - `.yorz/specs/<spec-id>/review.md`: the Review report file. It appears only after a review is generated.
@@ -179,27 +180,36 @@ If `YORZ_HOME` is set, it takes precedence and YorZ uses the directory it points
 
 Common global files:
 
-- `projects.json`: the list of added projects.
+- `projects.json`: the list of added projects, the global default Agent, and session-end notification preferences.
 - `runtime.json`: runtime records for the background Service.
 - `logs/`: the service log directory, containing `serve.log` (the rotating main log) and `serve-stdio.log`. See [4. View Service Logs](#4-view-service-logs).
 
-You usually do not need to edit the global configuration directory manually. Prefer managing it through `yorz add`, the GUI project list, and `yorz serve stop`.
+You usually do not need to edit the global configuration directory manually. Prefer managing it through `yorz add`, the GUI project list, GUI Global Configuration, and `yorz serve stop`.
 
 ## 7. GUI Features
 
-### 7.1 Configure the Default Agent Method
+### 7.1 Global Configuration
+
+The far right side of the GUI header has a three-line settings entry. Open it to switch languages or open the Global Configuration dialog.
+
+Global Configuration includes:
+
+- `Default Agent`: choose ClaudeCode, OpenCode, or Codex. Projects without a project-level override inherit this value. The initial value is ClaudeCode.
+- `Session-end alerts`: independently enable Banner alert and Sound alert. Both are disabled by default. When enabled, YorZ Service triggers system notifications or sound as a best-effort action after an Agent turn ends; unsupported environments do not affect the session completion flow.
+
+### 7.2 Configure the Agent Method
 
 In the project list on the left side of the GUI, click the configuration entry next to a project to open Project Configuration.
 
 You can configure:
 
-- `Agent`: choose ClaudeCode, OpenCode, Codex, or a custom command.
+- `Agent`: choose Inherit global default, ClaudeCode, OpenCode, Codex, or a custom command.
 - `Command (cmd)` and `Arguments (args, space-separated)`: fill these in only when choosing Custom.
 - `Spec document directory`: a path relative to the project root. The default is `.yorz/specs`.
 
-After saving, new specs, spec reruns, appended tasks, and Review for this project will use the Agent configured here.
+After saving, new specs, spec reruns, appended tasks, and Review for this project use the resolved Agent: Inherit global default uses the global default Agent, while a concrete Agent or custom command takes precedence for this project.
 
-### 7.2 Create a New spec
+### 7.3 Create a New spec
 
 On the project home page, click "New spec" to open the creation page.
 
@@ -211,7 +221,7 @@ When creating a spec, fill in:
 
 After clicking "Send", the Agent creates the spec document according to the `yorz-spec` skill and automatically enters the plan stage. After the document is written, the GUI navigates to the spec detail page.
 
-### 7.3 Parallel Work in a New Project
+### 7.4 Parallel Work in a New Project
 
 When creating a new spec, you can enable "New project for parallel work".
 
@@ -225,7 +235,7 @@ It is suitable when:
 
 After the parallel project is complete, use "Merge into main project" on the list page to merge the worktree changes back.
 
-### 7.4 Append Tasks
+### 7.5 Append Tasks
 
 On the spec detail page, click "Append task" to add a new requirement, refactor, or bug fix to an existing spec.
 
@@ -239,7 +249,7 @@ After submission, YorZ writes the appended content into the spec and automatical
 
 If you select text in the body before appending a task, the appended record includes the referenced section and selected text so the Agent can understand the context.
 
-### 7.5 Debug Mode
+### 7.6 Debug Mode
 
 When appending a `fix` task, you can enable "debug mode".
 
@@ -253,7 +263,7 @@ It is suitable when:
 
 When the current spec has a `debug.md`, the detail page shows a "Debug" entry where you can view the records.
 
-### 7.6 Content Annotations
+### 7.7 Content Annotations
 
 On the spec detail page, select a piece of text in the document. An action menu appears.
 
@@ -264,7 +274,7 @@ Available actions:
 
 Annotations are written back to the spec document and trigger the Agent to process it again. Use them to correct the Agent's understanding, add constraints, or point out inaccurate task descriptions.
 
-### 7.7 plan Decisions and Pending Confirmations
+### 7.8 plan Decisions and Pending Confirmations
 
 During the plan stage, the Agent fills in "Current Analysis", "Technical Implementation Plan", and "Pending Confirmations".
 
@@ -278,7 +288,7 @@ Common pending confirmation types:
 
 You can fill in and send all answers from the pending confirmation panel at once. After sending, the Agent reads the responses, updates the plan, and continues to the tasks or execute stage.
 
-### 7.8 Review
+### 7.9 Review
 
 On the spec detail page, click "Review" to open the Review page.
 
