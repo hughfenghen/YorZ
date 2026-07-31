@@ -129,7 +129,23 @@ describe('frontmatter/required-fields', () => {
 })
 
 describe('frontmatter/updated-at', () => {
-  it('flags a value missing single quotes', async () => {
+  it('accepts a double-quoted value', async () => {
+    const raw = [
+      '---',
+      'stage: plan',
+      'last_action: init',
+      'updated_at: "2026-07-01 12:00:00"',
+      'summary: s',
+      '---',
+      '',
+      '# T',
+      '',
+    ].join('\n')
+    const report = await lintSpecMd(raw, OPTS)
+    expect(report.findings.filter((f) => f.ruleId === 'frontmatter/updated-at')).toEqual([])
+  })
+
+  it('flags a bare timestamp value', async () => {
     const raw = [
       '---',
       'stage: plan',
@@ -142,7 +158,11 @@ describe('frontmatter/updated-at', () => {
       '',
     ].join('\n')
     const report = await lintSpecMd(raw, OPTS)
-    expect(report.findings.some((f) => f.ruleId === 'frontmatter/updated-at')).toBe(true)
+    expect(
+      report.findings.some(
+        (f) => f.ruleId === 'frontmatter/updated-at' && f.message.includes('YAML 字符串'),
+      ),
+    ).toBe(true)
   })
 
   it('flags a legacy YYYY-MM-DD only value', async () => {

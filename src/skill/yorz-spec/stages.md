@@ -181,7 +181,7 @@ _暂无_
 2. **判定 type**：`feat` / `refct` / `fix`；prompt 中已显式给出时直接使用；不确定时询问用户，兜底取 `feat`。
 3. **生成 id**：`YYMMDD.<type>.<summary-name>`（如 `260614.feat.spec-frontmatter`）。
 4. **生成路径**：`<specsDir>/<id>/spec.md`。id 冲突时追加 `-2`、`-3` 后缀。
-5. **初始化文档**：写入 frontmatter（`stage: plan`、`last_action: 新建 spec`、`updated_at` 秒级带单引号、`summary` ≤ 200 字符）；建议创建全部章节（背景 / 需求 / 现状分析 / 技术实现方案 / 待确认项 / 任务清单 / 执行记录），将用户原始需求写入背景或需求。
+5. **初始化文档**：写入 frontmatter（`stage: plan`、`last_action: 新建 spec`、`updated_at` 本地秒级字符串、`summary` ≤ 200 字符）；建议创建全部章节（背景 / 需求 / 现状分析 / 技术实现方案 / 待确认项 / 任务清单 / 执行记录），将用户原始需求写入背景或需求。
 6. **进入 plan**：初始化后在同一轮继续推进 plan，不要因为"文档已创建"就退出。
 
 ### CLI 触发模式

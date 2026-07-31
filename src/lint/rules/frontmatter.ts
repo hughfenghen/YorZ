@@ -76,7 +76,7 @@ export const frontmatterRequiredFields: LintRule = {
 
 export const frontmatterUpdatedAt: LintRule = {
   id: 'frontmatter/updated-at',
-  description: 'updated_at 值应形如 YYYY-MM-DD HH:mm:ss，原文中带单引号。',
+  description: 'updated_at 值应为 YAML 字符串，形如 YYYY-MM-DD HH:mm:ss。',
   check(ctx: LintContext): LintFinding[] {
     const findings: LintFinding[] = []
     const fm = ctx.frontmatter
@@ -93,15 +93,17 @@ export const frontmatterUpdatedAt: LintRule = {
         line: lineNo,
       })
     }
-    // Must be single-quoted in the raw line.
+    // Must be quoted in the raw line; single/double quote style is formatter-owned.
     const afterColon = rawLine.slice(rawLine.indexOf(':') + 1).trim()
-    if (!(afterColon.startsWith("'") && afterColon.endsWith("'"))) {
+    const quoted =
+      (afterColon.startsWith("'") && afterColon.endsWith("'")) ||
+      (afterColon.startsWith('"') && afterColon.endsWith('"'))
+    if (!quoted) {
       findings.push({
         ruleId: this.id,
         severity: 'error',
-        message: 'updated_at 写入时必须使用单引号包裹，避免 YAML 1.1 时间戳解析。',
+        message: 'updated_at 必须写为 YAML 字符串，避免裸时间戳被 YAML 解析。',
         line: lineNo,
-        hint: `updated_at: '${value}'`,
       })
     }
     return findings

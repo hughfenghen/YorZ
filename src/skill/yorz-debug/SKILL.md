@@ -35,7 +35,7 @@ description: 以资深工程师的调试纪律定位并修复疑难 bug——假
 ---
 status: debugging # debugging（存在未收尾记录）| resolved（全部记录已收尾）
 active: 2 # 当前活跃记录编号；resolved 时留空
-updated_at: '2026-07-19 15:54:37' # 本地秒级，单引号包裹
+updated_at: '2026-07-19 15:54:37' # 本地秒级字符串
 ---
 ```
 
@@ -175,6 +175,6 @@ flowchart TD
 
 ## 写回纪律
 
-- 每次写回 `debug.md` 都更新文件 frontmatter 的 `updated_at`（本地秒级，单引号）。
-- `updated_at` 用 `YYYY-MM-DD HH:mm:ss`。
+- 每次写回 `debug.md` 都更新文件 frontmatter 的 `updated_at`。
+- `updated_at` 用本地秒级 `YYYY-MM-DD HH:mm:ss` 字符串。
 - 记录块编号连续递增、不复用、不重排既有块。

@@ -38,13 +38,13 @@ description: Drive YorZ spec docs through plan / tasks / execute stages with det
 ---
 stage: plan # plan | tasks | execute | done
 last_action: 简述上一次动作
-updated_at: '2026-06-14 15:42:07' # 秒级 + 单引号
+updated_at: '2026-06-14 15:42:07' # 本地秒级字符串
 summary: 一句话概要，≤ 200 字符
 ---
 ```
 
 - 字段顺序固定为 `stage` → `last_action` → `updated_at` → `summary`，每个字段独占一行，禁止嵌套与额外字段。
-- `updated_at` 使用本地秒级 `YYYY-MM-DD HH:mm:ss`，**写入时必须用单引号包裹**。
+- `updated_at` 使用本地秒级 `YYYY-MM-DD HH:mm:ss` 字符串。
 - 缺失任意字段时，先补齐再继续。
 
 ## Markdown 格式化约定
