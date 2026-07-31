@@ -55,7 +55,7 @@ const SESSION_LIST_ROWS_KEY = 'yorz.chat.sessionList.rows'
 const LEGACY_SESSION_LIST_LIMIT_KEY = 'yorz.chat.sessionList.limit'
 const SHOW_HISTORY_KEY = 'yorz.chat.sessionList.showHistory'
 const SESSION_LIST_ROW_OPTIONS = [3, 5, 10] as const
-const SESSION_ROW_HEIGHT_PX = 34
+const SESSION_ROW_HEIGHT_PX = 28
 const DEFAULT_WIDTH = 340
 const DEFAULT_WIDTH_RATIO = 0.4
 const MIN_WIDTH = 260
@@ -677,7 +677,7 @@ export const ChatPanel: Component = () => {
 
   return (
     <aside
-      class={`relative flex flex-col border-r bg-card shrink-0 ${
+      class={`relative flex flex-col border-r bg-card text-base shrink-0 ${
         isCollapsed() ? 'w-9 transition-[width] duration-150' : ''
       }`}
       style={isCollapsed() ? undefined : { width: `${width()}px` }}
@@ -724,7 +724,7 @@ export const ChatPanel: Component = () => {
               <Collapsible open={listOpen()} onOpenChange={toggleList}>
                 {/* Hand-rolled trigger row: the radio group is interactive and
                     must not nest inside CollapsibleTrigger's <button>. */}
-                <div class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm">
+                <div class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5">
                   <button
                     type="button"
                     class="min-w-0 flex-1 text-left font-medium"
@@ -772,7 +772,7 @@ export const ChatPanel: Component = () => {
                 <CollapsibleContent>
                   <ul
                     class="m-0 list-none overflow-y-auto border-t py-1"
-                    style={{ 'max-height': `${sessionListRows() * SESSION_ROW_HEIGHT_PX}px` }}
+                    style={{ 'max-height': `${sessionListRows() * SESSION_ROW_HEIGHT_PX + 4}px` }}
                   >
                     <Show
                       when={visibleSessions().length > 0}
@@ -787,7 +787,7 @@ export const ChatPanel: Component = () => {
                           <li>
                             <button
                               type="button"
-                              class={`flex w-full items-center gap-1 px-2.5 py-1.5 text-left text-sm ${
+                              class={`flex w-full items-center gap-1 px-2 py-1 text-left text-sm ${
                                 activeSid() === s.id
                                   ? 'bg-background font-semibold'
                                   : 'hover:bg-background'
@@ -823,7 +823,7 @@ export const ChatPanel: Component = () => {
 
           <div
             ref={messagesEl}
-            class="min-h-0 flex-1 overflow-y-auto px-2.5 py-2"
+            class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto m-2 mt-0"
             onClick={onMessagesClick}
             onKeyDown={onMessagesKeyDown}
             onScroll={onMessagesScroll}
@@ -831,7 +831,7 @@ export const ChatPanel: Component = () => {
             <Show
               when={blocks().length > 0}
               fallback={
-                <p class="text-sm text-muted-foreground">
+                <p class="text-muted-foreground">
                   {activeSid() ? t('chat.empty') : t('chat.draftEmpty')}
                 </p>
               }
@@ -851,13 +851,13 @@ export const ChatPanel: Component = () => {
                           // which sat within 2% lightness of the agent's `bg-muted` —
                           // the two bubbles were effectively the same color. What you
                           // said now reads at a glance against what the agent replied.
-                          <div class="mb-2 whitespace-pre-wrap rounded border border-primary/20 border-l-2 border-l-primary bg-primary/10 px-2 py-1.5 text-sm font-medium text-foreground">
+                          <div class="mb-2 whitespace-pre-wrap rounded border border-primary/20 border-l-2 border-l-primary bg-primary/10 px-2 py-1.5 font-medium text-foreground [overflow-wrap:anywhere]">
                             {(block as { text: string }).text}
                           </div>
                         }
                       >
                         {(assistant) => (
-                          <div class="mb-2 rounded bg-muted px-2 py-1.5 text-sm">
+                          <div class="mb-2 min-w-0 rounded bg-muted px-2 py-1.5 [overflow-wrap:anywhere]">
                             <For each={assistant().segments}>
                               {(seg) => (
                                 <Show
@@ -918,7 +918,7 @@ export const ChatPanel: Component = () => {
                 disabled={!activeProjectId()}
                 minRows={2}
                 maxRows={10}
-                class="min-w-0 flex-1 bg-background px-2 py-1 text-sm"
+                class="min-w-0 flex-1 bg-background px-2 py-1"
               />
               <Button
                 variant="outline"

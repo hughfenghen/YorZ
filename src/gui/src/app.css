@@ -365,13 +365,16 @@
   /*
    * Chat modifier for `.markdown`. The chat column is a fraction of the width of
    * the spec view the base styles were tuned for, so headings and vertical
-   * rhythm are stepped down a notch — otherwise an `# H1` in an agent reply
-   * dwarfs the conversation around it. Only spacing/size is touched; colors,
-   * code highlighting and layout come from `.markdown` unchanged.
+   * rhythm stay compact while the body text keeps the app's default 16px size.
+   * Chat also wraps long generated tokens aggressively so a single path, URL or
+   * unbroken blob cannot create a panel-wide horizontal scrollbar.
    */
   .chat-md {
-    font-size: 0.875rem;
+    font-size: 1rem;
     line-height: 1.55;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   .chat-md > :first-child {
     margin-top: 0;
@@ -380,19 +383,19 @@
     margin-bottom: 0;
   }
   .chat-md h1 {
-    font-size: 1.15rem;
+    font-size: 1.25rem;
     margin: 0.9rem 0 0.5rem;
   }
   .chat-md h2 {
-    font-size: 1.05rem;
+    font-size: 1.15rem;
     margin: 0.8rem 0 0.45rem;
   }
   .chat-md h3 {
-    font-size: 1rem;
+    font-size: 1.05rem;
     margin: 0.7rem 0 0.4rem;
   }
   .chat-md h4 {
-    font-size: 0.9rem;
+    font-size: 1rem;
     margin: 0.6rem 0 0.35rem;
   }
   .chat-md p {
@@ -411,9 +414,18 @@
     margin: 0.5rem 0;
     font-size: 0.78rem;
     line-height: 1.45;
+    overflow-x: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   .chat-md code {
     font-size: 0.8rem;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .chat-md pre code {
+    white-space: pre-wrap;
   }
   .chat-md [data-file-link='true'] {
     display: inline;
@@ -437,5 +449,11 @@
   }
   .chat-md table {
     font-size: 0.8rem;
+    table-layout: fixed;
+  }
+  .chat-md th,
+  .chat-md td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 }
