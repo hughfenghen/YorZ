@@ -186,7 +186,10 @@ export class ProjectRegistry {
     })
     const attachments = new AttachmentStore({ cwd: input.path })
     const sessionStore = new SessionStore(input.path)
-    const notifySessionEnded = createSessionEndNotifier({ globalConfigPath: this.globalConfigPath })
+    const notifySessionEnded = createSessionEndNotifier({
+      globalConfigPath: this.globalConfigPath,
+      projectName: basename(input.path),
+    })
     const defaultKind = resolveProjectAgentKind(cfg.agent, globalCfg.agent.defaultKind)
     const sessions = new SessionManager(input.path, defaultKind, sessionStore, {
       onSessionEnd: notifySessionEnded,

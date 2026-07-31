@@ -8,6 +8,7 @@ const COMMAND_TIMEOUT_MS = 4000
 
 export interface SessionEndNotifierOptions {
   globalConfigPath?: string
+  projectName?: string
   runCommand?: CommandRunner
   platform?: NodeJS.Platform
 }
@@ -22,8 +23,9 @@ export function createSessionEndNotifier(opts: SessionEndNotifierOptions = {}) {
 
     const os = opts.platform ?? platform()
     const run = opts.runCommand ?? defaultRunCommand
+    const title = formatBannerTitle(opts.projectName)
     const tasks: Array<Promise<void>> = []
-    if (sessionEnd.banner) tasks.push(showBanner(os, run))
+    if (sessionEnd.banner) tasks.push(showBanner(os, run, title))
     if (sessionEnd.sound) tasks.push(playSound(os, run))
     await Promise.all(tasks.map((task) => task.catch(() => {})))
   }
@@ -36,9 +38,22 @@ async function defaultRunCommand(cmd: string, args: string[]): Promise<void> {
   })
 }
 
-async function showBanner(os: NodeJS.Platform, run: CommandRunner): Promise<void> {
+function formatBannerTitle(projectName?: string): string {
+  const name = projectName?.trim()
+  return name ? `YorZ · ${name}` : 'YorZ'
+}
+
+function appleScriptString(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+function powershellSingleQuoted(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`
+}
+
+async function showBanner(os: NodeJS.Platform, run: CommandRunner, title: string): Promise<void> {
   if (os === 'darwin') {
-    await run('osascript', ['-e', 'display notification "" with title "YorZ"'])
+    await run('osascript', ['-e', `display notification "" with title ${appleScriptString(title)}`])
     return
   }
   if (os === 'win32') {
@@ -52,14 +67,14 @@ async function showBanner(os: NodeJS.Platform, run: CommandRunner): Promise<void
         '$n = New-Object System.Windows.Forms.NotifyIcon',
         '$n.Icon = [System.Drawing.SystemIcons]::Information',
         '$n.Visible = $true',
-        "$n.ShowBalloonTip(5000, 'YorZ', '', [System.Windows.Forms.ToolTipIcon]::Info)",
+        `$n.ShowBalloonTip(5000, ${powershellSingleQuoted(title)}, '', [System.Windows.Forms.ToolTipIcon]::Info)`,
         'Start-Sleep -Milliseconds 5500',
         '$n.Dispose()',
       ].join('; '),
     ])
     return
   }
-  await run('notify-send', ['YorZ', ''])
+  await run('notify-send', [title, ''])
 }
 
 async function playSound(os: NodeJS.Platform, run: CommandRunner): Promise<void> {

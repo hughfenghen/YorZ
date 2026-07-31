@@ -1,7 +1,7 @@
 ---
 stage: done
 last_action: 任务全部完成，标记 done
-updated_at: '2026-07-28 21:28:00'
+updated_at: '2026-07-31 11:41:37'
 summary: 为 yorz serve 增加会话结束后的全局横幅与声音提醒配置，并在 header 最右侧新增配置入口与全局配置弹窗。
 ---
 
@@ -56,6 +56,7 @@ flowchart TB
 - 全局配置文件 `src/service/global-config.ts` 目前只持久化 projects 列表，适合扩展一个全局 `notifications` 配置对象。
 - 追加任务处理前，`GlobalConfigDialog` 的两个会话结束提示 checkbox 是纵向排列；`ProjectConfig` 的 `agent` 字段总是持久化具体 Agent，缺少“继承全局默认”的表达。
 - Agent 默认值读取有两条路径：Service runtime 由 `ProjectRegistry.materialize()` 调 `resolveAgentKind(input.path)` 注入 `SessionManager`；保留的 CLI spawn 路径由 `resolveAgentCmd()` 同步读取项目配置。两条路径当前都在项目配置缺失时回退 `claude`。
+- 横幅提醒标题目前在 `session-end-notifier` 内固定为 `YorZ`；`SessionManager` 的 `onSessionEnd` 回调只传递 `sessionId`，而项目名已可在 `ProjectRegistry.materialize()` 中由项目路径 basename 得到，适合作为 notifier 创建参数注入。
 
 <details>
 <summary>现状精确层</summary>
@@ -68,6 +69,8 @@ flowchart TB
 - `src/service/routes/project-config.ts`：已有项目配置 API，可作为新增全局配置 API 的风格参考。
 - `src/service/agent-config.ts`：`resolveAgentKind()` 与 `resolveAgentCmd()` 直接读取 `.yorz/config.json`，默认 `claude`。
 - `src/gui/src/components/GlobalConfigDialog.tsx`：通知 checkbox 使用同一个纵向 `fieldset`。
+- `src/service/session-end-notifier.ts`：macOS / Linux / Windows 横幅命令当前标题均为固定 `YorZ`。
+- `src/service/project-registry.ts`：`materialize()` 已持有项目绝对路径，可通过既有 `basename()` helper 计算 `projectName`。
 
 </details>
 
@@ -222,6 +225,27 @@ sequenceDiagram
 - 至少运行 `pnpm run typecheck`；若时间允许运行相关 vitest。
 - 追加任务需补充测试覆盖全局 Agent 默认 normalize、全局配置 API 保存默认 Agent、项目配置 `inherit` 解析，以及 registry 对“项目继承全局默认”的最终 Agent 注入。
 
+### 4.7 横幅提醒标题追加方案
+
+```mermaid
+sequenceDiagram
+    participant Registry as ProjectRegistry
+    participant Notifier as SessionEndNotifier
+    participant Session as SessionManager
+    participant OS as 系统通知
+    Registry->>Registry: basename(projectPath)
+    Registry->>Notifier: createSessionEndNotifier(projectName)
+    Session->>Notifier: onSessionEnd(sessionId)
+    Notifier->>OS: 横幅标题 YorZ · projectName
+```
+
+本次追加任务采用创建 notifier 时注入项目名的方案：
+
+- 新增 `SessionEndNotifierOptions.projectName?: string`，标题统一格式化为 `YorZ · ${projectName}`；项目名为空时回退 `YorZ`，避免测试或异常路径生成空标题。
+- `ProjectRegistry.materialize()` 使用既有 `basename(input.path)` 作为 `projectName` 注入，不扩大 `SessionManager` 的回调签名；这样普通 GUI 会话、spec 执行、review/git 复用 session 的结束通知都沿同一 notifier 生效。
+- `showBanner()` 改为接收 `title` 参数，macOS、Linux、Windows 三个平台的横幅命令共用同一标题；声音提示不变。
+- 补充 `session-end-notifier` 测试，验证 macOS / Linux 横幅命令使用 `YorZ · <projectName>`，并保留禁用配置、命令失败吞错等既有行为。
+
 ## 5. 待确认项
 
 _暂无_
@@ -237,6 +261,9 @@ _暂无_
 - [x] 扩展项目配置模型、API 与 registry，支持项目 Agent 继承全局默认（验收：项目配置 inherit 测试和 registry 默认 Agent 测试通过）
 - [x] 更新 GUI API 类型、全局配置弹窗、项目配置弹窗与中英文 i18n 文案（验收：新增可见文案均来自 i18n 且前端类型检查通过）
 - [x] 运行项目验证命令并记录追加任务结果（验收：`pnpm run typecheck` 与相关 vitest 通过或记录不可执行原因）
+- [x] 调整 `session-end-notifier` 横幅标题为 `YorZ · ${projectName}` 并保留空项目名回退（验收：macOS/Linux/Windows 横幅命令均使用同一格式化标题）
+- [x] 在 `ProjectRegistry` 创建会话结束 notifier 时注入项目名（验收：项目路径 basename 被作为 `projectName` 传入 notifier）
+- [x] 补充并运行横幅标题相关验证（验收：`session-end-notifier` 相关 vitest 通过，必要时运行 `pnpm run typecheck`）
 
 ## 7. 追加任务
 
@@ -244,6 +271,9 @@ _暂无_
   - 描述：1. 两个提示配置 checkbox 元素应该并排在一行
 
 2. 全局配置弹窗新增 Agent 配置项（默认 claude），期望项目级的配置，默认值继承全局配置
+
+- [fixed] [feat] 2026-07-31 11:37:32 | 优化横幅提醒内容，期望格式： YorZ · ${projectName}
+  - 描述：优化横幅提醒内容，期望格式： YorZ · ${projectName}
 
 ## 8. 执行记录
 
@@ -258,3 +288,8 @@ _暂无_
 - 2026-07-28 21:28:00：验证 `pnpm run typecheck` 通过。
 - 2026-07-28 21:28:00：验证 `pnpm exec vitest run src/service/__tests__/global-config.test.ts src/service/__tests__/service.test.ts src/service/__tests__/project-registry.test.ts src/service/__tests__/session-end-notifier.test.ts` 通过，41 个测试通过。
 - 2026-07-28 21:28:00：追加任务全部完成，标记 done。
+- 2026-07-31 11:39:05：完成追加任务 plan/tasks：横幅提醒标题改为 `YorZ · ${projectName}`，项目名由 `ProjectRegistry` 注入，无待确认项，进入 execute。
+- 2026-07-31 11:41:01：完成 `session-end-notifier` 标题格式化与 macOS/Windows 命令字符串转义，Linux/macOS/Windows 横幅命令共用 `YorZ · ${projectName}`，空项目名回退 `YorZ`。
+- 2026-07-31 11:41:01：完成 `ProjectRegistry` 注入项目路径 basename 作为 notifier 的 `projectName`；验证 `pnpm exec vitest run src/service/__tests__/session-end-notifier.test.ts` 通过，6 个测试通过。
+- 2026-07-31 11:41:37：完成最终验证：`pnpm exec vitest run src/service/__tests__/session-end-notifier.test.ts` 通过，6 个测试通过；`pnpm run typecheck` 通过。
+- 2026-07-31 11:41:37：追加任务 `[open]` 已标记为 `[fixed]`，任务全部完成，标记 done。
