@@ -15,7 +15,7 @@ export const zhCN = {
     error: '错误',
   },
   breadcrumb: {
-    specList: '需求列表',
+    specList: 'Spec 列表',
     newSpec: '新建 spec',
   },
   shell: {
@@ -86,7 +86,7 @@ export const zhCN = {
     filePathCopyFailed: '复制文件路径失败',
   },
   home: {
-    specList: '需求列表',
+    specList: 'Spec 列表',
     mainProject: '主项目：',
     merging: '合并中…',
     mergeToMain: '合入主项目',

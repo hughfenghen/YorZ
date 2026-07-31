@@ -21,6 +21,7 @@ interface ServeOpts {
   foreground?: boolean
   background?: boolean
   skipSkillCheck?: boolean
+  recordRuntime?: boolean
 }
 
 const ALL_AGENTS: AgentName[] = ['claude', 'opencode', 'codex']
@@ -129,6 +130,7 @@ const serveCmd = program
   .addOption(
     new Option('--skip-skill-check', 'internal: skip the skill install/update check').hideHelp(),
   )
+  .addOption(new Option('--record-runtime', 'internal: record foreground process').hideHelp())
   .action(async (opts: ServeOpts) => {
     if (opts.foreground && opts.background) {
       throw new Error('Use either --foreground or --background, not both')
@@ -144,6 +146,7 @@ const serveCmd = program
       noRegisterCwd: opts.registerCwd === false,
       foreground: opts.foreground === true,
       skipSkillCheck: opts.skipSkillCheck === true,
+      recordRuntime: opts.recordRuntime === true,
     })
   })
 

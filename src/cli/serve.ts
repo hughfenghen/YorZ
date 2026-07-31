@@ -29,6 +29,8 @@ export interface ServeCommandOptions {
   foreground?: boolean
   /** Internal: skip the skill install/update check (set on the background child). */
   skipSkillCheck?: boolean
+  /** Internal: record this process in runtime.json so background management can stop it. */
+  recordRuntime?: boolean
 }
 
 export interface BackgroundServeResult {
@@ -106,20 +108,24 @@ export async function runServe(
     noRegisterCwd: opts.noRegisterCwd,
   })
 
-  await upsertProcess({
-    pid: process.pid,
-    port: handle.port,
-    url: handle.url,
-    startedAt: new Date().toISOString(),
-  })
-  console.log(`Stop with: yorz serve stop`)
+  if (opts.recordRuntime) {
+    await upsertProcess({
+      pid: process.pid,
+      port: handle.port,
+      url: handle.url,
+      startedAt: new Date().toISOString(),
+    })
+    console.log(`Stop with: yorz serve stop`)
+  } else {
+    console.log(`Stop with: Ctrl-C`)
+  }
 
   const shutdown = async () => {
     console.log('\nShutting down YorZ Service…')
     try {
       await handle.close()
     } finally {
-      await removeRuntimeForPid(process.pid)
+      if (opts.recordRuntime) await removeRuntimeForPid(process.pid)
       process.exit(0)
     }
   }
@@ -194,6 +200,9 @@ export function backgroundArgs(opts: ServeCommandOptions): string[] {
   // The parent already ran the skill check and printed logs; the detached child
   // has stdio ignored, so skip the check to avoid a redundant install pass.
   args.push('--skip-skill-check')
+  // Background service children run through foreground hosting internally, but
+  // still need a runtime record for readiness probing and `yorz serve stop`.
+  args.push('--record-runtime')
   return args
 }
 

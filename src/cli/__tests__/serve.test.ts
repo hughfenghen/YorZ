@@ -24,6 +24,7 @@ describe('serve', () => {
       '/tmp/project',
       '--no-register-cwd',
       '--skip-skill-check',
+      '--record-runtime',
     ])
   })
 
