@@ -5,6 +5,7 @@ import { Hono } from 'hono'
 import { type SpecType } from '../spec-store.js'
 import { classifyMime, mimeForExt } from '../attachment-store.js'
 import type { ProjectInstance } from '../project-registry.js'
+import type { CommandRun } from '../command-types.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
@@ -176,9 +177,14 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
       // when this append didn't request it.
       const debugActive = (await readDebugMdStatus(join(p.specsDir, specId))) === 'debugging'
       const prompt = parsed.debug
-        ? buildDebugPrompt(p.specsDirRelative, specId, 'new')
+        ? buildDebugPrompt(p.specsDirRelative, specId, 'new', await buildDebugRuntimeContext(p))
         : debugActive
-          ? buildDebugPrompt(p.specsDirRelative, specId, 'resume')
+          ? buildDebugPrompt(
+              p.specsDirRelative,
+              specId,
+              'resume',
+              await buildDebugRuntimeContext(p),
+            )
           : `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`
       const handle = await p.sessions.send(sessionId, prompt)
       return c.json({ ok: true, runId: handle.runId, sessionId })
@@ -196,7 +202,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     // Reentry guard: if a debug session is still active, keep run in Debug mode.
     const debugActive = (await readDebugMdStatus(join(p.specsDir, specId))) === 'debugging'
     const prompt = debugActive
-      ? buildDebugPrompt(p.specsDirRelative, specId, 'resume')
+      ? buildDebugPrompt(p.specsDirRelative, specId, 'resume', await buildDebugRuntimeContext(p))
       : `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`
     const handle = await p.sessions.send(sessionId, prompt)
     return c.json({ runId: handle.runId, sessionId })
@@ -306,6 +312,7 @@ export function buildDebugPrompt(
   specsDirRelative: string,
   specId: string,
   mode: 'new' | 'resume',
+  runtimeContext = '',
 ): string {
   const specPath = `${specsDirRelative}/${specId}/spec.md`
   const debugPath = `${specsDirRelative}/${specId}/debug.md`
@@ -313,14 +320,47 @@ export function buildDebugPrompt(
     return (
       `请使用 yorz-debug skill 继续调试：spec 目录 ${specsDirRelative}/${specId}（含 ${specPath}）。` +
       `该目录下已存在处于 debugging 状态的 ${debugPath}，请定位其活跃记录块（frontmatter active 指向的 ## Debug NNN）` +
-      `继续「假设 → 取证 → 验证」循环，勿新建记录块。`
+      `继续「假设 → 取证 → 验证」循环，勿新建记录块。` +
+      runtimeContext
     )
   }
   return (
     `请使用 yorz-debug skill 进入 Debug 模式：spec 目录 ${specsDirRelative}/${specId}（含 ${specPath}）。` +
     `若 ${debugPath} 不存在则创建，否则在文末追加新的 ## Debug 记录块；` +
-    `进入后立即 git stash create 打快照写入 Debug 基线，再开始「假设 → 取证 → 验证」循环。`
+    `进入后立即 git stash create 打快照写入 Debug 基线，再开始「假设 → 取证 → 验证」循环。` +
+    runtimeContext
   )
+}
+
+async function buildDebugRuntimeContext(project: ProjectInstance): Promise<string> {
+  return formatDebugRuntimeContext(await project.commands.listRuns())
+}
+
+export function formatDebugRuntimeContext(runs: CommandRun[]): string {
+  const running = runs.filter((r) => r.status === 'running')
+  if (running.length === 0) {
+    return (
+      '\n\n当前项目运行服务上下文：暂无运行中的命令服务。' +
+      '若复现需要服务，请根据项目脚本自行启动，或请用户在 GUI 命令菜单启动后重试。'
+    )
+  }
+  const lines = ['\n\n当前项目运行服务上下文：']
+  for (const run of running) {
+    lines.push(
+      `- runId: ${promptScalar(run.runId)}`,
+      `  name: ${promptScalar(run.name)}`,
+      `  cli: ${promptScalar(run.cli)}`,
+      `  status: ${run.status}`,
+      `  pid: ${run.pid}`,
+      `  startedAt: ${new Date(run.startedAt).toISOString()}`,
+      `  logFile: ${promptScalar(run.logFile)}`,
+    )
+  }
+  return lines.join('\n')
+}
+
+function promptScalar(value: string): string {
+  return value.replace(/\r?\n/g, '\\n')
 }
 
 type CreateInput = {
