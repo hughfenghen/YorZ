@@ -19,7 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from './components/ui/dropdown-menu.jsx'
-import { toast, Toaster } from './components/ui/sonner.jsx'
+import { toast, Toaster } from './components/ui/toast.jsx'
 import { activeProjectId, projectHref, setActiveProjectId } from './lib/project.js'
 import { t, useTranslation } from './i18n/index.js'
 

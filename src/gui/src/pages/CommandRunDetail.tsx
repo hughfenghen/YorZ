@@ -21,7 +21,7 @@ import {
 import { formatDuration } from '../components/RunningCommands.jsx'
 import { CommandStatusText } from '../components/CommandStatusText.jsx'
 import { Button } from '../components/ui/button.jsx'
-import { toast } from '../components/ui/sonner.jsx'
+import { toast } from '../components/ui/toast.jsx'
 import { t } from '../i18n/index.js'
 
 /** Batch high-frequency deltas into one DOM write, as ChatPanel does. */

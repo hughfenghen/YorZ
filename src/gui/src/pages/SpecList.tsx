@@ -38,7 +38,7 @@ import {
   DialogFooter,
 } from '../components/ui/dialog.jsx'
 import { Input } from '../components/ui/input.jsx'
-import { toast } from '../components/ui/sonner.jsx'
+import { toast } from '../components/ui/toast.jsx'
 import { t } from '../i18n/index.js'
 
 const STAGE_BG: Record<string, string> = {

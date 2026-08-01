@@ -35,7 +35,7 @@ import { Breadcrumb } from '../components/Breadcrumb.jsx'
 import { FocusModeButton } from '../components/FocusModeButton.jsx'
 import { Button } from '../components/ui/button.jsx'
 import { Badge } from '../components/ui/badge.jsx'
-import { toast } from '../components/ui/sonner.jsx'
+import { toast } from '../components/ui/toast.jsx'
 import { t } from '../i18n/index.js'
 
 const STAGE_BG: Record<string, string> = {

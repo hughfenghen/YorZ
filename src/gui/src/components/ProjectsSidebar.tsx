@@ -32,7 +32,7 @@ import {
   DialogFooter,
 } from './ui/dialog.jsx'
 import { Checkbox, CheckboxControl, CheckboxLabel } from './ui/checkbox.jsx'
-import { toast } from './ui/sonner.jsx'
+import { toast } from './ui/toast.jsx'
 import { subscribeProjectsList } from '../lib/sse.js'
 import { t } from '../i18n/index.js'
 

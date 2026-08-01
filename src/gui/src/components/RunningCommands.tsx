@@ -15,7 +15,7 @@ import { subscribeCommandRuns } from '../lib/sse.js'
 import { Button } from './ui/button.jsx'
 import { CommandStatusText } from './CommandStatusText.jsx'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.jsx'
-import { toast } from './ui/sonner.jsx'
+import { toast } from './ui/toast.jsx'
 import { t } from '../i18n/index.js'
 
 export function formatDuration(

@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
 } from './ui/dropdown-menu.jsx'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog.jsx'
-import { toast } from './ui/sonner.jsx'
+import { toast } from './ui/toast.jsx'
 import { t } from '../i18n/index.js'
 
 export interface CommandMenuProps {
