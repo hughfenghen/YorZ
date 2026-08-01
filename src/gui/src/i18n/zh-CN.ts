@@ -155,6 +155,14 @@ export const zhCN = {
     specPathCopied: '已复制 spec 文件路径',
     specPathCopyFailed: '复制 spec 文件路径失败',
   },
+  mermaid: {
+    maximize: '最大化图表',
+    viewerLabel: 'Mermaid 图表查看器',
+    zoomIn: '放大',
+    zoomOut: '缩小',
+    reset: '重置视图',
+    close: '关闭图表查看器',
+  },
   specDebug: {
     empty: '暂无 debug.md 记录',
   },

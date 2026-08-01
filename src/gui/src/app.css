@@ -350,6 +350,7 @@
   }
 
   .markdown .mermaid {
+    position: relative;
     display: flex;
     justify-content: center;
     margin: 1rem 0;
@@ -358,6 +359,104 @@
     border: 1px solid hsl(var(--border));
     border-radius: var(--radius);
     overflow-x: auto;
+  }
+
+  .mermaid-control-host {
+    position: relative;
+  }
+
+  .mermaid-fullscreen-button {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: inline-flex;
+    width: 2rem;
+    height: 2rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid hsl(var(--border));
+    border-radius: calc(var(--radius) - 2px);
+    background: hsl(var(--background) / 0.9);
+    color: hsl(var(--foreground));
+    font-size: 1rem;
+    line-height: 1;
+    opacity: 0;
+    transition:
+      background-color 120ms ease,
+      opacity 120ms ease;
+  }
+
+  .markdown .mermaid:hover .mermaid-fullscreen-button,
+  .mermaid-control-host:hover .mermaid-fullscreen-button,
+  .mermaid-fullscreen-button:focus-visible {
+    opacity: 1;
+  }
+
+  .mermaid-fullscreen-button:hover {
+    background: hsl(var(--accent));
+  }
+
+  .mermaid-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    background: hsl(var(--background) / 0.96);
+  }
+
+  .mermaid-overlay__toolbar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border-bottom: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+  }
+
+  .mermaid-overlay__button {
+    display: inline-flex;
+    min-width: 2.25rem;
+    height: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid hsl(var(--border));
+    border-radius: calc(var(--radius) - 2px);
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-size: 0.95rem;
+    line-height: 1;
+  }
+
+  .mermaid-overlay__button:hover {
+    background: hsl(var(--accent));
+  }
+
+  .mermaid-overlay__viewport {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .mermaid-overlay__viewport.is-dragging {
+    cursor: grabbing;
+  }
+
+  .mermaid-overlay__canvas {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+
+  .mermaid-overlay__svg {
+    display: block;
+    max-width: none;
+    max-height: none;
   }
 }
 

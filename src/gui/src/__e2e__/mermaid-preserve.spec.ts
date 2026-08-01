@@ -64,4 +64,41 @@ test.describe('SSE 刷新后未变 mermaid 原地保留', () => {
     // And the diagram is still actually rendered (SVG present, not raw placeholder).
     await expect(article.locator('svg').first()).toBeVisible()
   })
+
+  test('mermaid 图支持最大化、缩放、拖拽平移与 Esc 关闭', async ({ page, request }) => {
+    const pid = await resolveProjectId(request)
+    await page.goto(`/${pid}/specs/${SCROLL_SPEC_ID}`)
+    const article = page.locator('article.spec-main')
+    await expect(article).toBeVisible()
+    await expect(article.locator('.mermaid svg').first()).toBeVisible({ timeout: 15_000 })
+
+    const mermaid = article.locator('.mermaid').first()
+    await mermaid.hover()
+    await page.locator('.mermaid-fullscreen-button').first().click()
+
+    const overlay = page.locator('.mermaid-overlay')
+    await expect(overlay).toBeVisible()
+    await expect(overlay.locator('svg')).toBeVisible()
+
+    const canvas = overlay.locator('.mermaid-overlay__canvas')
+    const beforeZoom = await canvas.evaluate((el) => (el as HTMLElement).style.transform)
+    await overlay.locator('.mermaid-overlay__button').nth(1).click()
+    await expect
+      .poll(() => canvas.evaluate((el) => (el as HTMLElement).style.transform))
+      .not.toBe(beforeZoom)
+
+    const beforeDrag = await canvas.evaluate((el) => (el as HTMLElement).style.transform)
+    const box = await overlay.locator('.mermaid-overlay__viewport').boundingBox()
+    expect(box).not.toBeNull()
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box!.x + box!.width / 2 + 80, box!.y + box!.height / 2 + 40)
+    await page.mouse.up()
+    await expect
+      .poll(() => canvas.evaluate((el) => (el as HTMLElement).style.transform))
+      .not.toBe(beforeDrag)
+
+    await page.keyboard.press('Escape')
+    await expect(overlay).toBeHidden()
+  })
 })

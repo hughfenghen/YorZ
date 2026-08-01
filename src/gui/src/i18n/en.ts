@@ -156,6 +156,14 @@ export const en = {
     specPathCopied: 'Spec file path copied',
     specPathCopyFailed: 'Failed to copy spec file path',
   },
+  mermaid: {
+    maximize: 'Maximize diagram',
+    viewerLabel: 'Mermaid diagram viewer',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    reset: 'Reset view',
+    close: 'Close diagram viewer',
+  },
   specDebug: {
     empty: 'No debug.md records yet',
   },
@@ -310,7 +318,8 @@ export const en = {
       failed: 'Failed to start',
     },
     clearTitle: 'Stop and clear this record?',
-    clearDescription: 'Terminates the running process and deletes this run record and its log file.',
+    clearDescription:
+      'Terminates the running process and deletes this run record and its log file.',
     clear: 'Stop and clear',
     stop: 'Stop',
     stopping: 'Stopping...',
