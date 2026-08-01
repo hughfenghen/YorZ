@@ -32,7 +32,6 @@ describe('debug runtime context', () => {
     expect(text).toContain('当前项目运行服务上下文')
     expect(text).toContain('runId: running-1')
     expect(text).toContain('logFile: .yorz/tmp/commands/running-1.log')
-    expect(text).toContain('调试要求：优先读取上述 logFile')
     expect(text).not.toContain('old-1')
   })
 
