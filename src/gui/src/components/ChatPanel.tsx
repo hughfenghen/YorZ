@@ -193,6 +193,8 @@ export const ChatPanel: Component = () => {
    * An id leaves the set once its first turn completes and gets persisted.
    */
   const freshSids = new Set<string>()
+  const [freshRevision, setFreshRevision] = createSignal(0)
+  let displayedSid = ''
   /** sid → deferred resolved by the session topic's `ready` event. */
   const readyWaiters = new Map<string, { promise: Promise<void>; resolve: () => void }>()
 
@@ -214,6 +216,11 @@ export const ChatPanel: Component = () => {
     readyWaiters.get(sid)?.resolve()
   }
 
+  function markFreshPersisted(sid: string): void {
+    if (!freshSids.delete(sid)) return
+    setFreshRevision((v) => v + 1)
+  }
+
   const [sessions, { refetch: refetchSessions }] = createResource(
     () => activeProjectId() || undefined,
     (pid) => api.listSessions(pid),
@@ -231,10 +238,15 @@ export const ChatPanel: Component = () => {
   createEffect(() => {
     const list = sessions()
     if (!list) return
+    const sid = activeSid()
+    let activeFreshChanged = false
+    for (const s of list) {
+      if (!s.running && freshSids.delete(s.id) && s.id === sid) activeFreshChanged = true
+    }
+    if (activeFreshChanged) setFreshRevision((v) => v + 1)
     setRunningSids((prev) => {
       const next: Record<string, boolean> = {}
       for (const s of list) next[s.id] = Boolean(s.running)
-      const sid = activeSid()
       if (sid && !(sid in next) && prev[sid] === true) next[sid] = true
       return next
     })
@@ -246,8 +258,10 @@ export const ChatPanel: Component = () => {
       setActiveSid('')
       setRunningSids({})
       resetParts()
+      displayedSid = ''
       setStarting(false)
       freshSids.clear()
+      setFreshRevision((v) => v + 1)
       readyWaiters.clear()
       attachments.reset()
     }),
@@ -402,13 +416,20 @@ export const ChatPanel: Component = () => {
   createEffect(() => {
     const pid = activeProjectId()
     const sid = activeSid()
+    freshRevision()
     if (!pid || !sid) return
     let disposed = false
     setAutoScroll(true)
     // A locally-created session has nothing to load: the transcript is not on
     // disk yet, and `parts` already holds the optimistic user message plus
     // whatever has streamed in. Clearing + refetching here would wipe both.
-    if (!freshSids.has(sid)) {
+    if (freshSids.has(sid)) {
+      if (displayedSid !== sid) {
+        resetParts()
+        displayedSid = sid
+      }
+    } else {
+      displayedSid = sid
       resetParts()
       void api
         .getSessionMessages(pid, sid)
@@ -435,7 +456,7 @@ export const ChatPanel: Component = () => {
           // transcript rather than trust this tab's in-memory parts. Drain the
           // buffer first, or the tail of the last delta is lost.
           flushDeltas()
-          freshSids.delete(sid)
+          markFreshPersisted(sid)
           setRunningSids((prev) => ({ ...prev, [sid]: false }))
         } else if (ev.type === 'error') {
           appendAssistant(`\n${t('chat.errorMessage', { message: ev.message })}\n`)
@@ -445,6 +466,7 @@ export const ChatPanel: Component = () => {
           // either, so inherit `fresh` — otherwise re-subscribing under the new
           // id would clear the deltas already on screen.
           if (freshSids.has(sid)) freshSids.add(ev.sessionId)
+          if (displayedSid === sid) displayedSid = ev.sessionId
           setRunningSids((prev) => ({ ...prev, [sid]: false, [ev.sessionId]: true }))
           setActiveSid(ev.sessionId)
           void refetchSessions()
@@ -588,6 +610,7 @@ export const ChatPanel: Component = () => {
     if (!activeProjectId() || !activeSid()) return
     setActiveSid('')
     resetParts()
+    displayedSid = ''
     setAutoScroll(true)
     attachments.reset()
   }
@@ -638,6 +661,7 @@ export const ChatPanel: Component = () => {
       // `ready` event cannot land between subscribe and await.
       const ready = waitForSubscription(sid)
       resetParts([{ kind: 'text', role: 'user', text: prompt }])
+      displayedSid = sid
       setRunningSids((prev) => ({ ...prev, [sid]: true }))
       setActiveSid(sid)
       await Promise.race([ready, delay(SUBSCRIBE_READY_TIMEOUT_MS)])
