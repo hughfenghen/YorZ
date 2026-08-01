@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import type { CommandDef } from './command-types.js'
 
 export type AgentConfig =
   | { kind: 'inherit' }
@@ -13,13 +14,20 @@ export interface ProjectConfig {
   version: 1
   agent: AgentConfig
   specsDir: string
+  /** User-configured commands runnable from the GUI. */
+  commands: CommandDef[]
 }
 
 const CURRENT_VERSION = 1 as const
 export const DEFAULT_SPECS_DIR = '.yorz/specs'
 
 export function defaultProjectConfig(): ProjectConfig {
-  return { version: CURRENT_VERSION, agent: { kind: 'inherit' }, specsDir: DEFAULT_SPECS_DIR }
+  return {
+    version: CURRENT_VERSION,
+    agent: { kind: 'inherit' },
+    specsDir: DEFAULT_SPECS_DIR,
+    commands: [],
+  }
 }
 
 export function configPath(cwd: string): string {
@@ -85,7 +93,31 @@ function normalizeConfig(value: unknown): ProjectConfig {
   const obj = value as Record<string, unknown>
   const agent = normalizeAgent(obj.agent)
   const specsDir = normalizeSpecsDir(obj.specsDir)
-  return { version: CURRENT_VERSION, agent, specsDir }
+  const commands = normalizeCommands(obj.commands)
+  return { version: CURRENT_VERSION, agent, specsDir, commands }
+}
+
+/**
+ * Whitelist-normalize the command list. Entries missing an id/name/cli are
+ * dropped rather than repaired: a half-formed definition would spawn a
+ * meaningless process, and silently keeping it hides the config error.
+ */
+function normalizeCommands(value: unknown): CommandDef[] {
+  if (!Array.isArray(value)) return []
+  const out: CommandDef[] = []
+  const seen = new Set<string>()
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const obj = item as Record<string, unknown>
+    const id = typeof obj.id === 'string' ? obj.id.trim() : ''
+    const name = typeof obj.name === 'string' ? obj.name.trim() : ''
+    const cli = typeof obj.cli === 'string' ? obj.cli.trim() : ''
+    if (!id || !name || !cli || seen.has(id)) continue
+    seen.add(id)
+    const createdAt = typeof obj.createdAt === 'number' && obj.createdAt > 0 ? obj.createdAt : 0
+    out.push({ id, name, cli, createdAt })
+  }
+  return out
 }
 
 function normalizeAgent(value: unknown): AgentConfig {

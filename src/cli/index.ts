@@ -15,6 +15,7 @@ interface CliOpts {
 
 interface ServeOpts {
   port?: string
+  host?: string
   open?: boolean
   cwd?: string
   registerCwd?: boolean
@@ -119,6 +120,10 @@ const serveCmd = program
   .command('serve')
   .description('Start the YorZ Service (HTTP + SSE + static GUI; multi-project).')
   .option('-p, --port <port>', 'port to listen on', '7423')
+  .option(
+    '--host <address>',
+    'bind address (default: 127.0.0.1; the service runs shell commands, so exposing it to the network is opt-in)',
+  )
   .option('--open', 'open the GUI in the default browser', false)
   .option('--foreground', 'run the service in the foreground', false)
   .option('--background', 'run the service in the background (default)', false)
@@ -141,6 +146,7 @@ const serveCmd = program
     }
     await runServe({
       port,
+      host: opts.host,
       open: opts.open,
       cwd: opts.cwd,
       noRegisterCwd: opts.registerCwd === false,

@@ -21,7 +21,7 @@ export default defineConfig({
   globalTeardown: './src/gui/src/__e2e__/fixtures/teardown.ts',
   use: {
     // 127.0.0.1 (not localhost) so requests never resolve to ::1, which the
-    // IPv4-only server (hostname 0.0.0.0) refuses.
+    // loopback-bound server (hostname 127.0.0.1) refuses.
     baseURL: `http://127.0.0.1:${E2E_PORT}/`,
     // Pin locale so i18next's navigator detector selects zh-CN; specs assert
     // Chinese labels (批注 / 解释 / 发送). Without this, Chromium's en-US default

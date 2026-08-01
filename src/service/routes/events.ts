@@ -23,6 +23,8 @@ export type { ResolveProject }
 //   project:<pid>:spec:<specId>
 //   project:<pid>:spec:<specId>:changes
 //   project:<pid>:session:<sid>
+//   project:<pid>:commands                (running-command list)
+//   project:<pid>:command:<runId>         (one run: stdout tail + status)
 //
 // Wire frames:
 //   event: ready            data: { clientId }                 (once, on connect)

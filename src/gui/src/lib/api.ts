@@ -119,10 +119,46 @@ export type AgentConfig =
   | { kind: 'codex' }
   | { kind: 'custom'; cmd: string; args: string[] }
 
+export interface CommandDef {
+  id: string
+  name: string
+  cli: string
+  createdAt: number
+}
+
+export type CommandRunStatus = 'running' | 'exited' | 'killed' | 'failed'
+
+export interface CommandRun {
+  runId: string
+  commandId: string
+  name: string
+  cli: string
+  pid: number
+  status: CommandRunStatus
+  startedAt: number
+  endedAt?: number
+  exitCode?: number | null
+  signal?: string | null
+  /** POSIX path relative to the project root — pasteable into an agent prompt. */
+  logFile: string
+}
+
+export interface CommandOutputSlice {
+  offset: number
+  text: string
+  size: number
+  truncated: boolean
+}
+
 export interface ProjectConfig {
   version: 1
   agent: AgentConfig
   specsDir: string
+  /**
+   * Managed by the command routes, not by the config dialog. Kept on the type
+   * so a round-trip through this object cannot silently drop it.
+   */
+  commands: CommandDef[]
 }
 
 export interface GlobalConfig {
@@ -416,4 +452,41 @@ export const api = {
     request<{ sessionId: string | null; kind: AgentKind | null; running: boolean }>(
       `${projectBase(pid)}/specs/${encodeURIComponent(id)}/session`,
     ),
+
+  // ---- commands ----
+  listCommands: (pid: string) => request<CommandDef[]>(`${projectBase(pid)}/commands`),
+  createCommand: (pid: string, body: { name: string; cli: string }) =>
+    request<CommandDef>(`${projectBase(pid)}/commands`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  deleteCommand: (pid: string, commandId: string) =>
+    request<{ ok: true }>(`${projectBase(pid)}/commands/${encodeURIComponent(commandId)}`, {
+      method: 'DELETE',
+    }),
+  listCommandRuns: (pid: string) => request<CommandRun[]>(`${projectBase(pid)}/command-runs`),
+  getCommandRun: (pid: string, runId: string) =>
+    request<CommandRun>(`${projectBase(pid)}/command-runs/${encodeURIComponent(runId)}`),
+  runCommand: (pid: string, commandId: string) =>
+    request<CommandRun>(`${projectBase(pid)}/command-runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ commandId }),
+    }),
+  readCommandOutput: (pid: string, runId: string, offset?: number) =>
+    request<CommandOutputSlice>(
+      `${projectBase(pid)}/command-runs/${encodeURIComponent(runId)}/output${
+        offset === undefined ? '' : `?offset=${offset}`
+      }`,
+    ),
+  stopCommandRun: (pid: string, runId: string) =>
+    request<{ ok: true; run: CommandRun }>(
+      `${projectBase(pid)}/command-runs/${encodeURIComponent(runId)}/stop`,
+      { method: 'POST' },
+    ),
+  clearCommandRun: (pid: string, runId: string) =>
+    request<{ ok: true }>(`${projectBase(pid)}/command-runs/${encodeURIComponent(runId)}`, {
+      method: 'DELETE',
+    }),
 }

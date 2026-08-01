@@ -1,4 +1,4 @@
-import type { GitChange } from './api.js'
+import type { CommandRun, GitChange } from './api.js'
 
 export interface ServerHeartbeatEvent {
   ts: number
@@ -275,6 +275,49 @@ export function subscribeSpecsList(pid: string, onChange: () => void): () => voi
 export function subscribeProjectsList(onChange: () => void): () => void {
   return mux.subscribe('projects', (event) => {
     if (event === 'projects-changed') onChange()
+  })
+}
+
+/** Project-level topic: the full run list, re-sent on every change. */
+export function subscribeCommandRuns(
+  pid: string,
+  onUpdate: (runs: CommandRun[]) => void,
+): () => void {
+  if (!pid) return () => {}
+  const topic = `project:${pid}:commands`
+  return mux.subscribe(topic, (event, data) => {
+    if (event === 'runs-updated') onUpdate((data as { runs: CommandRun[] }).runs)
+  })
+}
+
+export interface CommandOutputChunk {
+  offset: number
+  chunk: string
+}
+
+export interface CommandRunSubscribeHandlers {
+  onOutput?: (c: CommandOutputChunk) => void
+  onRun?: (run: CommandRun) => void
+  onError?: (message: string) => void
+}
+
+/** Per-run topic: incremental stdout plus terminal status transitions. */
+export function subscribeCommandOutput(
+  pid: string,
+  runId: string,
+  handlers: CommandRunSubscribeHandlers,
+): () => void {
+  if (!pid || !runId) return () => {}
+  const topic = `project:${pid}:command:${runId}`
+  return mux.subscribe(topic, (event, data) => {
+    if (event === 'output-appended') handlers.onOutput?.(data as CommandOutputChunk)
+    else if (event === 'run-updated') handlers.onRun?.((data as { run: CommandRun }).run)
+    else if (event === 'ready') {
+      const run = (data as { run?: CommandRun }).run
+      if (run) handlers.onRun?.(run)
+    } else if (event === 'error') {
+      handlers.onError?.(String((data as { error?: string }).error ?? 'unknown error'))
+    }
   })
 }
 

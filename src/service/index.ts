@@ -5,12 +5,19 @@ import { serve } from '@hono/node-server'
 import type { AddressInfo } from 'node:net'
 import { createApp } from './server.js'
 import { ProjectRegistry } from './project-registry.js'
+import { stopAllCommandManagers, stopAllCommandManagersSync } from './command-manager.js'
 import { HEARTBEAT_INTERVAL_MS } from './routes/events.js'
 import { getLogger } from './logger.js'
 import pkg from '../../package.json' with { type: 'json' }
 
 export interface ServeOptions {
   port?: number
+  /**
+   * Bind address. Defaults to loopback: the service can run arbitrary
+   * user-configured commands, so it must not be reachable from the LAN unless
+   * the user explicitly opts in.
+   */
+  host?: string
   /** Auto-register this directory if it has a `.yorz/` and is not already in the global list. */
   cwd?: string
   /** Disable cwd auto-registration. */
@@ -30,6 +37,12 @@ export interface ServeHandle {
 
 const DEFAULT_PORT = 7423
 const MAX_PORT_TRIES = 10
+export const DEFAULT_HOST = '127.0.0.1'
+
+/** Addresses that keep the service unreachable from other machines. */
+function isLoopbackHost(host: string): boolean {
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1'
+}
 
 const log = () => getLogger().child('serve')
 
@@ -48,11 +61,18 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
   const projects = await registry.list()
   const app = createApp({ registry, guiRoot: opts.guiRoot })
 
-  const port = await listen(app.fetch, opts.port ?? DEFAULT_PORT)
+  const host = opts.host?.trim() || DEFAULT_HOST
+  const port = await listen(app.fetch, opts.port ?? DEFAULT_PORT, host)
   const url = `http://localhost:${port.port}/`
   console.log(`YorZ Service ready at ${url} (${projects.length} project${projects.length === 1 ? '' : 's'})`)
-  for (const lanUrl of listLanUrls(port.port)) {
-    console.log(`  LAN: ${lanUrl}`)
+  if (!isLoopbackHost(host)) {
+    // Opt-in exposure only: this service spawns user-configured shell commands,
+    // so anyone who can reach it can run code on this machine.
+    console.log(`  WARNING: bound to ${host} — reachable from the network.`)
+    for (const lanUrl of listLanUrls(port.port)) {
+      console.log(`  LAN: ${lanUrl}`)
+    }
+    log().warn('service bound to a non-loopback address', { host, port: port.port })
   }
   for (const p of projects) {
     console.log(`  - ${p.name} -> ${p.path}`)
@@ -70,6 +90,7 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
   })
 
   installGlobalErrorHandlers()
+  installCommandExitGuard()
 
   if (opts.open) await tryOpenBrowser(url)
 
@@ -78,6 +99,9 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
     port: port.port,
     registry,
     async close() {
+      // Commands are tied to this service's lifetime: stop them before the
+      // registry (and its manager references) go away.
+      await stopAllCommandManagers()
       await registry.closeAll()
       await new Promise<void>((resolve, reject) => {
         port.server.close((err) => (err ? reject(err) : resolve()))
@@ -92,6 +116,7 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
 async function listen(
   fetchHandler: Parameters<typeof serve>[0]['fetch'],
   preferredPort: number,
+  hostname: string,
 ): Promise<{ port: number; server: ReturnType<typeof serve> }> {
   let lastErr: Error | null = null
   for (let i = 0; i < MAX_PORT_TRIES; i++) {
@@ -100,7 +125,7 @@ async function listen(
       return await new Promise<{ port: number; server: ReturnType<typeof serve> }>(
         (resolve, reject) => {
           const server = serve(
-            { fetch: fetchHandler, port: tryPort, hostname: '0.0.0.0' },
+            { fetch: fetchHandler, port: tryPort, hostname },
             (info: AddressInfo) => {
               resolve({ port: info.port, server })
             },
@@ -163,6 +188,20 @@ async function tryOpenBrowser(url: string): Promise<void> {
 function logCrash(kind: string, payload: unknown): void {
   const body = payload instanceof Error ? (payload.stack ?? payload.message) : String(payload)
   log().error(kind, { detail: body })
+}
+
+/**
+ * Backstop for paths that never reach `close()` — an uncaught crash, or a
+ * `process.exit()` from somewhere else. `exit` handlers cannot await, so this
+ * only gets to send a synchronous SIGKILL to each command's process group.
+ */
+let commandExitGuardInstalled = false
+export function installCommandExitGuard(): void {
+  if (commandExitGuardInstalled) return
+  commandExitGuardInstalled = true
+  process.on('exit', () => {
+    stopAllCommandManagersSync()
+  })
 }
 
 export function installGlobalErrorHandlers(): void {

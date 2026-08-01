@@ -23,6 +23,8 @@ function silenceConsoleMirror(): void {
 
 export interface ServeCommandOptions {
   port?: number
+  /** Bind address; defaults to loopback in the service layer. */
+  host?: string
   open?: boolean
   cwd?: string
   noRegisterCwd?: boolean
@@ -103,6 +105,7 @@ export async function runServe(
 
   const handle = await start({
     port: opts.port,
+    host: opts.host,
     open: opts.open,
     cwd: opts.cwd ?? process.cwd(),
     noRegisterCwd: opts.noRegisterCwd,
@@ -194,6 +197,7 @@ function startBackgroundServe(opts: ServeCommandOptions): Promise<BackgroundServ
 export function backgroundArgs(opts: ServeCommandOptions): string[] {
   const args = ['--foreground']
   if (opts.port !== undefined) args.push('--port', String(opts.port))
+  if (opts.host !== undefined) args.push('--host', opts.host)
   if (opts.open) args.push('--open')
   if (opts.cwd) args.push('--cwd', opts.cwd)
   if (opts.noRegisterCwd) args.push('--no-register-cwd')

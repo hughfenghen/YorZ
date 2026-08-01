@@ -258,6 +258,9 @@ export class EventsHub {
 
     if (rest === 'specs') return this.attachSpecsList(s, topic, project)
     if (rest === 'sessions') return this.attachSessionsStatus(s, topic, project)
+    if (rest === 'commands') return this.attachCommandRuns(s, topic, project)
+    const cm = /^command:(.+)$/.exec(rest)
+    if (cm) return this.attachCommandRun(s, topic, project, cm[1])
     let sm = /^spec:([^:]+):changes$/.exec(rest)
     if (sm) return this.attachSpecChanges(s, topic, project, sm[1])
     sm = /^spec:([^:]+)$/.exec(rest)
@@ -326,6 +329,43 @@ export class EventsHub {
     return project.sessions.subscribe(sid, (ev) => {
       this.emit(s, topic, 'session-msg', ev)
     })
+  }
+
+  // Project-level topic: the running-commands container. Emits the full run
+  // list on every change — the list is short and the GUI renders it wholesale.
+  private async attachCommandRuns(
+    s: Session,
+    topic: string,
+    project: ProjectInstance,
+  ): Promise<() => void> {
+    this.emit(s, topic, 'ready', {})
+    const runs = await project.commands.listRuns().catch(() => [])
+    this.emit(s, topic, 'runs-updated', { runs })
+    return project.commands.subscribeRuns((next) => {
+      this.emit(s, topic, 'runs-updated', { runs: next })
+    })
+  }
+
+  // Per-run topic: incremental stdout plus terminal status transitions.
+  private async attachCommandRun(
+    s: Session,
+    topic: string,
+    project: ProjectInstance,
+    runId: string,
+  ): Promise<() => void> {
+    const run = await project.commands.getRun(runId)
+    if (!run) throw new Error('command run not found')
+    this.emit(s, topic, 'ready', { run })
+    const unsubOutput = project.commands.subscribeOutput(runId, (chunk) => {
+      this.emit(s, topic, 'output-appended', chunk)
+    })
+    const unsubRun = project.commands.subscribeRun(runId, (next) => {
+      this.emit(s, topic, 'run-updated', { run: next })
+    })
+    return () => {
+      unsubOutput()
+      unsubRun()
+    }
   }
 
   // Project-level topic: broadcasts which sessions have an in-flight turn, so

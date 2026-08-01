@@ -6,6 +6,7 @@ import { AttachmentStore } from './attachment-store.js'
 import { SessionManager } from './session-manager.js'
 import { SessionStore } from './session-store.js'
 import { createSessionEndNotifier } from './session-end-notifier.js'
+import { getCommandManager, type CommandManager } from './command-manager.js'
 import {
   ensureSpecsDirExists,
   loadProjectConfig,
@@ -36,6 +37,12 @@ export interface ProjectInstance {
   watcher: SpecWatcher
   sessions: SessionManager
   attachments: AttachmentStore
+  /**
+   * Process-level singleton, only referenced here. Deliberately NOT torn down
+   * by close(): saving the project config triggers reload(), which discards
+   * this instance, and that must not orphan running command processes.
+   */
+  commands: CommandManager
   /** Stop watchers + free resources. Idempotent. */
   close(): Promise<void>
 }
@@ -195,6 +202,8 @@ export class ProjectRegistry {
       onSessionEnd: notifySessionEnded,
     })
 
+    const commands = getCommandManager(input.path)
+
     let closed = false
     const instance: ProjectInstance = {
       id: input.id,
@@ -205,6 +214,7 @@ export class ProjectRegistry {
       watcher,
       sessions,
       attachments,
+      commands,
       async close() {
         if (closed) return
         closed = true
@@ -217,6 +227,7 @@ export class ProjectRegistry {
       await store.ensureRoot()
       await attachments.ensureRoot()
       void attachments.cleanupExpired().catch(() => {})
+      void commands.init().catch(() => {})
       await watcher.start()
     })()
 

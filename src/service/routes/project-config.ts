@@ -38,10 +38,14 @@ export function createProjectConfigRoutes(registry: ProjectRegistry): Hono {
     }
     const parsed = parseBody(raw)
     if ('error' in parsed) return c.json({ error: parsed.error }, 400)
+    // Commands are managed by their own routes, not by this dialog. Carry the
+    // stored list over verbatim so saving agent/specsDir never wipes them.
+    const current = await loadProjectConfig(entry.path)
     const cfg: ProjectConfig = {
       version: 1,
       agent: parsed.agent,
       specsDir: parsed.specsDir,
+      commands: current.commands,
     }
     // Validate specsDir stays within the project root (throws otherwise).
     let absSpecsDir: string

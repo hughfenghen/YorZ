@@ -21,6 +21,8 @@ import { formatSpecUpdatedAt } from '../lib/time.js'
 import { Button } from '../components/ui/button.jsx'
 import { Badge } from '../components/ui/badge.jsx'
 import { FocusModeButton } from '../components/FocusModeButton.jsx'
+import { CommandMenu } from '../components/CommandMenu.jsx'
+import { RunningCommands } from '../components/RunningCommands.jsx'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -86,6 +88,8 @@ export const SpecList: Component = () => {
   const [mergeDialogOpen, setMergeDialogOpen] = createSignal(false)
   const [mergeMessage, setMergeMessage] = createSignal('')
   const [confirmDeleteId, setConfirmDeleteId] = createSignal<string | null>(null)
+  // Bumped after a run starts so the container refetches without waiting for SSE.
+  const [commandRevision, setCommandRevision] = createSignal(0)
   const [deleting, setDeleting] = createSignal(false)
   const [deleteError, setDeleteError] = createSignal<string | null>(null)
   useFocusModePage(() => mergeDialogOpen() || confirmDeleteId() !== null)
@@ -178,9 +182,17 @@ export const SpecList: Component = () => {
   return (
     <section class="overflow-y-auto p-2">
       <header class="flex items-center justify-between">
-        <h1 class="m-0 text-xl">{t('home.specList')}</h1>
+        <div class="flex items-center gap-2">
+          <h1 class="m-0 text-xl">{t('home.specList')}</h1>
+          <CommandMenu
+            projectId={projectId}
+            onRunStarted={() => setCommandRevision((n) => n + 1)}
+          />
+        </div>
         <FocusModeButton />
       </header>
+
+      <RunningCommands projectId={projectId} revision={commandRevision} />
 
       <Show when={current()?.worktree}>
         <div class="mt-2 flex flex-wrap items-center gap-3">
