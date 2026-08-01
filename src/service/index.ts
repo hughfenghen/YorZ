@@ -28,6 +28,10 @@ export interface ServeOptions {
   globalConfigPath?: string
   open?: boolean
   guiRoot?: string
+  /** 当前 runtime 的本地停服令牌；未提供时不注册内部停服入口。 */
+  shutdownToken?: string
+  /** 令牌验证通过后触发的统一关闭流程。 */
+  onShutdownRequest?: () => void
 }
 
 export interface ServeHandle {
@@ -64,7 +68,15 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
   const projects = await registry.list()
   const systemNotifications = new SystemNotificationCenter()
   systemNotifications.startVersionChecks()
-  const app = createApp({ registry, guiRoot: opts.guiRoot, systemNotifications })
+  const app = createApp({
+    registry,
+    guiRoot: opts.guiRoot,
+    systemNotifications,
+    shutdown:
+      opts.shutdownToken && opts.onShutdownRequest
+        ? { token: opts.shutdownToken, request: opts.onShutdownRequest }
+        : undefined,
+  })
 
   const host = opts.host?.trim() || DEFAULT_HOST
   const port = await listen(app.fetch, opts.port ?? DEFAULT_PORT, host)

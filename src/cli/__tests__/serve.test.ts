@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { closeSync } from 'node:fs'
-import { execFile, spawn } from 'node:child_process'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -175,14 +175,24 @@ describe('serve', () => {
     })
   })
 
-  it('stops a live process from an old runtime without identity fields', async () => {
-    await withYorzHome(async () => {
-      const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], {
-        stdio: 'ignore',
-      })
+  it('uses the protected shutdown endpoint on Windows so the service can clean up', async () => {
+    await withYorzHome(async (home) => {
+      const markerPath = join(home, 'graceful-shutdown.txt')
+      const shutdownToken = 'test-shutdown-token'
+      const child = spawn(
+        process.execPath,
+        [
+          '-e',
+          `const http=require('node:http');const fs=require('node:fs');const marker=process.env.MARKER;const token=process.env.TOKEN;const server=http.createServer((req,res)=>{if(req.method!=='POST'||req.url!=='/api/internal/shutdown'||req.headers['x-yorz-shutdown-token']!==token){res.statusCode=403;return res.end('forbidden')}res.statusCode=202;res.end('accepted');res.on('finish',()=>{fs.writeFileSync(marker,'graceful');server.close(()=>process.exit(0))})});server.listen(0,'127.0.0.1',()=>console.log('READY '+server.address().port));`,
+        ],
+        {
+          env: { ...process.env, MARKER: markerPath, TOKEN: shutdownToken },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      )
 
       try {
-        await waitForPid(child.pid)
+        const port = await waitForReadyPort(child)
         await writeFile(
           runtimePath(),
           `${JSON.stringify(
@@ -191,9 +201,10 @@ describe('serve', () => {
               processes: [
                 {
                   pid: child.pid,
-                  port: 7423,
-                  url: 'http://localhost:7423/',
+                  port,
+                  url: `http://localhost:${port}/`,
                   startedAt: new Date().toISOString(),
+                  shutdownToken,
                 },
               ],
             },
@@ -203,17 +214,12 @@ describe('serve', () => {
           'utf8',
         )
 
-        const result = await runStopServe()
+        const result = await runStopServe({ platform: 'win32' })
+
         expect(result.stopped).toBe(true)
-        expect(result.stoppedPids).toEqual([child.pid])
+        expect(await readFile(markerPath, 'utf8')).toBe('graceful')
       } finally {
-        if (child.pid) {
-          try {
-            process.kill(child.pid, 'SIGKILL')
-          } catch {
-            // The stop command is expected to terminate it first.
-          }
-        }
+        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
       }
     })
   })
@@ -257,7 +263,7 @@ describe('serve', () => {
           'utf8',
         )
 
-        const result = await runStopServe()
+        const result = await runStopServe({ platform: 'linux' })
         expect(result.stopped).toBe(true)
         expect(result.stoppedPids).toEqual([child.pid])
       } finally {
@@ -272,6 +278,23 @@ describe('serve', () => {
     })
   })
 })
+
+/** 等待测试子进程输出监听端口，避免通过固定端口引入并发冲突。 */
+async function waitForReadyPort(child: ChildProcess): Promise<number> {
+  return await new Promise<number>((resolve, reject) => {
+    let output = ''
+    child.stdout?.setEncoding('utf8')
+    child.stdout?.on('data', (chunk: string) => {
+      output += chunk
+      const match = output.match(/READY (\d+)/)
+      if (match) resolve(Number(match[1]))
+    })
+    child.once('error', reject)
+    child.once('exit', (code, signal) => {
+      reject(new Error(`测试服务过早退出：code=${code ?? 'null'} signal=${signal ?? 'null'}`))
+    })
+  })
+}
 
 async function withYorzHome(fn: (home: string) => Promise<void>): Promise<void> {
   const previous = process.env.YORZ_HOME

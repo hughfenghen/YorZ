@@ -1,4 +1,5 @@
 import { execFile, spawn, type StdioOptions } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, openSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -58,14 +59,22 @@ export interface ProcessEntry {
   port: number
   url: string
   startedAt: string
+  /** 用于核对 runtime PID 是否仍指向原 Service 进程。 */
   execPath?: string
   argv?: string[]
   processStartedAt?: string
+  /** 仅供本机 CLI 请求当前 Service 优雅退出，禁止写入日志。 */
+  shutdownToken?: string
 }
 
 interface ProcessSnapshot {
   commandLine: string
   processStartedAt?: string
+}
+
+export interface StopServeOptions {
+  /** 用于定向验证 Windows 分支；命令行调用默认使用当前平台。 */
+  platform?: NodeJS.Platform
 }
 
 const DEFAULT_SERVE_PORT = 7423
@@ -119,12 +128,31 @@ export async function runServe(
     return startBackgroundServe(opts)
   }
 
-  const handle = await start({
+  const shutdownToken = opts.recordRuntime ? randomUUID() : undefined
+  let handle: ServeHandle | null = null
+  let shuttingDown = false
+
+  /** 所有停服入口共用同一释放顺序，防止信号与 HTTP 请求重复关闭。 */
+  const shutdown = async (): Promise<void> => {
+    if (shuttingDown || !handle) return
+    shuttingDown = true
+    console.log('\nShutting down YorZ Service…')
+    try {
+      await handle.close()
+    } finally {
+      if (opts.recordRuntime) await removeRuntimeForPid(process.pid)
+      process.exit(0)
+    }
+  }
+
+  handle = await start({
     port: opts.port,
     host: opts.host,
     open: opts.open,
     cwd: opts.cwd ?? process.cwd(),
     noRegisterCwd: opts.noRegisterCwd,
+    shutdownToken,
+    onShutdownRequest: shutdownToken ? () => void shutdown() : undefined,
   })
 
   if (opts.recordRuntime) {
@@ -137,20 +165,11 @@ export async function runServe(
       execPath: process.execPath,
       argv: process.argv,
       processStartedAt: snapshot?.processStartedAt,
+      shutdownToken,
     })
     console.log(`Stop with: yorz serve stop`)
   } else {
     console.log(`Stop with: Ctrl-C`)
-  }
-
-  const shutdown = async () => {
-    console.log('\nShutting down YorZ Service…')
-    try {
-      await handle.close()
-    } finally {
-      if (opts.recordRuntime) await removeRuntimeForPid(process.pid)
-      process.exit(0)
-    }
   }
 
   process.once('SIGINT', () => void shutdown())
@@ -281,7 +300,7 @@ async function ensureSkillsInstalledWithLog(cwd: string): Promise<void> {
   }
 }
 
-export async function runStopServe(): Promise<StopServeResult> {
+export async function runStopServe(opts: StopServeOptions = {}): Promise<StopServeResult> {
   silenceConsoleMirror()
   const all = await readAllProcesses()
   if (all.length === 0) {
@@ -318,18 +337,43 @@ export async function runStopServe(): Promise<StopServeResult> {
   const stoppedPids: number[] = []
   const stoppedUrls: string[] = []
   const failedPids: number[] = []
+  const platform = opts.platform ?? process.platform
 
   for (const { proc } of alive) {
-    try {
-      process.kill(proc.pid, 'SIGTERM')
-      log().info('sent SIGTERM', { pid: proc.pid, url: proc.url })
-    } catch (err) {
-      log().warn('SIGTERM failed', { pid: proc.pid, err })
-      failedPids.push(proc.pid)
-      continue
+    let stopped = false
+    if (platform === 'win32') {
+      if (proc.shutdownToken) {
+        try {
+          await requestGracefulShutdown(proc)
+          log().info('requested graceful shutdown', { pid: proc.pid, url: proc.url })
+          stopped = await waitForProcessExit(proc.pid, 5000)
+        } catch (err) {
+          // 响应可能在 Service 开始关闭后断开；只观察退出，不按可复用 PID 强制终止。
+          log().warn('graceful shutdown request failed', { pid: proc.pid, err })
+          stopped = await waitForProcessExit(proc.pid, 2000)
+        }
+      } else {
+        log().warn('refused to stop unverified legacy Windows runtime pid', { pid: proc.pid })
+      }
+
+      if (!stopped) {
+        failedPids.push(proc.pid)
+        continue
+      }
     }
 
-    let stopped = await waitForProcessExit(proc.pid, 2000)
+    if (!stopped) {
+      try {
+        process.kill(proc.pid, 'SIGTERM')
+        log().info('sent SIGTERM', { pid: proc.pid, url: proc.url })
+      } catch (err) {
+        log().warn('SIGTERM failed', { pid: proc.pid, err })
+        failedPids.push(proc.pid)
+        continue
+      }
+      stopped = await waitForProcessExit(proc.pid, 2000)
+    }
+
     if (!stopped) {
       log().warn('still alive after SIGTERM, escalating to SIGKILL', { pid: proc.pid })
       try {
@@ -371,6 +415,23 @@ export async function runStopServe(): Promise<StopServeResult> {
     stoppedPids,
     urls: stoppedUrls,
     message: `Stopped ${stoppedPids.length} YorZ Service process(es): ${pidList}.`,
+  }
+}
+
+/**
+ * 请求指定 Windows Service 执行自身清理流程。
+ *
+ * @param proc runtime 中记录的目标进程、端口与关闭令牌。
+ * @returns Service 接受请求后结束；非成功响应会抛错并交由调用方回退。
+ */
+async function requestGracefulShutdown(proc: ProcessEntry): Promise<void> {
+  const response = await fetch(`http://127.0.0.1:${proc.port}/api/internal/shutdown`, {
+    method: 'POST',
+    headers: { 'x-yorz-shutdown-token': proc.shutdownToken! },
+    signal: AbortSignal.timeout(2000),
+  })
+  if (!response.ok) {
+    throw new Error(`Service rejected graceful shutdown with HTTP ${response.status}`)
   }
 }
 
@@ -497,6 +558,7 @@ function toProcessEntry(obj: Record<string, unknown>): ProcessEntry {
         ? obj.argv
         : undefined,
     processStartedAt: typeof obj.processStartedAt === 'string' ? obj.processStartedAt : undefined,
+    shutdownToken: typeof obj.shutdownToken === 'string' ? obj.shutdownToken : undefined,
   }
 }
 
@@ -521,6 +583,7 @@ function tryV1Entry(parsed: Record<string, unknown>): ProcessEntry | null {
         : undefined,
     processStartedAt:
       typeof parsed.processStartedAt === 'string' ? parsed.processStartedAt : undefined,
+    shutdownToken: typeof parsed.shutdownToken === 'string' ? parsed.shutdownToken : undefined,
   }
 }
 

@@ -18,6 +18,7 @@ function fakeAdapter(opts: {
   native?: SessionInfo[]
   messages?: Record<string, NormalizedMessage[]>
   onSend?: (prompt: string) => AsyncIterable<AgentEvent>
+  onAbort?: () => void
 }): AgentSdkAdapter {
   const makeSession = (id: string): AgentSession => ({
     id,
@@ -26,7 +27,7 @@ function fakeAdapter(opts: {
       (async function* () {
         yield { type: 'turn-completed' } satisfies AgentEvent
       })(),
-    abort: () => {},
+    abort: () => opts.onAbort?.(),
   })
   return {
     kind: 'claude',
@@ -47,8 +48,13 @@ async function makeManager(adapter: AgentSdkAdapter): Promise<{
   const mgr = new SessionManager(cwd, 'claude', store)
   // Only the 'claude' adapter is exercised; the other kinds resolve to the same
   // double, which reports the same (empty by default) native listing.
-  ;(mgr as unknown as { adapters: { get: () => AgentSdkAdapter } }).adapters = {
+  ;(
+    mgr as unknown as {
+      adapters: { get: () => AgentSdkAdapter; dispose: () => Promise<void> }
+    }
+  ).adapters = {
     get: () => adapter,
+    dispose: async () => {},
   }
   return { mgr, store }
 }
@@ -319,5 +325,52 @@ describe('SessionManager run status', () => {
       { sessionId: 'sid-1', running: true },
       { sessionId: 'sid-1', running: false },
     ])
+  })
+})
+
+describe('SessionManager.dispose', () => {
+  it('aborts live sessions and waits for their active dispatches', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let markStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve
+    })
+    let aborted = false
+    const adapter = fakeAdapter({
+      onSend: async function* () {
+        markStarted()
+        await gate
+        yield { type: 'turn-completed' } satisfies AgentEvent
+      },
+      onAbort: () => {
+        aborted = true
+        release()
+      },
+    })
+    const { mgr, store } = await makeManager(adapter)
+    await store.upsert(info({ id: 'sid-dispose', createdAt: 5, updatedAt: 9 }))
+    const handle = await mgr.send('sid-dispose', 'hello')
+    await started
+    let doneResolved = false
+    const done = new Promise<void>((resolve) => {
+      handle.onDone(() => {
+        doneResolved = true
+        resolve()
+      })
+    })
+
+    try {
+      await mgr.dispose()
+      expect(aborted).toBe(true)
+      expect(doneResolved).toBe(true)
+      expect(mgr.isRunning('sid-dispose')).toBe(false)
+    } finally {
+      // 旧实现不会 abort；测试失败时也要释放生成器，避免遗留异步任务。
+      release()
+      await done
+    }
   })
 })

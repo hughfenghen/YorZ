@@ -213,12 +213,10 @@ export class WorktreeManager {
     // 3. Migrate worktree sessions to main project index before removing the worktree.
     await this.migrateSessions(wtPath, mainPath)
 
-    // 4. Tear down the worktree.
-    await runGitRaw(mainPath, ['worktree', 'remove', wtPath])
-    if (existsSync(wtPath)) {
-      await runGitRaw(mainPath, ['worktree', 'remove', '--force', wtPath])
-    }
-    await runGitRaw(mainPath, ['branch', '-d', branch])
+    // 4. 先停止占用 worktree 的 Agent/watcher，再验证目录和分支确实删除。
+    await this.registry.release(entry.id)
+    await removeMergedWorktree(mainPath, wtPath)
+    await deleteWorktreeBranch(mainPath, branch, '-d')
 
     // 5. Drop the worktree project entry and reload main so its watcher sees new commits.
     await this.registry.remove(entry.id)
@@ -250,16 +248,23 @@ export class WorktreeManager {
     const wtPath = entry.path
 
     if (existsSync(wtPath)) {
-      const status = await runGitChecked(wtPath, ['status', '--porcelain'])
-      if (status.stdout.trim().length > 0) {
-        throw new GitError('dirty', '存在未提交 git 的变更')
+      if (existsSync(join(wtPath, '.git'))) {
+        const status = await runGitChecked(wtPath, ['status', '--porcelain'])
+        if (status.stdout.trim().length > 0) {
+          throw new GitError('dirty', '存在未提交 git 的变更')
+        }
       }
-      await trash(wtPath)
     }
 
+    // registry 配置保留到所有磁盘/Git 清理成功，失败时仍可再次恢复处理。
+    await this.registry.release(worktreeProjectId)
+    await trashWorktreePath(wtPath)
     if (existsSync(mainPath)) {
-      await runGitRaw(mainPath, ['worktree', 'prune'])
-      await runGitRaw(mainPath, ['branch', '-D', branch])
+      const prune = await runGitRaw(mainPath, ['worktree', 'prune'])
+      if (prune.code !== 0) {
+        throw new GitError('worktree_prune_failed', 'git worktree prune 失败', prune.stderr)
+      }
+      await deleteWorktreeBranch(mainPath, branch, '-D')
     }
 
     await this.registry.remove(worktreeProjectId)
@@ -360,6 +365,58 @@ export class WorktreeManager {
       conflictSpecPath: specPath,
       conflictFiles: report.files,
     }
+  }
+}
+
+/**
+ * 删除已合并 worktree，并在 Git 只移除元数据却遗留 Windows 目录时回收残留路径。
+ *
+ * @param mainPath 主仓库路径。
+ * @param wtPath 待删除的 worktree 路径。
+ * @returns 目录确认不存在后结束，否则抛出可恢复错误。
+ */
+async function removeMergedWorktree(mainPath: string, wtPath: string): Promise<void> {
+  const normal = await runGitRaw(mainPath, ['worktree', 'remove', wtPath])
+  if (existsSync(wtPath)) {
+    await runGitRaw(mainPath, ['worktree', 'remove', '--force', wtPath])
+  }
+  if (existsSync(wtPath)) await trashWorktreePath(wtPath)
+
+  const prune = await runGitRaw(mainPath, ['worktree', 'prune'])
+  if (prune.code !== 0) {
+    throw new GitError('worktree_prune_failed', 'git worktree prune 失败', prune.stderr)
+  }
+  if (normal.code !== 0) {
+    worktreeLog().warn('normal worktree removal required recovery cleanup', {
+      path: wtPath,
+      stderr: normal.stderr,
+    })
+  }
+}
+
+/** 将残留目录移入回收站，并确认原路径已经消失。 */
+async function trashWorktreePath(wtPath: string): Promise<void> {
+  if (!existsSync(wtPath)) return
+  try {
+    await trash(wtPath)
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new GitError('worktree_remove_failed', `worktree 目录删除失败：${wtPath}；${detail}`)
+  }
+  if (existsSync(wtPath)) {
+    throw new GitError('worktree_remove_failed', `worktree 目录仍然存在：${wtPath}`)
+  }
+}
+
+/** 删除 worktree 分支并把非零退出码转换为可识别错误。 */
+async function deleteWorktreeBranch(
+  mainPath: string,
+  branch: string,
+  mode: '-d' | '-D',
+): Promise<void> {
+  const result = await runGitRaw(mainPath, ['branch', mode, branch])
+  if (result.code !== 0) {
+    throw new GitError('branch_remove_failed', `worktree 分支删除失败：${branch}`, result.stderr)
   }
 }
 
