@@ -98,4 +98,21 @@ describe('ClaudeAdapter', () => {
       usage: { input_tokens: 3, output_tokens: 4 },
     })
   })
+
+  it('keeps transcript messages whose content is a bare string', async () => {
+    sdk.getSessionMessages.mockResolvedValueOnce([
+      { type: 'user', message: { role: 'user', content: 'hello' } },
+      {
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'hi' }] },
+      },
+    ] as never)
+
+    const messages = await new ClaudeAdapter('/tmp').getMessages('sid-1')
+
+    expect(messages).toEqual([
+      { role: 'user', parts: [{ type: 'text', text: 'hello' }] },
+      { role: 'assistant', parts: [{ type: 'text', text: 'hi' }] },
+    ])
+  })
 })

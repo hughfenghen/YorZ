@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type {
   AgentEvent,
+  AgentKind,
   AgentSdkAdapter,
   AgentSession,
   NormalizedMessage,
@@ -137,6 +138,57 @@ describe('SessionManager.listSessions', () => {
     const list = await mgr.listSessions()
 
     expect(list.find((s) => s.id === id)?.title).toBe('hello')
+  })
+})
+
+describe('SessionManager.getMessages', () => {
+  /** One adapter per kind, so routing — not the double — decides the answer. */
+  async function managerWith(
+    defaultKind: AgentKind,
+    byKind: Partial<Record<AgentKind, AgentSdkAdapter>>,
+  ): Promise<SessionManager> {
+    const cwd = await mkdtemp(join(tmpdir(), 'yorz-sm-'))
+    const empty = fakeAdapter({})
+    const mgr = new SessionManager(cwd, defaultKind, new SessionStore(cwd))
+    ;(mgr as unknown as { adapters: { get: (k: AgentKind) => AgentSdkAdapter } }).adapters = {
+      get: (k) => byKind[k] ?? empty,
+    }
+    return mgr
+  }
+
+  // In every case the transcript lives on one adapter while `defaultKind` points
+  // at a different one, so falling back to `defaultKind` yields nothing.
+  const cases: Array<{ owner: AgentKind; defaultKind: AgentKind }> = [
+    { owner: 'claude', defaultKind: 'codex' },
+    { owner: 'codex', defaultKind: 'claude' },
+    { owner: 'opencode', defaultKind: 'claude' },
+  ]
+  for (const { owner, defaultKind } of cases) {
+    it(`routes an externally created ${owner} session to the ${owner} adapter`, async () => {
+      const mgr = await managerWith(defaultKind, {
+        [owner]: fakeAdapter({
+          native: [info({ id: 'external-1', kind: owner })],
+          messages: { 'external-1': [textMessage()] },
+        }),
+      })
+
+      // No listSessions() first: the GUI loads history and the session list
+      // concurrently, so getMessages has to resolve the kind on its own.
+      expect(await mgr.getMessages('external-1')).toEqual([textMessage()])
+    })
+  }
+
+  it('lets the first adapter that claims an id win, matching the listing', async () => {
+    const claiming = (kind: AgentKind, messages: NormalizedMessage[]) =>
+      fakeAdapter({ native: [info({ id: 'dup', kind })], messages: { dup: messages } })
+    const mgr = await managerWith('claude', {
+      claude: claiming('claude', [textMessage('from claude')]),
+      codex: claiming('codex', [textMessage('from codex')]),
+    })
+
+    const [listed] = await mgr.listSessions()
+    expect(listed.kind).toBe('claude')
+    expect(await mgr.getMessages('dup')).toEqual([textMessage('from claude')])
   })
 })
 

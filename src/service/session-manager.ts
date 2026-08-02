@@ -78,6 +78,8 @@ export class SessionManager {
   private readonly emitters = new Map<string, EventEmitter>()
   /** Session ids with an in-flight turn. Drives the list spinner. */
   private readonly running = new Set<string>()
+  /** Kind of sessions discovered via `listSessions()` but absent from the store. */
+  private readonly discoveredKinds = new Map<string, AgentKind>()
   private readonly statusEmitter = new EventEmitter()
 
   constructor(
@@ -150,6 +152,8 @@ export class SessionManager {
       if (!adapter.capabilities().listSessions) continue
       try {
         for (const info of await adapter.listSessions()) {
+          // First adapter to claim an id wins, matching the `byId` merge below.
+          if (!nativeIds.has(info.id)) this.discoveredKinds.set(info.id, kind)
           nativeIds.add(info.id)
           const indexed = byId.get(info.id)
           if (!indexed) {
@@ -211,8 +215,19 @@ export class SessionManager {
     await this.store.updateTitle(sid, title)
   }
 
+  private async resolveKind(sid: string): Promise<AgentKind> {
+    const known =
+      (await this.store.get(sid))?.kind ?? this.live.get(sid)?.kind ?? this.discoveredKinds.get(sid)
+    if (known) return known
+    // The GUI loads history and the session list from two concurrent resources,
+    // so this can arrive before any discovery pass ran; run one rather than
+    // guessing `defaultKind`.
+    await this.listSessions().catch(() => {})
+    return this.discoveredKinds.get(sid) ?? this.defaultKind
+  }
+
   async getMessages(sid: string): Promise<NormalizedMessage[]> {
-    const kind = (await this.store.get(sid))?.kind ?? this.live.get(sid)?.kind ?? this.defaultKind
+    const kind = await this.resolveKind(sid)
     const adapter = this.adapters.get(kind)
     if (!adapter.capabilities().getMessages) return []
     return adapter.getMessages(sid)
