@@ -1,7 +1,7 @@
 ---
 stage: plan
-last_action: 完成 P1 第 4、5 点风险复核并排除第 6 点
-updated_at: '2026-08-01 15:00:17'
+last_action: 用户批量答复待确认问题
+updated_at: '2026-08-01 15:50:51'
 summary: 复核 Windows Agent 命令入口与三套 SDK 实机兼容风险，保留现有跨平台配置目录设计
 ---
 
@@ -164,3 +164,17 @@ _待用户确认 Custom Agent 产品策略后生成。_
 
 - 2026-08-01 15:00:17：完成第 4、5 点静态调用链与 Windows 本机隔离验证；第 4 点确认只直接影响测试 harness，并发现 custom 配置静默回退 Claude；第 5 点确认三套 SDK 均具备 Windows 原生路径，但真实 Agent 行为矩阵尚未授权执行。
 - 2026-08-01 15:00:17：按用户决策排除第 6 点，保留 `~/.config/yorz` 与 `YORZ_HOME` 现有设计。
+
+## 8. 用户批注
+
+> 待确认问题："Custom Agent 配置后续采用哪种产品策略？"
+>
+> ！！！选择：保留 GUI/API 的 custom 配置，并设计具备派发、取消与会话能力的 Custom CLI Adapter
+
+> 待确认问题："Custom Agent 配置后续采用哪种产品策略？"
+>
+> ！！！选择：保留 GUI/API 的 custom 配置，并设计具备派发、取消与会话能力的 Custom CLI Adapter
+
+> 待确认问题："Custom Agent 配置后续采用哪种产品策略？"
+>
+> ！！！选择：保留 GUI/API 的 custom 配置，并设计具备派发、取消与会话能力的 Custom CLI Adapter
