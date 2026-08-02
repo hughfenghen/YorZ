@@ -87,8 +87,11 @@ pnpm install
 # 构建 CLI + GUI
 pnpm build
 
-# 开发模式（监听 + 启动服务）
-pnpm dev
+# 前台启动本地 CLI Service
+pnpm dev:cli
+
+# 在另一个终端启动 GUI dev server
+pnpm dev:gui
 
 # 运行测试
 pnpm test

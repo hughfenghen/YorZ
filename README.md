@@ -87,8 +87,11 @@ pnpm install
 # Build CLI + GUI
 pnpm build
 
-# Development mode (watch + start service)
-pnpm dev
+# Start the local CLI service in the foreground
+pnpm dev:cli
+
+# In another terminal, start the GUI dev server
+pnpm dev:gui
 
 # Run tests
 pnpm test
