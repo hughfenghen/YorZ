@@ -152,7 +152,7 @@ export const Toaster = (props: ToasterProps) => {
       limit={local.visibleToasts ?? 3}
       swipeDirection="right"
       class={cn(
-        'fixed z-50 flex max-h-screen w-full flex-col gap-2 p-4 sm:p-6',
+        '!pointer-events-none fixed z-50 flex max-h-screen w-full flex-col gap-2 p-4 sm:p-6',
         positionClasses[local.position ?? 'bottom-right'],
         local.class,
       )}
