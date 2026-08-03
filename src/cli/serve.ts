@@ -61,11 +61,16 @@ const DEFAULT_SERVE_PORT = 7423
 const RUNTIME_FILE = 'runtime.json'
 const START_LOCK_DIR = 'serve.lock'
 const START_WAIT_MS = 5000
+const RESTART_DELAY_MS = 500
 
 export interface BackgroundStdio {
   stdio: StdioOptions
   /** Path of the stdio fallback file, or `null` when we fell back to `'ignore'`. */
   path: string | null
+}
+
+export interface RestartServeOptions extends ServeCommandOptions {
+  worker?: boolean
 }
 
 /**
@@ -208,6 +213,36 @@ export function backgroundArgs(opts: ServeCommandOptions): string[] {
   // still need a runtime record for readiness probing and `yorz serve stop`.
   args.push('--record-runtime')
   return args
+}
+
+export function restartWorkerArgs(opts: ServeCommandOptions): string[] {
+  const args = ['serve', 'restart', '--worker']
+  if (opts.port !== undefined) args.push('--port', String(opts.port))
+  if (opts.host !== undefined) args.push('--host', opts.host)
+  if (opts.open) args.push('--open')
+  if (opts.cwd) args.push('--cwd', opts.cwd)
+  if (opts.noRegisterCwd) args.push('--no-register-cwd')
+  args.push('--skip-skill-check')
+  return args
+}
+
+export async function runRestartServe(opts: RestartServeOptions = {}): Promise<void> {
+  silenceConsoleMirror()
+  if (opts.worker) {
+    await sleep(RESTART_DELAY_MS)
+    await runStopServe()
+    await runServe({ ...opts, foreground: false, skipSkillCheck: opts.skipSkillCheck ?? true })
+    return
+  }
+
+  const entry = process.argv[1]
+  if (!entry) throw new Error('Cannot resolve CLI entrypoint for restart')
+  const child = spawn(process.execPath, [entry, ...restartWorkerArgs(opts)], {
+    detached: true,
+    stdio: 'ignore',
+  })
+  child.unref()
+  console.log(`YorZ Service restart scheduled (pid=${child.pid ?? 'unknown'}).`)
 }
 
 async function ensureSkillsInstalledWithLog(cwd: string): Promise<void> {

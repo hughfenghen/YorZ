@@ -2,7 +2,7 @@ import { homedir } from 'node:os'
 import { Command, Option } from 'commander'
 import pkg from '../../package.json' with { type: 'json' }
 import { uninstall } from './uninstall.js'
-import { runServe, runStopServe } from './serve.js'
+import { runRestartServe, runServe, runStopServe } from './serve.js'
 import { runAdd, AddGitAbortedError } from './add.js'
 import { runLint } from './lint.js'
 import type { AgentName, InstallScope } from './adapters/types.js'
@@ -23,6 +23,7 @@ interface ServeOpts {
   background?: boolean
   skipSkillCheck?: boolean
   recordRuntime?: boolean
+  worker?: boolean
 }
 
 const ALL_AGENTS: AgentName[] = ['claude', 'opencode', 'codex']
@@ -162,6 +163,40 @@ serveCmd
   .action(async () => {
     const result = await runStopServe()
     console.log(result.message)
+  })
+
+serveCmd
+  .command('restart')
+  .description('Restart the background YorZ Service.')
+  .option('-p, --port <port>', 'port to listen on', '7423')
+  .option(
+    '--host <address>',
+    'bind address (default: 127.0.0.1; the service runs shell commands, so exposing it to the network is opt-in)',
+  )
+  .option('--open', 'open the GUI in the default browser', false)
+  .option(
+    '--cwd <path>',
+    'directory to auto-register when it contains .yorz/ (default: process.cwd())',
+  )
+  .option('--no-register-cwd', 'do not auto-register the current directory')
+  .addOption(new Option('--worker', 'internal: run detached restart worker').hideHelp())
+  .addOption(
+    new Option('--skip-skill-check', 'internal: skip the skill install/update check').hideHelp(),
+  )
+  .action(async (opts: ServeOpts) => {
+    const port = opts.port === undefined ? undefined : Number.parseInt(opts.port, 10)
+    if (port !== undefined && (!Number.isFinite(port) || port < 0)) {
+      throw new Error(`Invalid --port: ${opts.port}`)
+    }
+    await runRestartServe({
+      port,
+      host: opts.host,
+      open: opts.open,
+      cwd: opts.cwd,
+      noRegisterCwd: opts.registerCwd === false,
+      skipSkillCheck: opts.skipSkillCheck === true,
+      worker: opts.worker === true,
+    })
   })
 
 program.parseAsync(process.argv).catch((err: Error) => {

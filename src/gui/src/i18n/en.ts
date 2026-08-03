@@ -26,6 +26,15 @@ export const en = {
     langEn: 'English',
     globalConfig: 'Global Settings',
   },
+  systemNotifications: {
+    title: 'System Notifications',
+    delete: 'Delete notification',
+    versionTitle: 'New Version Available',
+    versionMessage: 'YorZ {{latest}} is available. Current version: {{current}}.',
+    update: 'Update',
+    updating: 'Updating…',
+    restart: 'Restart',
+  },
   welcome: {
     title: 'Welcome to YorZ',
     description:

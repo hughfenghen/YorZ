@@ -8,6 +8,7 @@ import { ProjectRegistry } from './project-registry.js'
 import { stopAllCommandManagers, stopAllCommandManagersSync } from './command-manager.js'
 import { HEARTBEAT_INTERVAL_MS } from './routes/events.js'
 import { getLogger } from './logger.js'
+import { SystemNotificationCenter } from './system-notifications.js'
 import pkg from '../../package.json' with { type: 'json' }
 
 export interface ServeOptions {
@@ -32,6 +33,7 @@ export interface ServeHandle {
   url: string
   port: number
   registry: ProjectRegistry
+  systemNotifications: SystemNotificationCenter
   close(): Promise<void>
 }
 
@@ -59,7 +61,9 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
   }
 
   const projects = await registry.list()
-  const app = createApp({ registry, guiRoot: opts.guiRoot })
+  const systemNotifications = new SystemNotificationCenter()
+  systemNotifications.startVersionChecks()
+  const app = createApp({ registry, guiRoot: opts.guiRoot, systemNotifications })
 
   const host = opts.host?.trim() || DEFAULT_HOST
   const port = await listen(app.fetch, opts.port ?? DEFAULT_PORT, host)
@@ -98,7 +102,9 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
     url,
     port: port.port,
     registry,
+    systemNotifications,
     async close() {
+      systemNotifications.stopVersionChecks()
       // Commands are tied to this service's lifetime: stop them before the
       // registry (and its manager references) go away.
       await stopAllCommandManagers()

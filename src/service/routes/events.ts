@@ -8,6 +8,7 @@ import {
 } from '../events-hub.js'
 import type { ProjectRegistry } from '../project-registry.js'
 import type { RegistryEventBus } from '../registry-events.js'
+import type { SystemNotificationCenter } from '../system-notifications.js'
 
 export { HEARTBEAT_INTERVAL_MS, attachHeartbeat }
 export type { ResolveProject }
@@ -39,9 +40,10 @@ export function createEventsRoutes(
   resolveProject: ResolveProject,
   registry?: ProjectRegistry,
   projectsBus?: RegistryEventBus,
+  systemNotifications?: SystemNotificationCenter,
 ): Hono {
   const app = new Hono()
-  const hub = new EventsHub({ resolveProject, registry, projectsBus })
+  const hub = new EventsHub({ resolveProject, registry, projectsBus, systemNotifications })
 
   app.get('/events/stream', (c) => {
     const clientId = c.req.query('clientId')?.trim()

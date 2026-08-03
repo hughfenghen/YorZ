@@ -26,6 +26,15 @@ export const zhCN = {
     langEn: 'English',
     globalConfig: '全局配置',
   },
+  systemNotifications: {
+    title: '系统提示',
+    delete: '删除提示',
+    versionTitle: '发现新版本',
+    versionMessage: 'YorZ {{latest}} 已发布，当前版本 {{current}}。',
+    update: '更新',
+    updating: '更新中…',
+    restart: '重启',
+  },
   welcome: {
     title: '欢迎使用 YorZ',
     description:

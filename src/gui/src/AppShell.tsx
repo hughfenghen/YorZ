@@ -11,6 +11,7 @@ import { Check, Languages, Menu, Plus, Settings } from 'lucide-solid'
 import { ProjectsSidebar } from './components/ProjectsSidebar.jsx'
 import { ChatPanel } from './components/ChatPanel.jsx'
 import { GlobalConfigDialog } from './components/GlobalConfigDialog.jsx'
+import { SystemNotifications } from './components/SystemNotifications.jsx'
 import { Button } from './components/ui/button.jsx'
 import {
   DropdownMenu,
@@ -49,6 +50,7 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
         <A href="/" class="text-lg font-bold">
           YorZ
         </A>
+        <SystemNotifications />
         <div class="ml-auto flex items-center gap-2">
           <Show when={activeProjectId()}>
             <Button

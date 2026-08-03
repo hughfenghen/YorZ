@@ -179,6 +179,20 @@ export interface FileCompletionResult {
 
 export type AgentKind = 'claude' | 'codex' | 'opencode'
 
+export type SystemNotificationKind = 'version-update'
+export type SystemNotificationAction = 'none' | 'update-available' | 'updating' | 'restart-ready'
+
+export interface SystemNotification {
+  id: string
+  kind: SystemNotificationKind
+  title: string
+  message: string
+  createdAt: number
+  updatedAt: number
+  action: SystemNotificationAction
+  metadata?: Record<string, string>
+}
+
 export type AgentContextKind = 'recommended_plugins' | 'agents_instructions' | 'environment_context'
 
 export interface SessionInfo {
@@ -344,6 +358,19 @@ export const api = {
       `${projectBase(pid)}/specs/${encodeURIComponent(id)}/debug`,
     ),
   listProjects: () => request<ProjectListItem[]>('/api/projects'),
+  listSystemNotifications: () => request<SystemNotification[]>('/api/system-notifications'),
+  deleteSystemNotification: (id: string) =>
+    request<{ ok: true }>(`/api/system-notifications/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+  updateSystemNotification: (id: string) =>
+    request<SystemNotification>(`/api/system-notifications/${encodeURIComponent(id)}/update`, {
+      method: 'POST',
+    }),
+  restartSystemNotification: (id: string) =>
+    request<SystemNotification>(`/api/system-notifications/${encodeURIComponent(id)}/restart`, {
+      method: 'POST',
+    }),
   removeProject: (id: string) =>
     request<{ ok: boolean }>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   removeProjectWithFiles: (id: string) =>

@@ -3,7 +3,13 @@ import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { closeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { backgroundArgs, backgroundStdio, runStopServe, runtimePath } from '../serve.js'
+import {
+  backgroundArgs,
+  backgroundStdio,
+  restartWorkerArgs,
+  runStopServe,
+  runtimePath,
+} from '../serve.js'
 import { STDIO_LOG_FILE, resolveLogDir } from '../../service/logger.js'
 
 describe('serve', () => {
@@ -25,6 +31,28 @@ describe('serve', () => {
       '--no-register-cwd',
       '--skip-skill-check',
       '--record-runtime',
+    ])
+  })
+
+  it('passes inherited options to the restart worker', () => {
+    expect(
+      restartWorkerArgs({
+        port: 8081,
+        open: true,
+        cwd: '/tmp/project',
+        noRegisterCwd: true,
+      }),
+    ).toEqual([
+      'serve',
+      'restart',
+      '--worker',
+      '--port',
+      '8081',
+      '--open',
+      '--cwd',
+      '/tmp/project',
+      '--no-register-cwd',
+      '--skip-skill-check',
     ])
   })
 

@@ -278,6 +278,12 @@ export function subscribeProjectsList(onChange: () => void): () => void {
   })
 }
 
+export function subscribeSystemNotifications(onChange: () => void): () => void {
+  return mux.subscribe('system-notifications', (event) => {
+    if (event === 'updated') onChange()
+  })
+}
+
 /** Project-level topic: the full run list, re-sent on every change. */
 export function subscribeCommandRuns(
   pid: string,

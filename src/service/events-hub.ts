@@ -3,6 +3,7 @@ import { listChanges } from './git.js'
 import type { ProjectInstance, ProjectRegistry } from './project-registry.js'
 import type { RegistryEventBus } from './registry-events.js'
 import { getLogger } from './logger.js'
+import type { SystemNotificationCenter } from './system-notifications.js'
 
 const sseLog = () => getLogger().child('sse')
 
@@ -118,6 +119,7 @@ export interface HubDeps {
   resolveProject: ResolveProject
   registry?: ProjectRegistry
   projectsBus?: RegistryEventBus
+  systemNotifications?: SystemNotificationCenter
 }
 
 export class EventsHub {
@@ -249,6 +251,7 @@ export class EventsHub {
 
   private async attachTopic(s: Session, topic: string): Promise<() => void> {
     if (topic === 'projects') return this.attachProjects(s)
+    if (topic === 'system-notifications') return this.attachSystemNotifications(s)
     const m = /^project:([^:]+):(.+)$/.exec(topic)
     if (!m) throw new Error(`invalid topic: ${topic}`)
     const pid = m[1]
@@ -276,6 +279,15 @@ export class EventsHub {
     if (!bus) return () => {}
     return bus.subscribe(() => {
       this.emit(s, 'projects', 'projects-changed', {})
+    })
+  }
+
+  private attachSystemNotifications(s: Session): () => void {
+    this.emit(s, 'system-notifications', 'ready', {})
+    const center = this.deps.systemNotifications
+    if (!center) return () => {}
+    return center.subscribe(() => {
+      this.emit(s, 'system-notifications', 'updated', {})
     })
   }
 

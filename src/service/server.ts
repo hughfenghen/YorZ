@@ -10,15 +10,18 @@ import { createSpecDraftsRoutes } from './routes/spec-drafts.js'
 import { createWorktreeRoutes } from './routes/worktree.js'
 import { createProjectFilesRoutes } from './routes/project-files.js'
 import { createCommandsRoutes } from './routes/commands.js'
+import { createSystemNotificationsRoutes } from './routes/system-notifications.js'
 import { createStaticRoutes } from './static.js'
 import type { ProjectRegistry } from './project-registry.js'
 import { RegistryEventBus } from './registry-events.js'
 import { WorktreeManager } from './worktree-manager.js'
 import { getLogger } from './logger.js'
+import type { SystemNotificationCenter } from './system-notifications.js'
 
 export interface CreateAppOptions {
   registry: ProjectRegistry
   guiRoot?: string
+  systemNotifications?: SystemNotificationCenter
 }
 
 /** Requests slower than this are surfaced at `warn` even when they succeed. */
@@ -69,6 +72,9 @@ export function createApp(opts: CreateAppOptions): Hono {
   })
 
   api.route('/', createProjectRoutes(opts.registry, worktreeManager))
+  if (opts.systemNotifications) {
+    api.route('/', createSystemNotificationsRoutes(opts.systemNotifications))
+  }
   api.route('/', createGlobalConfigRoutes(opts.registry.configPath()))
   api.route('/', createProjectConfigRoutes(opts.registry))
   api.route('/', createSpecsRoutes(resolveProject))
@@ -78,7 +84,10 @@ export function createApp(opts: CreateAppOptions): Hono {
   api.route('/', createWorktreeRoutes(opts.registry, worktreeManager))
   api.route('/', createProjectFilesRoutes(resolveProject))
   api.route('/', createCommandsRoutes(resolveProject))
-  api.route('/', createEventsRoutes(resolveProject, opts.registry, projectsBus))
+  api.route(
+    '/',
+    createEventsRoutes(resolveProject, opts.registry, projectsBus, opts.systemNotifications),
+  )
   app.route('/api', api)
 
   app.route('/', createStaticRoutes(opts.guiRoot))

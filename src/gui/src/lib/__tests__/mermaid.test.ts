@@ -130,9 +130,38 @@ describe('renderMermaidIn', () => {
   it('点击最大化入口后打开 overlay，按钮缩放与 Esc 关闭可用', async () => {
     mermaidMock.run.mockImplementation(async ({ nodes }) => {
       nodes.forEach((node) => {
-        node.innerHTML = '<svg viewBox="0 0 100 80"><g><text>diagram</text></g></svg>'
+        node.innerHTML =
+          '<svg viewBox="0 0 100 80" style="width: 42px; height: 24px;"><g><text>diagram</text></g></svg>'
       })
     })
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.classList.contains('mermaid-overlay__viewport')) {
+          return {
+            x: 0,
+            y: 0,
+            top: 0,
+            right: 500,
+            bottom: 400,
+            left: 0,
+            width: 500,
+            height: 400,
+            toJSON: () => ({}),
+          }
+        }
+        return {
+          x: 0,
+          y: 0,
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          width: 0,
+          height: 0,
+          toJSON: () => ({}),
+        }
+      })
     const article = document.createElement('article')
     const node = mermaidNode()
     article.appendChild(node)
@@ -151,16 +180,24 @@ describe('renderMermaidIn', () => {
     expect(node.querySelector('svg')).toBeNull()
 
     const canvas = overlay!.querySelector<HTMLElement>('.mermaid-overlay__canvas')!
-    expect(canvas.style.transform).toBe('translate(-50px, -40px) scale(1)')
+    const svg = overlay!.querySelector<SVGSVGElement>('svg')!
+    expect(canvas.style.transform).toBe('translate(-125px, -100px)')
+    expect(svg.style.width).toBe('250px')
+    expect(svg.style.height).toBe('200px')
     const zoomIn = overlay!.querySelectorAll<HTMLButtonElement>('.mermaid-overlay__button')[1]!
     zoomIn.click()
-    expect(canvas.style.transform).toContain('scale(1.2)')
+    expect(canvas.style.transform).not.toContain('scale')
+    expect(svg.style.width).toBe('300px')
+    expect(svg.style.height).toBe('240px')
 
     document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape' }))
     expect(document.querySelector('.mermaid-overlay')).toBeNull()
     expect(node.querySelector('svg')).toBe(originalSvg)
+    expect(originalSvg?.style.width).toBe('42px')
+    expect(originalSvg?.style.height).toBe('24px')
 
     cleanup()
+    rectSpy.mockRestore()
   })
 
   it('滚轮缩放以鼠标位置为中心更新平移量', async () => {
@@ -196,7 +233,10 @@ describe('renderMermaidIn', () => {
     )
 
     const canvas = document.querySelector<HTMLElement>('.mermaid-overlay__canvas')!
-    expect(canvas.style.transform).toBe('translate(-57.5px, -41.5px) scale(1.1)')
+    const svg = document.querySelector<SVGSVGElement>('.mermaid-overlay svg')!
+    expect(canvas.style.transform).toBe('translate(-57.5px, -41.5px)')
+    expect(svg.style.width).toBe('110px')
+    expect(svg.style.height).toBe('88px')
 
     document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape' }))
     cleanup()
