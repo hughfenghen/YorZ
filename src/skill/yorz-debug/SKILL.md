@@ -24,7 +24,7 @@ description: 以资深工程师的调试纪律定位并修复疑难 bug——假
 ### debug.md 落点
 
 - **有 spec 上下文**：`debug.md` 落 `spec_dir`（与 `spec.md` 同级）。
-- **无 spec 场景（独立触发）**：没有 `spec_dir` 时，`debug.md` 落**当前工作目录**；若用户在 prompt 中显式指定了路径，则以用户指定为准。其余多记录模型、快照、脚手架、收尾流程与有 spec 时**完全一致**。
+- **无 spec 场景（独立触发）**：没有 `spec_dir` 时，Debug 活文档必须落在项目临时目录 `.yorz/tmp/debug/`，文件名必须携带本地秒级时间信息，格式为 `debug-YYYYMMDD-HHmmss.md`；若 YorZ Service prompt 已给出具体文件路径，则以该路径为准。其余多记录模型、快照、脚手架、收尾流程与有 spec 时**完全一致**。
 
 ## debug.md：多记录活文档
 

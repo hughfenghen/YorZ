@@ -7,6 +7,7 @@ import { SessionManager } from './session-manager.js'
 import { SessionStore } from './session-store.js'
 import { createSessionEndNotifier } from './session-end-notifier.js'
 import { getCommandManager, type CommandManager } from './command-manager.js'
+import { scheduleChatDebugCleanup } from './chat-debug.js'
 import {
   ensureSpecsDirExists,
   loadProjectConfig,
@@ -203,6 +204,7 @@ export class ProjectRegistry {
     })
 
     const commands = getCommandManager(input.path)
+    const stopChatDebugCleanup = scheduleChatDebugCleanup(input.path)
 
     let closed = false
     const instance: ProjectInstance = {
@@ -218,6 +220,7 @@ export class ProjectRegistry {
       async close() {
         if (closed) return
         closed = true
+        stopChatDebugCleanup()
         await watcher.close()
         await sessions.dispose().catch(() => {})
       },

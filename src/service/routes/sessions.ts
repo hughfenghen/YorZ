@@ -2,6 +2,11 @@ import { Hono } from 'hono'
 import type { AgentKind } from '../agent-sdk/types.js'
 import type { AttachmentMeta } from '../attachment-store.js'
 import type { ProjectInstance } from '../project-registry.js'
+import {
+  buildChatDebugPrompt,
+  cleanupExpiredChatDebugFiles,
+  isYorzDebugCommand,
+} from '../chat-debug.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
@@ -115,7 +120,7 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
     // Optional attachment draft: list its files and append their readable paths so
     // the Agent can read them in place. A malformed/missing draft degrades to the
     // plain prompt rather than failing the send.
-    let finalPrompt = prompt
+    let finalPrompt = isYorzDebugCommand(prompt) ? buildChatDebugPrompt(prompt) : prompt
     if (body.draftId !== undefined) {
       if (typeof body.draftId !== 'string' || !DRAFT_ID_RE.test(body.draftId)) {
         return c.json({ error: 'draftId has invalid format' }, 400)
@@ -123,9 +128,10 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
       const draftId = body.draftId
       if (await p.attachments.draftExists(draftId)) {
         const metas = await p.attachments.listAttachments(draftId)
-        finalPrompt = buildChatPrompt(prompt, draftId, metas)
+        finalPrompt = buildChatPrompt(finalPrompt, draftId, metas)
       }
     }
+    if (isYorzDebugCommand(prompt)) void cleanupExpiredChatDebugFiles(p.path).catch(() => {})
 
     const handle = await p.sessions.send(c.req.param('sid'), finalPrompt)
     return c.json({ runId: handle.runId, sessionId: handle.sessionId }, 202)
