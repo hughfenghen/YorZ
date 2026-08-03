@@ -20,6 +20,16 @@ const DEFAULT_MAX_ROWS = 10
 /** getComputedStyle returns `normal` for an unset line-height. */
 const NORMAL_LINE_HEIGHT_RATIO = 1.5
 
+export interface SlashCommand {
+  value: string
+  label?: string
+  description?: string
+}
+
+type CompletionItem =
+  | { kind: 'mention'; value: string }
+  | { kind: 'slash'; value: string; label: string; description?: string }
+
 export interface MentionTextareaProps {
   /** Empty id disables completion (no project scope to search). */
   projectId: string
@@ -33,6 +43,8 @@ export interface MentionTextareaProps {
   maxRows?: number
   /** Fixed row count; only meaningful with `autosize={false}`. */
   rows?: number
+  /** Static commands triggered by `/` at the beginning of the textarea. */
+  slashCommands?: SlashCommand[]
   autofocus?: boolean
   required?: boolean
   class?: string
@@ -53,13 +65,14 @@ export interface MentionTextareaProps {
  */
 export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
   const [open, setOpen] = createSignal(false)
-  const [items, setItems] = createSignal<string[]>([])
+  const [items, setItems] = createSignal<CompletionItem[]>([])
   const [index, setIndex] = createSignal(0)
 
   let el: HTMLTextAreaElement | undefined
   let itemRefs: (HTMLLIElement | null)[] = []
   let mentionStart = -1
   let mentionQuery = ''
+  let slashQuery = ''
   let timer: ReturnType<typeof setTimeout> | null = null
   let blurTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -105,6 +118,7 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
     setIndex(0)
     mentionStart = -1
     mentionQuery = ''
+    slashQuery = ''
     itemRefs = []
     if (timer) {
       clearTimeout(timer)
@@ -120,12 +134,39 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
       try {
         const result = await api.listFiles(pid, query)
         itemRefs = []
-        setItems(result.items)
+        setItems(result.items.map((value) => ({ kind: 'mention', value })))
         setIndex(0)
       } catch {
         setItems([])
       }
     }, SEARCH_DEBOUNCE_MS)
+  }
+
+  function checkSlashCommand(target: HTMLTextAreaElement): boolean {
+    const commands = props.slashCommands ?? []
+    if (commands.length === 0) return false
+    const pos = target.selectionStart
+    const text = target.value.slice(0, pos)
+    if (!/^\/[\w-]*$/.test(text)) return false
+
+    mentionStart = -1
+    mentionQuery = ''
+    slashQuery = text.slice(1)
+    const query = slashQuery.toLowerCase()
+    const next = commands
+      .filter((cmd) => cmd.value.toLowerCase().startsWith(`/${query}`))
+      .map((cmd) => ({
+        kind: 'slash' as const,
+        value: cmd.value,
+        label: cmd.label ?? cmd.value,
+        description: cmd.description,
+      }))
+    itemRefs = []
+    setItems(next)
+    setIndex(0)
+    if (next.length > 0) setOpen(true)
+    else closeMention()
+    return true
   }
 
   /** An `@` only opens the popup at a word boundary, and only while the run after
@@ -153,11 +194,19 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
     debouncedSearch(afterAt)
   }
 
-  function selectMention(path: string): void {
+  function checkCompletion(target: HTMLTextAreaElement): void {
+    if (checkSlashCommand(target)) return
+    checkMention(target)
+  }
+
+  function selectItem(item: CompletionItem): void {
     const text = props.value
-    const before = text.slice(0, mentionStart)
-    const after = text.slice(mentionStart + 1 + mentionQuery.length)
-    const replacement = `@${path}`
+    const isSlash = item.kind === 'slash'
+    const start = isSlash ? 0 : mentionStart
+    const queryLength = isSlash ? slashQuery.length : mentionQuery.length
+    const before = text.slice(0, start)
+    const after = text.slice(start + 1 + queryLength)
+    const replacement = isSlash ? `${item.value} ` : `@${item.value}`
     props.onValueChange(before + replacement + after)
     closeMention()
     const cursorPos = before.length + replacement.length
@@ -193,7 +242,7 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
         // host, send the message) — let the composition swallow it.
         if (!e.isComposing) {
           e.preventDefault()
-          selectMention(list[index()]!)
+          selectItem(list[index()]!)
           return
         }
       } else if (e.key === 'Escape') {
@@ -218,7 +267,7 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
         class={cn(autosize() && 'resize-none', props.class)}
         onInput={(e) => {
           props.onValueChange(e.currentTarget.value)
-          checkMention(e.currentTarget)
+          checkCompletion(e.currentTarget)
           autoResize()
         }}
         onKeyDown={onKeyDown}
@@ -235,12 +284,12 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
               <li ref={(node) => (itemRefs[i()] = node)}>
                 <button
                   type="button"
-                  title={item}
+                  title={item.kind === 'slash' && item.description ? item.description : item.value}
                   // cn() (tailwind-merge) is load-bearing: a hand-joined string kept
                   // `bg-transparent` alongside `bg-primary`, and CSS order decided the
                   // winner — the active row rendered white-on-white.
                   class={cn(
-                    'block w-full overflow-hidden text-ellipsis whitespace-nowrap border-0 px-3 py-1.5 text-left text-sm',
+                    'block w-full overflow-hidden border-0 px-3 py-1.5 text-left text-sm',
                     index() === i()
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground',
@@ -248,10 +297,22 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
                   onMouseEnter={() => setIndex(i())}
                   onMouseDown={(e) => {
                     e.preventDefault()
-                    selectMention(item)
+                    selectItem(item)
                   }}
                 >
-                  {item}
+                  <span class="block overflow-hidden text-ellipsis whitespace-nowrap">
+                    {item.kind === 'slash' ? item.label : item.value}
+                  </span>
+                  <Show when={item.kind === 'slash' && item.description}>
+                    <span
+                      class={cn(
+                        'block overflow-hidden text-ellipsis whitespace-nowrap text-xs',
+                        index() === i() ? 'text-primary-foreground/80' : 'text-muted-foreground',
+                      )}
+                    >
+                      {item.kind === 'slash' ? item.description : ''}
+                    </span>
+                  </Show>
                 </button>
               </li>
             )}

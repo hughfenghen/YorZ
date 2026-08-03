@@ -34,7 +34,7 @@ import { t, useTranslation } from '../i18n/index.js'
 import { Button } from './ui/button.jsx'
 import { Card } from './ui/card.jsx'
 import { toast } from './ui/toast.jsx'
-import { MentionTextarea } from './MentionTextarea.jsx'
+import { MentionTextarea, type SlashCommand } from './MentionTextarea.jsx'
 import { ChatToolBlock } from './ChatToolBlock.jsx'
 import { ChatContextBlock } from './ChatContextBlock.jsx'
 import { Collapsible, CollapsibleContent } from './ui/collapsible.jsx'
@@ -157,6 +157,19 @@ export const ChatPanel: Component = () => {
   // referenced by path in the outgoing prompt. Reset after each send and whenever
   // the active session / project changes.
   const attachments = createAttachments({ projectId: () => activeProjectId() || '' })
+  const slashCommands = createMemo<SlashCommand[]>(() => {
+    lng()
+    return [
+      {
+        value: '/yorz-debug',
+        description: t('chat.slashCommandYorzDebug'),
+      },
+      {
+        value: '/yorz-spec',
+        description: t('chat.slashCommandYorzSpec'),
+      },
+    ]
+  })
 
   const [collapsed, setCollapsed] = createSignal(readLocal(COLLAPSED_KEY, '0') === '1')
   const [width, setWidth] = createSignal(readWidth())
@@ -930,6 +943,7 @@ export const ChatPanel: Component = () => {
                 projectId={activeProjectId() || ''}
                 value={input()}
                 onValueChange={setInput}
+                slashCommands={slashCommands()}
                 onKeyDown={onKeyDown}
                 onPaste={attachments.onPaste}
                 placeholder={

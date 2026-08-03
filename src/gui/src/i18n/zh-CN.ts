@@ -84,6 +84,8 @@ export const zhCN = {
     copyFilePath: '复制文件路径',
     filePathCopied: '已复制文件路径',
     filePathCopyFailed: '复制文件路径失败',
+    slashCommandYorzDebug: '启动 debug 模式，尝试解决疑难问题',
+    slashCommandYorzSpec: '基于上下文启动 spec 驱动开发',
   },
   home: {
     specList: 'Spec 列表',

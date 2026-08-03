@@ -84,6 +84,8 @@ export const en = {
     copyFilePath: 'Copy file path',
     filePathCopied: 'File path copied',
     filePathCopyFailed: 'Failed to copy file path',
+    slashCommandYorzDebug: 'Start debug mode to troubleshoot difficult issues',
+    slashCommandYorzSpec: 'Start spec-driven development from the current context',
   },
   home: {
     specList: 'Specs',
