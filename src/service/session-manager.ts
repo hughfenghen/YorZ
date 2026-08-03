@@ -22,7 +22,7 @@ export interface SessionRunHandle {
   runId: string
   sessionId: string
   onEvent(cb: (ev: AgentEvent) => void): () => void
-  onDone(cb: () => void): () => void
+  onDone(cb: (sessionId: string) => void): () => void
 }
 
 /** Broadcast when a session starts / finishes a turn (project-level SSE topic). */
@@ -65,6 +65,10 @@ function summarizePromptForTitle(prompt: string): string {
     .trim()
   if (!cleaned) return ''
   return cleaned.length > TITLE_MAX_LENGTH ? `${cleaned.slice(0, TITLE_MAX_LENGTH - 1)}…` : cleaned
+}
+
+function truncateTitle(title: string): string {
+  return title.length > TITLE_MAX_LENGTH ? `${title.slice(0, TITLE_MAX_LENGTH - 1)}…` : title
 }
 
 /**
@@ -140,6 +144,14 @@ export class SessionManager {
     const existing = await this.findSessionForSpec(specId)
     if (existing) return existing
     return this.createSession(undefined, specId, specId)
+  }
+
+  async bindSessionToSpec(sessionId: string, specId: string, title?: string): Promise<boolean> {
+    const ok = await this.store.bindSpec(sessionId, specId)
+    if (!ok) return false
+    const trimmed = title?.trim()
+    if (trimmed) await this.store.updateTitle(sessionId, truncateTitle(trimmed))
+    return true
   }
 
   async listSessions(): Promise<SessionInfo[]> {
@@ -288,7 +300,7 @@ export class SessionManager {
         await this.store.touch(currentSid).catch(() => {})
         this.setRunning(currentSid, false)
         void Promise.resolve(this.opts.onSessionEnd?.(currentSid)).catch(() => {})
-        emitter.emit('done')
+        emitter.emit('done', currentSid)
       }
     })()
     return {

@@ -210,6 +210,17 @@ describe('SessionManager per-spec sessions', () => {
     expect(await store.list()).toHaveLength(1)
     expect(await mgr.findSessionForSpec('spec-a')).toEqual(first)
   })
+
+  it('bindSessionToSpec binds an existing draft session and updates title', async () => {
+    const { mgr, store } = await makeManager(fakeAdapter({}))
+    const created = await mgr.createSession(undefined, '')
+
+    const ok = await mgr.bindSessionToSpec(created.sessionId, 'spec-a', 'spec-a · useful summary')
+
+    expect(ok).toBe(true)
+    expect(await mgr.findSessionForSpec('spec-a')).toEqual(created)
+    expect((await store.get(created.sessionId))?.title).toBe('spec-a · useful summary')
+  })
 })
 
 describe('SessionManager run status', () => {
@@ -229,6 +240,23 @@ describe('SessionManager run status', () => {
 
     expect(await store.get(created.sessionId)).toBeUndefined()
     expect((await store.get(realId))?.title).toBe('hello')
+  })
+
+  it('onDone reports the reconciled session id', async () => {
+    const realId = '019f9858-1fa6-7550-b514-7de5300c3a0b'
+    const adapter = fakeAdapter({
+      onSend: async function* () {
+        yield { type: 'session-started', sessionId: realId } satisfies AgentEvent
+        yield { type: 'turn-completed' } satisfies AgentEvent
+      },
+    })
+    const { mgr } = await makeManager(adapter)
+    const created = await mgr.createSession()
+
+    const handle = await mgr.send(created.sessionId, 'hello')
+    const doneSessionId = await new Promise<string>((r) => handle.onDone((sid) => r(sid)))
+
+    expect(doneSessionId).toBe(realId)
   })
 
   it('marks a session running for the duration of a turn and broadcasts both edges', async () => {

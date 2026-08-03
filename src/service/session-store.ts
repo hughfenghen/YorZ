@@ -88,6 +88,16 @@ export class SessionStore {
     await this.persist()
   }
 
+  async bindSpec(id: string, specId: string): Promise<boolean> {
+    const items = await this.load()
+    const entry = items.find((s) => s.id === id)
+    if (!entry) return false
+    entry.specId = specId
+    entry.updatedAt = Date.now()
+    await this.persist()
+    return true
+  }
+
   async touch(id: string): Promise<void> {
     const items = await this.load()
     const entry = items.find((s) => s.id === id)

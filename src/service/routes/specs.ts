@@ -6,6 +6,7 @@ import { type SpecType } from '../spec-store.js'
 import { classifyMime, mimeForExt } from '../attachment-store.js'
 import type { ProjectInstance } from '../project-registry.js'
 import type { CommandRun } from '../command-types.js'
+import { getLogger } from '../logger.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
@@ -39,9 +40,13 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     const input = parseCreateBody(body)
     if ('error' in input) return c.json({ error: input.error }, 400)
     if (!input.title && input.requirement) {
+      const beforeIds = new Set((await p.store.list()).map((s) => s.id))
       const prompt = buildDraftPrompt(input.type, input.requirement, input.draftId)
       const { sessionId } = await p.sessions.createSession()
       const handle = await p.sessions.send(sessionId, prompt)
+      handle.onDone((finalSessionId) => {
+        void bindDraftSessionToCreatedSpec(p, beforeIds, finalSessionId)
+      })
       return c.json({ runId: handle.runId, sessionId, draft: true }, 202)
     }
     try {
@@ -276,6 +281,47 @@ export function buildDraftPrompt(type: SpecType, requirement: string, draftId?: 
     )
   }
   return lines.join('\n')
+}
+
+async function bindDraftSessionToCreatedSpec(
+  project: ProjectInstance,
+  beforeIds: Set<string>,
+  sessionId: string,
+): Promise<void> {
+  try {
+    const created = (await project.store.list()).filter((s) => !beforeIds.has(s.id))
+    if (created.length !== 1) {
+      getLogger().child('agent').warn('skip draft session binding', {
+        sessionId,
+        createdCount: created.length,
+      })
+      return
+    }
+    const [spec] = created
+    const ok = await project.sessions.bindSessionToSpec(
+      sessionId,
+      spec.id,
+      formatSpecSessionTitle(spec.id, spec.summary),
+    )
+    if (!ok) {
+      getLogger().child('agent').warn('draft session binding target missing', {
+        sessionId,
+        specId: spec.id,
+      })
+    }
+  } catch (err) {
+    getLogger()
+      .child('agent')
+      .warn('draft session binding failed', {
+        sessionId,
+        message: err instanceof Error ? err.message : String(err),
+      })
+  }
+}
+
+function formatSpecSessionTitle(specId: string, summary: string): string {
+  const s = summary.trim()
+  return s ? `${specId} · ${s}` : specId
 }
 
 /**
