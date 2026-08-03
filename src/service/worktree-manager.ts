@@ -127,6 +127,7 @@ export class WorktreeManager {
       path: wtPath,
       baseRef,
     })
+    this.onProjectsChanged?.()
     return { entry: updated, branch, path: wtPath, baseRef }
   }
 

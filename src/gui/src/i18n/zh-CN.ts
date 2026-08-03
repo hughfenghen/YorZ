@@ -37,7 +37,6 @@ export const zhCN = {
     expand: '展开项目面板',
     collapse: '折叠项目面板',
     collapseShort: '折叠',
-    refreshList: '刷新项目列表',
     configure: '配置 {{name}}',
     projectConfig: '项目配置',
     removeProject: '移除 {{name}}',

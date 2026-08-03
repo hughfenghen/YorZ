@@ -275,6 +275,38 @@ describe('YorZ Service HTTP', () => {
     }
   })
 
+  it('projects topic emits projects-changed when a worktree project is created', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'yorz-service-worktree-'))
+    const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-service-cfg-'))
+    await mkdir(join(cwd, '.yorz'), { recursive: true })
+    await initGitRepoIn(cwd)
+    handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'projects.json') })
+    const list = await handle.registry.list()
+    const projectId = list[0]!.id
+    const apiRoot = `${handle.url}api`
+
+    const { reader, decoder } = await openMultiplex(apiRoot, ['projects'])
+    try {
+      await readUntil(reader, decoder, (t) => t.includes('"event":"ready"'), 2000)
+      const res = await fetch(`${apiRoot}/projects/${projectId}/worktrees`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ specSlug: 'sidebar-refresh' }),
+      })
+      expect(res.status).toBe(201)
+
+      const evt = await readUntil(
+        reader,
+        decoder,
+        (t) => t.includes('"event":"projects-changed"'),
+        4000,
+      )
+      expect(evt).toContain('projects-changed')
+    } finally {
+      await reader.cancel().catch(() => {})
+    }
+  })
+
   it('GET/PUT /api/global-config reads and saves session end notifications', async () => {
     const { apiRoot } = await startInTmp()
     const initial = await fetch(`${apiRoot}/global-config`)

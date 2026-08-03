@@ -12,7 +12,6 @@ import { A, useLocation, useNavigate } from '@solidjs/router'
 import {
   ChevronsRight,
   ChevronsLeft,
-  RefreshCw,
   Pencil,
   X,
   GitBranch,
@@ -228,10 +227,6 @@ export const ProjectsSidebar: Component = () => {
     }
   }
 
-  function onRefresh() {
-    void refetch()
-  }
-
   const asideStyle = () => (isCollapsed() ? undefined : { width: `${width()}px` })
 
   return (
@@ -262,16 +257,6 @@ export const ProjectsSidebar: Component = () => {
         >
           <span class=" font-semibold tracking-wide">{t('sidebar.title')}</span>
           <div class="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              class="h-7 w-7 p-0"
-              onClick={onRefresh}
-              disabled={projects.loading}
-              title={t('sidebar.refreshList')}
-            >
-              <RefreshCw class={`h-3.5 w-3.5 ${projects.loading ? 'animate-spin' : ''}`} />
-            </Button>
             <Button
               variant="outline"
               size="sm"

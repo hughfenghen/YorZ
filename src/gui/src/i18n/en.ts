@@ -37,7 +37,6 @@ export const en = {
     expand: 'Expand project panel',
     collapse: 'Collapse project panel',
     collapseShort: 'Collapse',
-    refreshList: 'Refresh project list',
     configure: 'Configure {{name}}',
     projectConfig: 'Project Config',
     removeProject: 'Remove {{name}}',
