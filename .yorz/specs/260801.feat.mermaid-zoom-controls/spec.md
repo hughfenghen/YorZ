@@ -1,7 +1,7 @@
 ---
 stage: done
 last_action: 任务全部完成，标记 done
-updated_at: '2026-08-01 21:37:37'
+updated_at: '2026-08-03 16:35:55'
 summary: 修复 Mermaid 最大化后 SVG 样式上下文丢失，并让滚轮缩放以鼠标位置为中心。
 ---
 
@@ -160,6 +160,29 @@ flowchart TB
 - 尺寸读取优先使用 SVG 的 `getBoundingClientRect()`；测试环境或未完成布局时兜底解析 `viewBox`，再兜底解析 `width` / `height` 属性。
 - 滚轮缩放锚点算法保持不变，但它的初始平移基线从 `0,0` 改为居中值；按钮缩放依旧以 viewport 中心为锚点。
 
+追加初始尺寸与清晰缩放 fix 方案：
+
+```mermaid
+flowchart TB
+    Open[打开 overlay] --> MeasureSvg[读取 SVG 基础尺寸]
+    Open --> MeasureViewport[读取 viewport 可用尺寸]
+    MeasureSvg --> FitScale[计算 fit 初始 scale]
+    MeasureViewport --> FitScale
+    FitScale --> ApplySize[按 scale 写入 SVG 宽高]
+    ApplySize --> Center[按显示尺寸居中平移]
+    Center --> Zoom[缩放时继续更新 SVG 宽高]
+    Zoom --> Crisp[保留 SVG 矢量重绘清晰度]
+
+    classDef affected fill:#fff3bf,stroke:#f08c00,color:#e67700
+    class FitScale,ApplySize,Center,Zoom,Crisp affected
+```
+
+- 初始尺寸不再固定 `scale = 1`；打开 overlay 时按 viewport 可用宽高和 SVG 基础尺寸计算 fit scale，使图形尽量占据可读区域，同时保留边距并设置上限，避免小图被放到过大。
+- 缩放实现从 `transform: translate(...) scale(...)` 调整为：canvas 只负责 `translate(...)` 平移，SVG 本身通过 `style.width/style.height = baseSize * scale` 改变显示尺寸。这样浏览器按 SVG 矢量内容重新排布/绘制，避免外层合成纹理被 CSS scale 放大后出现模糊。
+- 缩放锚点数学仍以 `screen = viewportCenter + translate + local * scale` 为模型；区别是 `scale` 只参与计算与 SVG 显示尺寸，不再写进 canvas transform。
+- 打开 overlay 时记录 SVG 原有 inline `width` / `height` 样式，关闭时恢复，避免临时查看状态污染原图。
+- 单元测试覆盖 fit 初始尺寸、SVG 宽高随按钮/滚轮缩放变化、canvas transform 不再包含 CSS `scale(...)`。
+
 ```mermaid
 flowchart LR
     MermaidHost[.mermaid 宿主] --> SourceAttr[data-mermaid-source]
@@ -168,10 +191,11 @@ flowchart LR
     Svg -->|临时移动| OverlayCanvas[overlay canvas]
     OverlayCanvas -->|关闭归还| MermaidHost
     OverlayCanvas --> CenterState[居中初始平移]
+    OverlayCanvas --> SvgSize[按 scale 写 SVG 宽高]
 
     classDef breaking fill:#ffdddd,stroke:#e03131,color:#c92a2a
     classDef affected fill:#fff3bf,stroke:#f08c00,color:#e67700
-    class Svg,OverlayCanvas,CenterState affected
+    class Svg,OverlayCanvas,CenterState,SvgSize affected
 ```
 
 <details>
@@ -202,6 +226,10 @@ _暂无_
 - [x] 修复 `@src/gui/src/lib/mermaid.ts` 的 overlay 初始/重置平移，按 SVG 尺寸居中显示（验收：最大化打开后 SVG 中心位于 viewport 中心，而不是左上角位于中心）
 - [x] 补充 Mermaid overlay 初始居中回归测试（验收：viewBox 尺寸可作为测试环境兜底，初始 transform 为负半宽高）
 - [x] 运行相关测试和 spec lint（验收：命令通过，执行记录写明结果）
+- [x] 修复 `@src/gui/src/lib/mermaid.ts` 的 overlay 初始 fit scale 计算（验收：最大化后图形按 viewport 可用尺寸得到合适初始大小并居中）
+- [x] 将 Mermaid overlay 缩放从 canvas CSS scale 改为更新 SVG 显示宽高（验收：放大后 canvas transform 不含 `scale(...)`，SVG 仍按矢量尺寸显示）
+- [x] 补充 Mermaid overlay fit 与清晰缩放回归测试（验收：覆盖初始 fit、按钮缩放、滚轮锚点缩放、关闭后恢复 SVG inline 尺寸）
+- [x] 运行相关测试和 spec lint（验收：命令通过，执行记录写明结果）
 
 ## 7. 追加任务
 
@@ -217,6 +245,10 @@ _暂无_
 - [fixed] [fix] 2026-08-01 21:35:47 | 图形最大化之后，初始状态未能居中；
   - 描述：图形最大化之后，初始状态未能居中；
     目前看到的初始状态应该是图形左上角在容器中点。
+- [fixed] [fix] 2026-08-03 16:32:02 | 1. 最大化图形之后，初始状态可能相对页面太小，需要计算一个合适的初始图形尺寸
+  - 描述：1. 最大化图形之后，初始状态可能相对页面太小，需要计算一个合适的初始图形尺寸
+
+2. 放大之后图形会变模糊，理论上 svg 能保持高清缩放
 
 ## 8. 执行记录
 
@@ -235,3 +267,5 @@ _暂无_
 - 2026-08-01 21:31:47：补充主题重渲染边界保护；Mermaid 重新写入宿主节点前会先清理控件并关闭 overlay，避免临时移出的 SVG 在重渲染后重复归还。重新验证通过：`pnpm vitest run src/gui/src/lib/__tests__/mermaid.test.ts`、`pnpm typecheck`、`pnpm playwright test src/gui/src/__e2e__/mermaid-preserve.spec.ts`、`pnpm build:gui`。
 - 2026-08-01 21:37:37：完成 Mermaid overlay 初始居中修复；`resetView()` 按 SVG 渲染尺寸、`viewBox` 或宽高属性计算负半宽高平移，使最大化初始状态居中。补充单测覆盖初始 transform 与滚轮锚点新基线。验证通过：`pnpm vitest run src/gui/src/lib/__tests__/mermaid.test.ts`、`pnpm typecheck`、`pnpm playwright test src/gui/src/__e2e__/mermaid-preserve.spec.ts`、`pnpm build:gui`。
 - 2026-08-01 21:37:37：追加初始居中 fix 任务全部完成，追加任务标记 `[fixed]`，待确认项为空，标记 done。
+- 2026-08-03 16:35:55：完成 Mermaid overlay 初始 fit scale 与清晰缩放修复；打开时按 viewport 可用尺寸计算初始 scale 并居中，缩放时改为更新 SVG `style.width/style.height`，canvas transform 仅保留平移，关闭后恢复 SVG 原 inline 尺寸。验证通过：`pnpm vitest run src/gui/src/lib/__tests__/mermaid.test.ts`、`pnpm typecheck`、`pnpm playwright test src/gui/src/__e2e__/mermaid-preserve.spec.ts`、`pnpm build:gui`。
+- 2026-08-03 16:35:55：追加初始尺寸与清晰缩放 fix 任务全部完成，追加任务标记 `[fixed]`，待确认项为空，标记 done。

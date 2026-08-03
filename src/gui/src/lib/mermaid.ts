@@ -19,6 +19,10 @@ let activeMermaidOverlay: {
   sourceSvg: SVGSVGElement
   close: () => void
 } | null = null
+const MERMAID_OVERLAY_PADDING = 96
+const MERMAID_MIN_SCALE = 0.25
+const MERMAID_MAX_SCALE = 8
+const MERMAID_MAX_INITIAL_SCALE = 2.5
 
 async function loadMermaid() {
   if (!mermaidLoaded) {
@@ -93,6 +97,21 @@ function getSvgDisplaySize(svg: SVGSVGElement): { width: number; height: number 
   }
 }
 
+function getInitialMermaidOverlayScale(
+  svgSize: { width: number; height: number },
+  viewport: HTMLElement,
+): number {
+  const rect = viewport.getBoundingClientRect()
+  if (svgSize.width <= 0 || svgSize.height <= 0 || rect.width <= 0 || rect.height <= 0) {
+    return 1
+  }
+
+  const usableWidth = Math.max(rect.width - MERMAID_OVERLAY_PADDING, rect.width * 0.5)
+  const usableHeight = Math.max(rect.height - MERMAID_OVERLAY_PADDING, rect.height * 0.5)
+  const fitScale = Math.min(usableWidth / svgSize.width, usableHeight / svgSize.height)
+  return clamp(fitScale, MERMAID_MIN_SCALE, MERMAID_MAX_INITIAL_SCALE)
+}
+
 function createIconButton(className: string, label: string, text: string): HTMLButtonElement {
   const button = document.createElement('button')
   button.type = 'button'
@@ -128,6 +147,8 @@ function openMermaidOverlay(host: HTMLElement, sourceSvg: SVGSVGElement) {
 
   const originalParent = sourceSvg.parentNode
   const originalNextSibling = sourceSvg.nextSibling
+  const originalStyleWidth = sourceSvg.style.width
+  const originalStyleHeight = sourceSvg.style.height
 
   const overlay = document.createElement('div')
   overlay.className = 'mermaid-overlay'
@@ -154,8 +175,10 @@ function openMermaidOverlay(host: HTMLElement, sourceSvg: SVGSVGElement) {
   viewport.appendChild(canvas)
   overlay.append(toolbar, viewport)
   document.body.appendChild(overlay)
+  const baseSvgSize = getSvgDisplaySize(sourceSvg)
+  const initialScale = getInitialMermaidOverlayScale(baseSvgSize, viewport)
 
-  let scale = 1
+  let scale = initialScale
   let translateX = 0
   let translateY = 0
   let dragging = false
@@ -167,7 +190,18 @@ function openMermaidOverlay(host: HTMLElement, sourceSvg: SVGSVGElement) {
   const updateTransform = () => {
     canvas.style.transform = `translate(${formatTransformNumber(translateX)}px, ${formatTransformNumber(
       translateY,
-    )}px) scale(${formatTransformNumber(scale)})`
+    )}px)`
+  }
+
+  const updateSvgSize = () => {
+    if (baseSvgSize.width <= 0 || baseSvgSize.height <= 0) return
+    sourceSvg.style.width = `${formatTransformNumber(baseSvgSize.width * scale)}px`
+    sourceSvg.style.height = `${formatTransformNumber(baseSvgSize.height * scale)}px`
+  }
+
+  const updateView = () => {
+    updateSvgSize()
+    updateTransform()
   }
 
   const zoomAt = (nextScale: number, clientX?: number, clientY?: number) => {
@@ -177,23 +211,24 @@ function openMermaidOverlay(host: HTMLElement, sourceSvg: SVGSVGElement) {
     const originX = rect.width / 2
     const originY = rect.height / 2
     const oldScale = scale
-    scale = clamp(nextScale, 0.2, 8)
+    scale = clamp(nextScale, MERMAID_MIN_SCALE, MERMAID_MAX_SCALE)
     translateX = pointX - originX - ((pointX - originX - translateX) / oldScale) * scale
     translateY = pointY - originY - ((pointY - originY - translateY) / oldScale) * scale
-    updateTransform()
+    updateView()
   }
 
   const resetView = () => {
-    const { width, height } = getSvgDisplaySize(sourceSvg)
-    scale = 1
-    translateX = width > 0 ? -width / 2 : 0
-    translateY = height > 0 ? -height / 2 : 0
-    updateTransform()
+    scale = initialScale
+    translateX = baseSvgSize.width > 0 ? -(baseSvgSize.width * scale) / 2 : 0
+    translateY = baseSvgSize.height > 0 ? -(baseSvgSize.height * scale) / 2 : 0
+    updateView()
   }
 
   const close = () => {
     document.removeEventListener('keydown', onKeyDown)
     sourceSvg.classList.remove('mermaid-overlay__svg')
+    sourceSvg.style.width = originalStyleWidth
+    sourceSvg.style.height = originalStyleHeight
     if (originalParent?.isConnected) {
       const restoreBefore =
         originalNextSibling?.parentNode === originalParent ? originalNextSibling : null
