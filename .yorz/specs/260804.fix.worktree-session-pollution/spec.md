@@ -1,7 +1,7 @@
 ---
 stage: done
 last_action: 任务全部完成，标记 done
-updated_at: '2026-08-04 10:30:00'
+updated_at: '2026-08-04 11:39:38'
 summary: Worktree 会话因 Claude SDK listSessions 的 includeWorktrees 默认 true 而泄漏到主项目会话列表，实际工作仍在 worktree 执行
 ---
 
@@ -103,6 +103,42 @@ SDK 在 `dir` 指向 git 仓库目录时，会自动发现所有 `git worktree l
 1. **会话列表出现 worktree 会话**：`listSessions({ dir: mainDir })` 因 `includeWorktrees: true` 返回了 worktree 的会话。
 2. **点进去内容一致**：`getSessionMessages(sessionId, { dir: mainDir })` 按 sessionId 全局查找，SDK 能跨 worktree 路径找到会话文件并返回内容。
 3. **实际工作未污染**：agent 进程的 cwd、spec 文件、`.yorz/tmp/sessions/index.json` 均在 worktree 目录，主目录无任何工作产物残留。
+
+### 3.6 合并回主项目时会话丢失问题
+
+**追加任务触发**：用户反馈 `includeWorktrees: false` 修复生效后会话已隔离，但 worktree 合并回主项目后，worktree 的会话从列表中消失。
+
+`mergeBackToMain()` 执行流程（`worktree-manager.ts:142-213`）：
+
+1. 在 worktree 中提交所有变更
+2. 将 worktree 分支合并到主项目
+3. **删除 worktree 目录**（`git worktree remove`）
+4. 移除 worktree 项目注册条目
+
+会话丢失发生在步骤 3：
+
+- **YorZ 会话索引**（`.yorz/tmp/sessions/index.json`）位于 worktree 目录内，随目录删除而丢失
+- **Claude SDK 会话文件**（`~/.claude/projects/<encoded-worktree-path>/`）位于用户主目录，**不随 worktree 删除而丢失**，但变为孤儿数据
+
+验证发现：`getSessionMessages(sessionId, { dir: mainDir })` **全局搜索** session ID，能跨 Claude 项目目录找到 worktree 的会话记录（实测返回 42 条消息）。因此孤儿会话文件的**内容仍可访问**，只是不出现在主项目的会话列表中。
+
+**根因**：主项目的 `SessionStore` 索引中缺少 worktree 的会话条目，且 `listSessions({ dir: mainDir, includeWorktrees: false })` 不会返回 worktree 的会话。会话内容仍存在于 Claude SDK 存储中，但索引丢失导致列表不可见。
+
+```mermaid
+flowchart TD
+    MERGE["mergeBackToMain()"] --> COMMIT["1. worktree 提交变更"]
+    COMMIT --> MERGE2["2. 合并到主项目"]
+    MERGE2 --> REMOVE["3. git worktree remove<br/>删除 worktree 目录"]
+    REMOVE --> LOSS["YorZ 索引随目录删除而丢失"]
+    REMOVE --> ORPHAN["Claude SDK 会话文件<br/>存活但变为孤儿"]
+    LOSS --> NOLIST["主项目会话列表<br/>❌ 不显示 worktree 会话"]
+    ORPHAN --> GETMSGS["getSessionMessages 全局搜索<br/>✅ 仍可访问内容"]
+
+    style LOSS fill:#fdd,stroke:#c00
+    style NOLIST fill:#fdd,stroke:#c00
+    style ORPHAN fill:#dfd,stroke:#0a0
+    style GETMSGS fill:#dfd,stroke:#0a0
+```
 
 ## 4. 技术实现方案
 
@@ -212,6 +248,69 @@ flowchart TB
 3. 新建 worktree spec 时确认 ChatPanel 不会在主项目视图下短暂显示 worktree 会话内容
 4. 确认非 worktree 场景的会话列表不受影响
 
+### 4.6 会话迁移：合并回主项目时保留 worktree 会话
+
+**文件**：`src/service/worktree-manager.ts`
+
+在 `mergeBackToMain()` 的步骤 2（合并成功后）与步骤 3（删除 worktree）之间，插入会话索引迁移步骤：
+
+1. 读取 worktree 的 `.yorz/tmp/sessions/index.json`（通过 `SessionStore`）
+2. 将每条会话条目 `upsert` 到主项目的 `.yorz/tmp/sessions/index.json`
+
+**无需复制 Claude SDK 会话文件**：`getSessionMessages(id, { dir: mainDir })` 全局搜索 session ID，能找到 `~/.claude/projects/<worktree-encoded-path>/` 下的会话记录。迁移索引后，主项目的 `SessionManager.listSessions()` 会显示这些会话（通过 `createdAt !== updatedAt` 通过 ghost 过滤），且 `getMessages()` 能正常返回内容。
+
+**决策说明**：选择仅迁移索引而非复制文件，因为：
+
+- `getSessionMessages` 已验证全局搜索有效，无需复制
+- 复制文件需要逆向工程 Claude SDK 的路径编码逻辑，脆弱且不必要
+- 索引迁移是 O(n) 操作（n = worktree 会话数，通常很少），开销极小
+
+被否决的备选：在主项目侧维护一个「已合并 worktree 的 Claude 项目目录列表」，`listSessions` 时也扫描这些目录--需要修改 `ClaudeAdapter`，且需持久化 worktree 路径列表，复杂度远高于索引迁移。
+
+<details>
+<summary>实现伪代码</summary>
+
+```typescript
+// worktree-manager.ts mergeBackToMain() 中，步骤 2 与 3 之间：
+
+// 2.5. Migrate worktree sessions to main project index.
+await this.migrateSessions(wtPath, mainPath)
+
+// 新增私有方法：
+private async migrateSessions(wtPath: string, mainPath: string): Promise<void> {
+  const wtStore = new SessionStore(wtPath)
+  const mainStore = new SessionStore(mainPath)
+  const sessions = await wtStore.list()
+  for (const s of sessions) {
+    await mainStore.upsert(s)
+  }
+  if (sessions.length > 0) {
+    worktreeLog().info('sessions migrated', {
+      from: wtPath, to: mainPath, count: sessions.length,
+    })
+  }
+}
+```
+
+</details>
+
+```mermaid
+flowchart TD
+    MERGE["mergeBackToMain()"] --> COMMIT["1. worktree 提交变更"]
+    COMMIT --> MERGE2["2. 合并到主项目"]
+    MERGE2 --> MIGRATE["2.5. 迁移会话索引<br/>wtStore.list() -&gt; mainStore.upsert()"]
+    MIGRATE --> REMOVE["3. git worktree remove"]
+    REMOVE --> DONE["4. 移除 worktree 项目条目"]
+    DONE --> LIST["主项目 listSessions()<br/>✅ 显示迁移的 worktree 会话"]
+    LIST --> MSGS["getMessages(id, dir: mainDir)<br/>✅ 全局搜索找到 Claude SDK 文件"]
+
+    style MIGRATE fill:#dfd,stroke:#0a0
+    style LIST fill:#dfd,stroke:#0a0
+    style MSGS fill:#dfd,stroke:#0a0
+```
+
+**影响**：🟡 affected - 仅影响 worktree 合并回主项目时的行为，新增会话索引迁移步骤。不影响正常会话操作。
+
 ## 5. 待确认项
 
 _暂无_
@@ -221,10 +320,21 @@ _暂无_
 - [x] 在 `src/service/agent-sdk/claude-adapter.ts` 的 `listSessions()` 中添加 `includeWorktrees: false` 参数（验收：grep 确认改动，tsc --noEmit 通过）
 - [x] 在 `src/gui/src/pages/NewSpec.tsx` 中将 `requestChatSession` 调用从 `submit()` 推迟到 `pollForNewSpec` 导航成功后（验收：grep 确认 requestChatSession 不再在 submit 中直接调用）
 - [x] 运行构建验证无编译错误（验收：nr build 或 tsc --noEmit 通过）
+- [x] 在 `src/service/worktree-manager.ts` 中新增 `migrateSessions` 私有方法，读取 worktree 的 SessionStore 并 upsert 到主项目的 SessionStore（验收：grep 确认方法存在，import SessionStore）
+- [x] 在 `mergeBackToMain()` 合并成功后、`git worktree remove` 之前调用 `migrateSessions(wtPath, mainPath)`（验收：阅读代码确认调用顺序在 worktree 删除之前）
+- [x] 运行构建验证无编译错误（验收：tsc -b 通过）
 
-## 7. 执行记录
+## 7. 追加任务
+
+- [fixed] [fix] 2026-08-04 11:30:55 | 现在是隔离开了，但是会有worktree合并回来的情况，这个时候worktree目录对应的会话就丢失了，有解决办法吗？
+  - 描述：现在是隔离开了，但是会有worktree合并回来的情况，这个时候worktree目录对应的会话就丢失了，有解决办法吗？
+
+## 8. 执行记录
 
 - **claude-adapter.ts**：在 `listSessions()` 中将 `listSessions({ dir: this.cwd })` 改为 `listSessions({ dir: this.cwd, includeWorktrees: false })`。验证：grep 确认 `includeWorktrees: false` 存在于第 147 行。
 - **NewSpec.tsx**：新增 `pendingSessionId` 变量（第 40 行），将 `submit()` 中的 `requestChatSession(resp.sessionId)` 改为 `pendingSessionId = resp.sessionId`（第 113 行），在 `pollForNewSpec` 导航成功后调用 `requestChatSession(pendingSessionId)` 并清空（第 65–67 行）。验证：grep 确认 `requestChatSession` 不再在 `submit()` 中直接调用。
 - **构建验证**：`tsc -b` 通过，exit code 0，无编译错误。
 - 收尾：全部任务完成，无待确认项、无批注、无追加任务，标记 done。
+- **worktree-manager.ts（会话迁移）**：新增 `import { SessionStore } from './session-store.js'`（第 16 行）；新增 `migrateSessions` 私有方法（第 149–163 行），读取 worktree 的 SessionStore 并 upsert 到主项目的 SessionStore；在 `mergeBackToMain()` 合并成功后、`git worktree remove` 之前调用 `migrateSessions(wtPath, mainPath)`（第 214 行）。验证：grep 确认 import/方法/调用均存在，调用顺序在 worktree 删除之前。
+- **构建验证**：`tsc -b` 通过，exit code 0，无编译错误。
+- 收尾（追加任务）：worktree 合并后会话丢失问题已修复，全部任务完成，标记 done。
