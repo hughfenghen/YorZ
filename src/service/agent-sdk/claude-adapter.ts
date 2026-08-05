@@ -144,7 +144,7 @@ export class ClaudeAdapter implements AgentSdkAdapter {
   }
 
   async listSessions(): Promise<SessionInfo[]> {
-    const infos = await listSessions({ dir: this.cwd })
+    const infos = await listSessions({ dir: this.cwd, includeWorktrees: false })
     return infos.map((s) => ({
       id: s.sessionId,
       title: s.customTitle ?? s.summary ?? s.firstPrompt ?? s.sessionId,
