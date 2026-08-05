@@ -53,4 +53,14 @@ describe('debug runtime context', () => {
       '.yorz/tmp/commands/run-ctx.log',
     )
   })
+
+  it('references the shared skill by absolute SKILL.md path, not by name', () => {
+    for (const mode of ['new', 'resume'] as const) {
+      const prompt = buildDebugPrompt('.yorz/specs', '260801.feat.x', mode)
+      expect(prompt).toContain('/skills/yorz-debug/SKILL.md')
+      expect(prompt).not.toContain('请使用 yorz-debug skill')
+      // Spec-relative paths stay relative to the project cwd.
+      expect(prompt).toContain('.yorz/specs/260801.feat.x/spec.md')
+    }
+  })
 })

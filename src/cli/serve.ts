@@ -6,7 +6,7 @@ import { homedir } from 'node:os'
 import { start, type ServeHandle } from '../service/index.js'
 import { resolveGlobalConfigDir } from '../service/global-config.js'
 import { configureLogger, getLogger, resolveLogDir, STDIO_LOG_FILE } from '../service/logger.js'
-import { ensureSkillsInstalled } from './install.js'
+import { cleanupLegacyAgentSkills, ensureSkillsInstalled } from './install.js'
 
 const log = () => getLogger().child('serve')
 
@@ -246,15 +246,23 @@ export async function runRestartServe(opts: RestartServeOptions = {}): Promise<v
 }
 
 async function ensureSkillsInstalledWithLog(cwd: string): Promise<void> {
-  const results = await ensureSkillsInstalled({ home: homedir(), cwd })
+  const results = await ensureSkillsInstalled({ cwd })
   for (const r of results) {
     if (r.status === 'installed') {
-      console.log(`[skill][${r.agent}] ${r.skill} installed: ${r.path}`)
+      console.log(`[skill] ${r.skill} installed: ${r.path}`)
     } else if (r.status === 'updated') {
-      console.log(`[skill][${r.agent}] ${r.skill} updated: ${r.path}`)
+      console.log(`[skill] ${r.skill} updated: ${r.path}`)
     } else {
-      console.log(`[skill][${r.agent}] ${r.skill} is up to date`)
+      console.log(`[skill] ${r.skill} is up to date: ${r.path}`)
     }
+  }
+  // Undo the per-Agent pollution written by pre-shared-install versions, so an
+  // upgraded install doesn't leave two copies of the same skill in play.
+  const legacy = await cleanupLegacyAgentSkills({ home: homedir(), cwd })
+  for (const r of legacy) {
+    if (r.reason === 'removed') console.log(`[skill][legacy] ${r.skill} removed: ${r.path}`)
+    else if (r.reason === 'foreign')
+      console.log(`[skill][legacy] ${r.skill} kept (not a YorZ skill): ${r.path}`)
   }
 }
 

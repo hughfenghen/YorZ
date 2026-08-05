@@ -7,6 +7,7 @@ import { classifyMime, mimeForExt } from '../attachment-store.js'
 import type { ProjectInstance } from '../project-registry.js'
 import type { CommandRun } from '../command-types.js'
 import { getLogger } from '../logger.js'
+import { skillRef } from '../skill-ref.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
@@ -190,7 +191,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
               'resume',
               await buildDebugRuntimeContext(p),
             )
-          : `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`
+          : `${skillRef('yorz-spec')}，然后处理 spec：${p.specsDirRelative}/${specId}/spec.md`
       const handle = await p.sessions.send(sessionId, prompt)
       return c.json({ ok: true, runId: handle.runId, sessionId })
     }
@@ -208,7 +209,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     const debugActive = (await readDebugMdStatus(join(p.specsDir, specId))) === 'debugging'
     const prompt = debugActive
       ? buildDebugPrompt(p.specsDirRelative, specId, 'resume', await buildDebugRuntimeContext(p))
-      : `请使用 yorz-spec skill 处理 spec：${p.specsDirRelative}/${specId}/spec.md`
+      : `${skillRef('yorz-spec')}，然后处理 spec：${p.specsDirRelative}/${specId}/spec.md`
     const handle = await p.sessions.send(sessionId, prompt)
     return c.json({ runId: handle.runId, sessionId })
   })
@@ -256,7 +257,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
 
 export function buildDraftPrompt(type: SpecType, requirement: string, draftId?: string): string {
   const lines = [
-    '请按 yorz-spec skill 的「新建 spec」流程，根据下方信息创建新的 spec 文档，并立即按 plan 阶段继续推进直至阻塞。',
+    `${skillRef('yorz-spec')}，然后按其「新建 spec」流程，根据下方信息创建新的 spec 文档，并立即按 plan 阶段继续推进直至阻塞。`,
     '',
     `类型：${type}（已由调用方指定，不要再询问）`,
     '需求：',
@@ -364,14 +365,14 @@ export function buildDebugPrompt(
   const debugPath = `${specsDirRelative}/${specId}/debug.md`
   if (mode === 'resume') {
     return (
-      `请使用 yorz-debug skill 继续调试：spec 目录 ${specsDirRelative}/${specId}（含 ${specPath}）。` +
+      `${skillRef('yorz-debug')}，然后继续调试：spec 目录 ${specsDirRelative}/${specId}（含 ${specPath}）。` +
       `该目录下已存在处于 debugging 状态的 ${debugPath}，请定位其活跃记录块（frontmatter active 指向的 ## Debug NNN）` +
       `继续「假设 → 取证 → 验证」循环，勿新建记录块。` +
       runtimeContext
     )
   }
   return (
-    `请使用 yorz-debug skill 进入 Debug 模式：spec 目录 ${specsDirRelative}/${specId}（含 ${specPath}）。` +
+    `${skillRef('yorz-debug')}，然后进入 Debug 模式：spec 目录 ${specsDirRelative}/${specId}（含 ${specPath}）。` +
     `若 ${debugPath} 不存在则创建，否则在文末追加新的 ## Debug 记录块；` +
     `进入后立即 git stash create 打快照写入 Debug 基线，再开始「假设 → 取证 → 验证」循环。` +
     runtimeContext

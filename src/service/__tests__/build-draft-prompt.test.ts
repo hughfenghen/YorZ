@@ -4,6 +4,10 @@ import { buildDraftPrompt } from '../routes/specs.js'
 describe('buildDraftPrompt', () => {
   it('omits attachment instructions when no draftId is provided', () => {
     const prompt = buildDraftPrompt('feat', '加上 X 功能')
+    // Skills live in the shared global dir, so the prompt must carry an
+    // absolute SKILL.md path instead of a bare skill name.
+    expect(prompt).toContain('/skills/yorz-spec/SKILL.md')
+    expect(prompt).not.toContain('请按 yorz-spec skill')
     expect(prompt).toContain('类型：feat')
     expect(prompt).toContain('加上 X 功能')
     expect(prompt).not.toContain('附件迁移')

@@ -10,6 +10,7 @@ import {
   GitError,
 } from '../git.js'
 import type { ProjectInstance } from '../project-registry.js'
+import { skillRef } from '../skill-ref.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
@@ -37,7 +38,7 @@ export function createSpecReviewRoutes(resolveProject: ResolveProject): Hono {
     const specRel = `${p.specsDirRelative}/${specId}/spec.md`
     const reviewRel = `${p.specsDirRelative}/${specId}/review.md`
     const prompt =
-      `请使用 yorz-spec skill 的 "Review / Git Ops 阶段" 流程处理本次 review：\n` +
+      `${skillRef('yorz-spec')}，然后按其 "Review / Git Ops 阶段" 流程处理本次 review：\n` +
       `- spec 文档：${specRel}\n` +
       `- 输出文件：${reviewRel}（追加新二级标题条目，禁止覆盖历史）\n` +
       `- 必含 4 节：变更总结 / 影响范围 / 风险提醒 / 变更文件清单\n` +
@@ -213,7 +214,7 @@ function buildGitOpsPrompt(
   reviewRel: string,
 ): string {
   const base =
-    `请使用 yorz-spec skill 的 "Review / Git Ops 阶段" 流程执行 git 操作：\n` +
+    `${skillRef('yorz-spec')}，然后按其 "Review / Git Ops 阶段" 流程执行 git 操作：\n` +
     `- spec 文档：${specRel}\n` +
     `- 最近一次 review：${reviewRel}（如不存在，请先依据 git status/diff 自行判断本次 spec 关联的变更）\n` +
     `- spec-id：${specId}\n`

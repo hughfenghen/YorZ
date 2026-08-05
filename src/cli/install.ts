@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { getAdapter } from './adapters/index.js'
-import type { AgentName, InstallScope } from './adapters/types.js'
+import { resolveGlobalSkillsDir } from '../service/global-config.js'
 import { isGitRepo } from './git.js'
 
 /** Primary skill dir name; kept as the default for single-skill APIs. */
@@ -10,13 +9,10 @@ export const SKILL_DIR_NAME = 'yorz-spec'
 
 /**
  * Every bundled skill directory under `src/skill/`. `ensureSkillsInstalled()`
- * installs/updates each one for every auto-install agent. Add a new skill here
- * (and create `src/skill/<name>/SKILL.md`) to ship it.
+ * installs/updates each one into the shared global skills dir. Add a new skill
+ * here (and create `src/skill/<name>/SKILL.md`) to ship it.
  */
 export const SKILL_DIR_NAMES: readonly string[] = ['yorz-spec', 'yorz-debug']
-
-/** Agents that `ensureSkillsInstalled()` keeps up to date (scope=user). */
-export const AUTO_INSTALL_AGENTS: AgentName[] = ['claude', 'opencode', 'codex']
 
 // Inline every md/json under src/skill/** at build time. Per-skill filtering
 // happens in resolveSkillFiles(); __tests__ fixtures are excluded there so they
@@ -30,9 +26,13 @@ const SKILL_FILES = import.meta.glob('../skill/**/*.{md,json}', {
 const SKILL_ROOT = '../skill/'
 
 export interface InstallOptions {
-  agent: AgentName
-  scope: InstallScope
-  home: string
+  /**
+   * Override for the shared skills dir; when omitted it is resolved from the
+   * environment (`YORZ_HOME` > `XDG_CONFIG_HOME` > `~/.config`). Tests inject
+   * a temp dir here.
+   */
+  skillsDir?: string
+  /** Project dir whose `.gitignore` gets the `.yorz/tmp` entry. */
   cwd: string
 }
 
@@ -72,8 +72,7 @@ export async function install(
   opts: InstallOptions,
   skillName: string = SKILL_DIR_NAME,
 ): Promise<InstallResult> {
-  const adapter = getAdapter(opts.agent)
-  const baseDir = adapter.resolveSkillsDir(opts.scope, { home: opts.home, cwd: opts.cwd })
+  const baseDir = opts.skillsDir ?? resolveGlobalSkillsDir()
   const skillDir = join(baseDir, skillName)
   const entry = join(skillDir, 'SKILL.md')
 
@@ -153,7 +152,6 @@ function fingerprintFiles(files: SkillFile[]): string {
 export type EnsureStatus = 'installed' | 'updated' | 'up-to-date'
 
 export interface EnsureSkillsResult {
-  agent: AgentName
   skill: string
   status: EnsureStatus
   path: string
@@ -161,32 +159,102 @@ export interface EnsureSkillsResult {
 
 /**
  * Ensure every bundled skill ({@link SKILL_DIR_NAMES}) is present and current
- * for every auto-install agent at user scope. Installs when missing, re-installs
- * when the installed fingerprint differs from the bundled one, and skips
- * otherwise. Returns one result per (agent, skill) for the caller (serve) to log.
+ * in the shared global skills dir (`~/.config/yorz/skills/` by default).
+ * Installs when missing, re-installs when the installed fingerprint differs
+ * from the bundled one, and skips otherwise. Returns one result per skill for
+ * the caller (serve) to log.
  */
 export async function ensureSkillsInstalled(opts: {
-  home: string
+  skillsDir?: string
   cwd: string
 }): Promise<EnsureSkillsResult[]> {
+  const baseDir = opts.skillsDir ?? resolveGlobalSkillsDir()
   const results: EnsureSkillsResult[] = []
-  for (const agent of AUTO_INSTALL_AGENTS) {
-    const adapter = getAdapter(agent)
-    const baseDir = adapter.resolveSkillsDir('user', { home: opts.home, cwd: opts.cwd })
+  for (const skill of SKILL_DIR_NAMES) {
+    const skillDir = join(baseDir, skill)
+    const entry = join(skillDir, 'SKILL.md')
+    const bundled = computeBundledFingerprint(skill)
+    const installed = await readInstalledFingerprint(skillDir, skill)
+
+    if (installed === bundled) {
+      results.push({ skill, status: 'up-to-date', path: entry })
+      continue
+    }
+
+    const status: EnsureStatus = installed === null ? 'installed' : 'updated'
+    const result = await install({ skillsDir: baseDir, cwd: opts.cwd }, skill)
+    results.push({ skill, status, path: result.path })
+  }
+  return results
+}
+
+/**
+ * Directories that pre-`global-skills-shared-install` versions of yorz wrote
+ * bundled skills into — one per (agent, scope). Kept only so
+ * {@link cleanupLegacyAgentSkills} can undo that pollution; nothing installs
+ * here anymore.
+ */
+function legacySkillBaseDirs(home: string, cwd: string): string[] {
+  return [
+    join(home, '.claude', 'skills'),
+    join(home, '.config', 'opencode', 'skills'),
+    join(home, '.codex', 'skills'),
+    join(cwd, '.claude', 'skills'),
+    join(cwd, '.opencode', 'skills'),
+    join(cwd, '.codex', 'skills'),
+  ]
+}
+
+export type LegacyCleanupReason = 'removed' | 'absent' | 'foreign'
+
+export interface LegacyCleanupResult {
+  skill: string
+  path: string
+  removed: boolean
+  reason: LegacyCleanupReason
+}
+
+/** Read the `name:` field out of a SKILL.md YAML frontmatter block. */
+function parseSkillFrontmatterName(content: string): string | null {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)
+  if (!match) return null
+  for (const line of match[1].split(/\r?\n/)) {
+    const kv = /^name:\s*(.+?)\s*$/.exec(line)
+    if (kv) return kv[1].replace(/^['"]|['"]$/g, '')
+  }
+  return null
+}
+
+/**
+ * Remove skill dirs written by older yorz versions into each Agent's own
+ * skills directory. A dir is only deleted when its `SKILL.md` frontmatter
+ * `name` matches the bundled skill name — a user-authored skill that merely
+ * shares the directory name is left alone (`reason: 'foreign'`).
+ */
+export async function cleanupLegacyAgentSkills(opts: {
+  home: string
+  cwd: string
+}): Promise<LegacyCleanupResult[]> {
+  const results: LegacyCleanupResult[] = []
+  for (const baseDir of legacySkillBaseDirs(opts.home, opts.cwd)) {
     for (const skill of SKILL_DIR_NAMES) {
       const skillDir = join(baseDir, skill)
-      const entry = join(skillDir, 'SKILL.md')
-      const bundled = computeBundledFingerprint(skill)
-      const installed = await readInstalledFingerprint(skillDir, skill)
-
-      if (installed === bundled) {
-        results.push({ agent, skill, status: 'up-to-date', path: entry })
+      if (!(await dirExists(skillDir))) {
+        results.push({ skill, path: skillDir, removed: false, reason: 'absent' })
         continue
       }
-
-      const status: EnsureStatus = installed === null ? 'installed' : 'updated'
-      const result = await install({ agent, scope: 'user', home: opts.home, cwd: opts.cwd }, skill)
-      results.push({ agent, skill, status, path: result.path })
+      let name: string | null = null
+      try {
+        name = parseSkillFrontmatterName(await readFile(join(skillDir, 'SKILL.md'), 'utf8'))
+      } catch {
+        name = null
+      }
+      if (name !== skill) {
+        results.push({ skill, path: skillDir, removed: false, reason: 'foreign' })
+        continue
+      }
+      await rm(skillDir, { recursive: true, force: true })
+      results.push({ skill, path: skillDir, removed: true, reason: 'removed' })
     }
   }
   return results

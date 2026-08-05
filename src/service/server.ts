@@ -17,6 +17,7 @@ import { RegistryEventBus } from './registry-events.js'
 import { WorktreeManager } from './worktree-manager.js'
 import { getLogger } from './logger.js'
 import type { SystemNotificationCenter } from './system-notifications.js'
+import { skillRef } from './skill-ref.js'
 
 export interface CreateAppOptions {
   registry: ProjectRegistry
@@ -66,7 +67,7 @@ export function createApp(opts: CreateAppOptions): Hono {
       const { sessionId } = await main.sessions.ensureSessionForSpec(specId)
       void main.sessions.send(
         sessionId,
-        `请使用 yorz-spec skill 处理 spec：${main.specsDirRelative}/${specId}/spec.md`,
+        `${skillRef('yorz-spec')}，然后处理 spec：${main.specsDirRelative}/${specId}/spec.md`,
       )
     },
   })

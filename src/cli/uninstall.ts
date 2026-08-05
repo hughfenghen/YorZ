@@ -1,14 +1,11 @@
 import { access, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { getAdapter } from './adapters/index.js'
-import type { AgentName, InstallScope } from './adapters/types.js'
+import { resolveGlobalSkillsDir } from '../service/global-config.js'
 import { SKILL_DIR_NAMES } from './install.js'
 
 export interface UninstallOptions {
-  agent: AgentName
-  scope: InstallScope
-  home: string
-  cwd: string
+  /** Override for the shared skills dir; resolved from env when omitted. */
+  skillsDir?: string
 }
 
 export interface UninstallResult {
@@ -17,10 +14,9 @@ export interface UninstallResult {
   removed: boolean
 }
 
-/** Remove every bundled skill dir ({@link SKILL_DIR_NAMES}) for the given agent. */
-export async function uninstall(opts: UninstallOptions): Promise<UninstallResult[]> {
-  const adapter = getAdapter(opts.agent)
-  const baseDir = adapter.resolveSkillsDir(opts.scope, { home: opts.home, cwd: opts.cwd })
+/** Remove every bundled skill dir ({@link SKILL_DIR_NAMES}) from the shared skills dir. */
+export async function uninstall(opts: UninstallOptions = {}): Promise<UninstallResult[]> {
+  const baseDir = opts.skillsDir ?? resolveGlobalSkillsDir()
   const results: UninstallResult[] = []
   for (const skill of SKILL_DIR_NAMES) {
     const skillDir = join(baseDir, skill)

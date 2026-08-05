@@ -2,15 +2,13 @@ import { homedir } from 'node:os'
 import { Command, Option } from 'commander'
 import pkg from '../../package.json' with { type: 'json' }
 import { uninstall } from './uninstall.js'
+import { cleanupLegacyAgentSkills } from './install.js'
 import { runRestartServe, runServe, runStopServe } from './serve.js'
 import { runAdd, AddGitAbortedError } from './add.js'
 import { runLint } from './lint.js'
-import type { AgentName, InstallScope } from './adapters/types.js'
-import { INSTALL_SCOPE_DEFAULT } from './defaults.js'
 
-interface CliOpts {
-  agent: string
-  scope: string
+interface UninstallSkillsOpts {
+  legacy?: boolean
 }
 
 interface ServeOpts {
@@ -26,19 +24,6 @@ interface ServeOpts {
   worker?: boolean
 }
 
-const ALL_AGENTS: AgentName[] = ['claude', 'opencode', 'codex']
-
-function parseAgents(value: string): AgentName[] {
-  if (value === 'all') return ALL_AGENTS
-  if (value === 'claude' || value === 'opencode' || value === 'codex') return [value]
-  throw new Error(`Invalid --agent: ${value}. Use 'claude' | 'opencode' | 'codex' | 'all'.`)
-}
-
-function parseScope(value: string): InstallScope {
-  if (value === 'user' || value === 'project') return value
-  throw new Error(`Invalid --scope: ${value}. Use 'user' or 'project'.`)
-}
-
 const program = new Command()
 program.name('yorz').description('YorZ CLI — manage the yorz-spec skill.').version(pkg.version)
 
@@ -51,18 +36,28 @@ uninstallCmd.action(() => {
 
 uninstallCmd
   .command('skills')
-  .description('Remove the yorz-spec skill from the target agent(s).')
-  .option('-a, --agent <agent>', 'target agent: claude | opencode | codex | all', 'all')
-  .option('-s, --scope <scope>', 'uninstall scope: user | project', INSTALL_SCOPE_DEFAULT)
-  .action(async (opts: CliOpts) => {
-    const agents = parseAgents(opts.agent)
-    const scope = parseScope(opts.scope)
-    for (const agent of agents) {
-      const results = await uninstall({ agent, scope, home: homedir(), cwd: process.cwd() })
+  .description('Remove the bundled YorZ skills from the shared global skills directory.')
+  .option(
+    '--legacy',
+    'instead remove skill dirs written by older versions into each Agent’s own skills directory',
+    false,
+  )
+  .action(async (opts: UninstallSkillsOpts) => {
+    if (opts.legacy) {
+      const results = await cleanupLegacyAgentSkills({ home: homedir(), cwd: process.cwd() })
       for (const result of results) {
-        if (result.removed) console.log(`[${agent}] ${result.skill} removed: ${result.path}`)
-        else console.log(`[${agent}] ${result.skill} not installed at ${result.path}`)
+        if (result.reason === 'removed')
+          console.log(`[legacy] ${result.skill} removed: ${result.path}`)
+        else if (result.reason === 'foreign')
+          console.log(`[legacy] ${result.skill} kept (not a YorZ skill): ${result.path}`)
       }
+      if (!results.some((r) => r.removed)) console.log('[legacy] no legacy skill dirs to remove')
+      return
+    }
+    const results = await uninstall()
+    for (const result of results) {
+      if (result.removed) console.log(`[skill] ${result.skill} removed: ${result.path}`)
+      else console.log(`[skill] ${result.skill} not installed at ${result.path}`)
     }
   })
 

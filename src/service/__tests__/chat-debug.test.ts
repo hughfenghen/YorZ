@@ -15,6 +15,8 @@ describe('chat debug prompt', () => {
       new Date(2026, 7, 3, 9, 8, 7),
     )
 
+    expect(prompt).toContain('/skills/yorz-debug/SKILL.md')
+    expect(prompt).not.toContain('请使用 yorz-debug skill')
     expect(prompt).toContain('.yorz/tmp/debug/debug-20260803-090807.md')
     expect(prompt).toContain('Debug 活文档必须写入临时文件')
     expect(prompt).toContain('该目录属于临时目录，会由 YorZ 定时清理')

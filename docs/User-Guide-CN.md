@@ -61,7 +61,7 @@ yorz serve
 http://localhost:7423
 ```
 
-启动时 YorZ 会检查 `yorz-spec` skill。如果缺失或不是最新版本，会自动为支持的 Agent（Claude Code、OpenCode、Codex）安装或更新。
+启动时 YorZ 会检查内置 skills（`yorz-spec` / `yorz-debug`）。如果缺失或不是最新版本，会安装或更新到共享目录 `~/.config/yorz/skills/`，所有 YorZ 项目复用同一份。YorZ 不再向各 Agent 自身的 skills 目录写入，因此这些 skill 不会出现在非 YorZ 会话中——YorZ 改为在 prompt 中传入 `SKILL.md` 的绝对路径，由 Agent 按需读取。旧版本写入 `~/.claude/skills/`、`~/.config/opencode/skills/`、`~/.codex/skills/` 的残留会自动清理（也可手动执行 `yorz uninstall skills --legacy`）。
 
 开发或排查服务问题时，也可以让服务留在前台：
 

@@ -60,7 +60,7 @@ yorz serve
 http://localhost:7423
 ```
 
-During startup, YorZ checks the `yorz-spec` skill. If it is missing or not up to date, YorZ automatically installs or updates it for supported Agents: Claude Code, OpenCode, and Codex.
+During startup, YorZ checks its bundled skills (`yorz-spec` / `yorz-debug`). If one is missing or out of date, YorZ installs or updates it into the shared directory `~/.config/yorz/skills/`, which every YorZ project reuses. Nothing is written into your Agents' own skills directories, so the skills never show up in non-YorZ sessions — YorZ passes the absolute `SKILL.md` path in the prompt instead, and the Agent reads it on demand. Leftovers from older versions under `~/.claude/skills/`, `~/.config/opencode/skills/`, and `~/.codex/skills/` are cleaned up automatically (you can also run `yorz uninstall skills --legacy`).
 
 When developing or troubleshooting the service, you can keep it in the foreground:
 

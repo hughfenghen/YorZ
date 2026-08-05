@@ -3,26 +3,30 @@ import { mkdtemp, readFile, rm, stat, writeFile, mkdir, readdir } from 'node:fs/
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  cleanupLegacyAgentSkills,
   computeBundledFingerprint,
   ensureSkillsInstalled,
   install,
   readInstalledFingerprint,
   SKILL_DIR_NAME,
+  SKILL_DIR_NAMES,
 } from '../install.js'
 import { uninstall } from '../uninstall.js'
-import { INSTALL_SCOPE_DEFAULT, installScopeTip } from '../defaults.js'
 
 let home: string
 let cwd: string
+let skillsDir: string
 
 beforeEach(async () => {
   home = await mkdtemp(join(tmpdir(), 'yorz-home-'))
   cwd = await mkdtemp(join(tmpdir(), 'yorz-cwd-'))
+  skillsDir = join(await mkdtemp(join(tmpdir(), 'yorz-cfg-')), 'skills')
 })
 
 afterEach(async () => {
   await rm(home, { recursive: true, force: true })
   await rm(cwd, { recursive: true, force: true })
+  await rm(join(skillsDir, '..'), { recursive: true, force: true })
 })
 
 const EXPECTED_SUBDOCS = ['SKILL.md', 'index.json', 'stages.md', 'review.md']
@@ -43,9 +47,9 @@ async function walk(dir: string): Promise<string[]> {
 }
 
 describe('install', () => {
-  it('writes SKILL.md plus all sub-documents to claude user skills dir', async () => {
-    const res = await install({ agent: 'claude', scope: 'user', home, cwd })
-    const skillDir = join(home, '.claude', 'skills', SKILL_DIR_NAME)
+  it('writes SKILL.md plus all sub-documents to the shared skills dir', async () => {
+    const res = await install({ skillsDir, cwd })
+    const skillDir = join(skillsDir, SKILL_DIR_NAME)
     expect(res.path).toBe(join(skillDir, 'SKILL.md'))
     expect(res.overwritten).toBe(false)
 
@@ -59,20 +63,19 @@ describe('install', () => {
   })
 
   it('excludes the __tests__/ directory from the installed skill', async () => {
-    await install({ agent: 'claude', scope: 'user', home, cwd })
-    const skillDir = join(home, '.claude', 'skills', SKILL_DIR_NAME)
-    const written = await walk(skillDir)
+    await install({ skillsDir, cwd })
+    const written = await walk(join(skillsDir, SKILL_DIR_NAME))
     expect(written.every((p) => !p.includes('__tests__'))).toBe(true)
   })
 
   it('wipes a previously installed yorz-spec/ before re-writing (no stale files)', async () => {
-    const first = await install({ agent: 'claude', scope: 'user', home, cwd })
-    const skillDir = join(home, '.claude', 'skills', SKILL_DIR_NAME)
+    const first = await install({ skillsDir, cwd })
+    const skillDir = join(skillsDir, SKILL_DIR_NAME)
     const stalePath = join(skillDir, 'stale-leftover.md')
     await writeFile(stalePath, 'STALE', 'utf8')
     await writeFile(first.path, 'OVERWRITTEN ENTRY', 'utf8')
 
-    const second = await install({ agent: 'claude', scope: 'user', home, cwd })
+    const second = await install({ skillsDir, cwd })
     expect(second.overwritten).toBe(true)
 
     await expect(stat(stalePath)).rejects.toThrow()
@@ -80,19 +83,17 @@ describe('install', () => {
     expect(main).toContain('name: yorz-spec')
   })
 
-  it('writes to project .claude/skills when scope=project', async () => {
-    const res = await install({ agent: 'claude', scope: 'project', home, cwd })
-    expect(res.path).toBe(join(cwd, '.claude', 'skills', SKILL_DIR_NAME, 'SKILL.md'))
+  it('leaves sibling skills under the shared dir untouched', async () => {
+    await install({ skillsDir, cwd }, 'yorz-spec')
+    await install({ skillsDir, cwd }, 'yorz-debug')
+    await expect(stat(join(skillsDir, 'yorz-spec', 'SKILL.md'))).resolves.toBeTruthy()
+    await expect(stat(join(skillsDir, 'yorz-debug', 'SKILL.md'))).resolves.toBeTruthy()
   })
 
-  it('writes to opencode user dir', async () => {
-    const res = await install({ agent: 'opencode', scope: 'user', home, cwd })
-    expect(res.path).toBe(join(home, '.config', 'opencode', 'skills', SKILL_DIR_NAME, 'SKILL.md'))
-  })
-
-  it('writes to codex user dir', async () => {
-    const res = await install({ agent: 'codex', scope: 'user', home, cwd })
-    expect(res.path).toBe(join(home, '.codex', 'skills', SKILL_DIR_NAME, 'SKILL.md'))
+  it('does not write into any Agent skills directory', async () => {
+    await install({ skillsDir, cwd })
+    await expect(stat(join(home, '.claude', 'skills'))).rejects.toThrow()
+    await expect(stat(join(cwd, '.claude', 'skills'))).rejects.toThrow()
   })
 })
 
@@ -105,61 +106,52 @@ describe('skill fingerprint', () => {
   })
 
   it('readInstalledFingerprint returns null when SKILL.md is absent', async () => {
-    const skillDir = join(home, '.claude', 'skills', SKILL_DIR_NAME)
-    expect(await readInstalledFingerprint(skillDir)).toBeNull()
+    expect(await readInstalledFingerprint(join(skillsDir, SKILL_DIR_NAME))).toBeNull()
   })
 
   it('readInstalledFingerprint matches the bundled fingerprint after install', async () => {
-    await install({ agent: 'claude', scope: 'user', home, cwd })
-    const skillDir = join(home, '.claude', 'skills', SKILL_DIR_NAME)
-    expect(await readInstalledFingerprint(skillDir)).toBe(computeBundledFingerprint())
+    await install({ skillsDir, cwd })
+    expect(await readInstalledFingerprint(join(skillsDir, SKILL_DIR_NAME))).toBe(
+      computeBundledFingerprint(),
+    )
   })
 
   it('readInstalledFingerprint changes when an installed file is edited', async () => {
-    await install({ agent: 'claude', scope: 'user', home, cwd })
-    const skillDir = join(home, '.claude', 'skills', SKILL_DIR_NAME)
+    await install({ skillsDir, cwd })
+    const skillDir = join(skillsDir, SKILL_DIR_NAME)
     await writeFile(join(skillDir, 'SKILL.md'), 'TAMPERED', 'utf8')
     expect(await readInstalledFingerprint(skillDir)).not.toBe(computeBundledFingerprint())
   })
 })
 
 describe('ensureSkillsInstalled', () => {
-  it('installs every skill for every agent on first run', async () => {
-    const results = await ensureSkillsInstalled({ home, cwd })
-    expect([...new Set(results.map((r) => r.agent))].sort()).toEqual([
-      'claude',
-      'codex',
-      'opencode',
-    ])
-    expect([...new Set(results.map((r) => r.skill))].sort()).toEqual(['yorz-debug', 'yorz-spec'])
-    expect(results).toHaveLength(6)
+  it('installs one copy of every skill on first run', async () => {
+    const results = await ensureSkillsInstalled({ skillsDir, cwd })
+    expect(results).toHaveLength(SKILL_DIR_NAMES.length)
+    expect(results.map((r) => r.skill).sort()).toEqual(['yorz-debug', 'yorz-spec'])
     expect(results.every((r) => r.status === 'installed')).toBe(true)
     for (const r of results) {
+      expect(r.path.startsWith(skillsDir)).toBe(true)
       await expect(stat(r.path)).resolves.toBeTruthy()
     }
   })
 
   it('reports up-to-date on a second run with no changes', async () => {
-    await ensureSkillsInstalled({ home, cwd })
-    const results = await ensureSkillsInstalled({ home, cwd })
+    await ensureSkillsInstalled({ skillsDir, cwd })
+    const results = await ensureSkillsInstalled({ skillsDir, cwd })
     expect(results.every((r) => r.status === 'up-to-date')).toBe(true)
   })
 
   it('reports updated only for the outdated skill', async () => {
-    await ensureSkillsInstalled({ home, cwd })
-    const claudeSkill = join(home, '.claude', 'skills', SKILL_DIR_NAME, 'SKILL.md')
-    await writeFile(claudeSkill, 'OUTDATED', 'utf8')
+    await ensureSkillsInstalled({ skillsDir, cwd })
+    await writeFile(join(skillsDir, SKILL_DIR_NAME, 'SKILL.md'), 'OUTDATED', 'utf8')
 
-    const results = await ensureSkillsInstalled({ home, cwd })
-    const claudeSpec = results.find((r) => r.agent === 'claude' && r.skill === SKILL_DIR_NAME)!
-    expect(claudeSpec.status).toBe('updated')
+    const results = await ensureSkillsInstalled({ skillsDir, cwd })
+    expect(results.find((r) => r.skill === SKILL_DIR_NAME)!.status).toBe('updated')
     expect(
-      results
-        .filter((r) => !(r.agent === 'claude' && r.skill === SKILL_DIR_NAME))
-        .every((r) => r.status === 'up-to-date'),
+      results.filter((r) => r.skill !== SKILL_DIR_NAME).every((r) => r.status === 'up-to-date'),
     ).toBe(true)
-    // Re-install restored the real content.
-    expect(await readInstalledFingerprint(join(home, '.claude', 'skills', SKILL_DIR_NAME))).toBe(
+    expect(await readInstalledFingerprint(join(skillsDir, SKILL_DIR_NAME))).toBe(
       computeBundledFingerprint(),
     )
   })
@@ -168,7 +160,7 @@ describe('ensureSkillsInstalled', () => {
 describe('install · .gitignore handling', () => {
   it('appends .yorz/tmp to a missing .gitignore when cwd is a git repo', async () => {
     await mkdir(join(cwd, '.git'), { recursive: true })
-    const res = await install({ agent: 'claude', scope: 'user', home, cwd })
+    const res = await install({ skillsDir, cwd })
     expect(res.gitignore?.updated).toBe(true)
     const giPath = join(cwd, '.gitignore')
     expect(res.gitignore?.path).toBe(giPath)
@@ -180,51 +172,74 @@ describe('install · .gitignore handling', () => {
     await mkdir(join(cwd, '.git'), { recursive: true })
     const giPath = join(cwd, '.gitignore')
     await writeFile(giPath, 'node_modules\n.yorz/tmp\ndist\n', 'utf8')
-    const res = await install({ agent: 'claude', scope: 'user', home, cwd })
+    const res = await install({ skillsDir, cwd })
     expect(res.gitignore).toEqual({ updated: false, path: giPath })
     const content = await readFile(giPath, 'utf8')
     expect(content).toBe('node_modules\n.yorz/tmp\ndist\n')
   })
 
   it('does nothing when cwd is not a git repository', async () => {
-    const res = await install({ agent: 'claude', scope: 'user', home, cwd })
+    const res = await install({ skillsDir, cwd })
     expect(res.gitignore).toBeNull()
     await expect(stat(join(cwd, '.gitignore'))).rejects.toThrow()
   })
 })
 
-describe('CLI defaults', () => {
-  it('INSTALL_SCOPE_DEFAULT is "user"', () => {
-    expect(INSTALL_SCOPE_DEFAULT).toBe('user')
-  })
-})
+describe('cleanupLegacyAgentSkills', () => {
+  async function seedLegacySkill(dir: string, frontmatterName: string): Promise<void> {
+    await mkdir(dir, { recursive: true })
+    await writeFile(
+      join(dir, 'SKILL.md'),
+      `---\nname: ${frontmatterName}\ndescription: x\n---\n\nbody\n`,
+      'utf8',
+    )
+  }
 
-describe('installScopeTip', () => {
-  it('returns a tip when scope came from the default (user did not pass -s)', () => {
-    const tip = installScopeTip('default')
-    expect(tip).not.toBeNull()
-    expect(tip).toContain('--scope user')
-    expect(tip).toContain('pass -s project')
+  it('removes skill dirs written by older versions into Agent skills dirs', async () => {
+    const claudeUser = join(home, '.claude', 'skills', 'yorz-spec')
+    const opencodeUser = join(home, '.config', 'opencode', 'skills', 'yorz-debug')
+    const codexProject = join(cwd, '.codex', 'skills', 'yorz-spec')
+    await seedLegacySkill(claudeUser, 'yorz-spec')
+    await seedLegacySkill(opencodeUser, 'yorz-debug')
+    await seedLegacySkill(codexProject, 'yorz-spec')
+
+    const results = await cleanupLegacyAgentSkills({ home, cwd })
+
+    for (const dir of [claudeUser, opencodeUser, codexProject]) {
+      expect(results.find((r) => r.path === dir)!.removed).toBe(true)
+      await expect(stat(dir)).rejects.toThrow()
+    }
   })
 
-  it('also returns a tip when the option source is undefined', () => {
-    expect(installScopeTip(undefined)).not.toBeNull()
+  it('keeps a user-authored skill that only shares the directory name', async () => {
+    const foreign = join(home, '.claude', 'skills', 'yorz-spec')
+    await seedLegacySkill(foreign, 'my-own-spec-helper')
+
+    const results = await cleanupLegacyAgentSkills({ home, cwd })
+
+    const entry = results.find((r) => r.path === foreign)!
+    expect(entry.removed).toBe(false)
+    expect(entry.reason).toBe('foreign')
+    await expect(stat(join(foreign, 'SKILL.md'))).resolves.toBeTruthy()
   })
 
-  it('returns null when the user explicitly passed -s (CLI source)', () => {
-    expect(installScopeTip('cli')).toBeNull()
+  it('reports absent for directories that were never installed', async () => {
+    const results = await cleanupLegacyAgentSkills({ home, cwd })
+    expect(results.every((r) => r.reason === 'absent')).toBe(true)
+    expect(results).toHaveLength(6 * SKILL_DIR_NAMES.length)
   })
 
-  it('returns null when the option was set from env or config', () => {
-    expect(installScopeTip('env')).toBeNull()
-    expect(installScopeTip('config')).toBeNull()
+  it('never touches the shared global skills dir', async () => {
+    await ensureSkillsInstalled({ skillsDir, cwd })
+    await cleanupLegacyAgentSkills({ home, cwd })
+    await expect(stat(join(skillsDir, SKILL_DIR_NAME, 'SKILL.md'))).resolves.toBeTruthy()
   })
 })
 
 describe('uninstall', () => {
   it('removes an installed skill dir', async () => {
-    await install({ agent: 'claude', scope: 'user', home, cwd })
-    const results = await uninstall({ agent: 'claude', scope: 'user', home, cwd })
+    await install({ skillsDir, cwd })
+    const results = await uninstall({ skillsDir })
 
     const spec = results.find((r) => r.skill === SKILL_DIR_NAME)!
     expect(spec.removed).toBe(true)
@@ -232,27 +247,25 @@ describe('uninstall', () => {
   })
 
   it('returns removed=false when nothing to remove', async () => {
-    const results = await uninstall({ agent: 'claude', scope: 'user', home, cwd })
+    const results = await uninstall({ skillsDir })
     expect(results.every((r) => !r.removed)).toBe(true)
   })
 
   it('removes a non-empty skill dir (with extra files)', async () => {
-    await install({ agent: 'opencode', scope: 'project', home, cwd })
-    const dir = join(cwd, '.opencode', 'skills', SKILL_DIR_NAME)
+    await install({ skillsDir, cwd })
+    const dir = join(skillsDir, SKILL_DIR_NAME)
     await mkdir(join(dir, 'nested'), { recursive: true })
     await writeFile(join(dir, 'nested', 'extra.txt'), 'x', 'utf8')
 
-    const results = await uninstall({ agent: 'opencode', scope: 'project', home, cwd })
+    const results = await uninstall({ skillsDir })
     expect(results.find((r) => r.skill === SKILL_DIR_NAME)!.removed).toBe(true)
     await expect(stat(dir)).rejects.toThrow()
   })
 
-  it('removes an installed codex project skill dir', async () => {
-    await install({ agent: 'codex', scope: 'project', home, cwd })
-    const dir = join(cwd, '.codex', 'skills', SKILL_DIR_NAME)
-
-    const results = await uninstall({ agent: 'codex', scope: 'project', home, cwd })
-    expect(results.find((r) => r.skill === SKILL_DIR_NAME)!.removed).toBe(true)
-    await expect(stat(dir)).rejects.toThrow()
+  it('removes every bundled skill in one call', async () => {
+    await ensureSkillsInstalled({ skillsDir, cwd })
+    const results = await uninstall({ skillsDir })
+    expect(results.every((r) => r.removed)).toBe(true)
+    expect(results).toHaveLength(SKILL_DIR_NAMES.length)
   })
 })

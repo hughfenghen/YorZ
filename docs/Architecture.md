@@ -165,17 +165,17 @@ User 在浏览器 / 手机打开链接 → GUI 加载该 spec.md
 | 命令 | 说明 |
 |------|------|
 | `yorz init` | 在当前项目创建 `.yorz/` 目录骨架（默认 **不**写入 `.gitignore`，由用户决定是否提交） |
-| `yorz install [--agent claude\|opencode] [--scope project\|user]`（默认 scope=project） | 把 YorZ 内置 skills 复制到目标 Agent 的 skills 目录；**重复执行时直接覆盖** |
+| `yorz uninstall skills [--legacy]` | 从共享 skills 目录移除内置 skills；`--legacy` 清理旧版本写入各 Agent skills 目录的残留 |
 | `yorz serve [--port 7423] [--foreground] [--open]` | 启动 Service；默认后台运行并复用已有进程，传 `--foreground` 时留在前台 |
 | `yorz status` | 显示运行中的 Service / 端口 / 项目路径 |
 | `yorz serve stop` | 停止后台 Service |
 | `yorz resume <spec-id>` | 手动续跑：构造 prompt 并 spawn Agent 继续指定 spec（模式 B 备选） |
 
-**Skill 安装目标路径**（MVP 阶段）：
+**Skill 安装目标路径**：内置 skills 只安装到 **yorz 全局配置目录**，所有项目、所有 Agent 共享同一份：
 
-- Claude Code: `~/.claude/skills/yorz-*/` 或 `<project>/.claude/skills/yorz-*/`
-- OpenCode: `~/.config/opencode/skills/yorz-*/` 或 `<project>/.opencode/skills/yorz-*/`
-  （以 OpenCode 实际约定为准，由适配层封装路径解析）
+- `~/.config/yorz/skills/yorz-*/`（遵循 `YORZ_HOME` > `XDG_CONFIG_HOME` > `~/.config` 解析规则）
+
+不再向任何 Agent 自身的 skills 目录（`~/.claude/skills/`、`~/.config/opencode/skills/`、`~/.codex/skills/`）写入，避免污染用户在非 YorZ 项目中的 skill 列表。Service 构造 prompt 时注入 `SKILL.md` 的**绝对路径**，由 Agent 用 Read 按需读取，不依赖任何 SDK 的 skill 发现能力。`yorz serve` 启动时会顺带清理旧版本写入 Agent 目录的残留（校验 frontmatter `name` 后才删除）。
 
 ### 4.2 Service
 
@@ -249,7 +249,7 @@ GET    /api/projects/current      → 当前 Service 关联的项目信息
 
 **核心心智**："Skill 是一段无状态的 handler。读 md → 做事 → 写 md → 退出。"
 
-**位置**：仓库内 `packages/skills/`，通过 `yorz install` 复制到目标 Agent。
+**位置**：仓库内 `src/skill/`，构建期内联进 CLI bundle，`yorz serve` 启动时按 SHA-256 指纹比对后写入共享的 `~/.config/yorz/skills/`。
 
 **MVP skill 列表**：
 

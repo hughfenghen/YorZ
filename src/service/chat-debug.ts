@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { skillRef } from './skill-ref.js'
 
 export const CHAT_DEBUG_DIR_REL = '.yorz/tmp/debug'
 export const CHAT_DEBUG_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
@@ -18,7 +19,7 @@ export function buildChatDebugPrompt(prompt: string, now = new Date()): string {
   const debugPath = `${CHAT_DEBUG_DIR_REL}/debug-${formatDebugTimestamp(now)}.md`
   const bug = body || '请先根据对话上下文确认待调试问题；若上下文不足，请向用户补齐复现信息。'
   return [
-    `请使用 yorz-debug skill 进入 Debug 模式。`,
+    `${skillRef('yorz-debug')}，然后进入 Debug 模式。`,
     `本次是普通 chat 独立触发，没有 spec_dir。Debug 活文档必须写入临时文件 \`${debugPath}\`。`,
     `写入前请确保目录 \`${CHAT_DEBUG_DIR_REL}/\` 存在；该目录属于临时目录，会由 YorZ 定时清理。`,
     `如果该文件不存在则创建；本文件只承载本次 chat debug 记录，不需要追加复用其他文件。`,
