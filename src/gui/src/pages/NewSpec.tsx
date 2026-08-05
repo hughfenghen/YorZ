@@ -37,6 +37,7 @@ export const NewSpec: Component = () => {
   let sessionUnsub: (() => void) | null = null
   let baselineIds: Set<string> = new Set()
   let targetProjectId: string = ''
+  let pendingSessionId: string = ''
   let navigated = false
   let fileInputEl: HTMLInputElement | undefined
 
@@ -61,6 +62,10 @@ export const NewSpec: Component = () => {
           ? `/${pid}/specs/${encodeURIComponent(fresh.id)}`
           : projectHref(`specs/${encodeURIComponent(fresh.id)}`)
         navigate(target)
+        if (pendingSessionId) {
+          requestChatSession(pendingSessionId)
+          pendingSessionId = ''
+        }
       }
     } catch {
       // ignore; will retry on next list-updated event
@@ -105,7 +110,7 @@ export const NewSpec: Component = () => {
 
       const resp = await api.createSpec(pid, body)
       if ('draft' in resp && resp.draft) {
-        requestChatSession(resp.sessionId)
+        pendingSessionId = resp.sessionId
         sessionUnsub = subscribeSession(pid, resp.sessionId, {
           onEvent: (ev) => {
             if (ev.type === 'error') {

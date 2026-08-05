@@ -13,6 +13,7 @@ import {
 } from './global-config.js'
 import { configPath as projectConfigPath } from './project-config.js'
 import { getLogger } from './logger.js'
+import { SessionStore } from './session-store.js'
 
 const worktreeLog = () => getLogger().child('worktree')
 import type { ProjectRegistry } from './project-registry.js'
@@ -139,6 +140,28 @@ export class WorktreeManager {
     await setProjectWorktree(worktreeProjectId, next, this.globalConfigPath)
   }
 
+  /**
+   * Migrate session index entries from the worktree to the main project before
+   * the worktree directory is removed. Claude SDK transcript files survive
+   * worktree removal (they live in ~/.claude/projects/), and getSessionMessages
+   * searches globally by session ID, so only the YorZ session index needs migrating.
+   */
+  private async migrateSessions(wtPath: string, mainPath: string): Promise<void> {
+    const wtStore = new SessionStore(wtPath)
+    const mainStore = new SessionStore(mainPath)
+    const sessions = await wtStore.list()
+    for (const s of sessions) {
+      await mainStore.upsert(s)
+    }
+    if (sessions.length > 0) {
+      worktreeLog().info('sessions migrated', {
+        from: wtPath,
+        to: mainPath,
+        count: sessions.length,
+      })
+    }
+  }
+
   async mergeBackToMain(input: MergeBackInput): Promise<MergeBackResult> {
     const entry = await this.registry.findEntry(input.worktreeProjectId)
     if (!entry) throw new GitError('not_found', `project not found: ${input.worktreeProjectId}`)
@@ -187,14 +210,17 @@ export class WorktreeManager {
     const head = await runGitChecked(mainPath, ['rev-parse', 'HEAD'])
     const mergeCommit = head.stdout.trim()
 
-    // 3. Tear down the worktree.
+    // 3. Migrate worktree sessions to main project index before removing the worktree.
+    await this.migrateSessions(wtPath, mainPath)
+
+    // 4. Tear down the worktree.
     await runGitRaw(mainPath, ['worktree', 'remove', wtPath])
     if (existsSync(wtPath)) {
       await runGitRaw(mainPath, ['worktree', 'remove', '--force', wtPath])
     }
     await runGitRaw(mainPath, ['branch', '-d', branch])
 
-    // 4. Drop the worktree project entry and reload main so its watcher sees new commits.
+    // 5. Drop the worktree project entry and reload main so its watcher sees new commits.
     await this.registry.remove(entry.id)
     if (mainEntry) {
       await this.registry.reload(mainEntry.id)
