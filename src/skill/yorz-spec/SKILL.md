@@ -5,19 +5,16 @@ description: Drive YorZ spec docs through plan / tasks / execute stages with det
 
 # YorZ Spec Drive Skill
 
-将单个 YorZ spec 文档作为状态机执行，围绕 `plan` / `tasks` / `execute` 三阶段推进，全部任务完成后进入终止态 `done`，把状态持续写回文档。md 是单一真相；Agent 持续推进直至阻塞（待确认项、决策、Review）或收尾为 `done` 才退出。
+将单个 YorZ spec 文档作为状态机执行，围绕 `plan` / `tasks` / `execute` 三阶段推进，全部任务完成后进入终止态 `done`，把状态持续写回文档。md 是单一真相；Agent 持续推进直至阻塞（待确认项、决策或执行失败）或收尾为 `done` 才退出。
 
 ## 如何使用本 skill
 
-本 skill 文档结构精简为 3 个文件；每次接到 spec 任务时，**按以下顺序**按需 Read：
+本 skill 文档结构精简为 2 个核心文件；每次接到 spec 任务时，**按以下顺序**按需 Read：
 
 1. **本文档（SKILL.md）**：输入约定、frontmatter 规范、格式约定、自动模式判定、全局硬约束、lint 硬约束、持续推进约束。
 2. **[stages.md](./stages.md)**：plan / tasks / execute / new-spec 四阶段流程与正面示例。
-3. **[review.md](./review.md)**：Review / Git Ops 阶段（独立路径，低频使用）。
 
 [mermaid.md](./mermaid.md) 与 `references/` 目录**仅按需 Read**：只有在判断当前阶段需要输出 mermaid 图表「升维」时才加载，纯状态推进任务不必读取，以节省 context。**plan 阶段的「图形化补充」收尾子步骤**（见 stages.md）会针对 `现状分析`/`技术方案` 两节强制加载 mermaid.md 补图；补图须遵循其核心原则**「图优先、精确信息折叠」**——表层给图，精确细节折叠进 `<details>` 精确层。
-
-> 当 Agent 以 `mode=review` / `mode=git-ops` 启动时，按 [review.md](./review.md) 执行；该路径不进入 plan/tasks/execute 状态机，也不修改 spec.md 的 frontmatter。
 
 ## 输入约定
 
@@ -115,7 +112,7 @@ summary: 一句话概要，≤ 200 字符
 
 ## 写回后的 lint 硬约束
 
-任何阶段完成对 `spec.md` / `review.md` 的写入后，Agent **必须**通过 Bash 运行 `yorz lint <path> --format json`，并 parse stdout。
+任何阶段完成对 `spec.md` 的写入后，Agent **必须**通过 Bash 运行 `yorz lint <path> --format json`，并 parse stdout。
 
 - `errorCount === 0` 时视为通过。
 - 存在 `severity: error` 时按 `ruleId` + `message` + `line` 定位并修改，然后重新运行 lint。

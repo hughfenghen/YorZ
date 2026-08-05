@@ -151,14 +151,6 @@ summary: Playwright e2e 用于验证 GFM 任务列表 checkbox 渲染
 - 普通列表项，不应变成 checkbox
 `
 
-const TASK_LIST_REVIEW = `# Review 报告
-
-## 1. 覆盖项
-
-- [ ] review 待办 1
-- [x] review 已办 2
-`
-
 export function seed() {
   rmSync(E2E_CWD, { recursive: true, force: true })
   const baseDir = join(E2E_CWD, '.yorz', 'specs', SPEC_ID)
@@ -176,7 +168,6 @@ export function seed() {
   const tlDir = join(E2E_CWD, '.yorz', 'specs', TASK_LIST_SPEC_ID)
   mkdirSync(tlDir, { recursive: true })
   writeFileSync(join(tlDir, 'spec.md'), TASK_LIST_SPEC, 'utf8')
-  writeFileSync(join(tlDir, 'review.md'), TASK_LIST_REVIEW, 'utf8')
 
   const nrDir = join(E2E_CWD, '.yorz', 'specs', NO_REVIEW_SPEC_ID)
   mkdirSync(nrDir, { recursive: true })

@@ -40,33 +40,14 @@ test.describe.serial('markdown GFM task list rendering', () => {
     expect(plainItems).toBeGreaterThanOrEqual(1)
   })
 
-  test('SpecReview 渲染 review.md 中的 task list 为 checkbox', async ({ page, request }) => {
-    const pid = await resolveProjectId(request)
-    await page.goto(`/${pid}/specs/${TASK_LIST_SPEC_ID}/review`)
-
-    const reviewBody = page.locator('article.markdown.review-md')
-    await expect(reviewBody).toBeVisible({ timeout: 5_000 })
-
-    const checkboxes = reviewBody.locator('input.task-list-item-checkbox')
-    await expect(checkboxes).toHaveCount(2)
-
-    const checkedCount = await reviewBody.locator('input.task-list-item-checkbox:checked').count()
-    expect(checkedCount).toBe(1)
-
-    const disabledCount = await reviewBody
-      .locator('input.task-list-item-checkbox[disabled]')
-      .count()
-    expect(disabledCount).toBe(2)
-  })
-
-  test('SpecReview 在 review.md 不存在时隐藏报告面板', async ({ page, request }) => {
+  test('SpecReview 不展示报告面板和 Review 变更按钮', async ({ page, request }) => {
     const pid = await resolveProjectId(request)
     await page.goto(`/${pid}/specs/${NO_REVIEW_SPEC_ID}/review`)
 
     const controlsPane = page.locator('[data-testid="review-controls-pane"]')
     await expect(controlsPane).toBeVisible({ timeout: 5_000 })
     await expect(page.locator('[data-testid="review-report-pane"]')).toHaveCount(0)
-    await expect(page.getByText('尚无 review 报告')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Review 变更' })).toHaveCount(0)
 
     const controlsBox = await controlsPane.boundingBox()
     const mainBox = await page.locator('main').boundingBox()

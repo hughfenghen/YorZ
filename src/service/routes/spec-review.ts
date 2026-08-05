@@ -29,25 +29,6 @@ export function createSpecReviewRoutes(resolveProject: ResolveProject): Hono {
     return project
   }
 
-  app.post('/projects/:projectId/specs/:id/review', async (c) => {
-    const p = await need(c)
-    if (p instanceof Response) return p
-    const specId = c.req.param('id')
-    const detail = await p.store.read(specId)
-    if (!detail) return c.json({ error: 'spec not found' }, 404)
-    const specRel = `${p.specsDirRelative}/${specId}/spec.md`
-    const reviewRel = `${p.specsDirRelative}/${specId}/review.md`
-    const prompt =
-      `${skillRef('yorz-spec')}，然后按其 "Review / Git Ops 阶段" 流程处理本次 review：\n` +
-      `- spec 文档：${specRel}\n` +
-      `- 输出文件：${reviewRel}（追加新二级标题条目，禁止覆盖历史）\n` +
-      `- 必含 4 节：变更总结 / 影响范围 / 风险提醒 / 变更文件清单\n` +
-      `- 触发时间使用本机当前时间，格式 \`YYYY-MM-DD HH:mm:ss\`\n`
-    const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
-    const handle = await p.sessions.send(sessionId, prompt)
-    return c.json({ runId: handle.runId, sessionId })
-  })
-
   app.post('/projects/:projectId/specs/:id/git', async (c) => {
     const p = await need(c)
     if (p instanceof Response) return p
@@ -67,27 +48,10 @@ export function createSpecReviewRoutes(resolveProject: ResolveProject): Hono {
       return c.json({ error: 'action must be one of commit | discard | stash' }, 400)
     }
     const specRel = `${p.specsDirRelative}/${specId}/spec.md`
-    const reviewRel = `${p.specsDirRelative}/${specId}/review.md`
-    const prompt = buildGitOpsPrompt(action as GitOpsAction, specId, specRel, reviewRel)
+    const prompt = buildGitOpsPrompt(action as GitOpsAction, specId, specRel)
     const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
     const handle = await p.sessions.send(sessionId, prompt)
     return c.json({ runId: handle.runId, sessionId })
-  })
-
-  app.get('/projects/:projectId/specs/:id/review', async (c) => {
-    const p = await need(c)
-    if (p instanceof Response) return p
-    const specId = c.req.param('id')
-    const detail = await p.store.read(specId)
-    if (!detail) return c.json({ error: 'spec not found' }, 404)
-    const file = join(p.specsDir, specId, 'review.md')
-    if (!existsSync(file)) return c.json({ text: '' })
-    try {
-      const text = await readFile(file, 'utf8')
-      return c.json({ text })
-    } catch {
-      return c.json({ text: '' })
-    }
   })
 
   app.get('/projects/:projectId/specs/:id/debug', async (c) => {
@@ -207,22 +171,17 @@ export function createSpecReviewRoutes(resolveProject: ResolveProject): Hono {
   return app
 }
 
-function buildGitOpsPrompt(
-  action: GitOpsAction,
-  specId: string,
-  specRel: string,
-  reviewRel: string,
-): string {
+function buildGitOpsPrompt(action: GitOpsAction, specId: string, specRel: string): string {
   const base =
-    `${skillRef('yorz-spec')}，然后按其 "Review / Git Ops 阶段" 流程执行 git 操作：\n` +
+    `${skillRef('yorz-git-ops')}，然后执行 git 操作：\n` +
     `- spec 文档：${specRel}\n` +
-    `- 最近一次 review：${reviewRel}（如不存在，请先依据 git status/diff 自行判断本次 spec 关联的变更）\n` +
+    `- 请依据 spec 文档与 git status/diff 自行判断本次 spec 关联的变更文件\n` +
     `- spec-id：${specId}\n`
   switch (action) {
     case 'commit':
       return (
         base +
-        `- 动作：git-commit。请基于 review 报告与 git status，由你自主判断本次 spec 相关的变更文件，执行 \`git add\` + \`git commit\`；commit message 由你生成，不带 scope；禁止 \`git push\` 与 \`git reset --hard\`。\n`
+        `- 动作：git-commit。请基于 spec 文档与 git status/diff，由你自主判断本次 spec 相关的变更文件，执行 \`git add\` + \`git commit\`；commit message 由你生成，不带 scope；禁止 \`git push\` 与 \`git reset --hard\`。\n`
       )
     case 'discard':
       return (

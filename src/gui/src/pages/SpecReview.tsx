@@ -16,11 +16,9 @@ import { Loader2 } from 'lucide-solid'
 import { api, type GitOpsAction, type GitChange } from '../lib/api.js'
 import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/project.js'
 import { useFocusModePage } from '../lib/layout-focus.js'
-import { renderMarkdown } from '../lib/markdown.js'
 import { subscribeChanges, subscribeSession } from '../lib/sse.js'
 import { Button } from '../components/ui/button.jsx'
 import { Textarea } from '../components/ui/textarea.jsx'
-import { Separator } from '../components/ui/separator.jsx'
 import {
   Dialog,
   DialogContent,
@@ -33,7 +31,6 @@ import { Breadcrumb } from '../components/Breadcrumb.jsx'
 import { FocusModeButton } from '../components/FocusModeButton.jsx'
 import { t } from '../i18n/index.js'
 
-type ActionKind = 'review' | GitOpsAction
 type FileSelectMode = 'manual' | 'agent'
 
 const ACTION_LABEL_KEY: Record<GitOpsAction, string> = {
@@ -42,15 +39,13 @@ const ACTION_LABEL_KEY: Record<GitOpsAction, string> = {
   stash: 'review.stash',
 }
 
-const LOADING_LABEL_KEY: Record<ActionKind, string> = {
-  review: 'review.reviewing',
+const LOADING_LABEL_KEY: Record<GitOpsAction, string> = {
   commit: 'review.committing',
   discard: 'review.discarding',
   stash: 'review.stashing',
 }
 
-const IDLE_LABEL_KEY: Record<ActionKind, string> = {
-  review: 'review.reviewChanges',
+const IDLE_LABEL_KEY: Record<GitOpsAction, string> = {
   commit: 'review.commit',
   discard: 'review.discard',
   stash: 'review.stash',
@@ -71,12 +66,6 @@ export const SpecReview: Component = () => {
     () => [projectId(), params.id] as const,
     ([pid, id]) => api.getSpec(pid, id),
   )
-  const [refreshTick, setRefreshTick] = createSignal(0)
-  const [review] = createResource(
-    () => [projectId(), params.id, refreshTick()] as const,
-    async ([pid, id]) => api.getReview(pid, id),
-  )
-
   const [changes, setChanges] = createSignal<GitChange[]>([])
   const [fileSelectMode, setFileSelectMode] = createSignal<FileSelectMode>('manual')
   const [selectedPaths, setSelectedPaths] = createSignal<Set<string>>(new Set())
@@ -84,10 +73,10 @@ export const SpecReview: Component = () => {
   const [userEditedMsg, setUserEditedMsg] = createSignal(false)
   const [directAction, setDirectAction] = createSignal<GitOpsAction | null>(null)
 
-  const [busy, setBusy] = createSignal<ActionKind | null>(null)
+  const [busy, setBusy] = createSignal<GitOpsAction | null>(null)
   const [error, setError] = createSignal<string | null>(null)
-  const [lastRun, setLastRun] = createSignal<{ kind: ActionKind; runId: string } | null>(null)
-  const [agentKind, setAgentKind] = createSignal<ActionKind | null>(null)
+  const [lastRun, setLastRun] = createSignal<{ kind: GitOpsAction; runId: string } | null>(null)
+  const [agentKind, setAgentKind] = createSignal<GitOpsAction | null>(null)
 
   // Promise-based confirm dialog: `askDiscard` opens the modal and resolves once
   // the user picks. The prompt text lives in its own signal so it stays rendered
@@ -119,14 +108,6 @@ export const SpecReview: Component = () => {
     el.style.height = 'auto'
     el.style.height = `${el.scrollHeight}px`
   }
-  const reviewHtml = createMemo(() => {
-    const text = review()?.text ?? ''
-    if (!text.trim()) return ''
-    return renderMarkdown(text, { specId: params.id, projectId: projectId() })
-  })
-  const shouldShowReviewPane = createMemo(() => review.loading || Boolean(reviewHtml()))
-  const lastReviewTime = createMemo(() => extractLastReviewTime(review()?.text ?? ''))
-
   const defaultCommitMessage = createMemo(() => {
     const parts = params.id.split('.')
     const type = parts.length >= 2 ? parts[1]! : 'feat'
@@ -163,24 +144,23 @@ export const SpecReview: Component = () => {
     onCleanup(() => unsub())
   })
 
-  function isKindRunning(kind: ActionKind): boolean {
+  function isKindRunning(kind: GitOpsAction): boolean {
     return agentKind() === kind
   }
-  const runningKind = createMemo<ActionKind | null>(() => agentKind())
+  const runningKind = createMemo<GitOpsAction | null>(() => agentKind())
   const isAnyRunning = createMemo(
     () => busy() !== null || runningKind() !== null || directAction() !== null,
   )
 
-  // Track a dispatched agent round on the spec session: clear the running kind
-  // when the turn completes, and refetch the review report after a review run.
-  function trackRound(kind: ActionKind, sessionId: string): void {
+  // Track a dispatched agent round on the spec session and clear the running
+  // kind when the turn completes.
+  function trackRound(kind: GitOpsAction, sessionId: string): void {
     roundUnsub?.()
     setAgentKind(kind)
     roundUnsub = subscribeSession(projectId(), sessionId, {
       onEvent: (ev) => {
         if (ev.type === 'turn-completed' || ev.type === 'error') {
           setAgentKind(null)
-          if (kind === 'review') setRefreshTick((tick) => tick + 1)
           roundUnsub?.()
           roundUnsub = null
         }
@@ -229,7 +209,7 @@ export const SpecReview: Component = () => {
     }
   }
 
-  async function triggerAgent(kind: ActionKind): Promise<void> {
+  async function triggerAgent(kind: GitOpsAction): Promise<void> {
     if (isAnyRunning()) return
     setError(null)
     if (kind === 'discard') {
@@ -238,10 +218,7 @@ export const SpecReview: Component = () => {
     }
     setBusy(kind)
     try {
-      const res =
-        kind === 'review'
-          ? await api.triggerReview(projectId(), params.id)
-          : await api.gitOp(projectId(), params.id, kind)
+      const res = await api.gitOp(projectId(), params.id, kind)
       setLastRun({ kind, runId: res.runId })
       requestChatSession(res.sessionId)
       trackRound(kind, res.sessionId)
@@ -257,7 +234,7 @@ export const SpecReview: Component = () => {
     else await triggerAgent(kind)
   }
 
-  function buttonLoading(kind: ActionKind): boolean {
+  function buttonLoading(kind: GitOpsAction): boolean {
     return isKindRunning(kind) || busy() === kind || directAction() === kind
   }
 
@@ -303,9 +280,6 @@ export const SpecReview: Component = () => {
             </p>
           </div>
           <div class="flex shrink-0 items-center gap-2 text-muted-foreground">
-            <Show when={lastReviewTime()}>
-              <span>{t('review.lastReview', { time: lastReviewTime() })}</span>
-            </Show>
             <FocusModeButton />
           </div>
         </header>
@@ -313,7 +287,7 @@ export const SpecReview: Component = () => {
         <div class="flex min-h-0 flex-1 gap-4">
           <section
             data-testid="review-controls-pane"
-            class={`flex min-h-0 min-w-0 flex-col gap-3 ${shouldShowReviewPane() ? 'flex-[4]' : 'flex-1'}`}
+            class="flex min-h-0 min-w-0 flex-1 flex-col gap-3"
           >
             <div class="flex flex-wrap items-center gap-2">
               <Button
@@ -351,19 +325,6 @@ export const SpecReview: Component = () => {
                   <Loader2 class="mr-1 h-3 w-3 animate-spin" />
                 </Show>
                 {buttonLoading('stash') ? t(LOADING_LABEL_KEY.stash) : t(IDLE_LABEL_KEY.stash)}
-              </Button>
-              <Separator orientation="vertical" class="h-6" />
-              <Button
-                variant="ghost"
-                size="sm"
-                title={t('review.reviewHint')}
-                disabled={isAnyRunning() || changes().length === 0}
-                onClick={() => triggerAgent('review')}
-              >
-                <Show when={buttonLoading('review')}>
-                  <Loader2 class="mr-1 h-3 w-3 animate-spin" />
-                </Show>
-                {buttonLoading('review') ? t(LOADING_LABEL_KEY.review) : t(IDLE_LABEL_KEY.review)}
               </Button>
             </div>
 
@@ -447,32 +408,11 @@ export const SpecReview: Component = () => {
             <Show when={lastRun()}>
               <p class=" text-muted-foreground">
                 {t('review.dispatched')}
-                {lastRun()!.kind === 'review'
-                  ? t('review.reviewChanges')
-                  : t(ACTION_LABEL_KEY[lastRun()!.kind as GitOpsAction])}
+                {t(ACTION_LABEL_KEY[lastRun()!.kind])}
                 （runId: <code>{lastRun()!.runId.slice(0, 8)}</code>）
               </p>
             </Show>
           </section>
-
-          <Show when={shouldShowReviewPane()}>
-            <section
-              data-testid="review-report-pane"
-              class="flex min-h-0 min-w-0 flex-[6] flex-col gap-2"
-            >
-              <Show
-                when={review.loading}
-                fallback={
-                  <article
-                    class="markdown review-md flex-1 overflow-auto rounded-xl border bg-card p-4 shadow"
-                    innerHTML={reviewHtml()}
-                  />
-                }
-              >
-                <p class="text-muted-foreground">{t('common.loading')}</p>
-              </Show>
-            </section>
-          </Show>
         </div>
       </Suspense>
 
@@ -499,14 +439,4 @@ export const SpecReview: Component = () => {
       </Dialog>
     </section>
   )
-}
-
-function extractLastReviewTime(text: string): string {
-  if (!text) return ''
-  const lines = text.split(/\r?\n/)
-  for (let i = 0; i < lines.length; i++) {
-    const m = /^##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s*$/.exec(lines[i] ?? '')
-    if (m) return m[1] ?? ''
-  }
-  return ''
 }

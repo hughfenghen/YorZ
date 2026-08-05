@@ -157,7 +157,6 @@ Common contents:
 - `.yorz/config.json`: project configuration, including the project Agent override mode and the spec document directory. The default Agent can be inherited from global configuration.
 - `.yorz/specs/`: the default spec document directory. Each spec is usually stored at `.yorz/specs/<spec-id>/spec.md`.
 - `.yorz/specs/<spec-id>/debug.md`: the Debug mode record file. It appears only after the corresponding spec enters the Debug workflow.
-- `.yorz/specs/<spec-id>/review.md`: the Review report file. It appears only after a review is generated.
 - `.yorz/tmp/`: runtime temporary directory. It usually should not be committed to git.
 
 If you change the spec document directory in the GUI Project Configuration, new specs are written to the new directory. Existing specs remain in the old directory and need to be migrated manually when prompted.
@@ -292,18 +291,17 @@ You can fill in and send all answers from the pending confirmation panel at once
 
 On the spec detail page, click "Review" to open the Review page.
 
-The Review page is used to inspect changes related to the current spec and generate a review report.
+The Review page is used to inspect and process changes related to the current spec.
 
 Main features:
 
-- `Review changes`: dispatch the Agent to analyze the current changes and generate `review.md`.
 - `Manual selection`: manually choose files to process.
 - `Agent smart selection`: let the Agent decide which changes are related to the current spec.
 - `Commit`: commit the selected changes.
 - `Stage`: stage the selected changes.
 - `Discard`: discard the selected changes. This operation cannot be undone and requires confirmation before execution.
 
-After a spec is complete and verified, it is recommended to open the Review page, generate a review report first, then decide whether to commit, stage, or discard changes.
+After a spec is complete and verified, it is recommended to open the Review page and decide whether to commit, stage, or discard changes.
 
 ## 8. Common Workflows
 
@@ -324,7 +322,7 @@ Then open `http://localhost:7423` and select the project on the left.
 3. Click "Send" and wait for the Agent to create the spec and enter plan.
 4. If there are pending confirmations, answer them in the panel and send.
 5. The Agent continues task breakdown and execution.
-6. After completion, open the "Review" page to generate a review report and process the changes.
+6. After completion, open the "Review" page to process the changes.
 
 ### 8.3 Work on Multiple Requirements in Parallel
 

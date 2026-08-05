@@ -5,7 +5,7 @@ import { resolveSkillEntry } from './global-config.js'
  * than in each Agent's own skills dir, so no Agent can discover them by name.
  * Prompts therefore reference the absolute `SKILL.md` path and let the Agent
  * Read it on demand — which also preserves the skill's progressive-disclosure
- * design (SKILL.md pulls in stages.md / review.md only when needed).
+ * design (for example yorz-spec pulls in stages.md only when needed).
  */
 export function skillEntryPath(skillName: string, env: NodeJS.ProcessEnv = process.env): string {
   return resolveSkillEntry(skillName, env)

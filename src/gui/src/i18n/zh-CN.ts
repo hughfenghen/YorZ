@@ -182,8 +182,6 @@ export const zhCN = {
     commit: '提交',
     discard: '丢弃',
     stash: '暂存',
-    reviewChanges: 'Review 变更',
-    reviewing: 'Review 中…',
     committing: '提交中…',
     discarding: '丢弃中…',
     stashing: '暂存中…',
@@ -201,9 +199,6 @@ export const zhCN = {
     confirmDiscardAll: '确定要丢弃当前 spec 相关的所有未提交变更吗？此操作不可撤销。',
     enterCommitMsg: '请输入 commit message',
     dispatched: '已派发：',
-    noReport: '尚无 review 报告。点击「Review 变更」让 Agent 生成。',
-    lastReview: '最近一次 review：{{time}}',
-    reviewHint: 'Review 下方变更文件，生成报告',
   },
   agentLogs: {
     backToSpec: '← 返回 spec',

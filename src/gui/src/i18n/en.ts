@@ -183,8 +183,6 @@ export const en = {
     commit: 'Commit',
     discard: 'Discard',
     stash: 'Stash',
-    reviewChanges: 'Review Changes',
-    reviewing: 'Reviewing…',
     committing: 'Committing…',
     discarding: 'Discarding…',
     stashing: 'Stashing…',
@@ -202,9 +200,6 @@ export const en = {
     confirmDiscardAll: 'Discard all uncommitted changes for this spec? This cannot be undone.',
     enterCommitMsg: 'Please enter commit message',
     dispatched: 'Dispatched: ',
-    noReport: 'No review report yet. Click "Review Changes" to generate.',
-    lastReview: 'Last review: {{time}}',
-    reviewHint: 'Review changed files below and generate report',
   },
   agentLogs: {
     backToSpec: '← Back to spec',

@@ -22,11 +22,6 @@
       "module": "mermaid",
       "file": "mermaid.md",
       "relatedCases": []
-    },
-    {
-      "module": "review",
-      "file": "review.md",
-      "relatedCases": []
     }
   ]
 }

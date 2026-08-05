@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -38,32 +38,6 @@ async function createSpec(apiPrefix: string, title = 'Sample'): Promise<string> 
   const body = (await res.json()) as { id: string }
   return body.id
 }
-
-describe('POST /specs/:id/review', () => {
-  it('returns {runId} for known spec', async () => {
-    const { apiPrefix } = await startInTmp()
-    const id = await createSpec(apiPrefix)
-    const res = await fetch(`${apiPrefix}/specs/${id}/review`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: '{}',
-    })
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { runId: string }
-    expect(typeof body.runId).toBe('string')
-    expect(body.runId.length).toBeGreaterThan(0)
-  })
-
-  it('returns 404 for unknown spec', async () => {
-    const { apiPrefix } = await startInTmp()
-    const res = await fetch(`${apiPrefix}/specs/does-not-exist/review`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: '{}',
-    })
-    expect(res.status).toBe(404)
-  })
-})
 
 describe('POST /specs/:id/git', () => {
   it('400 when action is missing or invalid', async () => {
@@ -119,33 +93,5 @@ describe('POST /specs/:id/git', () => {
       body: 'not json',
     })
     expect(res.status).toBe(400)
-  })
-})
-
-describe('GET /specs/:id/review', () => {
-  it('returns empty text when review.md absent', async () => {
-    const { apiPrefix } = await startInTmp()
-    const id = await createSpec(apiPrefix)
-    const res = await fetch(`${apiPrefix}/specs/${id}/review`)
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { text: string }
-    expect(body.text).toBe('')
-  })
-
-  it('returns review.md content when present', async () => {
-    const { apiPrefix, cwd } = await startInTmp()
-    const id = await createSpec(apiPrefix)
-    const reviewPath = join(cwd, '.yorz', 'specs', id, 'review.md')
-    await writeFile(reviewPath, '# Review · x\n\n## 2026-06-30 21:00:00\n\nbody\n', 'utf8')
-    const res = await fetch(`${apiPrefix}/specs/${id}/review`)
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { text: string }
-    expect(body.text).toContain('## 2026-06-30 21:00:00')
-  })
-
-  it('404 for unknown spec', async () => {
-    const { apiPrefix } = await startInTmp()
-    const res = await fetch(`${apiPrefix}/specs/missing/review`)
-    expect(res.status).toBe(404)
   })
 })

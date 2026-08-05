@@ -158,7 +158,6 @@ YorZ 主要使用项目级目录保存 spec 文档，使用全局目录保存项
 - `.yorz/config.json`：项目配置，包含项目 Agent 覆盖方式和 spec 文档目录。默认 Agent 可继承全局配置。
 - `.yorz/specs/`：默认 spec 文档目录。每个 spec 通常位于 `.yorz/specs/<spec-id>/spec.md`。
 - `.yorz/specs/<spec-id>/debug.md`：Debug 模式记录文件，仅在对应 spec 进入 Debug 流程后出现。
-- `.yorz/specs/<spec-id>/review.md`：Review 报告文件，仅在生成 review 后出现。
 - `.yorz/tmp/`：运行时临时目录，通常不应提交到 git。
 
 如果在 GUI 的“项目配置”里修改 spec 文档目录，新的 spec 会写入新目录；旧 spec 仍留在原目录，需要按提示自行迁移。
@@ -293,18 +292,17 @@ Agent 在 plan 阶段会补齐“现状分析”“技术实现方案”和“�
 
 在 spec 详情页点击 “Review” 进入 Review 页面。
 
-Review 页面用于查看当前 spec 相关改动，并生成 review 报告。
+Review 页面用于查看和处理当前 spec 相关改动。
 
 主要功能：
 
-- `Review 变更`：派发 Agent 分析当前变更并生成 `review.md`。
 - `手动选择`：手动选择要处理的文件。
 - `Agent 智能判定`：让 Agent 判断本次 spec 相关的变更范围。
 - `提交`：提交选中的变更。
 - `暂存`：暂存选中的变更。
 - `丢弃`：丢弃选中的变更。该操作不可撤销，执行前会二次确认。
 
-建议在 spec 完成并验证后进入 Review 页面，先生成 review 报告，再决定提交、暂存或丢弃。
+建议在 spec 完成并验证后进入 Review 页面，根据当前变更决定提交、暂存或丢弃。
 
 ## 8. 常见工作流
 
@@ -325,7 +323,7 @@ yorz add /path/to/your/project
 3. 点击“发送”，等待 Agent 创建 spec 并进入 plan。
 4. 如有待确认项，在面板中答复并发送。
 5. Agent 继续拆任务和执行。
-6. 完成后进入 “Review” 页面生成 review 报告，并处理变更。
+6. 完成后进入 “Review” 页面处理变更。
 
 ### 8.3 并行处理多个需求
 

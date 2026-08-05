@@ -29,7 +29,7 @@ afterEach(async () => {
   await rm(join(skillsDir, '..'), { recursive: true, force: true })
 })
 
-const EXPECTED_SUBDOCS = ['SKILL.md', 'index.json', 'stages.md', 'review.md']
+const EXPECTED_SUBDOCS = ['SKILL.md', 'index.json', 'stages.md']
 
 async function walk(dir: string): Promise<string[]> {
   const out: string[] = []
@@ -128,7 +128,7 @@ describe('ensureSkillsInstalled', () => {
   it('installs one copy of every skill on first run', async () => {
     const results = await ensureSkillsInstalled({ skillsDir, cwd })
     expect(results).toHaveLength(SKILL_DIR_NAMES.length)
-    expect(results.map((r) => r.skill).sort()).toEqual(['yorz-debug', 'yorz-spec'])
+    expect(results.map((r) => r.skill).sort()).toEqual(['yorz-debug', 'yorz-git-ops', 'yorz-spec'])
     expect(results.every((r) => r.status === 'installed')).toBe(true)
     for (const r of results) {
       expect(r.path.startsWith(skillsDir)).toBe(true)

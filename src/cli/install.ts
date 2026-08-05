@@ -12,7 +12,7 @@ export const SKILL_DIR_NAME = 'yorz-spec'
  * installs/updates each one into the shared global skills dir. Add a new skill
  * here (and create `src/skill/<name>/SKILL.md`) to ship it.
  */
-export const SKILL_DIR_NAMES: readonly string[] = ['yorz-spec', 'yorz-debug']
+export const SKILL_DIR_NAMES: readonly string[] = ['yorz-spec', 'yorz-debug', 'yorz-git-ops']
 
 // Inline every md/json under src/skill/** at build time. Per-skill filtering
 // happens in resolveSkillFiles(); __tests__ fixtures are excluded there so they

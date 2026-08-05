@@ -171,7 +171,9 @@ export interface GlobalConfig {
       sound: boolean
     }
   }
-  shortcuts: Partial<Record<'newSpec' | 'toggleSpecDetailFullscreen' | 'projectSettings', string | null>>
+  shortcuts: Partial<
+    Record<'newSpec' | 'toggleSpecDetailFullscreen' | 'projectSettings', string | null>
+  >
 }
 
 export interface FileCompletionResult {
@@ -312,15 +314,6 @@ export const api = {
         body: JSON.stringify({ text }),
       },
     ),
-  triggerReview: (pid: string, id: string) =>
-    request<{ runId: string; sessionId: string }>(
-      `${projectBase(pid)}/specs/${encodeURIComponent(id)}/review`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: '{}',
-      },
-    ),
   gitOp: (pid: string, id: string, action: GitOpsAction) =>
     request<{ runId: string; sessionId: string }>(
       `${projectBase(pid)}/specs/${encodeURIComponent(id)}/git`,
@@ -352,8 +345,6 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     }),
-  getReview: (pid: string, id: string) =>
-    request<{ text: string }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/review`),
   getDebug: (pid: string, id: string) =>
     request<{ exists: boolean; text: string }>(
       `${projectBase(pid)}/specs/${encodeURIComponent(id)}/debug`,
