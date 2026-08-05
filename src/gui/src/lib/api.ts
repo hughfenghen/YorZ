@@ -171,6 +171,7 @@ export interface GlobalConfig {
       sound: boolean
     }
   }
+  shortcuts: Partial<Record<'newSpec' | 'toggleSpecDetailFullscreen' | 'projectSettings', string | null>>
 }
 
 export interface FileCompletionResult {

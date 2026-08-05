@@ -78,6 +78,7 @@ describe('ProjectRegistry', () => {
         projects: [],
         agent: { defaultKind: 'codex' },
         notifications: { sessionEnd: { banner: false, sound: false } },
+        shortcuts: {},
       },
       configPath,
     )

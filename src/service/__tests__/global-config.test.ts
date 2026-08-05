@@ -11,6 +11,8 @@ import {
   removeProject,
   resolveGlobalConfigDir,
   resolveGlobalConfigPath,
+  resolveGlobalSkillsDir,
+  resolveSkillEntry,
   saveGlobalConfig,
   setProjectWorktree,
   touchProjectActivity,
@@ -38,6 +40,26 @@ describe('global-config: resolveGlobalConfigPath', () => {
   })
 })
 
+describe('global-config: shared skills dir', () => {
+  it('resolveGlobalSkillsDir sits under the global config dir', () => {
+    expect(resolveGlobalSkillsDir({ YORZ_HOME: '/tmp/yorz-home' })).toBe('/tmp/yorz-home/skills')
+  })
+
+  it('honors XDG_CONFIG_HOME when YORZ_HOME absent', () => {
+    expect(resolveGlobalSkillsDir({ XDG_CONFIG_HOME: '/tmp/xdg' })).toBe('/tmp/xdg/yorz/skills')
+  })
+
+  it('default ends with /yorz/skills', () => {
+    expect(resolveGlobalSkillsDir({}).endsWith('/yorz/skills')).toBe(true)
+  })
+
+  it('resolveSkillEntry points at <dir>/<skill>/SKILL.md', () => {
+    expect(resolveSkillEntry('yorz-spec', { YORZ_HOME: '/tmp/yorz-home' })).toBe(
+      '/tmp/yorz-home/skills/yorz-spec/SKILL.md',
+    )
+  })
+})
+
 describe('loadGlobalConfig / saveGlobalConfig', () => {
   it('returns empty list when file missing', async () => {
     const fp = await tmpConfigPath()
@@ -46,6 +68,7 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     expect(cfg.projects).toEqual([])
     expect(cfg.agent).toEqual({ defaultKind: 'claude' })
     expect(cfg.notifications.sessionEnd).toEqual({ banner: false, sound: false })
+    expect(cfg.shortcuts).toEqual({})
   })
 
   it('roundtrips via atomic save', async () => {
@@ -56,6 +79,7 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
         projects: [{ id: 'x-abc123', path: '/tmp/x', addedAt: '2026-06-24', lastActivityAt: null }],
         agent: { defaultKind: 'claude' },
         notifications: { sessionEnd: { banner: false, sound: false } },
+        shortcuts: {},
       },
       fp,
     )
@@ -67,6 +91,7 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     ])
     expect(cfg.agent).toEqual({ defaultKind: 'claude' })
     expect(cfg.notifications.sessionEnd).toEqual({ banner: false, sound: false })
+    expect(cfg.shortcuts).toEqual({})
   })
 
   it('returns empty list when file is malformed JSON', async () => {
@@ -76,6 +101,7 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     expect(cfg.projects).toEqual([])
     expect(cfg.agent).toEqual({ defaultKind: 'claude' })
     expect(cfg.notifications.sessionEnd).toEqual({ banner: false, sound: false })
+    expect(cfg.shortcuts).toEqual({})
   })
 
   it('roundtrips session end notification preferences', async () => {
@@ -86,6 +112,7 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
         projects: [],
         agent: { defaultKind: 'claude' },
         notifications: { sessionEnd: { banner: true, sound: true } },
+        shortcuts: {},
       },
       fp,
     )
@@ -101,6 +128,7 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
         projects: [],
         agent: { defaultKind: 'codex' },
         notifications: { sessionEnd: { banner: false, sound: false } },
+        shortcuts: {},
       },
       fp,
     )
@@ -122,6 +150,23 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     expect(cfg.projects[0]!.id).toBe('legacy')
     expect(cfg.agent).toEqual({ defaultKind: 'claude' })
     expect(cfg.notifications.sessionEnd).toEqual({ banner: false, sound: false })
+    expect(cfg.shortcuts).toEqual({})
+  })
+
+  it('roundtrips shortcut overrides', async () => {
+    const fp = await tmpConfigPath()
+    await saveGlobalConfig(
+      {
+        version: 1,
+        projects: [],
+        agent: { defaultKind: 'claude' },
+        notifications: { sessionEnd: { banner: false, sound: false } },
+        shortcuts: { newSpec: 'ctrl+shift+k', projectSettings: null },
+      },
+      fp,
+    )
+    const cfg = await loadGlobalConfig(fp)
+    expect(cfg.shortcuts).toEqual({ newSpec: 'Ctrl+Shift+K', projectSettings: null })
   })
 })
 

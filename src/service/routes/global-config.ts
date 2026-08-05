@@ -1,8 +1,12 @@
 import { Hono } from 'hono'
 import {
   loadGlobalConfig,
+  normalizeShortcuts,
+  normalizeShortcutBinding,
   saveGlobalConfig,
+  SHORTCUT_ACTION_IDS,
   type GlobalAgentConfig,
+  type GlobalShortcutsConfig,
   type SessionEndNotificationsConfig,
 } from '../global-config.js'
 
@@ -11,6 +15,7 @@ interface PutBody {
   notifications: {
     sessionEnd: SessionEndNotificationsConfig
   }
+  shortcuts: GlobalShortcutsConfig
 }
 
 export function createGlobalConfigRoutes(globalConfigPath?: string): Hono {
@@ -18,7 +23,7 @@ export function createGlobalConfigRoutes(globalConfigPath?: string): Hono {
 
   app.get('/global-config', async (c) => {
     const cfg = await loadGlobalConfig(globalConfigPath)
-    return c.json({ agent: cfg.agent, notifications: cfg.notifications })
+    return c.json({ agent: cfg.agent, notifications: cfg.notifications, shortcuts: cfg.shortcuts })
   })
 
   app.put('/global-config', async (c) => {
@@ -34,8 +39,12 @@ export function createGlobalConfigRoutes(globalConfigPath?: string): Hono {
     const cfg = await loadGlobalConfig(globalConfigPath)
     cfg.agent = parsed.agent
     cfg.notifications = parsed.notifications
+    cfg.shortcuts = parsed.shortcuts
     await saveGlobalConfig(cfg, globalConfigPath)
-    return c.json({ ok: true, config: { agent: cfg.agent, notifications: cfg.notifications } })
+    return c.json({
+      ok: true,
+      config: { agent: cfg.agent, notifications: cfg.notifications, shortcuts: cfg.shortcuts },
+    })
   })
 
   return app
@@ -69,8 +78,26 @@ function parseBody(value: unknown): PutBody | { error: string } {
   if (typeof s.sound !== 'boolean') {
     return { error: 'notifications.sessionEnd.sound must be a boolean' }
   }
+  const shortcutsRaw = obj.shortcuts ?? {}
+  if (typeof shortcutsRaw !== 'object') {
+    return { error: 'shortcuts must be an object' }
+  }
+  const shortcutObj = shortcutsRaw as Record<string, unknown>
+  for (const key of Object.keys(shortcutObj)) {
+    if (!SHORTCUT_ACTION_IDS.includes(key as (typeof SHORTCUT_ACTION_IDS)[number])) {
+      return { error: `unknown shortcut action: ${key}` }
+    }
+    const value = shortcutObj[key]
+    if (value !== null && typeof value !== 'string') {
+      return { error: `shortcuts.${key} must be a string or null` }
+    }
+    if (typeof value === 'string' && !normalizeShortcutBinding(value)) {
+      return { error: `shortcuts.${key} is not a valid shortcut binding` }
+    }
+  }
   return {
     agent: { defaultKind },
     notifications: { sessionEnd: { banner: s.banner, sound: s.sound } },
+    shortcuts: normalizeShortcuts(shortcutObj),
   }
 }

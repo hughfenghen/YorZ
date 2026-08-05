@@ -35,6 +35,7 @@ describe('session-end-notifier', () => {
         projects: [],
         agent: { defaultKind: 'claude' },
         notifications: { sessionEnd: { banner: true, sound: true } },
+        shortcuts: {},
       },
       fp,
     )
@@ -66,6 +67,7 @@ describe('session-end-notifier', () => {
         projects: [],
         agent: { defaultKind: 'claude' },
         notifications: { sessionEnd: { banner: true, sound: false } },
+        shortcuts: {},
       },
       fp,
     )
@@ -92,6 +94,7 @@ describe('session-end-notifier', () => {
         projects: [],
         agent: { defaultKind: 'claude' },
         notifications: { sessionEnd: { banner: true, sound: false } },
+        shortcuts: {},
       },
       fp,
     )
@@ -120,6 +123,7 @@ describe('session-end-notifier', () => {
         projects: [],
         agent: { defaultKind: 'claude' },
         notifications: { sessionEnd: { banner: true, sound: false } },
+        shortcuts: {},
       },
       fp,
     )
@@ -146,6 +150,7 @@ describe('session-end-notifier', () => {
         projects: [],
         agent: { defaultKind: 'claude' },
         notifications: { sessionEnd: { banner: true, sound: false } },
+        shortcuts: {},
       },
       fp,
     )

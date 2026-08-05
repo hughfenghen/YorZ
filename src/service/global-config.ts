@@ -26,6 +26,7 @@ export interface GlobalConfig {
   projects: GlobalProjectEntry[]
   agent: GlobalAgentConfig
   notifications: GlobalNotificationsConfig
+  shortcuts: GlobalShortcutsConfig
 }
 
 export interface GlobalAgentConfig {
@@ -43,11 +44,19 @@ export interface SessionEndNotificationsConfig {
   sound: boolean
 }
 
+export type GlobalShortcutActionId = 'newSpec' | 'toggleSpecDetailFullscreen' | 'projectSettings'
+export type GlobalShortcutsConfig = Partial<Record<GlobalShortcutActionId, string | null>>
+
 const CURRENT_VERSION = 1 as const
 export const DEFAULT_GLOBAL_AGENT: GlobalAgentConfig = { defaultKind: 'claude' }
 export const DEFAULT_NOTIFICATIONS: GlobalNotificationsConfig = {
   sessionEnd: { banner: false, sound: false },
 }
+export const SHORTCUT_ACTION_IDS: GlobalShortcutActionId[] = [
+  'newSpec',
+  'toggleSpecDetailFullscreen',
+  'projectSettings',
+]
 
 export function resolveGlobalConfigDir(env: NodeJS.ProcessEnv = process.env): string {
   if (env.YORZ_HOME && env.YORZ_HOME.trim()) return env.YORZ_HOME.trim()
@@ -58,6 +67,21 @@ export function resolveGlobalConfigDir(env: NodeJS.ProcessEnv = process.env): st
 
 export function resolveGlobalConfigPath(env: NodeJS.ProcessEnv = process.env): string {
   return join(resolveGlobalConfigDir(env), 'projects.json')
+}
+
+/**
+ * Directory holding the bundled skills, shared by every yorz project.
+ * Follows the same `YORZ_HOME` > `XDG_CONFIG_HOME` > `~/.config` resolution as
+ * {@link resolveGlobalConfigDir}, so a single copy serves all projects instead
+ * of polluting each Agent's own skills directory.
+ */
+export function resolveGlobalSkillsDir(env: NodeJS.ProcessEnv = process.env): string {
+  return join(resolveGlobalConfigDir(env), 'skills')
+}
+
+/** Absolute path to a bundled skill's `SKILL.md` entry inside the shared dir. */
+export function resolveSkillEntry(skillName: string, env: NodeJS.ProcessEnv = process.env): string {
+  return join(resolveGlobalSkillsDir(env), skillName, 'SKILL.md')
 }
 
 export async function loadGlobalConfig(filePath?: string): Promise<GlobalConfig> {
@@ -112,6 +136,7 @@ function normalizeConfig(value: unknown): GlobalConfig {
     projects,
     agent: normalizeAgent(obj.agent),
     notifications: normalizeNotifications(obj.notifications),
+    shortcuts: normalizeShortcuts(obj.shortcuts),
   }
 }
 
@@ -126,6 +151,7 @@ export function defaultGlobalConfig(): GlobalConfig {
         sound: DEFAULT_NOTIFICATIONS.sessionEnd.sound,
       },
     },
+    shortcuts: {},
   }
 }
 
@@ -156,6 +182,58 @@ function normalizeNotifications(value: unknown): GlobalNotificationsConfig {
           : DEFAULT_NOTIFICATIONS.sessionEnd.sound,
     },
   }
+}
+
+export function normalizeShortcuts(value: unknown): GlobalShortcutsConfig {
+  if (!value || typeof value !== 'object') return {}
+  const obj = value as Record<string, unknown>
+  const shortcuts: GlobalShortcutsConfig = {}
+  for (const action of SHORTCUT_ACTION_IDS) {
+    const raw = obj[action]
+    if (raw === null) {
+      shortcuts[action] = null
+      continue
+    }
+    if (typeof raw !== 'string') continue
+    const normalized = normalizeShortcutBinding(raw)
+    if (normalized) shortcuts[action] = normalized
+  }
+  return shortcuts
+}
+
+export function normalizeShortcutBinding(value: string): string | null {
+  const parts = value
+    .split('+')
+    .map((part) => part.trim())
+    .filter(Boolean)
+  let key = ''
+  let ctrl = false
+  let shift = false
+  let alt = false
+  let meta = false
+  for (const part of parts) {
+    const lower = part.toLowerCase()
+    if (lower === 'ctrl' || lower === 'control') ctrl = true
+    else if (lower === 'shift') shift = true
+    else if (lower === 'alt' || lower === 'option') alt = true
+    else if (lower === 'meta' || lower === 'cmd' || lower === 'command') meta = true
+    else key = normalizeShortcutKey(part)
+  }
+  if (!key) return null
+  const out: string[] = []
+  if (ctrl) out.push('Ctrl')
+  if (shift) out.push('Shift')
+  if (alt) out.push('Alt')
+  if (meta) out.push('Meta')
+  out.push(key)
+  return out.join('+')
+}
+
+function normalizeShortcutKey(key: string): string {
+  if (key.length === 1) return key.toUpperCase()
+  if (key === ' ') return 'Space'
+  if (key.startsWith('Arrow')) return key
+  return key.slice(0, 1).toUpperCase() + key.slice(1)
 }
 
 function normalizeWorktree(value: unknown): WorktreeMeta | undefined {

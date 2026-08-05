@@ -15,7 +15,8 @@ import { Plus, MoreHorizontal, GitMerge } from 'lucide-solid'
 import { api, type SpecListItem } from '../lib/api.js'
 import type { ProjectListItem } from '../lib/project.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
-import { useFocusModePage } from '../lib/layout-focus.js'
+import { toggleFocusMode, useFocusModePage } from '../lib/layout-focus.js'
+import { registerFocusModeShortcut } from '../lib/shortcut-actions.js'
 import { subscribeProjectsList, subscribeSpecsList } from '../lib/sse.js'
 import { formatSpecUpdatedAt } from '../lib/time.js'
 import { Button } from '../components/ui/button.jsx'
@@ -93,6 +94,7 @@ export const SpecList: Component = () => {
   const [deleting, setDeleting] = createSignal(false)
   const [deleteError, setDeleteError] = createSignal<string | null>(null)
   useFocusModePage(() => mergeDialogOpen() || confirmDeleteId() !== null)
+  registerFocusModeShortcut(toggleFocusMode)
 
   let cleanupSpecsList: (() => void) | null = null
 

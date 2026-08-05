@@ -1,8 +1,25 @@
-import { createEffect, createSignal, Show, type Component } from 'solid-js'
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  type Component,
+} from 'solid-js'
 import { api, type GlobalConfig } from '../lib/api.js'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog.jsx'
 import { Button } from './ui/button.jsx'
 import { Checkbox, CheckboxControl, CheckboxLabel } from './ui/checkbox.jsx'
+import {
+  DEFAULT_SHORTCUTS,
+  SHORTCUT_ACTIONS,
+  effectiveShortcuts,
+  findShortcutConflicts,
+  shortcutFromEvent,
+  type ShortcutActionId,
+  type ShortcutConfig,
+} from '../lib/shortcuts.js'
 import { t } from '../i18n/index.js'
 
 interface Props {
@@ -23,15 +40,19 @@ const DEFAULT_CONFIG: GlobalConfig = {
       sound: false,
     },
   },
+  shortcuts: {},
 }
 
 export const GlobalConfigDialog: Component<Props> = (props) => {
   const [agentDefault, setAgentDefault] = createSignal<GlobalAgentKind>('claude')
   const [banner, setBanner] = createSignal(false)
   const [sound, setSound] = createSignal(false)
+  const [shortcuts, setShortcuts] = createSignal<ShortcutConfig>({})
+  const [recording, setRecording] = createSignal<ShortcutActionId | null>(null)
   const [loading, setLoading] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
+  const conflicts = createMemo(() => new Set(findShortcutConflicts(shortcuts())))
 
   createEffect(() => {
     if (!props.open) return
@@ -53,11 +74,41 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
     setAgentDefault(cfg.agent.defaultKind)
     setBanner(Boolean(cfg.notifications.sessionEnd.banner))
     setSound(Boolean(cfg.notifications.sessionEnd.sound))
+    setShortcuts(cfg.shortcuts ?? {})
+    setRecording(null)
   }
+
+  createEffect(() => {
+    const action = recording()
+    if (!action) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.key === 'Escape') {
+        setRecording(null)
+        return
+      }
+      if (event.key === 'Backspace' || event.key === 'Delete') {
+        setShortcuts((prev) => ({ ...prev, [action]: null }))
+        setRecording(null)
+        return
+      }
+      const binding = shortcutFromEvent(event)
+      if (!binding) return
+      setShortcuts((prev) => ({ ...prev, [action]: binding }))
+      setRecording(null)
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    onCleanup(() => window.removeEventListener('keydown', onKeyDown, true))
+  })
 
   async function submit(e: Event): Promise<void> {
     e.preventDefault()
     setError(null)
+    if (conflicts().size > 0) {
+      setError(t('globalConfig.shortcutConflict'))
+      return
+    }
     setBusy(true)
     try {
       await api.updateGlobalConfig({
@@ -70,6 +121,7 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
             sound: sound(),
           },
         },
+        shortcuts: shortcuts(),
       })
       props.onSaved?.(t('globalConfig.saved'))
       props.onClose()
@@ -86,9 +138,22 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
     return t('projectConfig.agentClaude')
   }
 
+  function shortcutLabel(action: ShortcutActionId): string {
+    return t(`globalConfig.shortcuts.${action}`)
+  }
+
+  function shortcutValue(action: ShortcutActionId): string {
+    if (recording() === action) return t('globalConfig.shortcutRecording')
+    return effectiveShortcuts(shortcuts())[action]
+  }
+
+  function resetShortcut(action: ShortcutActionId): void {
+    setShortcuts((prev) => ({ ...prev, [action]: null }))
+  }
+
   return (
     <Dialog open={props.open} onOpenChange={(o) => !o && props.onClose()}>
-      <DialogContent class="max-w-[440px]">
+      <DialogContent class="max-w-[560px]">
         <DialogHeader>
           <DialogTitle>{t('globalConfig.title')}</DialogTitle>
         </DialogHeader>
@@ -139,13 +204,58 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
               </div>
             </fieldset>
 
+            <fieldset class="m-0 flex flex-col gap-2 border-0 p-0">
+              <legend class="font-medium">{t('globalConfig.shortcutsTitle')}</legend>
+              <div class="flex flex-col gap-2">
+                <For each={SHORTCUT_ACTIONS}>
+                  {(action) => (
+                    <div class="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md border p-2">
+                      <div class="min-w-0">
+                        <p class="m-0 font-medium">{shortcutLabel(action)}</p>
+                        <p
+                          class={`m-0 font-mono text-sm ${
+                            conflicts().has(action) ? 'text-destructive' : 'text-muted-foreground'
+                          }`}
+                        >
+                          {shortcutValue(action)}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setRecording(action)}
+                        disabled={busy()}
+                      >
+                        {recording() === action
+                          ? t('globalConfig.shortcutRecordingButton')
+                          : t('globalConfig.shortcutRecord')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => resetShortcut(action)}
+                        disabled={busy() || shortcutValue(action) === DEFAULT_SHORTCUTS[action]}
+                      >
+                        {t('globalConfig.shortcutReset')}
+                      </Button>
+                    </div>
+                  )}
+                </For>
+              </div>
+              <Show when={conflicts().size > 0}>
+                <p class="m-0 text-sm text-destructive">{t('globalConfig.shortcutConflict')}</p>
+              </Show>
+            </fieldset>
+
             {error() && <p class="text-destructive">{error()}</p>}
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={props.onClose} disabled={busy()}>
                 {t('common.cancel')}
               </Button>
-              <Button type="submit" disabled={busy()}>
+              <Button type="submit" disabled={busy() || conflicts().size > 0}>
                 {busy() ? t('common.saving') : t('globalConfig.save')}
               </Button>
             </DialogFooter>

@@ -314,6 +314,7 @@ describe('YorZ Service HTTP', () => {
     expect(await initial.json()).toEqual({
       agent: { defaultKind: 'claude' },
       notifications: { sessionEnd: { banner: false, sound: false } },
+      shortcuts: {},
     })
 
     const update = await fetch(`${apiRoot}/global-config`, {
@@ -322,6 +323,7 @@ describe('YorZ Service HTTP', () => {
       body: JSON.stringify({
         agent: { defaultKind: 'codex' },
         notifications: { sessionEnd: { banner: true, sound: true } },
+        shortcuts: { newSpec: 'Ctrl+Shift+K' },
       }),
     })
     expect(update.status).toBe(200)
@@ -330,6 +332,7 @@ describe('YorZ Service HTTP', () => {
     expect(await saved.json()).toEqual({
       agent: { defaultKind: 'codex' },
       notifications: { sessionEnd: { banner: true, sound: true } },
+      shortcuts: { newSpec: 'Ctrl+Shift+K' },
     })
   })
 
@@ -341,9 +344,38 @@ describe('YorZ Service HTTP', () => {
       body: JSON.stringify({
         agent: { defaultKind: 'claude' },
         notifications: { sessionEnd: { banner: 'yes', sound: false } },
+        shortcuts: {},
       }),
     })
     expect(res.status).toBe(400)
+  })
+
+  it('PUT /api/global-config rejects invalid shortcuts', async () => {
+    const { apiRoot } = await startInTmp()
+    const res = await fetch(`${apiRoot}/global-config`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        agent: { defaultKind: 'claude' },
+        notifications: { sessionEnd: { banner: false, sound: false } },
+        shortcuts: { newSpec: 1 },
+      }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('PUT /api/global-config accepts legacy bodies without shortcuts', async () => {
+    const { apiRoot } = await startInTmp()
+    const res = await fetch(`${apiRoot}/global-config`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        agent: { defaultKind: 'claude' },
+        notifications: { sessionEnd: { banner: false, sound: false } },
+      }),
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ config: { shortcuts: {} } })
   })
 
   it('400 when annotate body is missing required fields', async () => {
@@ -386,7 +418,6 @@ async function readUntil(
   }
   throw new Error(`SSE predicate not satisfied; received: ${accumulated}`)
 }
-
 
 describe('service logging', () => {
   /** Point the process-wide logger at a throwaway dir for the duration of `fn`. */

@@ -1,12 +1,14 @@
-import { A, useLocation } from '@solidjs/router'
 import {
   Show,
   createEffect,
   createMemo,
   createSignal,
+  onCleanup,
+  onMount,
   type JSX,
   type ParentComponent,
 } from 'solid-js'
+import { A, useLocation, useNavigate } from '@solidjs/router'
 import { Check, Languages, Menu, Plus, Settings } from 'lucide-solid'
 import { ProjectsSidebar } from './components/ProjectsSidebar.jsx'
 import { ChatPanel } from './components/ChatPanel.jsx'
@@ -21,13 +23,36 @@ import {
   DropdownMenuSeparator,
 } from './components/ui/dropdown-menu.jsx'
 import { toast, Toaster } from './components/ui/toast.jsx'
+import { api, type GlobalConfig } from './lib/api.js'
 import { activeProjectId, projectHref, setActiveProjectId } from './lib/project.js'
+import { focusModeShortcutHandler, requestProjectConfigOpen } from './lib/shortcut-actions.js'
+import {
+  DEFAULT_SHORTCUTS,
+  effectiveShortcuts,
+  isEditableShortcutTarget,
+  shortcutFromEvent,
+} from './lib/shortcuts.js'
 import { t, useTranslation } from './i18n/index.js'
+
+const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
+  agent: {
+    defaultKind: 'claude',
+  },
+  notifications: {
+    sessionEnd: {
+      banner: false,
+      sound: false,
+    },
+  },
+  shortcuts: {},
+}
 
 export const AppShell: ParentComponent = (props): JSX.Element => {
   const location = useLocation()
+  const navigate = useNavigate()
   const { lng, changeLanguage } = useTranslation()
   const [globalConfigOpen, setGlobalConfigOpen] = createSignal(false)
+  const [globalConfig, setGlobalConfig] = createSignal<GlobalConfig>(DEFAULT_GLOBAL_CONFIG)
 
   // Already on the New Spec page? A same-route navigation would be a no-op, so
   // open a fresh tab instead — that's the only way "new spec" does something here.
@@ -38,6 +63,65 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
     void changeLanguage(l)
     window.location.reload()
   }
+
+  async function refreshGlobalConfig(): Promise<void> {
+    try {
+      setGlobalConfig(await api.getGlobalConfig())
+    } catch {
+      setGlobalConfig(DEFAULT_GLOBAL_CONFIG)
+    }
+  }
+
+  function openNewSpec(): void {
+    if (!activeProjectId()) return
+    const href = projectHref('specs/new')
+    if (onNewSpecPage()) window.open(href, '_blank', 'noopener')
+    else navigate(href)
+  }
+
+  function runShortcut(binding: string): boolean {
+    const shortcuts = effectiveShortcuts(globalConfig().shortcuts)
+    if (binding === shortcuts.newSpec) {
+      openNewSpec()
+      return true
+    }
+    if (binding === shortcuts.projectSettings) {
+      requestProjectConfigOpen()
+      return true
+    }
+    if (binding === shortcuts.toggleSpecDetailFullscreen) {
+      const handler = focusModeShortcutHandler()
+      if (!handler) return false
+      handler()
+      return true
+    }
+    return false
+  }
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.defaultPrevented) return
+    const binding = shortcutFromEvent(event)
+    if (!binding) return
+    const shortcuts = effectiveShortcuts(globalConfig().shortcuts)
+    const isFocusModeBinding = binding === shortcuts.toggleSpecDetailFullscreen
+    if (isEditableShortcutTarget(event.target) && !isFocusModeBinding) return
+    if (
+      binding !== DEFAULT_SHORTCUTS.newSpec &&
+      binding !== DEFAULT_SHORTCUTS.projectSettings &&
+      binding !== DEFAULT_SHORTCUTS.toggleSpecDetailFullscreen &&
+      !Object.values(globalConfig().shortcuts).includes(binding)
+    ) {
+      return
+    }
+    if (!runShortcut(binding)) return
+    event.preventDefault()
+  }
+
+  onMount(() => {
+    void refreshGlobalConfig()
+    window.addEventListener('keydown', onKeyDown)
+  })
+  onCleanup(() => window.removeEventListener('keydown', onKeyDown))
 
   createEffect(() => {
     const m = location.pathname.match(/^\/([^/]+)/)
@@ -105,7 +189,10 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
       <GlobalConfigDialog
         open={globalConfigOpen()}
         onClose={() => setGlobalConfigOpen(false)}
-        onSaved={(message) => toast.success(message)}
+        onSaved={(message) => {
+          toast.success(message)
+          void refreshGlobalConfig()
+        }}
       />
     </div>
   )

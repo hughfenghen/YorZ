@@ -1,6 +1,7 @@
 import {
   For,
   Show,
+  createEffect,
   createMemo,
   createResource,
   createSignal,
@@ -9,17 +10,11 @@ import {
   type Component,
 } from 'solid-js'
 import { A, useLocation, useNavigate } from '@solidjs/router'
-import {
-  ChevronsRight,
-  ChevronsLeft,
-  Pencil,
-  X,
-  GitBranch,
-  HelpCircle,
-} from 'lucide-solid'
+import { ChevronsRight, ChevronsLeft, Pencil, X, GitBranch, HelpCircle } from 'lucide-solid'
 import { api } from '../lib/api.js'
 import { focusMode, exitFocusMode } from '../lib/layout-focus.js'
 import type { ProjectListItem } from '../lib/project.js'
+import { projectConfigRequestTick } from '../lib/shortcut-actions.js'
 import { ProjectConfigDialog } from './ProjectConfigDialog.js'
 import { Button } from './ui/button.jsx'
 import {
@@ -142,6 +137,14 @@ export const ProjectsSidebar: Component = () => {
       void refetch()
     })
     onCleanup(unsub)
+  })
+
+  createEffect(() => {
+    const tick = projectConfigRequestTick()
+    if (tick === 0) return
+    const pid = activeProjectId()
+    const project = (projects() ?? []).find((p) => p.id === pid)
+    if (project) setEditing(project)
   })
 
   function beginResize(ev: MouseEvent) {
