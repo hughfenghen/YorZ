@@ -19,6 +19,33 @@ describe('system notifications', () => {
       cmd: 'pnpm',
       args: ['add', '-g', '@yorz/cli@latest'],
     })
+    expect(
+      resolveGlobalInstallCommand({}, [
+        'node',
+        '/Users/fenghen/Library/pnpm/global/5/.pnpm/@yorz+cli@0.5.0_@anthropic-ai+sdk@0.111.0_zod@3.25.76__@modelcontextprotocol+sdk@1.18.2_zod@3.25.76/node_modules/@yorz/cli/dist/cli/index.js',
+      ]),
+    ).toEqual({
+      cmd: 'pnpm',
+      args: ['add', '-g', '@yorz/cli@latest'],
+    })
+    expect(
+      resolveGlobalInstallCommand({}, [
+        'node',
+        '/home/user/.local/share/pnpm/global/5/.pnpm/@yorz+cli@0.5.0/node_modules/@yorz/cli/dist/cli/index.js',
+      ]),
+    ).toEqual({
+      cmd: 'pnpm',
+      args: ['add', '-g', '@yorz/cli@latest'],
+    })
+    expect(
+      resolveGlobalInstallCommand({}, [
+        'node',
+        String.raw`C:\Users\user\AppData\Local\pnpm\global\5\.pnpm\@yorz+cli@0.5.0\node_modules\@yorz\cli\dist\cli\index.js`,
+      ]),
+    ).toEqual({
+      cmd: 'pnpm',
+      args: ['add', '-g', '@yorz/cli@latest'],
+    })
     expect(resolveGlobalInstallCommand({ npm_config_user_agent: 'bun/1.2.0' })).toEqual({
       cmd: 'bun',
       args: ['add', '-g', '@yorz/cli@latest'],
@@ -27,7 +54,7 @@ describe('system notifications', () => {
       cmd: 'yarn',
       args: ['global', 'add', '@yorz/cli@latest'],
     })
-    expect(resolveGlobalInstallCommand({})).toEqual({
+    expect(resolveGlobalInstallCommand({}, [])).toEqual({
       cmd: 'npm',
       args: ['install', '-g', '@yorz/cli@latest'],
     })

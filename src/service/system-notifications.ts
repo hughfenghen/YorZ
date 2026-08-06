@@ -177,19 +177,16 @@ export interface GlobalInstallCommand {
   args: string[]
 }
 
-type PackageManagerEnv = Partial<Record<'npm_config_user_agent' | 'npm_execpath', string>>
+type PackageManagerEnv = Partial<
+  Record<'npm_config_user_agent' | 'npm_execpath' | 'NODE_PATH', string>
+>
 
 export function resolveGlobalInstallCommand(
   env: PackageManagerEnv = process.env,
+  argv: string[] = process.argv,
 ): GlobalInstallCommand {
-  const source = `${env.npm_config_user_agent ?? ''} ${env.npm_execpath ?? ''}`.toLowerCase()
-  const manager = source.includes('pnpm')
-    ? 'pnpm'
-    : source.includes('bun')
-      ? 'bun'
-      : source.includes('yarn')
-        ? 'yarn'
-        : 'npm'
+  const envManager = detectPackageManager([env.npm_config_user_agent, env.npm_execpath])
+  const manager = envManager ?? detectPackageManager([env.NODE_PATH, ...argv]) ?? 'npm'
 
   switch (manager) {
     case 'pnpm':
@@ -201,6 +198,16 @@ export function resolveGlobalInstallCommand(
     default:
       return { cmd: 'npm', args: ['install', '-g', '@yorz/cli@latest'] }
   }
+}
+
+function detectPackageManager(
+  values: Array<string | undefined>,
+): GlobalInstallCommand['cmd'] | null {
+  const source = values.filter(Boolean).join(' ').toLowerCase()
+  if (source.includes('pnpm')) return 'pnpm'
+  if (source.includes('bun')) return 'bun'
+  if (source.includes('yarn')) return 'yarn'
+  return null
 }
 
 function parseVersion(value: string): [number, number, number] | null {
