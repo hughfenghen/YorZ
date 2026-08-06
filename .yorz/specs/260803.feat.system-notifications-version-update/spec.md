@@ -1,7 +1,7 @@
 ---
-stage: plan
-last_action: 追加任务（fix）
-updated_at: '2026-08-06 12:00:02'
+stage: done
+last_action: 用户手动置为 done
+updated_at: '2026-08-06 14:40:24'
 summary: 新增系统提示列表与版本更新提示，支持删除提示、触发更新、更新完成后重启 yorz serve。
 ---
 

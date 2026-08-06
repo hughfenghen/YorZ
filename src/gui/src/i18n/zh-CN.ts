@@ -33,7 +33,8 @@ export const zhCN = {
     versionMessage: 'YorZ {{latest}} 已发布，当前版本 {{current}}。',
     update: '更新',
     updating: '更新中…',
-    restart: '重启',
+    restart: '重启服务',
+    restartTooltip: '重复服务会中断正在运行中的任务，可在 chat 中发送“继续”指令',
   },
   welcome: {
     title: '欢迎使用 YorZ',

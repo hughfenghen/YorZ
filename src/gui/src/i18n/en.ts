@@ -33,7 +33,9 @@ export const en = {
     versionMessage: 'YorZ {{latest}} is available. Current version: {{current}}.',
     update: 'Update',
     updating: 'Updating…',
-    restart: 'Restart',
+    restart: 'Restart Service',
+    restartTooltip:
+      'Restarting the service will interrupt running tasks. You can send "continue" in chat.',
   },
   welcome: {
     title: 'Welcome to YorZ',

@@ -5,6 +5,7 @@ import { subscribeSystemNotifications } from '../lib/sse.js'
 import { t } from '../i18n/index.js'
 import { Button } from './ui/button.jsx'
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from './ui/popover.jsx'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.jsx'
 
 export function SystemNotifications(): JSX.Element {
   const [items, setItems] = createSignal<SystemNotification[]>([])
@@ -107,15 +108,19 @@ export function SystemNotifications(): JSX.Element {
                             </Button>
                           }
                         >
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            class="h-7 px-2 hover:bg-primary hover:text-primary-foreground"
-                            disabled={busyId() === item.id}
-                            onClick={() => void restart(item.id)}
-                          >
-                            {t('systemNotifications.restart')}
-                          </Button>
+                          <Tooltip openDelay={150} closeDelay={0}>
+                            <TooltipTrigger
+                              as={Button}
+                              variant="ghost"
+                              size="sm"
+                              class="h-7 px-2 hover:bg-primary hover:text-primary-foreground"
+                              disabled={busyId() === item.id}
+                              onClick={() => void restart(item.id)}
+                            >
+                              {t('systemNotifications.restart')}
+                            </TooltipTrigger>
+                            <TooltipContent>{t('systemNotifications.restartTooltip')}</TooltipContent>
+                          </Tooltip>
                         </Show>
                       </Show>
                       <Button
