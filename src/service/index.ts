@@ -1,8 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { networkInterfaces } from 'node:os'
 import { serve } from '@hono/node-server'
-import type { AddressInfo } from 'node:net'
+import { isIP, type AddressInfo } from 'node:net'
 import { createApp } from './server.js'
 import { ProjectRegistry } from './project-registry.js'
 import { stopAllCommandManagers, stopAllCommandManagersSync } from './command-manager.js'
@@ -14,11 +13,7 @@ import { resolveBrowserOpenInvocation, spawnWithoutWindow } from './process.js'
 
 export interface ServeOptions {
   port?: number
-  /**
-   * Bind address. Defaults to loopback: the service can run arbitrary
-   * user-configured commands, so it must not be reachable from the LAN unless
-   * the user explicitly opts in.
-   */
+  /** Bind address. Only loopback addresses are accepted because command APIs are unauthenticated. */
   host?: string
   /** Auto-register this directory if it has a `.yorz/` and is not already in the global list. */
   cwd?: string
@@ -46,14 +41,28 @@ const DEFAULT_PORT = 7423
 const MAX_PORT_TRIES = 10
 export const DEFAULT_HOST = '127.0.0.1'
 
-/** Addresses that keep the service unreachable from other machines. */
-function isLoopbackHost(host: string): boolean {
-  return host === '127.0.0.1' || host === 'localhost' || host === '::1'
+/** 判断监听地址是否严格限制在本机，避免未认证命令 API 暴露到网络。 */
+export function isLoopbackHost(host: string): boolean {
+  const normalized = host
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+  if (normalized === 'localhost') return true
+  if (isIP(normalized) === 4) return normalized.startsWith('127.')
+  if (isIP(normalized) === 6) {
+    return normalized === '::1' || normalized === '0:0:0:0:0:0:0:1'
+  }
+  return false
 }
 
 const log = () => getLogger().child('serve')
 
 export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
+  const host = opts.host?.trim() || DEFAULT_HOST
+  if (!isLoopbackHost(host)) {
+    throw new Error(`host must be a loopback address: ${host}`)
+  }
+
   const registry = new ProjectRegistry({ globalConfigPath: opts.globalConfigPath })
 
   const cwd = opts.cwd ?? process.cwd()
@@ -78,19 +87,11 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
         : undefined,
   })
 
-  const host = opts.host?.trim() || DEFAULT_HOST
   const port = await listen(app.fetch, opts.port ?? DEFAULT_PORT, host)
   const url = `http://localhost:${port.port}/`
-  console.log(`YorZ Service ready at ${url} (${projects.length} project${projects.length === 1 ? '' : 's'})`)
-  if (!isLoopbackHost(host)) {
-    // Opt-in exposure only: this service spawns user-configured shell commands,
-    // so anyone who can reach it can run code on this machine.
-    console.log(`  WARNING: bound to ${host} — reachable from the network.`)
-    for (const lanUrl of listLanUrls(port.port)) {
-      console.log(`  LAN: ${lanUrl}`)
-    }
-    log().warn('service bound to a non-loopback address', { host, port: port.port })
-  }
+  console.log(
+    `YorZ Service ready at ${url} (${projects.length} project${projects.length === 1 ? '' : 's'})`,
+  )
   for (const p of projects) {
     console.log(`  - ${p.name} -> ${p.path}`)
   }
@@ -173,19 +174,6 @@ async function listen(
   const fatal = lastErr ?? new Error(`failed to bind port near ${preferredPort}`)
   log().error('failed to bind any port', { preferredPort, tries: MAX_PORT_TRIES, err: fatal })
   throw fatal
-}
-
-function listLanUrls(port: number): string[] {
-  const urls: string[] = []
-  const ifaces = networkInterfaces()
-  for (const name of Object.keys(ifaces)) {
-    for (const info of ifaces[name] ?? []) {
-      if (info.family === 'IPv4' && !info.internal) {
-        urls.push(`http://${info.address}:${port}/`)
-      }
-    }
-  }
-  return urls
 }
 
 /**

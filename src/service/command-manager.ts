@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { execFile, execFileSync, spawn } from 'node:child_process'
 import { closeSync, openSync, readSync, statSync } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -123,9 +123,9 @@ class LogTailer {
 /**
  * Owns command definitions, child processes and their logs for one project.
  *
- * Children are spawned detached (own process group, so `pnpm dev`-style
- * grandchildren die with the group) but their lifetime is tied to this service
- * process: `stopAll()` runs on shutdown and `reap()` cleans up on startup.
+ * POSIX children use detached process groups; Windows children stay attached
+ * and are terminated through `taskkill /T`. Their lifetime is tied to this
+ * service process through `stopAll()` and the process-exit guard.
  */
 export class CommandManager {
   private readonly store: CommandRunStore
@@ -144,6 +144,8 @@ export class CommandManager {
     { status: CommandRun['status']; exitCode: number | null; signal: string | null }
   >()
   private readonly persisted = new Set<string>()
+  /** 记录由 API 主动停止的运行，防止 Windows exit 事件把 killed 覆盖成 exited。 */
+  private readonly intentionalStops = new Set<string>()
   private initPromise: Promise<void> | null = null
 
   constructor(readonly projectPath: string) {
@@ -251,7 +253,9 @@ export class CommandManager {
         shell: true,
         cwd: this.projectPath,
         env: process.env,
-        detached: true,
+        // POSIX 依赖独立进程组发送负 PID 信号；Windows 使用 taskkill /T，且 detached
+        // 会导致继承的日志文件描述符失效，所以 Windows 必须保持 attached。
+        detached: process.platform !== 'win32',
         // No pipes: the child writes straight into the log fd. Keeps a chatty
         // dev server from buffering through this process, and lets the REST
         // first paint and the SSE tail read from one single source.
@@ -338,6 +342,7 @@ export class CommandManager {
     this.runSubscribers.delete(runId)
     this.persisted.delete(runId)
     this.pendingEnds.delete(runId)
+    this.intentionalStops.delete(runId)
     this.notifyRuns()
     return true
   }
@@ -407,25 +412,13 @@ export class CommandManager {
     for (const [runId, child] of this.children) {
       const pid = child.pid
       if (!pid) continue
-      try {
-        process.kill(-pid, 'SIGKILL')
-      } catch {
-        try {
-          process.kill(pid, 'SIGKILL')
-        } catch {
-          // already gone
-        }
-      }
+      killKnownProcessTreeSync(pid)
       this.children.delete(runId)
     }
     for (const t of this.tailers.values()) t.stop()
   }
 
-  /**
-   * Startup pass. Any record still marked `running` belongs to a previous
-   * service process: kill it if it somehow survived (service SIGKILLed), then
-   * mark it `killed`. Also drops records that finished long ago.
-   */
+  /** 将上次运行遗留的记录标记为结束，并清理超过保留期的记录。 */
   private async reap(): Promise<void> {
     const runs = await this.store.list().catch(() => [] as CommandRun[])
     if (runs.length === 0) return
@@ -436,8 +429,11 @@ export class CommandManager {
     for (const run of runs) {
       if (run.status === 'running') {
         if (run.pid > 0 && isAlive(run.pid)) {
-          killGroup(run.pid, 'SIGKILL')
-          log().warn('reaped orphan command process', { runId: run.runId, pid: run.pid })
+          // 磁盘记录无法证明 PID 仍属于 YorZ；PID 复用时发送信号会误杀无关进程。
+          log().warn('ignored unverified persisted command pid', {
+            runId: run.runId,
+            pid: run.pid,
+          })
         }
         kept.push({ ...run, status: 'killed', endedAt: run.endedAt ?? now, exitCode: null })
         continue
@@ -454,16 +450,31 @@ export class CommandManager {
   }
 
   private async terminate(run: CommandRun): Promise<void> {
+    this.intentionalStops.add(run.runId)
     if (run.pid > 0) {
-      killGroup(run.pid, 'SIGTERM')
-      const exited = await waitForExit(run.pid, STOP_GRACE_MS)
-      if (!exited) {
-        log().warn('command did not exit on SIGTERM, escalating', {
-          runId: run.runId,
-          pid: run.pid,
-        })
-        killGroup(run.pid, 'SIGKILL')
-        await waitForExit(run.pid, STOP_GRACE_MS)
+      const child = this.children.get(run.runId)
+      if (process.platform === 'win32') {
+        if (child?.pid === run.pid) {
+          await killWindowsProcessTree(run.pid)
+          const exited = await waitForExit(run.pid, STOP_GRACE_MS)
+          if (!exited) throw new Error(`Windows command process tree did not exit: ${run.pid}`)
+        } else {
+          // 没有内存中的 ChildProcess 身份证明时，存活 PID 既不能误杀，也不能伪装已停止。
+          if (isAlive(run.pid)) {
+            throw new Error(`refused to kill unverified Windows command pid: ${run.pid}`)
+          }
+        }
+      } else {
+        killPosixProcessGroup(run.pid, 'SIGTERM')
+        const exited = await waitForExit(run.pid, STOP_GRACE_MS)
+        if (!exited) {
+          log().warn('command did not exit on SIGTERM, escalating', {
+            runId: run.runId,
+            pid: run.pid,
+          })
+          killPosixProcessGroup(run.pid, 'SIGKILL')
+          await waitForExit(run.pid, STOP_GRACE_MS)
+        }
       }
     }
     this.children.delete(run.runId)
@@ -476,6 +487,7 @@ export class CommandManager {
     exitCode: number | null,
     signal: NodeJS.Signals | string | null,
   ): Promise<void> {
+    if (this.intentionalStops.has(runId)) return
     if (!this.persisted.has(runId)) {
       this.pendingEnds.set(runId, { status, exitCode, signal: signal ?? null })
       return
@@ -618,11 +630,8 @@ function isAlive(pid: number): boolean {
   }
 }
 
-/**
- * Signal the whole process group. `pnpm dev` forks the process actually holding
- * the port, so killing only the direct child leaves it running.
- */
-function killGroup(pid: number, signal: NodeJS.Signals): void {
+/** Signal a POSIX process group; Windows callers must use the process-tree helper. */
+function killPosixProcessGroup(pid: number, signal: NodeJS.Signals): void {
   try {
     process.kill(-pid, signal)
   } catch {
@@ -632,6 +641,32 @@ function killGroup(pid: number, signal: NodeJS.Signals): void {
       // already gone
     }
   }
+}
+
+/** 终止当前实例已确认创建的 Windows 命令树，避免只杀掉 cmd.exe 外壳。 */
+async function killWindowsProcessTree(pid: number): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, (error) => {
+      if (!error || !isAlive(pid)) resolve()
+      else reject(error)
+    })
+  })
+}
+
+/** 进程退出事件无法等待异步清理，因此同步终止当前实例持有的子进程树。 */
+function killKnownProcessTreeSync(pid: number): void {
+  if (process.platform === 'win32') {
+    try {
+      execFileSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      })
+    } catch {
+      // 退出路径只做 best-effort；进程可能已经自行结束。
+    }
+    return
+  }
+  killPosixProcessGroup(pid, 'SIGKILL')
 }
 
 async function waitForExit(pid: number, timeoutMs: number): Promise<boolean> {

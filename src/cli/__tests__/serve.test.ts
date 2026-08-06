@@ -224,6 +224,85 @@ describe('serve', () => {
     })
   })
 
+  it('does not fall back to PID signals when the Windows shutdown token is rejected', async () => {
+    await withYorzHome(async () => {
+      const child = spawn(
+        process.execPath,
+        [
+          '-e',
+          `const http=require('node:http');const server=http.createServer((req,res)=>{res.statusCode=403;res.end('forbidden')});server.listen(0,'127.0.0.1',()=>console.log('READY '+server.address().port));`,
+        ],
+        { stdio: ['ignore', 'pipe', 'pipe'] },
+      )
+
+      try {
+        const port = await waitForReadyPort(child)
+        await writeFile(
+          runtimePath(),
+          `${JSON.stringify({
+            version: 2,
+            processes: [
+              {
+                pid: child.pid,
+                port,
+                url: `http://localhost:${port}/`,
+                startedAt: new Date().toISOString(),
+                shutdownToken: 'wrong-token',
+              },
+            ],
+          })}\n`,
+          'utf8',
+        )
+
+        const result = await runStopServe({ platform: 'win32' })
+        expect(result.stopped).toBe(false)
+        expect(child.exitCode).toBeNull()
+      } finally {
+        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+      }
+    })
+  })
+
+  it('does not kill a Windows process identified only by a legacy runtime PID', async () => {
+    await withYorzHome(async () => {
+      const child = spawn(
+        process.execPath,
+        ['-e', `console.log('READY 7423');setInterval(()=>{},1000)`],
+        { stdio: ['ignore', 'pipe', 'pipe'] },
+      )
+
+      try {
+        await waitForReadyPort(child)
+        await writeFile(
+          runtimePath(),
+          `${JSON.stringify({
+            version: 2,
+            processes: [
+              {
+                pid: child.pid,
+                port: 7423,
+                url: 'http://localhost:7423/',
+                startedAt: new Date().toISOString(),
+              },
+            ],
+          })}\n`,
+          'utf8',
+        )
+
+        const result = await runStopServe({ platform: 'win32' })
+        expect(result.stopped).toBe(false)
+        expect(result.stoppedPids).toEqual([])
+        expect(child.exitCode).toBeNull()
+        const runtime = JSON.parse(await readFile(runtimePath(), 'utf8')) as {
+          processes: Array<{ pid: number }>
+        }
+        expect(runtime.processes.map((entry) => entry.pid)).toContain(child.pid)
+      } finally {
+        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+      }
+    })
+  })
+
   it('stops a live process only when the recorded command identity matches', async () => {
     await withYorzHome(async () => {
       const args = [

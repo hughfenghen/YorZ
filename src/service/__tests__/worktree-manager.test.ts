@@ -76,7 +76,7 @@ describe('WorktreeManager 清理事务', () => {
     const fixture = await makeFixture()
     moveToTrash.mockImplementation(async (path) => {
       fixture.order.push('trash')
-      await rm(path, { recursive: true, force: true })
+      await rm(path as string, { recursive: true, force: true })
     })
 
     try {
