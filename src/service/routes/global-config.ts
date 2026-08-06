@@ -1,14 +1,17 @@
 import { Hono } from 'hono'
 import {
   loadGlobalConfig,
+  DEFAULT_POWER,
   normalizeShortcuts,
   normalizeShortcutBinding,
   saveGlobalConfig,
   SHORTCUT_ACTION_IDS,
   type GlobalAgentConfig,
+  type GlobalPowerConfig,
   type GlobalShortcutsConfig,
   type SessionEndNotificationsConfig,
 } from '../global-config.js'
+import { getPowerInhibitController, type PowerInhibitController } from '../power-inhibit.js'
 
 interface PutBody {
   agent: GlobalAgentConfig
@@ -16,14 +19,23 @@ interface PutBody {
     sessionEnd: SessionEndNotificationsConfig
   }
   shortcuts: GlobalShortcutsConfig
+  power: GlobalPowerConfig
 }
 
-export function createGlobalConfigRoutes(globalConfigPath?: string): Hono {
+export function createGlobalConfigRoutes(
+  globalConfigPath?: string,
+  powerController: PowerInhibitController = getPowerInhibitController(globalConfigPath),
+): Hono {
   const app = new Hono()
 
   app.get('/global-config', async (c) => {
     const cfg = await loadGlobalConfig(globalConfigPath)
-    return c.json({ agent: cfg.agent, notifications: cfg.notifications, shortcuts: cfg.shortcuts })
+    return c.json({
+      agent: cfg.agent,
+      notifications: cfg.notifications,
+      shortcuts: cfg.shortcuts,
+      power: cfg.power,
+    })
   })
 
   app.put('/global-config', async (c) => {
@@ -40,10 +52,17 @@ export function createGlobalConfigRoutes(globalConfigPath?: string): Hono {
     cfg.agent = parsed.agent
     cfg.notifications = parsed.notifications
     cfg.shortcuts = parsed.shortcuts
+    cfg.power = parsed.power
     await saveGlobalConfig(cfg, globalConfigPath)
+    await powerController.refresh()
     return c.json({
       ok: true,
-      config: { agent: cfg.agent, notifications: cfg.notifications, shortcuts: cfg.shortcuts },
+      config: {
+        agent: cfg.agent,
+        notifications: cfg.notifications,
+        shortcuts: cfg.shortcuts,
+        power: cfg.power,
+      },
     })
   })
 
@@ -95,9 +114,24 @@ function parseBody(value: unknown): PutBody | { error: string } {
       return { error: `shortcuts.${key} is not a valid shortcut binding` }
     }
   }
+  const powerRaw = obj.power ?? DEFAULT_POWER
+  if (!powerRaw || typeof powerRaw !== 'object') return { error: 'power must be an object' }
+  const p = powerRaw as Record<string, unknown>
+  const inhibitWhenRunning = p.inhibitWhenRunning
+  if (
+    inhibitWhenRunning !== 'system-default' &&
+    inhibitWhenRunning !== 'prevent-display-sleep' &&
+    inhibitWhenRunning !== 'keep-system-awake'
+  ) {
+    return {
+      error:
+        'power.inhibitWhenRunning must be system-default | prevent-display-sleep | keep-system-awake',
+    }
+  }
   return {
     agent: { defaultKind },
     notifications: { sessionEnd: { banner: s.banner, sound: s.sound } },
     shortcuts: normalizeShortcuts(shortcutObj),
+    power: { inhibitWhenRunning },
   }
 }

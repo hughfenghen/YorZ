@@ -45,6 +45,9 @@ const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
     },
   },
   shortcuts: {},
+  power: {
+    inhibitWhenRunning: 'system-default',
+  },
 }
 
 export const AppShell: ParentComponent = (props): JSX.Element => {

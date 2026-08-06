@@ -315,6 +315,7 @@ describe('YorZ Service HTTP', () => {
       agent: { defaultKind: 'claude' },
       notifications: { sessionEnd: { banner: false, sound: false } },
       shortcuts: {},
+      power: { inhibitWhenRunning: 'system-default' },
     })
 
     const update = await fetch(`${apiRoot}/global-config`, {
@@ -324,6 +325,7 @@ describe('YorZ Service HTTP', () => {
         agent: { defaultKind: 'codex' },
         notifications: { sessionEnd: { banner: true, sound: true } },
         shortcuts: { newSpec: 'Ctrl+Shift+K' },
+        power: { inhibitWhenRunning: 'prevent-display-sleep' },
       }),
     })
     expect(update.status).toBe(200)
@@ -333,6 +335,7 @@ describe('YorZ Service HTTP', () => {
       agent: { defaultKind: 'codex' },
       notifications: { sessionEnd: { banner: true, sound: true } },
       shortcuts: { newSpec: 'Ctrl+Shift+K' },
+      power: { inhibitWhenRunning: 'prevent-display-sleep' },
     })
   })
 

@@ -1,7 +1,7 @@
 ---
-stage: done
-last_action: 任务全部完成，标记 done
-updated_at: '2026-08-03 17:28:53'
+stage: plan
+last_action: 追加任务（fix）
+updated_at: '2026-08-06 12:00:02'
 summary: 新增系统提示列表与版本更新提示，支持删除提示、触发更新、更新完成后重启 yorz serve。
 ---
 
@@ -235,6 +235,15 @@ _暂无_
 
 - [fixed] [fix] 2026-08-03 17:27:02 | 新版本提醒提示，重启成功之后应该删除提示项，刷新页面
   - 描述：新版本提醒提示，重启成功之后应该删除提示项，刷新页面
+- [open] [fix] 2026-08-06 12:00:02 | 更新并重启之后，yorz 版本未更新（期望 0.5.1），系统提示也仍然存在
+  - 描述：更新并重启之后，yorz 版本未更新（期望 0.5.1），系统提示也仍然存在
+
+.config/yorz/logs
+▶ yorz --version
+0.5.0
+.config/yorz/logs
+▶ which yorz
+/Users/fenghen/Library/pnpm/yorz
 
 ## 8. 执行记录
 

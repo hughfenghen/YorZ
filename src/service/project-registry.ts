@@ -6,6 +6,7 @@ import { AttachmentStore } from './attachment-store.js'
 import { SessionManager } from './session-manager.js'
 import { SessionStore } from './session-store.js'
 import { createSessionEndNotifier } from './session-end-notifier.js'
+import { getPowerInhibitController } from './power-inhibit.js'
 import { getCommandManager, type CommandManager } from './command-manager.js'
 import { scheduleChatDebugCleanup } from './chat-debug.js'
 import {
@@ -198,9 +199,13 @@ export class ProjectRegistry {
       globalConfigPath: this.globalConfigPath,
       projectName: basename(input.path),
     })
+    const powerInhibit = getPowerInhibitController(this.globalConfigPath)
     const defaultKind = resolveProjectAgentKind(cfg.agent, globalCfg.agent.defaultKind)
     const sessions = new SessionManager(input.path, defaultKind, sessionStore, {
       onSessionEnd: notifySessionEnded,
+      onSessionStatusChange: (ev) => {
+        powerInhibit.setSessionRunning(`${input.id}:${ev.sessionId}`, ev.running)
+      },
     })
 
     const commands = getCommandManager(input.path)

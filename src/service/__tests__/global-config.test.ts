@@ -69,6 +69,7 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     expect(cfg.agent).toEqual({ defaultKind: 'claude' })
     expect(cfg.notifications.sessionEnd).toEqual({ banner: false, sound: false })
     expect(cfg.shortcuts).toEqual({})
+    expect(cfg.power).toEqual({ inhibitWhenRunning: 'system-default' })
   })
 
   it('roundtrips via atomic save', async () => {
@@ -92,6 +93,7 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     expect(cfg.agent).toEqual({ defaultKind: 'claude' })
     expect(cfg.notifications.sessionEnd).toEqual({ banner: false, sound: false })
     expect(cfg.shortcuts).toEqual({})
+    expect(cfg.power).toEqual({ inhibitWhenRunning: 'system-default' })
   })
 
   it('returns empty list when file is malformed JSON', async () => {
@@ -102,6 +104,7 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     expect(cfg.agent).toEqual({ defaultKind: 'claude' })
     expect(cfg.notifications.sessionEnd).toEqual({ banner: false, sound: false })
     expect(cfg.shortcuts).toEqual({})
+    expect(cfg.power).toEqual({ inhibitWhenRunning: 'system-default' })
   })
 
   it('roundtrips session end notification preferences', async () => {
@@ -151,6 +154,7 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     expect(cfg.agent).toEqual({ defaultKind: 'claude' })
     expect(cfg.notifications.sessionEnd).toEqual({ banner: false, sound: false })
     expect(cfg.shortcuts).toEqual({})
+    expect(cfg.power).toEqual({ inhibitWhenRunning: 'system-default' })
   })
 
   it('roundtrips shortcut overrides', async () => {
@@ -167,6 +171,41 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     )
     const cfg = await loadGlobalConfig(fp)
     expect(cfg.shortcuts).toEqual({ newSpec: 'Ctrl+Shift+K', projectSettings: null })
+  })
+
+  it('roundtrips power inhibit preference', async () => {
+    const fp = await tmpConfigPath()
+    await saveGlobalConfig(
+      {
+        version: 1,
+        projects: [],
+        agent: { defaultKind: 'claude' },
+        notifications: { sessionEnd: { banner: false, sound: false } },
+        shortcuts: {},
+        power: { inhibitWhenRunning: 'keep-system-awake' },
+      },
+      fp,
+    )
+    const cfg = await loadGlobalConfig(fp)
+    expect(cfg.power).toEqual({ inhibitWhenRunning: 'keep-system-awake' })
+  })
+
+  it('normalizes invalid power inhibit preference to system default', async () => {
+    const fp = await tmpConfigPath()
+    await writeFile(
+      fp,
+      JSON.stringify({
+        version: 1,
+        projects: [],
+        agent: { defaultKind: 'claude' },
+        notifications: { sessionEnd: { banner: false, sound: false } },
+        shortcuts: {},
+        power: { inhibitWhenRunning: 'invalid' },
+      }),
+      'utf8',
+    )
+    const cfg = await loadGlobalConfig(fp)
+    expect(cfg.power).toEqual({ inhibitWhenRunning: 'system-default' })
   })
 })
 

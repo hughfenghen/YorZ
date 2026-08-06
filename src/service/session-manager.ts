@@ -33,6 +33,7 @@ export interface SessionStatusEvent {
 
 export interface SessionManagerOptions {
   onSessionEnd?: (sessionId: string) => Promise<void> | void
+  onSessionStatusChange?: (event: SessionStatusEvent) => Promise<void> | void
 }
 
 interface LiveSession {
@@ -216,7 +217,15 @@ export class SessionManager {
   private setRunning(sid: string, running: boolean): void {
     if (running) this.running.add(sid)
     else this.running.delete(sid)
-    this.statusEmitter.emit('status', { sessionId: sid, running } satisfies SessionStatusEvent)
+    const event = { sessionId: sid, running } satisfies SessionStatusEvent
+    this.statusEmitter.emit('status', event)
+    void Promise.resolve(this.opts.onSessionStatusChange?.(event)).catch((err) => {
+      agentLog().warn('session status callback failed', {
+        sessionId: sid,
+        running,
+        message: err instanceof Error ? err.message : String(err),
+      })
+    })
   }
 
   private async maybeUpdateTitleFromPrompt(sid: string, prompt: string): Promise<void> {

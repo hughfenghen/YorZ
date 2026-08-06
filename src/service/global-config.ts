@@ -27,6 +27,11 @@ export interface GlobalConfig {
   agent: GlobalAgentConfig
   notifications: GlobalNotificationsConfig
   shortcuts: GlobalShortcutsConfig
+  power: GlobalPowerConfig
+}
+
+export type GlobalConfigInput = Omit<GlobalConfig, 'power'> & {
+  power?: GlobalPowerConfig
 }
 
 export interface GlobalAgentConfig {
@@ -38,6 +43,12 @@ export type GlobalAgentKind = 'claude' | 'opencode' | 'codex'
 export interface GlobalNotificationsConfig {
   sessionEnd: SessionEndNotificationsConfig
 }
+
+export interface GlobalPowerConfig {
+  inhibitWhenRunning: PowerInhibitMode
+}
+
+export type PowerInhibitMode = 'system-default' | 'prevent-display-sleep' | 'keep-system-awake'
 
 export interface SessionEndNotificationsConfig {
   banner: boolean
@@ -51,6 +62,9 @@ const CURRENT_VERSION = 1 as const
 export const DEFAULT_GLOBAL_AGENT: GlobalAgentConfig = { defaultKind: 'claude' }
 export const DEFAULT_NOTIFICATIONS: GlobalNotificationsConfig = {
   sessionEnd: { banner: false, sound: false },
+}
+export const DEFAULT_POWER: GlobalPowerConfig = {
+  inhibitWhenRunning: 'system-default',
 }
 export const SHORTCUT_ACTION_IDS: GlobalShortcutActionId[] = [
   'newSpec',
@@ -103,7 +117,10 @@ export async function loadGlobalConfig(filePath?: string): Promise<GlobalConfig>
   return normalizeConfig(parsed)
 }
 
-export async function saveGlobalConfig(config: GlobalConfig, filePath?: string): Promise<void> {
+export async function saveGlobalConfig(
+  config: GlobalConfigInput,
+  filePath?: string,
+): Promise<void> {
   const fp = filePath ?? resolveGlobalConfigPath()
   await mkdir(dirname(fp), { recursive: true })
   const normalized = normalizeConfig(config)
@@ -137,6 +154,7 @@ function normalizeConfig(value: unknown): GlobalConfig {
     agent: normalizeAgent(obj.agent),
     notifications: normalizeNotifications(obj.notifications),
     shortcuts: normalizeShortcuts(obj.shortcuts),
+    power: normalizePower(obj.power),
   }
 }
 
@@ -152,6 +170,9 @@ export function defaultGlobalConfig(): GlobalConfig {
       },
     },
     shortcuts: {},
+    power: {
+      inhibitWhenRunning: DEFAULT_POWER.inhibitWhenRunning,
+    },
   }
 }
 
@@ -199,6 +220,22 @@ export function normalizeShortcuts(value: unknown): GlobalShortcutsConfig {
     if (normalized) shortcuts[action] = normalized
   }
   return shortcuts
+}
+
+function normalizePower(value: unknown): GlobalPowerConfig {
+  if (!value || typeof value !== 'object') {
+    return { inhibitWhenRunning: DEFAULT_POWER.inhibitWhenRunning }
+  }
+  const obj = value as Record<string, unknown>
+  const mode = obj.inhibitWhenRunning
+  if (
+    mode === 'prevent-display-sleep' ||
+    mode === 'keep-system-awake' ||
+    mode === 'system-default'
+  ) {
+    return { inhibitWhenRunning: mode }
+  }
+  return { inhibitWhenRunning: DEFAULT_POWER.inhibitWhenRunning }
 }
 
 export function normalizeShortcutBinding(value: string): string | null {

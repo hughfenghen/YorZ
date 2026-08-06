@@ -29,6 +29,7 @@ interface Props {
 }
 
 type GlobalAgentKind = 'claude' | 'opencode' | 'codex'
+type PowerInhibitMode = 'system-default' | 'prevent-display-sleep' | 'keep-system-awake'
 
 const DEFAULT_CONFIG: GlobalConfig = {
   agent: {
@@ -41,12 +42,16 @@ const DEFAULT_CONFIG: GlobalConfig = {
     },
   },
   shortcuts: {},
+  power: {
+    inhibitWhenRunning: 'system-default',
+  },
 }
 
 export const GlobalConfigDialog: Component<Props> = (props) => {
   const [agentDefault, setAgentDefault] = createSignal<GlobalAgentKind>('claude')
   const [banner, setBanner] = createSignal(false)
   const [sound, setSound] = createSignal(false)
+  const [powerMode, setPowerMode] = createSignal<PowerInhibitMode>('system-default')
   const [shortcuts, setShortcuts] = createSignal<ShortcutConfig>({})
   const [recording, setRecording] = createSignal<ShortcutActionId | null>(null)
   const [loading, setLoading] = createSignal(false)
@@ -74,6 +79,7 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
     setAgentDefault(cfg.agent.defaultKind)
     setBanner(Boolean(cfg.notifications.sessionEnd.banner))
     setSound(Boolean(cfg.notifications.sessionEnd.sound))
+    setPowerMode(cfg.power?.inhibitWhenRunning ?? 'system-default')
     setShortcuts(cfg.shortcuts ?? {})
     setRecording(null)
   }
@@ -122,6 +128,9 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
           },
         },
         shortcuts: shortcuts(),
+        power: {
+          inhibitWhenRunning: powerMode(),
+        },
       })
       props.onSaved?.(t('globalConfig.saved'))
       props.onClose()
@@ -140,6 +149,12 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
 
   function shortcutLabel(action: ShortcutActionId): string {
     return t(`globalConfig.shortcuts.${action}`)
+  }
+
+  function powerModeLabel(mode: PowerInhibitMode): string {
+    if (mode === 'prevent-display-sleep') return t('globalConfig.powerPreventDisplaySleep')
+    if (mode === 'keep-system-awake') return t('globalConfig.powerKeepSystemAwake')
+    return t('globalConfig.powerSystemDefault')
   }
 
   function shortcutValue(action: ShortcutActionId): string {
@@ -202,6 +217,25 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
                   <CheckboxLabel>{t('globalConfig.sound')}</CheckboxLabel>
                 </Checkbox>
               </div>
+            </fieldset>
+
+            <fieldset class="m-0 flex flex-wrap gap-2 border-0 p-0">
+              <legend class="mb-1.5 font-medium">{t('globalConfig.powerTitle')}</legend>
+              {(['system-default', 'prevent-display-sleep', 'keep-system-awake'] as const).map(
+                (mode) => (
+                  <label class="flex cursor-pointer items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="global-config-power-inhibit"
+                      value={mode}
+                      checked={powerMode() === mode}
+                      onChange={() => setPowerMode(mode)}
+                      disabled={busy()}
+                    />
+                    <span>{powerModeLabel(mode)}</span>
+                  </label>
+                ),
+              )}
             </fieldset>
 
             <fieldset class="m-0 flex flex-col gap-2 border-0 p-0">

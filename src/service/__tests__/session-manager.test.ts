@@ -296,4 +296,28 @@ describe('SessionManager run status', () => {
     ])
     expect((await mgr.listSessions()).find((s) => s.id === 'sid-1')?.running).toBe(false)
   })
+
+  it('calls onSessionStatusChange for running status edges', async () => {
+    const adapter = fakeAdapter({})
+    const cwd = await mkdtemp(join(tmpdir(), 'yorz-sm-'))
+    const store = new SessionStore(cwd)
+    const callbacks: Array<{ sessionId: string; running: boolean }> = []
+    const mgr = new SessionManager(cwd, 'claude', store, {
+      onSessionStatusChange: (ev) => {
+        callbacks.push(ev)
+      },
+    })
+    ;(mgr as unknown as { adapters: { get: () => AgentSdkAdapter } }).adapters = {
+      get: () => adapter,
+    }
+    await store.upsert(info({ id: 'sid-1', createdAt: 5, updatedAt: 9 }))
+
+    const handle = await mgr.send('sid-1', 'hello')
+    await new Promise<void>((r) => handle.onDone(() => r()))
+
+    expect(callbacks).toEqual([
+      { sessionId: 'sid-1', running: true },
+      { sessionId: 'sid-1', running: false },
+    ])
+  })
 })

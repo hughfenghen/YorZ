@@ -174,6 +174,9 @@ export interface GlobalConfig {
   shortcuts: Partial<
     Record<'newSpec' | 'toggleSpecDetailFullscreen' | 'projectSettings', string | null>
   >
+  power: {
+    inhibitWhenRunning: 'system-default' | 'prevent-display-sleep' | 'keep-system-awake'
+  }
 }
 
 export interface FileCompletionResult {
