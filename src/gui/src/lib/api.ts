@@ -179,6 +179,10 @@ export interface GlobalConfig {
   }
 }
 
+export interface PowerInhibitMockStatus {
+  running: boolean
+}
+
 export interface FileCompletionResult {
   items: string[]
 }
@@ -401,6 +405,13 @@ export const api = {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
+    }),
+  getPowerInhibitMockStatus: () => request<PowerInhibitMockStatus>('/api/global-config/power-mock'),
+  updatePowerInhibitMockStatus: (running: boolean) =>
+    request<PowerInhibitMockStatus>('/api/global-config/power-mock', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ running }),
     }),
   createDraft: (pid: string) =>
     request<{ draftId: string }>(`${projectBase(pid)}/spec-drafts`, {

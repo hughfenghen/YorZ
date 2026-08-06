@@ -52,6 +52,8 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
   const [banner, setBanner] = createSignal(false)
   const [sound, setSound] = createSignal(false)
   const [powerMode, setPowerMode] = createSignal<PowerInhibitMode>('system-default')
+  const [powerMockRunning, setPowerMockRunning] = createSignal(false)
+  const [powerMockBusy, setPowerMockBusy] = createSignal(false)
   const [shortcuts, setShortcuts] = createSignal<ShortcutConfig>({})
   const [recording, setRecording] = createSignal<ShortcutActionId | null>(null)
   const [loading, setLoading] = createSignal(false)
@@ -65,10 +67,16 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
     setLoading(true)
     void (async () => {
       try {
-        applyConfig(await api.getGlobalConfig())
+        const [cfg, mock] = await Promise.all([
+          api.getGlobalConfig(),
+          api.getPowerInhibitMockStatus(),
+        ])
+        applyConfig(cfg)
+        setPowerMockRunning(mock.running)
       } catch (err) {
         setError((err as Error).message)
         applyConfig(DEFAULT_CONFIG)
+        setPowerMockRunning(false)
       } finally {
         setLoading(false)
       }
@@ -166,6 +174,19 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
     setShortcuts((prev) => ({ ...prev, [action]: null }))
   }
 
+  async function togglePowerMock(running: boolean): Promise<void> {
+    setError(null)
+    setPowerMockBusy(true)
+    try {
+      const next = await api.updatePowerInhibitMockStatus(running)
+      setPowerMockRunning(next.running)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setPowerMockBusy(false)
+    }
+  }
+
   return (
     <Dialog open={props.open} onOpenChange={(o) => !o && props.onClose()}>
       <DialogContent class="max-w-[560px]">
@@ -236,6 +257,17 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
                   </label>
                 ),
               )}
+              <div class="basis-full pt-1">
+                <Checkbox
+                  checked={powerMockRunning()}
+                  onChange={(v) => void togglePowerMock(v)}
+                  disabled={busy() || powerMockBusy()}
+                  class="flex items-center gap-2"
+                >
+                  <CheckboxControl />
+                  <CheckboxLabel>{t('globalConfig.powerMockRunning')}</CheckboxLabel>
+                </Checkbox>
+              </div>
             </fieldset>
 
             <fieldset class="m-0 flex flex-col gap-2 border-0 p-0">

@@ -304,6 +304,7 @@ export const zhCN = {
     powerSystemDefault: '系统默认',
     powerPreventDisplaySleep: '禁止息屏',
     powerKeepSystemAwake: '禁止休眠',
+    powerMockRunning: '模拟任务运行中',
     shortcutsTitle: '快捷键',
     shortcutRecord: '录制',
     shortcutRecording: '按下新的组合键…',

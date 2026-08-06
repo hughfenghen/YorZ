@@ -339,6 +339,32 @@ describe('YorZ Service HTTP', () => {
     })
   })
 
+  it('GET/PUT /api/global-config/power-mock controls manual running state', async () => {
+    const { apiRoot } = await startInTmp()
+    const initial = await fetch(`${apiRoot}/global-config/power-mock`)
+    expect(initial.status).toBe(200)
+    expect(await initial.json()).toEqual({ running: false })
+
+    const on = await fetch(`${apiRoot}/global-config/power-mock`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ running: true }),
+    })
+    expect(on.status).toBe(200)
+    expect(await on.json()).toEqual({ running: true })
+
+    const active = await fetch(`${apiRoot}/global-config/power-mock`)
+    expect(await active.json()).toEqual({ running: true })
+
+    const off = await fetch(`${apiRoot}/global-config/power-mock`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ running: false }),
+    })
+    expect(off.status).toBe(200)
+    expect(await off.json()).toEqual({ running: false })
+  })
+
   it('PUT /api/global-config rejects non-boolean notification values', async () => {
     const { apiRoot } = await startInTmp()
     const res = await fetch(`${apiRoot}/global-config`, {

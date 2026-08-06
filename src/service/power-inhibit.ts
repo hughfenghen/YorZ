@@ -52,6 +52,10 @@ export class PowerInhibitController {
     this.scheduleRefresh()
   }
 
+  isSessionRunning(sessionId: string): boolean {
+    return this.runningSessions.has(sessionId)
+  }
+
   async refresh(): Promise<void> {
     const cfg = await loadGlobalConfig(this.globalConfigPath)
     const mode = this.runningSessions.size > 0 ? cfg.power.inhibitWhenRunning : 'system-default'

@@ -306,6 +306,7 @@ export const en = {
     powerSystemDefault: 'System default',
     powerPreventDisplaySleep: 'Prevent display sleep',
     powerKeepSystemAwake: 'Prevent sleep',
+    powerMockRunning: 'Mock task running',
     shortcutsTitle: 'Shortcuts',
     shortcutRecord: 'Record',
     shortcutRecording: 'Press a new shortcut…',

@@ -22,6 +22,8 @@ interface PutBody {
   power: GlobalPowerConfig
 }
 
+const POWER_INHIBIT_MOCK_SESSION_ID = 'manual-power-inhibit-test'
+
 export function createGlobalConfigRoutes(
   globalConfigPath?: string,
   powerController: PowerInhibitController = getPowerInhibitController(globalConfigPath),
@@ -64,6 +66,29 @@ export function createGlobalConfigRoutes(
         power: cfg.power,
       },
     })
+  })
+
+  app.get('/global-config/power-mock', (c) => {
+    return c.json({
+      running: powerController.isSessionRunning(POWER_INHIBIT_MOCK_SESSION_ID),
+    })
+  })
+
+  app.put('/global-config/power-mock', async (c) => {
+    let raw: unknown
+    try {
+      raw = await c.req.json()
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400)
+    }
+    if (!raw || typeof raw !== 'object') return c.json({ error: 'body must be an object' }, 400)
+    const running = (raw as Record<string, unknown>).running
+    if (typeof running !== 'boolean') {
+      return c.json({ error: 'running must be a boolean' }, 400)
+    }
+    powerController.setSessionRunning(POWER_INHIBIT_MOCK_SESSION_ID, running)
+    await powerController.refresh()
+    return c.json({ running })
   })
 
   return app
