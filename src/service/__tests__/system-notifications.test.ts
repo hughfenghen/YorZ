@@ -72,6 +72,37 @@ describe('system notifications', () => {
     expect(center.list()).toHaveLength(0)
   })
 
+  it('updates the existing version notification when a newer latest is detected', () => {
+    const center = new SystemNotificationCenter()
+    let changed = 0
+    center.subscribe(() => changed++)
+
+    center.upsertVersionUpdate({ current: '0.4.2', latest: '0.4.3' })
+    center.upsertVersionUpdate({ current: '0.4.2', latest: '0.4.4' })
+
+    const items = center.list()
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      id: 'version-update',
+      action: 'update-available',
+      metadata: { latestVersion: '0.4.4' },
+    })
+    expect(changed).toBe(2)
+  })
+
+  it('resets restart-ready when a newer latest version is detected', async () => {
+    const center = new SystemNotificationCenter({ runUpdate: async () => {} })
+    center.upsertVersionUpdate({ current: '0.4.2', latest: '0.4.3' })
+    await center.update('version-update')
+
+    center.upsertVersionUpdate({ current: '0.4.2', latest: '0.4.4' })
+
+    expect(center.list()[0]).toMatchObject({
+      action: 'update-available',
+      metadata: { latestVersion: '0.4.4' },
+    })
+  })
+
   it('moves version update action to restart-ready after update succeeds', async () => {
     const center = new SystemNotificationCenter({ runUpdate: async () => {} })
     center.upsertVersionUpdate({ current: '0.4.2', latest: '0.4.3' })

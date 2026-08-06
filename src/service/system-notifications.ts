@@ -60,6 +60,7 @@ export class SystemNotificationCenter {
   upsertVersionUpdate(info: VersionInfo): SystemNotification {
     const now = Date.now()
     const current = this.items.get(VERSION_NOTIFICATION_ID)
+    const sameLatest = current?.metadata?.latestVersion === info.latest
     const next: SystemNotification = {
       id: VERSION_NOTIFICATION_ID,
       kind: 'version-update',
@@ -67,7 +68,8 @@ export class SystemNotificationCenter {
       message: `YorZ ${info.latest} is available. Current version: ${info.current}.`,
       createdAt: current?.createdAt ?? now,
       updatedAt: now,
-      action: current?.action === 'restart-ready' ? 'restart-ready' : 'update-available',
+      action:
+        current?.action === 'restart-ready' && sameLatest ? 'restart-ready' : 'update-available',
       metadata: { currentVersion: info.current, latestVersion: info.latest },
     }
     this.items.set(next.id, next)
