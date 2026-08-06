@@ -343,6 +343,8 @@ export const en = {
     clearDescription:
       'Terminates the running process and deletes this run record and its log file.',
     clear: 'Stop and clear',
+    restart: 'Restart',
+    restarted: 'Command restarted',
     stop: 'Stop',
     stopping: 'Stopping...',
     stopped: 'Command stopped',

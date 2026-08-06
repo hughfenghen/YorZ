@@ -8,7 +8,7 @@ import {
   type Component,
 } from 'solid-js'
 import { A } from '@solidjs/router'
-import { X } from 'lucide-solid'
+import { RotateCcw, X } from 'lucide-solid'
 import { api, type CommandRun } from '../lib/api.js'
 import { projectHref } from '../lib/project.js'
 import { subscribeCommandRuns } from '../lib/sse.js'
@@ -46,6 +46,7 @@ export const RunningCommands: Component<RunningCommandsProps> = (props) => {
   // Drives the live duration readout for still-running entries.
   const [now, setNow] = createSignal(Date.now())
   const [clearing, setClearing] = createSignal<string | null>(null)
+  const [restarting, setRestarting] = createSignal<string | null>(null)
 
   const timer = setInterval(() => setNow(Date.now()), 1000)
   onCleanup(() => clearInterval(timer))
@@ -76,6 +77,22 @@ export const RunningCommands: Component<RunningCommandsProps> = (props) => {
     }
   }
 
+  async function onRestart(run: CommandRun) {
+    const pid = props.projectId()
+    if (!pid) return
+    setRestarting(run.runId)
+    try {
+      await api.clearCommandRun(pid, run.runId)
+      await api.runCommand(pid, run.commandId)
+      toast.success(t('commands.restarted'))
+      await refetch()
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setRestarting(null)
+    }
+  }
+
   return (
     <Show when={(runs() ?? []).length > 0}>
       <section class="mt-3">
@@ -99,33 +116,46 @@ export const RunningCommands: Component<RunningCommandsProps> = (props) => {
                     {formatDuration(run.startedAt, run.endedAt, now())}
                   </span>
                 </A>
-                <Popover>
-                  <PopoverTrigger
-                    as={Button}
+                <div>
+                  <Button
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7 shrink-0"
-                    title={t('commands.clear')}
+                    title={t('commands.restart')}
+                    disabled={restarting() === run.runId || clearing() === run.runId}
+                    onClick={() => void onRestart(run)}
                   >
-                    <X class="h-4 w-4" />
-                  </PopoverTrigger>
-                  <PopoverContent class="w-72">
-                    <p class="m-0 text-sm font-medium">{t('commands.clearTitle')}</p>
-                    <p class="mb-3 mt-1 text-xs text-muted-foreground">
-                      {t('commands.clearDescription')}
-                    </p>
-                    <div class="flex justify-end">
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        disabled={clearing() === run.runId}
-                        onClick={() => void onClear(run)}
-                      >
-                        {clearing() === run.runId ? t('common.deleting') : t('commands.clear')}
-                      </Button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                    <RotateCcw class="h-4 w-4" />
+                  </Button>
+                  <Popover>
+                    <PopoverTrigger
+                      as={Button}
+                      variant="ghost"
+                      size="icon"
+                      class="h-7 w-7 shrink-0"
+                      title={t('commands.clear')}
+                      disabled={restarting() === run.runId}
+                    >
+                      <X class="h-4 w-4" />
+                    </PopoverTrigger>
+                    <PopoverContent class="w-72">
+                      <p class="m-0 text-sm font-medium">{t('commands.clearTitle')}</p>
+                      <p class="mb-3 mt-1 text-xs text-muted-foreground">
+                        {t('commands.clearDescription')}
+                      </p>
+                      <div class="flex justify-end">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={clearing() === run.runId}
+                          onClick={() => void onClear(run)}
+                        >
+                          {clearing() === run.runId ? t('common.deleting') : t('commands.clear')}
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
               </li>
             )}
           </For>

@@ -340,6 +340,8 @@ export const zhCN = {
     clearTitle: '终止并清空该条记录？',
     clearDescription: '将终止正在运行的进程，并删除该条执行记录与日志文件。',
     clear: '终止并清空',
+    restart: '重启',
+    restarted: '命令已重启',
     stop: '终止',
     stopping: '终止中…',
     stopped: '命令已终止',
