@@ -303,7 +303,7 @@ export const zhCN = {
     powerTitle: '任务运行期间防休眠',
     powerSystemDefault: '系统默认',
     powerPreventDisplaySleep: '禁止息屏',
-    powerKeepSystemAwake: '保持系统运行',
+    powerKeepSystemAwake: '禁止休眠',
     shortcutsTitle: '快捷键',
     shortcutRecord: '录制',
     shortcutRecording: '按下新的组合键…',

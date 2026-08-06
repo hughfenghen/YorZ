@@ -80,7 +80,8 @@ export class PowerInhibitController {
     this.currentMode = mode
     if (mode === 'system-default') return
 
-    if (this.platform !== 'darwin') {
+    const command = this.commandFor(mode)
+    if (!command) {
       powerLog().debug('power inhibit mode ignored on unsupported platform', {
         mode,
         platform: this.platform,
@@ -88,8 +89,7 @@ export class PowerInhibitController {
       return
     }
 
-    const args = mode === 'prevent-display-sleep' ? ['-d'] : ['-i']
-    const child = this.spawnCommand('caffeinate', args, { stdio: 'ignore' })
+    const child = this.spawnCommand(command.command, command.args, { stdio: 'ignore' })
     child.on?.('error', (err) => {
       if (this.process === child) {
         this.process = null
@@ -105,7 +105,48 @@ export class PowerInhibitController {
     })
     child.unref?.()
     this.process = child
-    powerLog().debug('started power inhibit process', { mode, command: 'caffeinate', args })
+    powerLog().debug('started power inhibit process', {
+      mode,
+      command: command.command,
+      args: command.args,
+    })
+  }
+
+  private commandFor(mode: Exclude<PowerInhibitMode, 'system-default'>): {
+    command: string
+    args: string[]
+  } | null {
+    if (this.platform === 'darwin') {
+      return {
+        command: 'caffeinate',
+        args: mode === 'prevent-display-sleep' ? ['-d'] : ['-i'],
+      }
+    }
+    if (this.platform === 'linux') {
+      return {
+        command: 'systemd-inhibit',
+        args: [
+          `--what=${mode === 'prevent-display-sleep' ? 'idle' : 'idle:sleep'}`,
+          '--why=YorZ agent task running',
+          'sleep',
+          'infinity',
+        ],
+      }
+    }
+    if (this.platform === 'win32') {
+      const flags = mode === 'prevent-display-sleep' ? '0x80000002' : '0x80000001'
+      return {
+        command: 'powershell.exe',
+        args: [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-Command',
+          windowsExecutionStateScript(flags),
+        ],
+      }
+    }
+    return null
   }
 
   private stopCurrent(): void {
@@ -118,6 +159,19 @@ export class PowerInhibitController {
       this.process = null
     }
   }
+}
+
+function windowsExecutionStateScript(flags: string): string {
+  return [
+    '$signature = \'[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint esFlags);\';',
+    '$native = Add-Type -MemberDefinition $signature -Name YorZPowerInhibit -Namespace YorZ -PassThru;',
+    'try {',
+    `  [void]$native::SetThreadExecutionState(${flags});`,
+    '  while ($true) { Start-Sleep -Seconds 3600; }',
+    '} finally {',
+    '  [void]$native::SetThreadExecutionState(0x80000000);',
+    '}',
+  ].join(' ')
 }
 
 export function getPowerInhibitController(globalConfigPath?: string): PowerInhibitController {

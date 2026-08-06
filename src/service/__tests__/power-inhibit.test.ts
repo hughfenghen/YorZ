@@ -90,13 +90,111 @@ describe('PowerInhibitController', () => {
     expect(processes[0]!.killed).toBe(true)
   })
 
+  it('starts Linux display sleep inhibition with systemd-inhibit idle', async () => {
+    const fp = await tmpConfigPath()
+    await saveGlobalConfig(baseConfig('prevent-display-sleep'), fp)
+    const calls: Array<{ command: string; args: string[] }> = []
+    const controller = new PowerInhibitController({
+      globalConfigPath: fp,
+      platform: 'linux',
+      spawnCommand: (command, args) => {
+        calls.push({ command, args })
+        return { kill: () => true }
+      },
+    })
+
+    controller.setSessionRunning('s1', true)
+    await controller.refresh()
+
+    expect(calls).toEqual([
+      {
+        command: 'systemd-inhibit',
+        args: ['--what=idle', '--why=YorZ agent task running', 'sleep', 'infinity'],
+      },
+    ])
+  })
+
+  it('starts Linux system sleep inhibition with systemd-inhibit idle:sleep', async () => {
+    const fp = await tmpConfigPath()
+    await saveGlobalConfig(baseConfig('keep-system-awake'), fp)
+    const calls: Array<{ command: string; args: string[] }> = []
+    const controller = new PowerInhibitController({
+      globalConfigPath: fp,
+      platform: 'linux',
+      spawnCommand: (command, args) => {
+        calls.push({ command, args })
+        return { kill: () => true }
+      },
+    })
+
+    controller.setSessionRunning('s1', true)
+    await controller.refresh()
+
+    expect(calls).toEqual([
+      {
+        command: 'systemd-inhibit',
+        args: ['--what=idle:sleep', '--why=YorZ agent task running', 'sleep', 'infinity'],
+      },
+    ])
+  })
+
+  it('starts Windows display sleep inhibition with ES_DISPLAY_REQUIRED', async () => {
+    const fp = await tmpConfigPath()
+    await saveGlobalConfig(baseConfig('prevent-display-sleep'), fp)
+    const calls: Array<{ command: string; args: string[] }> = []
+    const controller = new PowerInhibitController({
+      globalConfigPath: fp,
+      platform: 'win32',
+      spawnCommand: (command, args) => {
+        calls.push({ command, args })
+        return { kill: () => true }
+      },
+    })
+
+    controller.setSessionRunning('s1', true)
+    await controller.refresh()
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.command).toBe('powershell.exe')
+    expect(calls[0]!.args.slice(0, 4)).toEqual([
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+    ])
+    expect(calls[0]!.args[4]).toContain('SetThreadExecutionState(0x80000002)')
+    expect(calls[0]!.args[4]).toContain('SetThreadExecutionState(0x80000000)')
+  })
+
+  it('starts Windows system sleep inhibition with ES_SYSTEM_REQUIRED', async () => {
+    const fp = await tmpConfigPath()
+    await saveGlobalConfig(baseConfig('keep-system-awake'), fp)
+    const calls: Array<{ command: string; args: string[] }> = []
+    const controller = new PowerInhibitController({
+      globalConfigPath: fp,
+      platform: 'win32',
+      spawnCommand: (command, args) => {
+        calls.push({ command, args })
+        return { kill: () => true }
+      },
+    })
+
+    controller.setSessionRunning('s1', true)
+    await controller.refresh()
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.command).toBe('powershell.exe')
+    expect(calls[0]!.args[4]).toContain('SetThreadExecutionState(0x80000001)')
+    expect(calls[0]!.args[4]).toContain('SetThreadExecutionState(0x80000000)')
+  })
+
   it('does not spawn on unsupported platforms', async () => {
     const fp = await tmpConfigPath()
     await saveGlobalConfig(baseConfig('keep-system-awake'), fp)
     const calls: string[] = []
     const controller = new PowerInhibitController({
       globalConfigPath: fp,
-      platform: 'linux',
+      platform: 'freebsd',
       spawnCommand: (command) => {
         calls.push(command)
         return { kill: () => true }

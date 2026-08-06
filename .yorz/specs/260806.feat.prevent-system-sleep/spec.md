@@ -1,8 +1,8 @@
 ---
 stage: done
 last_action: 任务全部完成，标记 done
-updated_at: '2026-08-06 11:49:40'
-summary: 新增全局防休眠配置，在 Agent 会话运行期间按用户选择阻止息屏或保持系统运行。
+updated_at: '2026-08-06 15:22:00'
+summary: 新增全局防休眠配置，在 Agent 会话运行期间按用户选择阻止息屏或禁止休眠。
 ---
 
 # prevent-system-sleep
@@ -26,8 +26,13 @@ Agent 任务经常长时间运行；如果系统在任务期间息屏、休眠�
 - GUI 全局配置中以 radio 展示三种模式：
   - 系统默认：不干预系统电源策略。
   - 禁止息屏：任务运行中阻止显示器进入睡眠。
-  - 保持系统运行：任务运行中阻止系统 idle sleep，尽量保证网络与任务不中断。
+  - 禁止休眠：任务运行中阻止系统 idle sleep，尽量保证网络与任务不中断。
 - 所有新增用户可见文案使用 `src/gui/src/i18n/` 国际化配置。
+
+追加需求：
+
+- 支持 Linux / Windows 平台的防息屏与防休眠。
+- 将 UI 文案“保持系统运行”改为“禁止休眠”。
 
 ## 3. 现状分析
 
@@ -87,7 +92,7 @@ flowchart TD
     LoadPolicy --> Mode{配置模式}
     Mode -->|系统默认| StopInhibit[停止或保持无系统抑制]
     Mode -->|禁止息屏| DisplayInhibit[启动 display 抑制]
-    Mode -->|保持系统运行| SystemInhibit[启动 idle/system 抑制]
+    Mode -->|禁止休眠| SystemInhibit[启动 idle/system 抑制]
     End[会话 turn 结束] --> RemoveRunning[SessionManager 移除运行中]
     RemoveRunning --> AnyRunning{仍有运行中会话}
     AnyRunning -->|是| KeepCurrent[保持当前抑制]
@@ -115,7 +120,14 @@ flowchart TD
 - macOS 优先用系统自带 `caffeinate`：
   - `prevent-display-sleep` 使用 `caffeinate -d`。
   - `keep-system-awake` 使用 `caffeinate -i`。
-- 非 macOS 平台先安全降级为 no-op，并记录 debug 日志；不阻塞 Agent 执行。该需求当前的主要目标是避免本地运行任务时 macOS 休眠导致断网，跨平台增强可后续追加。
+- Linux 使用 `systemd-inhibit`：
+  - `prevent-display-sleep` 使用 `systemd-inhibit --what=idle --why=YorZ agent task running sleep infinity`，抑制用户会话 idle 行为。
+  - `keep-system-awake` 使用 `systemd-inhibit --what=idle:sleep --why=YorZ agent task running sleep infinity`，同时抑制 idle 与系统 sleep。
+- Windows 使用 PowerShell 常驻子进程调用 `SetThreadExecutionState`：
+  - `prevent-display-sleep` 使用 `ES_CONTINUOUS | ES_DISPLAY_REQUIRED`。
+  - `keep-system-awake` 使用 `ES_CONTINUOUS | ES_SYSTEM_REQUIRED`。
+  - 进程启动时设置执行状态，阻塞等待；释放时终止子进程，`finally` 调用 `ES_CONTINUOUS` 还原默认状态。
+- 其它平台继续安全降级为 no-op，并记录 debug 日志；不阻塞 Agent 执行。
 - 若用户在全局配置 UI 中切换模式，`PUT /api/global-config` 保存后调用控制器 `refresh()`，让正在运行的会话立即应用新模式。
 
 ### 4.3 SessionManager 接入
@@ -132,7 +144,7 @@ flowchart TD
 
 - 系统默认
 - 禁止息屏
-- 保持系统运行
+- 禁止休眠
 
 状态随 `api.getGlobalConfig()` 初始化，并随 `api.updateGlobalConfig()` 提交。新增文案全部写入 `src/gui/src/i18n/zh-CN.ts` 与 `src/gui/src/i18n/en.ts` 的 `globalConfig` 命名空间。
 
@@ -163,11 +175,11 @@ flowchart TB
     class GlobalConfigModel,GlobalConfigApi,SessionLifecycle,GuiSettings,I18n,Tests affected
 ```
 
-计划补充测试：
+补充测试策略：
 
 - `global-config.test.ts` 覆盖 `power.inhibitWhenRunning` 默认值、非法值 normalize、保存回读。
 - `session-manager.test.ts` 覆盖 `setRunning()` 触发 `onSessionStatusChange`，以及 Codex reconcile 后旧 id false、新 id true 的回调顺序。
-- 新增 `power-inhibit.test.ts`，通过注入 fake spawn / fake platform 验证 macOS 不同模式的命令参数、无运行会话时释放、非 macOS no-op。
+- `power-inhibit.test.ts` 通过注入 fake spawn / fake platform 验证 macOS、Linux、Windows 不同模式的命令参数、无运行会话时释放、其它平台 no-op。
 
 <details>
 <summary>精确层：实施文件清单</summary>
@@ -194,8 +206,16 @@ _暂无_
 - [x] 新增后端防休眠控制器并接入 SessionManager 运行态变化（验收：单元测试覆盖运行中计数、macOS `caffeinate` 参数、释放逻辑、非 macOS no-op）
 - [x] 在 GUI 全局配置对话框增加防休眠 radio，并同步 API 类型与国际化文案（验收：所有用户可见文案来自 `src/gui/src/i18n/`，typecheck 通过）
 - [x] 执行项目验证命令并记录结果（验收：`pnpm test` 与 `pnpm typecheck` 通过，或记录不可执行原因）
+- [x] 为 `PowerInhibitController` 增加 Linux `systemd-inhibit` 与 Windows PowerShell `SetThreadExecutionState` 实现（验收：`power-inhibit.test.ts` 覆盖 Linux/Windows 两种模式参数与释放行为）
+- [x] 将 GUI 展示文案“保持系统运行”改为“禁止休眠”，并更新英文文案（验收：`src/gui/src/i18n/` 中对应 key 文案更新，`rg "保持系统运行|Keep system awake"` 无代码残留）
+- [x] 执行追加任务验证命令并记录结果（验收：相关单测、`pnpm test`、`pnpm typecheck`、spec lint 通过）
 
-## 7. 执行记录
+## 7. 追加任务
+
+- [fixed] [feat] 支持 Linux / Windows 平台的防息屏与防休眠。
+- [fixed] [feat] 将“保持系统运行”文案改为“禁止休眠”。
+
+## 8. 执行记录
 
 - 2026-08-06 11:42:50：新建 spec 并完成 plan 阶段分析；待确认项为空，准备进入 tasks。
 - 2026-08-06 11:44:08：生成任务清单；待确认项为空，继续进入 execute。
@@ -204,3 +224,9 @@ _暂无_
 - 2026-08-06 11:49:40：全局配置对话框新增防休眠 radio，并补充 API 类型、中文与英文 i18n 文案。
 - 2026-08-06 11:49:40：验证通过：`pnpm vitest run src/service/__tests__/global-config.test.ts src/service/__tests__/power-inhibit.test.ts src/service/__tests__/session-manager.test.ts`、`pnpm test`、`pnpm typecheck`。
 - 2026-08-06 11:49:40：任务全部完成，标记 done。
+- 2026-08-06 15:19:27：收到追加任务，按变更重开流程切回 plan；补充 Linux / Windows 实现方案与“禁止休眠”文案调整方案。
+- 2026-08-06 15:20:12：追加任务清单已生成；待确认项为空，继续进入 execute。
+- 2026-08-06 15:22:00：完成 Linux / Windows 平台支持：Linux 使用 `systemd-inhibit`，Windows 使用 PowerShell 常驻进程调用 `SetThreadExecutionState`；`power-inhibit.test.ts` 覆盖 macOS/Linux/Windows 与 unsupported platform。
+- 2026-08-06 15:22:00：完成文案调整：中文从“保持系统运行”改为“禁止休眠”，英文从“Keep system awake”改为“Prevent sleep”；`rg "保持系统运行|Keep system awake" src` 无残留。
+- 2026-08-06 15:22:00：验证通过：`pnpm vitest run src/service/__tests__/power-inhibit.test.ts`、`pnpm typecheck`、`pnpm test`。
+- 2026-08-06 15:22:00：追加任务全部完成，标记 done。

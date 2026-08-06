@@ -305,7 +305,7 @@ export const en = {
     powerTitle: 'Prevent sleep while tasks run',
     powerSystemDefault: 'System default',
     powerPreventDisplaySleep: 'Prevent display sleep',
-    powerKeepSystemAwake: 'Keep system awake',
+    powerKeepSystemAwake: 'Prevent sleep',
     shortcutsTitle: 'Shortcuts',
     shortcutRecord: 'Record',
     shortcutRecording: 'Press a new shortcut…',
