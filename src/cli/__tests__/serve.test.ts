@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { closeSync } from 'node:fs'
+import { execFile, spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import {
   backgroundArgs,
   backgroundStdio,
@@ -11,6 +13,8 @@ import {
   runtimePath,
 } from '../serve.js'
 import { STDIO_LOG_FILE, resolveLogDir } from '../../service/logger.js'
+
+const execFileAsync = promisify(execFile)
 
 describe('serve', () => {
   it('passes foreground and inherited options to the background child', () => {
@@ -171,6 +175,103 @@ describe('serve', () => {
       await expect(readFile(runtimePath(), 'utf8')).rejects.toThrow()
     })
   })
+
+  it('stops a live process from an old runtime without identity fields', async () => {
+    await withYorzHome(async () => {
+      const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], {
+        stdio: 'ignore',
+      })
+
+      try {
+        await waitForPid(child.pid)
+        await writeFile(
+          runtimePath(),
+          `${JSON.stringify(
+            {
+              version: 2,
+              processes: [
+                {
+                  pid: child.pid,
+                  port: 7423,
+                  url: 'http://localhost:7423/',
+                  startedAt: new Date().toISOString(),
+                },
+              ],
+            },
+            null,
+            2,
+          )}\n`,
+          'utf8',
+        )
+
+        const result = await runStopServe()
+        expect(result.stopped).toBe(true)
+        expect(result.stoppedPids).toEqual([child.pid])
+      } finally {
+        if (child.pid) {
+          try {
+            process.kill(child.pid, 'SIGKILL')
+          } catch {
+            // The stop command is expected to terminate it first.
+          }
+        }
+      }
+    })
+  })
+
+  it('stops a live process only when the recorded command identity matches', async () => {
+    await withYorzHome(async () => {
+      const args = [
+        '-e',
+        'setTimeout(() => {}, 30000)',
+        'serve',
+        '--foreground',
+        '--record-runtime',
+      ]
+      const child = spawn(process.execPath, args, {
+        stdio: 'ignore',
+      })
+
+      try {
+        await waitForPid(child.pid)
+        const processStartedAt = await readProcessStartedAt(child.pid)
+        await writeFile(
+          runtimePath(),
+          `${JSON.stringify(
+            {
+              version: 2,
+              processes: [
+                {
+                  pid: child.pid,
+                  port: 7423,
+                  url: 'http://localhost:7423/',
+                  startedAt: new Date().toISOString(),
+                  execPath: process.execPath,
+                  argv: [process.execPath, ...args],
+                  processStartedAt,
+                },
+              ],
+            },
+            null,
+            2,
+          )}\n`,
+          'utf8',
+        )
+
+        const result = await runStopServe()
+        expect(result.stopped).toBe(true)
+        expect(result.stoppedPids).toEqual([child.pid])
+      } finally {
+        if (child.pid) {
+          try {
+            process.kill(child.pid, 'SIGKILL')
+          } catch {
+            // The stop command is expected to terminate it first.
+          }
+        }
+      }
+    })
+  })
 })
 
 async function withYorzHome(fn: (home: string) => Promise<void>): Promise<void> {
@@ -184,4 +285,43 @@ async function withYorzHome(fn: (home: string) => Promise<void>): Promise<void> 
     else process.env.YORZ_HOME = previous
     await rm(home, { recursive: true, force: true })
   }
+}
+
+async function readProcessStartedAt(pid: number | undefined): Promise<string> {
+  if (!pid) throw new Error('child process did not get a pid')
+  if (process.platform === 'win32') {
+    const script = [
+      `$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"`,
+      'if ($null -eq $p) { exit 1 }',
+      '$p | Select-Object CreationDate | ConvertTo-Json -Compress',
+    ].join('; ')
+    const { stdout } = await execFileAsync('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      script,
+    ])
+    const parsed = JSON.parse(stdout.trim()) as Record<string, unknown>
+    if (typeof parsed.CreationDate !== 'string') throw new Error('missing CreationDate')
+    return parsed.CreationDate
+  }
+
+  const { stdout } = await execFileAsync('ps', ['-ww', '-p', String(pid), '-o', 'lstart='])
+  const startedAt = stdout.trim()
+  if (!startedAt) throw new Error('missing lstart')
+  return startedAt
+}
+
+async function waitForPid(pid: number | undefined): Promise<void> {
+  if (!pid) throw new Error('child process did not get a pid')
+  const until = Date.now() + 3000
+  while (Date.now() < until) {
+    try {
+      process.kill(pid, 0)
+      return
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+  }
+  throw new Error(`pid ${pid} did not become alive`)
 }

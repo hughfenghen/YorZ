@@ -1,14 +1,16 @@
-import { spawn, type StdioOptions } from 'node:child_process'
+import { execFile, spawn, type StdioOptions } from 'node:child_process'
 import { existsSync, mkdirSync, openSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { promisify } from 'node:util'
 import { start, type ServeHandle } from '../service/index.js'
 import { resolveGlobalConfigDir } from '../service/global-config.js'
 import { configureLogger, getLogger, resolveLogDir, STDIO_LOG_FILE } from '../service/logger.js'
 import { cleanupLegacyAgentSkills, ensureSkillsInstalled } from './install.js'
 
 const log = () => getLogger().child('serve')
+const execFileAsync = promisify(execFile)
 
 /**
  * `yorz serve` (background launcher) and `yorz serve stop` are pure CLI
@@ -55,6 +57,14 @@ export interface ProcessEntry {
   port: number
   url: string
   startedAt: string
+  execPath?: string
+  argv?: string[]
+  processStartedAt?: string
+}
+
+interface ProcessSnapshot {
+  commandLine: string
+  processStartedAt?: string
 }
 
 const DEFAULT_SERVE_PORT = 7423
@@ -117,11 +127,15 @@ export async function runServe(
   })
 
   if (opts.recordRuntime) {
+    const snapshot = await readProcessSnapshot(process.pid)
     await upsertProcess({
       pid: process.pid,
       port: handle.port,
       url: handle.url,
       startedAt: new Date().toISOString(),
+      execPath: process.execPath,
+      argv: process.argv,
+      processStartedAt: snapshot?.processStartedAt,
     })
     console.log(`Stop with: yorz serve stop`)
   } else {
@@ -278,13 +292,20 @@ export async function runStopServe(): Promise<StopServeResult> {
     }
   }
 
-  const alive = all.filter((p) => isProcessAlive(p.pid))
-  const dead = all.filter((p) => !isProcessAlive(p.pid))
+  const checks = await Promise.all(
+    all.map(async (proc) => ({ proc, snapshot: await readProcessSnapshot(proc.pid) })),
+  )
+  const alive = checks.filter(
+    (check) => check.snapshot && isStoppableYorzProcess(check.proc, check.snapshot),
+  )
+  const dead = checks.filter(
+    (check) => !check.snapshot || !isStoppableYorzProcess(check.proc, check.snapshot),
+  )
 
   if (alive.length === 0) {
     await removeRuntime()
-    log().warn('cleared stale runtime records', { pids: dead.map((p) => p.pid) })
-    const deadPidList = dead.map((p) => `pid=${p.pid}`).join(', ')
+    log().warn('cleared stale runtime records', { pids: dead.map((p) => p.proc.pid) })
+    const deadPidList = dead.map((p) => `pid=${p.proc.pid}`).join(', ')
     return {
       stopped: false,
       stoppedPids: [],
@@ -297,7 +318,7 @@ export async function runStopServe(): Promise<StopServeResult> {
   const stoppedUrls: string[] = []
   const failedPids: number[] = []
 
-  for (const proc of alive) {
+  for (const { proc } of alive) {
     try {
       process.kill(proc.pid, 'SIGTERM')
       log().info('sent SIGTERM', { pid: proc.pid, url: proc.url })
@@ -409,8 +430,15 @@ async function readLiveProcesses(): Promise<ProcessEntry[]> {
   const all = await readAllProcesses()
   if (all.length === 0) return []
 
-  const alive = all.filter((p) => isProcessAlive(p.pid))
-  const dead = all.filter((p) => !isProcessAlive(p.pid))
+  const checks = await Promise.all(
+    all.map(async (proc) => ({ proc, snapshot: await readProcessSnapshot(proc.pid) })),
+  )
+  const alive = checks
+    .filter((check) => check.snapshot && isStoppableYorzProcess(check.proc, check.snapshot))
+    .map((check) => check.proc)
+  const dead = checks.filter(
+    (check) => !check.snapshot || !isStoppableYorzProcess(check.proc, check.snapshot),
+  )
 
   if (dead.length > 0) {
     if (alive.length === 0) {
@@ -462,6 +490,12 @@ function toProcessEntry(obj: Record<string, unknown>): ProcessEntry {
     port: obj.port as number,
     url: obj.url as string,
     startedAt: obj.startedAt as string,
+    execPath: typeof obj.execPath === 'string' ? obj.execPath : undefined,
+    argv:
+      Array.isArray(obj.argv) && obj.argv.every((v) => typeof v === 'string')
+        ? obj.argv
+        : undefined,
+    processStartedAt: typeof obj.processStartedAt === 'string' ? obj.processStartedAt : undefined,
   }
 }
 
@@ -479,6 +513,13 @@ function tryV1Entry(parsed: Record<string, unknown>): ProcessEntry | null {
     port: parsed.port,
     url: parsed.url,
     startedAt: parsed.startedAt,
+    execPath: typeof parsed.execPath === 'string' ? parsed.execPath : undefined,
+    argv:
+      Array.isArray(parsed.argv) && parsed.argv.every((v) => typeof v === 'string')
+        ? parsed.argv
+        : undefined,
+    processStartedAt:
+      typeof parsed.processStartedAt === 'string' ? parsed.processStartedAt : undefined,
   }
 }
 
@@ -517,6 +558,82 @@ function isProcessAlive(pid: number): boolean {
     return true
   } catch {
     return false
+  }
+}
+
+function isStoppableYorzProcess(entry: ProcessEntry, snapshot: ProcessSnapshot): boolean {
+  if (!hasRuntimeIdentity(entry)) return true
+  return isTrustedYorzProcess(entry, snapshot)
+}
+
+function hasRuntimeIdentity(entry: ProcessEntry): boolean {
+  return Boolean(entry.execPath || entry.argv || entry.processStartedAt)
+}
+
+function isTrustedYorzProcess(entry: ProcessEntry, snapshot: ProcessSnapshot): boolean {
+  if (!entry.processStartedAt || snapshot.processStartedAt !== entry.processStartedAt) return false
+  if (!entry.execPath || !entry.argv) return false
+
+  const required = [
+    entry.execPath,
+    entry.argv[1],
+    'serve',
+    '--foreground',
+    '--record-runtime',
+  ].filter((arg): arg is string => typeof arg === 'string' && arg.length > 0)
+  const commandMatches = required.every((arg) => snapshot.commandLine.includes(arg))
+
+  return commandMatches
+}
+
+async function readProcessSnapshot(pid: number): Promise<ProcessSnapshot | null> {
+  if (!isProcessAlive(pid)) return null
+  if (process.platform === 'win32') return readWindowsProcessSnapshot(pid)
+  return readPosixProcessSnapshot(pid)
+}
+
+async function readPosixProcessSnapshot(pid: number): Promise<ProcessSnapshot | null> {
+  try {
+    const { stdout } = await execFileAsync('ps', [
+      '-ww',
+      '-p',
+      String(pid),
+      '-o',
+      'lstart=',
+      '-o',
+      'command=',
+    ])
+    const line = stdout.trim()
+    if (!line) return null
+    const parts = line.match(/^(\S+\s+\S+\s+\d+\s+\d+:\d+:\d+\s+\d+)\s+([\s\S]+)$/)
+    if (!parts) return { commandLine: line }
+    return { processStartedAt: parts[1], commandLine: parts[2] }
+  } catch {
+    return null
+  }
+}
+
+async function readWindowsProcessSnapshot(pid: number): Promise<ProcessSnapshot | null> {
+  try {
+    const script = [
+      `$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"`,
+      'if ($null -eq $p) { exit 1 }',
+      '$p | Select-Object CommandLine,CreationDate | ConvertTo-Json -Compress',
+    ].join('; ')
+    const { stdout } = await execFileAsync('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      script,
+    ])
+    const parsed = JSON.parse(stdout.trim()) as Record<string, unknown>
+    const commandLine = typeof parsed.CommandLine === 'string' ? parsed.CommandLine : ''
+    const processStartedAt =
+      typeof parsed.CreationDate === 'string' ? parsed.CreationDate : undefined
+    if (!commandLine) return null
+    return { commandLine, processStartedAt }
+  } catch {
+    return null
   }
 }
 
