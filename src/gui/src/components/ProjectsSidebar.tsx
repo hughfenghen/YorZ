@@ -7,6 +7,7 @@ import {
   createSignal,
   onMount,
   onCleanup,
+  untrack,
   type Component,
 } from 'solid-js'
 import { A, useLocation, useNavigate } from '@solidjs/router'
@@ -139,12 +140,21 @@ export const ProjectsSidebar: Component = () => {
     onCleanup(unsub)
   })
 
+  // Only a *new* shortcut press may open the dialog. Solid tracks every signal
+  // read in the effect body, so reading activeProjectId()/projects() eagerly
+  // used to re-run this on every project switch and every SSE-driven refetch —
+  // re-opening a dialog the user had just dismissed. activeProjectId is untracked,
+  // and a handled-tick guard makes re-runs idempotent while still letting a press
+  // that landed before the project list loaded open the dialog once it arrives.
+  let handledConfigTick = 0
   createEffect(() => {
     const tick = projectConfigRequestTick()
-    if (tick === 0) return
-    const pid = activeProjectId()
+    if (tick === 0 || tick === handledConfigTick) return
+    const pid = untrack(activeProjectId)
     const project = (projects() ?? []).find((p) => p.id === pid)
-    if (project) setEditing(project)
+    if (!project) return
+    handledConfigTick = tick
+    setEditing(project)
   })
 
   function beginResize(ev: MouseEvent) {
