@@ -75,8 +75,8 @@ export const en = {
     empty: 'Select or create a session to start chatting.',
     /** Untitled (draft) state: no session exists on the server yet. */
     draftEmpty: 'Untitled session — send a message to start.',
-    inputPlaceholder: 'Type a message, Enter to send…',
-    draftPlaceholder: 'Type a message — a session starts on send…',
+    inputPlaceholder: 'Type a message, / for commands, @ to reference files, Enter to send…',
+    draftPlaceholder: 'Type a message, / for commands, @ to reference files — a session starts on send…',
     noSessionPlaceholder: 'Select a project first',
     showHistory: 'History',
     sessionListLimit: 'Session list count',

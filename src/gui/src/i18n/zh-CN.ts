@@ -74,8 +74,8 @@ export const zhCN = {
     empty: '选择或新建一个会话开始对话。',
     /** Untitled（草稿）态：服务端尚未创建 session。 */
     draftEmpty: 'Untitled 会话 —— 发送消息即开始。',
-    inputPlaceholder: '输入消息，Enter 发送…',
-    draftPlaceholder: '输入消息，发送后自动创建会话…',
+    inputPlaceholder: '输入消息，/ 触发候选指令，@ 引用文件，Enter 发送…',
+    draftPlaceholder: '输入消息，/ 触发候选指令，@ 引用文件，发送后自动创建会话…',
     noSessionPlaceholder: '请先选择项目',
     showHistory: '显示历史',
     sessionListLimit: '会话显示条数',
