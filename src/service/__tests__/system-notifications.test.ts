@@ -3,6 +3,7 @@ import {
   SystemNotificationCenter,
   compareVersions,
   resolveGlobalInstallCommand,
+  resolveRestartCommand,
 } from '../system-notifications.js'
 import { createApp } from '../server.js'
 import { ProjectRegistry } from '../project-registry.js'
@@ -57,6 +58,21 @@ describe('system notifications', () => {
     expect(resolveGlobalInstallCommand({}, [])).toEqual({
       cmd: 'npm',
       args: ['install', '-g', '@yorz/cli@latest'],
+    })
+  })
+
+  it('resolves restart through the current yorz command on PATH', () => {
+    expect(resolveRestartCommand('darwin')).toEqual({
+      cmd: 'yorz',
+      args: ['serve', 'restart'],
+    })
+    expect(resolveRestartCommand('linux')).toEqual({
+      cmd: 'yorz',
+      args: ['serve', 'restart'],
+    })
+    expect(resolveRestartCommand('win32')).toEqual({
+      cmd: 'yorz.cmd',
+      args: ['serve', 'restart'],
     })
   })
 

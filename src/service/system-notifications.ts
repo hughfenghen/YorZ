@@ -179,6 +179,11 @@ export interface GlobalInstallCommand {
   args: string[]
 }
 
+export interface RestartCommand {
+  cmd: string
+  args: string[]
+}
+
 type PackageManagerEnv = Partial<
   Record<'npm_config_user_agent' | 'npm_execpath' | 'NODE_PATH', string>
 >
@@ -200,6 +205,12 @@ export function resolveGlobalInstallCommand(
     default:
       return { cmd: 'npm', args: ['install', '-g', '@yorz/cli@latest'] }
   }
+}
+
+export function resolveRestartCommand(
+  platform: NodeJS.Platform = process.platform,
+): RestartCommand {
+  return { cmd: platform === 'win32' ? 'yorz.cmd' : 'yorz', args: ['serve', 'restart'] }
 }
 
 function detectPackageManager(
@@ -231,9 +242,8 @@ function defaultRunUpdate(): Promise<void> {
 }
 
 function defaultRunRestart(): Promise<void> {
-  const entry = process.argv[1]
-  if (!entry) throw new Error('Cannot resolve CLI entrypoint for restart')
-  const child = spawn(process.execPath, [entry, 'serve', 'restart'], {
+  const restart = resolveRestartCommand()
+  const child = spawn(restart.cmd, restart.args, {
     detached: true,
     stdio: 'ignore',
   })
