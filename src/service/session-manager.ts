@@ -85,7 +85,10 @@ export class SessionManager {
   private readonly running = new Set<string>()
   /** Kind of sessions discovered via `listSessions()` but absent from the store. */
   private readonly discoveredKinds = new Map<string, AgentKind>()
+  /** 后台派发任务；项目关闭必须等待它们完成后才能删除 worktree。 */
+  private readonly inFlight = new Set<Promise<void>>()
   private readonly statusEmitter = new EventEmitter()
+  private disposing = false
 
   constructor(
     private readonly cwd: string,
@@ -262,6 +265,8 @@ export class SessionManager {
     const session = await adapter.resumeSession(sid)
     const ls: LiveSession = { kind, session }
     this.live.set(sid, ls)
+    // dispose 可能与 resumeSession 并发；新会话一建立就中止，避免漏掉占用目录的进程。
+    if (this.disposing) session.abort()
     return ls
   }
 
@@ -275,7 +280,7 @@ export class SessionManager {
     await this.maybeUpdateTitleFromPrompt(currentSid, prompt).catch(() => {})
     this.setRunning(sid, true)
     agentLog().info('dispatch start', { sessionId: sid, runId, promptLength: prompt.length })
-    void (async () => {
+    const task = (async () => {
       try {
         const ls = await this.ensureLive(sid)
         for await (const ev of ls.session.send(prompt)) {
@@ -312,6 +317,12 @@ export class SessionManager {
         emitter.emit('done', currentSid)
       }
     })()
+    this.inFlight.add(task)
+    // 无论任务如何结束都移出集合；双分支避免 finally 派生 Promise 产生未处理拒绝。
+    void task.then(
+      () => this.inFlight.delete(task),
+      () => this.inFlight.delete(task),
+    )
     return {
       runId,
       sessionId: sid,
@@ -357,8 +368,15 @@ export class SessionManager {
   }
 
   async dispose(): Promise<void> {
+    this.disposing = true
+    // 同一 AgentSession 可能在 reconcile 后以新旧 id 出现，只中止一次。
+    for (const session of new Set([...this.live.values()].map((item) => item.session))) {
+      session.abort()
+    }
+    await Promise.allSettled([...this.inFlight])
     await this.adapters.dispose()
     this.live.clear()
     this.emitters.clear()
+    this.running.clear()
   }
 }

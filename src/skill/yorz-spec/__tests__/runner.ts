@@ -1,10 +1,10 @@
-import { spawn } from 'node:child_process'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import matter from 'gray-matter'
 import { resolveAgentCmd, type AgentName } from '../../../service/agent-config.js'
+import { spawnWithoutWindow } from '../../../service/process.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(here, '../../../..')
@@ -93,9 +93,21 @@ async function seedSkill(tmpDir: string): Promise<void> {
   })
 }
 
-function spawnAgent(cmd: string, args: string[], cwd: string): Promise<{ code: number; spawnError?: Error }> {
+/**
+ * 启动无人值守的 Agent 测试进程，并把退出码或派生错误归一化给用例执行器。
+ *
+ * @param cmd Agent CLI 可执行文件。
+ * @param args Agent CLI 参数。
+ * @param cwd 隔离测试项目的工作目录。
+ * @returns Agent 退出码；派生失败时同时返回原始错误。
+ */
+function spawnAgent(
+  cmd: string,
+  args: string[],
+  cwd: string,
+): Promise<{ code: number; spawnError?: Error }> {
   return new Promise((resolveP) => {
-    const child = spawn(cmd, args, { cwd, stdio: 'inherit' })
+    const child = spawnWithoutWindow(cmd, args, { cwd, stdio: 'inherit' })
     let settled = false
     child.on('error', (err) => {
       if (settled) return

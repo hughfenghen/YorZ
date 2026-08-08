@@ -91,6 +91,22 @@ async function openMultiplex(
 }
 
 describe('YorZ Service HTTP', () => {
+  it('rejects non-loopback bind addresses before exposing command APIs', async () => {
+    const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-service-cfg-'))
+    const attempt = start({
+      host: '0.0.0.0',
+      port: 0,
+      noRegisterCwd: true,
+      globalConfigPath: join(cfgDir, 'projects.json'),
+    }).then(async (started) => {
+      // 旧实现会成功监听；先关闭它，确保 RED 测试不会泄漏端口或全局资源。
+      await started.close()
+      return started
+    })
+
+    await expect(attempt).rejects.toThrow(/loopback/i)
+  })
+
   it('POST /api/specs creates spec and GET /api/specs lists it', async () => {
     const { apiPrefix } = await startInTmp()
     const createRes = await fetch(`${apiPrefix}/specs`, {

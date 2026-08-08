@@ -105,6 +105,7 @@ export const zhCN = {
     mergeDialogTitle: '合并 worktree',
     mergeDialogDescription: '合入主项目前，请确认本次合并的提交信息。',
     mergeCommitMessage: '提交信息',
+    runningTasksPreventMerge: '存在进行中的命令或 Agent 任务，请等待任务结束后再合并',
     mainUnreachable: '主项目不可达',
     merged: '已合入主项目，正在跳转…',
     conflictDispatched: '冲突 spec 已自动派给 Agent 处理，列表会在合并完成后自动刷新',

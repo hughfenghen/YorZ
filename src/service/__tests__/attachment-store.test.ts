@@ -97,6 +97,31 @@ describe('AttachmentStore', () => {
     expect(second.storedName).toBe('design-1.pdf')
   })
 
+  it('treats case-only attachment names as collisions on every platform', async () => {
+    const cwd = await tmp()
+    const store = new AttachmentStore({ cwd })
+    const draftId = await store.createDraft()
+    const first = await store.addAttachment(draftId, {
+      name: 'Foo.txt',
+      mime: 'text/plain',
+      data: new TextEncoder().encode('first'),
+    })
+    const second = await store.addAttachment(draftId, {
+      name: 'foo.txt',
+      mime: 'text/plain',
+      data: new TextEncoder().encode('second'),
+    })
+
+    expect(first.storedName).toBe('Foo.txt')
+    expect(second.storedName).toBe('foo-1.txt')
+    expect(
+      new TextDecoder().decode((await store.readAttachment(draftId, first.storedName)).data),
+    ).toBe('first')
+    expect(
+      new TextDecoder().decode((await store.readAttachment(draftId, second.storedName)).data),
+    ).toBe('second')
+  })
+
   it('sanitizes path-traversal characters in non-image names', async () => {
     const cwd = await tmp()
     const store = new AttachmentStore({ cwd })
@@ -143,6 +168,25 @@ describe('AttachmentStore', () => {
     })
     const renamed = await store.renameAttachment(draftId, a.storedName, 'b')
     expect(renamed.storedName).toBe('b-1.txt')
+  })
+
+  it('rename adds suffix when only the target name casing differs', async () => {
+    const cwd = await tmp()
+    const store = new AttachmentStore({ cwd })
+    const draftId = await store.createDraft()
+    const source = await store.addAttachment(draftId, {
+      name: 'source.txt',
+      mime: 'text/plain',
+      data: new Uint8Array([1]),
+    })
+    await store.addAttachment(draftId, {
+      name: 'target.txt',
+      mime: 'text/plain',
+      data: new Uint8Array([2]),
+    })
+
+    const renamed = await store.renameAttachment(draftId, source.storedName, 'TARGET')
+    expect(renamed.storedName).toBe('TARGET-1.txt')
   })
 
   it('deleteAttachment removes the file and errors on missing', async () => {

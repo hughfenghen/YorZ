@@ -19,6 +19,7 @@ import { toggleFocusMode, useFocusModePage } from '../lib/layout-focus.js'
 import { registerFocusModeShortcut } from '../lib/shortcut-actions.js'
 import { subscribeProjectsList, subscribeSpecsList } from '../lib/sse.js'
 import { formatSpecUpdatedAt } from '../lib/time.js'
+import { createWorktreeMergeGuard } from '../lib/worktree-merge.js'
 import { Button } from '../components/ui/button.jsx'
 import { Badge } from '../components/ui/badge.jsx'
 import { FocusModeButton } from '../components/FocusModeButton.jsx'
@@ -85,6 +86,7 @@ export const SpecList: Component = () => {
   })
 
   const [merging, setMerging] = createSignal(false)
+  const [checkingMergeTasks, setCheckingMergeTasks] = createSignal(false)
   const [mergeError, setMergeError] = createSignal<string | null>(null)
   const [mergeDialogOpen, setMergeDialogOpen] = createSignal(false)
   const [mergeMessage, setMergeMessage] = createSignal('')
@@ -93,6 +95,7 @@ export const SpecList: Component = () => {
   const [commandRevision, setCommandRevision] = createSignal(0)
   const [deleting, setDeleting] = createSignal(false)
   const [deleteError, setDeleteError] = createSignal<string | null>(null)
+  const mergeGuard = createWorktreeMergeGuard(api, setCheckingMergeTasks)
   useFocusModePage(() => mergeDialogOpen() || confirmDeleteId() !== null)
   registerFocusModeShortcut(toggleFocusMode)
 
@@ -128,10 +131,33 @@ export const SpecList: Component = () => {
     cleanupSpecsList = null
   })
 
-  function openMergeDialog() {
+  /**
+   * 读取最新命令与 Agent 状态，避免在任务仍写入 Worktree 时发起合并。
+   * @returns 当前没有运行任务且允许继续合并时返回 true。
+   */
+  async function canStartMerge(): Promise<boolean> {
+    const pid = projectId()
+    if (!pid) return false
+    setMergeError(null)
+    try {
+      const result = await mergeGuard.check(pid)
+      if (result === 'running') {
+        setMergeError(t('home.runningTasksPreventMerge'))
+        return false
+      }
+      return result === 'allowed'
+    } catch (err) {
+      setMergeError((err as Error).message)
+      return false
+    }
+  }
+
+  /** 校验项目活动状态后打开合并确认框。 */
+  async function openMergeDialog(): Promise<void> {
     const cur = current()
     if (!cur?.worktree) return
     if (!mainReachable()) return
+    if (!(await canStartMerge())) return
     setMergeMessage(defaultMergeMessage())
     setMergeError(null)
     setMergeDialogOpen(true)
@@ -142,10 +168,23 @@ export const SpecList: Component = () => {
     if (!cur?.worktree) return
     if (!mainReachable()) return
     const message = mergeMessage().trim() || defaultMergeMessage()
-    setMerging(true)
     setMergeError(null)
     try {
-      const result = await api.mergeWorktreeToMain(cur.id, { commitMessage: message })
+      const guarded = await mergeGuard.merge(cur.id, async () => {
+        setMerging(true)
+        try {
+          return await api.mergeWorktreeToMain(cur.id, { commitMessage: message })
+        } finally {
+          setMerging(false)
+        }
+      })
+      if (guarded.status === 'blocked') {
+        if (guarded.reason === 'running') {
+          setMergeError(t('home.runningTasksPreventMerge'))
+        }
+        return
+      }
+      const result = guarded.value
       setMergeDialogOpen(false)
       if (result.status === 'merged') {
         toast.success(t('home.merged'))
@@ -160,8 +199,6 @@ export const SpecList: Component = () => {
       }
     } catch (err) {
       setMergeError((err as Error).message)
-    } finally {
-      setMerging(false)
     }
   }
 
@@ -208,8 +245,8 @@ export const SpecList: Component = () => {
           <Button
             variant="default"
             size="sm"
-            onClick={openMergeDialog}
-            disabled={merging() || !mainReachable()}
+            onClick={() => void openMergeDialog()}
+            disabled={merging() || checkingMergeTasks() || !mainReachable()}
             title={mainReachable() ? t('home.mergeHint') : t('home.mainUnreachable')}
           >
             <GitMerge class="mr-1 h-3.5 w-3.5" />
@@ -347,7 +384,10 @@ export const SpecList: Component = () => {
               >
                 {t('common.cancel')}
               </Button>
-              <Button type="submit" disabled={merging() || !mainReachable()}>
+              <Button
+                type="submit"
+                disabled={merging() || checkingMergeTasks() || !mainReachable()}
+              >
                 {merging() ? t('home.merging') : t('home.mergeToMain')}
               </Button>
             </DialogFooter>
