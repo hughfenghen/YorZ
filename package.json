@@ -41,7 +41,7 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:agent": "node scripts/test-agent.mjs",
-    "test:e2e": "playwright test",
+    "test:e2e": "pnpm run build && playwright test",
     "format": "prettier --write \"src/**/*.{ts,tsx,md,css}\"",
     "prepublishOnly": "pnpm run build"
   },
@@ -62,6 +62,7 @@
     "trash": "^10.1.1"
   },
   "devDependencies": {
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@kobalte/core": "^0.13.12",
     "@playwright/test": "^1.61.0",
     "@solidjs/router": "^0.16.1",

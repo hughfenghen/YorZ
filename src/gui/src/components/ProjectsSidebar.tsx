@@ -244,7 +244,7 @@ export const ProjectsSidebar: Component = () => {
 
   return (
     <aside
-      class={`relative flex flex-col border-r bg-card shrink-0 ${
+      class={`relative flex flex-col border-r bg-background shrink-0 ${
         isCollapsed() ? 'w-9 transition-[width] duration-150' : ''
       }`}
       style={asideStyle()}
@@ -297,8 +297,8 @@ export const ProjectsSidebar: Component = () => {
                     href={`/${encodeURIComponent(p.id)}`}
                     class={`flex-1 truncate px-2.5 py-1.5 no-underline ${
                       isActive()
-                        ? 'bg-accent text-accent-foreground font-semibold'
-                        : 'hover:bg-muted'
+                        ? 'bg-primary-soft text-foreground font-semibold'
+                        : 'hover:bg-accent'
                     } ${isCollapsed() ? 'px-0 text-center' : ''}`}
                     title={p.path}
                   >

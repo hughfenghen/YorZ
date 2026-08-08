@@ -57,9 +57,9 @@ test.describe.serial('question confirm panel', () => {
     // textarea 初始应隐藏（默认选中"表格 (推荐)"）。
     await expect(panel.locator('textarea.qcp-note')).toHaveCount(0)
 
-    // 勾选"其他（自由批注）"radio。
-    const freeformLabel = panel.locator('label.qcp-option-freeform')
-    await freeformLabel.locator('input[type="radio"]').check()
+    // 勾选"其他（自由批注）"radio。RadioGroup 组件化后 input 被 clip 隐藏且与
+    // label 是兄弟节点，改为直接点可见的 label。
+    await panel.locator('label.qcp-option-freeform').click()
 
     // textarea 出现并填入自定义批注。
     const note = panel.locator('textarea.qcp-note')

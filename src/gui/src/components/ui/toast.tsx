@@ -50,11 +50,13 @@ const positionClasses: Record<ToastPosition, string> = {
   'bottom-center': 'bottom-0 left-0 right-0 items-center',
 }
 
+// 语义 token 驱动：亮/暗两套取值由 app.css 的 --success/--info/--warning/--destructive 提供，
+// 不再按调色板逐档写 dark: 变体。
 const typeClasses: Record<ToastType, string> = {
   default: 'border-border',
-  success: 'border-emerald-200 text-emerald-700 dark:border-emerald-900 dark:text-emerald-300',
-  info: 'border-sky-200 text-sky-700 dark:border-sky-900 dark:text-sky-300',
-  warning: 'border-amber-200 text-amber-700 dark:border-amber-900 dark:text-amber-300',
+  success: 'border-success/40 text-success',
+  info: 'border-info/40 text-info',
+  warning: 'border-warning/40 text-warning',
   error: 'border-destructive/40 text-destructive',
   loading: 'border-border',
 }

@@ -1,68 +1,143 @@
+/* 自托管等宽字体（latin 子集），不依赖外网 CDN —— YorZ 需离线可用 */
+@import '@fontsource/jetbrains-mono/latin-400.css';
+@import '@fontsource/jetbrains-mono/latin-500.css';
+@import '@fontsource/jetbrains-mono/latin-700.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * 视觉风格：Terminal —— 亮色为「磷光纸」，暗色为「磷光屏」。
+ * 约定：--accent 是中性 hover 底色（shadcn 语义），不承载强调色；
+ *       黄色只存在于 --warning 与 --stage-tasks。
+ */
 @layer base {
   :root {
-    --background: 220 25% 97.8%;
-    --foreground: 220 26% 14%;
+    --background: 60 23.1% 94.9%;
+    /*
+     * 正文色去绿、压暗：原 150 23.1% 10.2% 的绿相在长段中文里读起来发暗绿。
+     * 保留一丝色相与品牌同源，但饱和度压到 10%，对比度 15.34 → 16.97。
+     */
+    --foreground: 150 10% 7%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 220 26% 14%;
+    --card: 60 38.5% 97.5%;
+    --card-foreground: 150 10% 7%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 220 26% 14%;
+    --popover: 60 38.5% 97.5%;
+    --popover-foreground: 150 10% 7%;
 
-    --primary: 221 83% 53%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 148 67.2% 23.9%;
+    --primary-foreground: 120 33.3% 97.6%;
+    /*
+     * 选中态专用底色（设计稿 --primary-soft #d8ead9）。与 --accent 分工明确：
+     * accent = 悬浮反馈，primary-soft = 「这一项当前被选中」的持续状态。
+     * 二者混用会让 hover 和 active 在视觉上无法区分。
+     */
+    --primary-soft: 123 30% 88.2%;
 
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 220 26% 14%;
+    --secondary: 60 19% 91.8%;
+    --secondary-foreground: 150 10% 7%;
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 60 19% 91.8%;
+    /* 次要文字：中性灰而非灰绿（S 7.6% → 3%），对比度 5.22 → 7.05 */
+    --muted-foreground: 150 3% 32%;
 
-    --accent: 38 92% 50%;
-    --accent-foreground: 220 26% 14%;
+    /* 中性悬浮底色，不是强调色 */
+    --accent: 60 19.1% 90.8%;
+    --accent-foreground: 150 10% 7%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 5 72.3% 38.2%;
+    --destructive-foreground: 120 33.3% 97.6%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 221 83% 53%;
+    --success: 148 67.2% 23.9%;
+    --success-foreground: 120 33.3% 97.6%;
 
-    --radius: 0.625rem;
+    --warning: 41 79.2% 30.2%;
+    --warning-foreground: 120 33.3% 97.6%;
+
+    --info: 203 48.8% 32.2%;
+    --info-foreground: 120 33.3% 97.6%;
+
+    --border: 60 15.7% 83.7%;
+    --input: 60 11.3% 70.4%;
+    --ring: 148 67.2% 23.9%;
+
+    /*
+     * 阶段轴：四色按 CIELAB ΔE2000 拉开到最小 23.4（设计稿原配色只有 8.7，
+     * execute 与 done 同属绿系、肉眼几乎无法区分）。done 因此离开绿系改用紫，
+     * 沿用 GitHub「已合并 / 已归档」的紫色惯例——绿留给「正在跑」的 execute。
+     *
+     * 亮色下明度被 AA 锁死（soft 徽章的文字落在 15% 同色 tint 上，需 ≥4.5），
+     * 所以「更鲜艳」只能靠彩度而非亮度：C* 由 23/46/39/27 提到 61/52/47/95。
+     */
+    --stage-plan: 214 88% 39%;
+    --stage-tasks: 32 92% 29%;
+    --stage-execute: 146 90% 22%;
+    --stage-done: 280 80% 43%;
+
+    --radius: 0.25rem;
+
+    --font-sans:
+      -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+      'Microsoft YaHei', sans-serif;
+    --font-mono:
+      'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'PingFang SC', monospace;
+
+    /*
+     * 原生控件兜底：<input type=radio|checkbox> 由浏览器绘制，不吃 CSS token，
+     * 选中色默认回落到系统蓝。业务侧的 radio/checkbox 已全部组件化，但 markdown
+     * 渲染出的任务列表复选框够不着组件树，只能靠这里跟随主题。
+     */
+    accent-color: hsl(var(--primary));
   }
 
   [data-kb-theme='dark'] {
-    --background: 222 47% 7%;
-    --foreground: 220 14% 89%;
+    --background: 135 8% 10%;
+    --foreground: 120 8% 80%;
 
-    --card: 222 32% 8%;
-    --card-foreground: 220 14% 89%;
+    --card: 132 14.3% 6.9%;
+    --card-foreground: 120 8% 91%;
 
-    --popover: 222 32% 8%;
-    --popover-foreground: 220 14% 89%;
+    --popover: 132 14.3% 6.9%;
+    --popover-foreground: 120 8% 91%;
 
-    --primary: 217 91% 60%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 142 69.2% 58%;
+    --primary-foreground: 141 58.6% 5.7%;
+    /* 设计稿 --primary-soft #0f2c19：暗色下的选中态底色 */
+    --primary-soft: 141 49% 11.6%;
 
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 220 14% 89%;
+    --secondary: 130 13% 9%;
+    --secondary-foreground: 120 8% 91%;
 
-    --muted: 217 33% 17%;
-    --muted-foreground: 220 9% 64%;
+    --muted: 130 13% 9%;
+    /* 次要文字：中性灰而非灰绿（S 9.8% → 4%），对比度 5.71 → 7.36 */
+    --muted-foreground: 120 4% 62%;
 
-    --accent: 38 92% 50%;
-    --accent-foreground: 220 14% 89%;
+    --accent: 144 18.5% 10.6%;
+    --accent-foreground: 120 8% 91%;
 
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 4 81.7% 67.8%;
+    --destructive-foreground: 141 58.6% 5.7%;
 
-    --border: 217 33% 20%;
-    --input: 217 33% 20%;
-    --ring: 217 91% 60%;
+    --success: 142 69.2% 58%;
+    --success-foreground: 141 58.6% 5.7%;
+
+    --warning: 42 74.3% 57.3%;
+    --warning-foreground: 141 58.6% 5.7%;
+
+    --info: 212 100% 73.7%;
+    --info-foreground: 141 58.6% 5.7%;
+
+    --border: 126 14.3% 13.7%;
+    --input: 125 12.6% 20.2%;
+    --ring: 142 69.2% 58%;
+
+    /* 与亮色同构：done 移出绿系改紫，最小 ΔE 11.8 → 27.2 */
+    --stage-plan: 212 100% 72%;
+    --stage-tasks: 38 95% 60%;
+    --stage-execute: 142 76% 58%;
+    --stage-done: 275 95% 78%;
   }
 }
 
@@ -80,8 +155,32 @@
     line-height: 1.55;
   }
 
+  /* Terminal 风格的扫描线：压到几乎不可察觉，只提供质感而非纹样 */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      hsl(var(--foreground) / 0.022) 0 1px,
+      transparent 1px 3px
+    );
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
   #app {
-    @apply h-full;
+    @apply relative z-[1] h-full;
   }
 
   a {
@@ -91,6 +190,14 @@
   body.is-resizing {
     user-select: none;
     cursor: col-resize;
+  }
+
+  /* UI 标签层统一等宽（长文正文仍走比例字体，见 spec 4.7 排印分工） */
+  time,
+  code,
+  kbd,
+  samp {
+    @apply font-mono;
   }
 }
 
@@ -532,8 +639,8 @@
     border-radius: 4px;
     background: hsl(var(--muted));
     padding: 0.05rem 0.25rem;
-    color: hsl(var(--foreground));
-    color: #1f6feb;
+    /* 曾被硬编码的 #1f6feb 覆盖，导致文件链接在暗色下仍是亮蓝 */
+    color: hsl(var(--primary));
     text-decoration: none;
     cursor: copy;
     overflow-wrap: anywhere;

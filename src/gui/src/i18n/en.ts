@@ -24,6 +24,10 @@ export const en = {
     languageSwitch: 'Switch Language',
     langZh: '中文',
     langEn: 'English',
+    themeSwitch: 'Appearance',
+    themeSystem: 'System',
+    themeLight: 'Light',
+    themeDark: 'Dark',
     globalConfig: 'Global Settings',
   },
   systemNotifications: {

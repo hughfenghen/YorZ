@@ -2,6 +2,15 @@ import { createEffect, createSignal, onCleanup, Show, type Component } from 'sol
 import { Send, X } from 'lucide-solid'
 import type { AppendItemBody, AppendItemKind } from '../lib/api.js'
 import { Button } from './ui/button.jsx'
+import { Checkbox, CheckboxControl, CheckboxLabel } from './ui/checkbox.jsx'
+import {
+  RadioGroup,
+  RadioGroupItem,
+  RadioGroupItemControl,
+  RadioGroupItemInput,
+  RadioGroupItemLabel,
+  RadioGroupLabel,
+} from './ui/radio-group.jsx'
 import { Textarea } from './ui/textarea.jsx'
 import { t } from '../i18n/index.js'
 
@@ -105,37 +114,35 @@ export const AppendTaskDialog: Component<Props> = (props) => {
             <span class="text-sm text-muted-foreground">{t('appendTask.hint')}</span>
           </header>
           <form class="flex flex-col gap-3" onSubmit={submit}>
-            <fieldset class="m-0 flex flex-col gap-1.5 border-0 p-0" disabled={busy()}>
-              <legend class="mb-1 font-medium">{t('appendTask.type')}</legend>
+            <RadioGroup
+              class="m-0 flex flex-col gap-1.5 border-0 p-0"
+              value={kind()}
+              onChange={(v) => setKind(v as AppendItemKind)}
+              disabled={busy()}
+            >
+              <RadioGroupLabel class="mb-1 font-medium">{t('appendTask.type')}</RadioGroupLabel>
               {(['feat', 'refct', 'fix'] as const).map((k) => (
-                <label class="flex cursor-pointer items-center gap-1.5 ">
-                  <input
-                    type="radio"
-                    name="append-kind"
-                    value={k}
-                    checked={kind() === k}
-                    onChange={() => setKind(k)}
-                    disabled={busy()}
-                  />
-                  <span>{t(KIND_KEY[k])}</span>
-                </label>
+                <RadioGroupItem value={k} class="flex items-center gap-1.5">
+                  <RadioGroupItemInput />
+                  <RadioGroupItemControl />
+                  <RadioGroupItemLabel class="cursor-pointer">{t(KIND_KEY[k])}</RadioGroupItemLabel>
+                </RadioGroupItem>
               ))}
-            </fieldset>
+            </RadioGroup>
 
             <Show when={kind() === 'fix'}>
-              <label class="flex cursor-pointer items-start gap-1.5 ml-5">
-                <input
-                  type="checkbox"
-                  class="mt-1"
-                  checked={debug()}
-                  onChange={(e) => setDebug(e.currentTarget.checked)}
-                  disabled={busy()}
-                />
-                <span class="flex flex-col">
+              <Checkbox
+                class="ml-5 flex items-start gap-1.5"
+                checked={debug()}
+                onChange={setDebug}
+                disabled={busy()}
+              >
+                <CheckboxControl class="mt-1" />
+                <CheckboxLabel class="flex cursor-pointer flex-col">
                   <span class="font-medium">{t('appendTask.debugMode')}</span>
                   <span class="text-sm text-muted-foreground">{t('appendTask.debugModeHint')}</span>
-                </span>
-              </label>
+                </CheckboxLabel>
+              </Checkbox>
             </Show>
 
             <label class="flex flex-col gap-1 ">

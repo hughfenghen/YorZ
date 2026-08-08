@@ -4,10 +4,13 @@ import type {
   DropdownMenuItemProps,
   DropdownMenuRootProps,
   DropdownMenuSeparatorProps,
+  DropdownMenuSubContentProps,
+  DropdownMenuSubTriggerProps,
 } from '@kobalte/core/dropdown-menu'
 import { DropdownMenu as DropdownMenuPrimitive } from '@kobalte/core/dropdown-menu'
 import type { PolymorphicProps } from '@kobalte/core/polymorphic'
-import type { ComponentProps, ValidComponent } from 'solid-js'
+import { ChevronRight } from 'lucide-solid'
+import type { ComponentProps, JSX, ValidComponent } from 'solid-js'
 import { mergeProps, splitProps } from 'solid-js'
 
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
@@ -61,6 +64,55 @@ export const DropdownMenuItem = <T extends ValidComponent = 'div'>(
       )}
       {...rest}
     />
+  )
+}
+
+type dropdownMenuSubTriggerProps<T extends ValidComponent = 'div'> =
+  DropdownMenuSubTriggerProps<T> & {
+    class?: string
+    children?: JSX.Element
+  }
+
+/** 二级菜单入口：沿用 Item 的交互样式，右侧补一个指向箭头。 */
+export const DropdownMenuSubTrigger = <T extends ValidComponent = 'div'>(
+  props: PolymorphicProps<T, dropdownMenuSubTriggerProps<T>>,
+) => {
+  const [local, rest] = splitProps(props as dropdownMenuSubTriggerProps, ['class', 'children'])
+
+  return (
+    <DropdownMenuPrimitive.SubTrigger
+      class={cn(
+        'relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[expanded]:bg-accent data-[expanded]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+        local.class,
+      )}
+      {...rest}
+    >
+      {local.children}
+      <ChevronRight class="ml-auto h-4 w-4 text-muted-foreground" />
+    </DropdownMenuPrimitive.SubTrigger>
+  )
+}
+
+type dropdownMenuSubContentProps<T extends ValidComponent = 'div'> =
+  DropdownMenuSubContentProps<T> & {
+    class?: string
+  }
+
+export const DropdownMenuSubContent = <T extends ValidComponent = 'div'>(
+  props: PolymorphicProps<T, dropdownMenuSubContentProps<T>>,
+) => {
+  const [local, rest] = splitProps(props as dropdownMenuSubContentProps, ['class'])
+
+  return (
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.SubContent
+        class={cn(
+          'min-w-8rem z-50 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md focus-visible:outline-none data-[expanded]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[expanded]:fade-in-0 data-[closed]:zoom-out-95 data-[expanded]:zoom-in-95',
+          local.class,
+        )}
+        {...rest}
+      />
+    </DropdownMenuPrimitive.Portal>
   )
 }
 

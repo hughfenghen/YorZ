@@ -8,6 +8,13 @@ import {
   type ConfirmDecisionKey,
 } from '../lib/answer-payload.js'
 import { Button } from './ui/button.jsx'
+import {
+  RadioGroup,
+  RadioGroupItem,
+  RadioGroupItemControl,
+  RadioGroupItemInput,
+  RadioGroupItemLabel,
+} from './ui/radio-group.jsx'
 import { Textarea } from './ui/textarea.jsx'
 import { Send, X } from 'lucide-solid'
 import { t } from '../i18n/index.js'
@@ -67,7 +74,7 @@ function isConfirmComplete(d: AnswerDraft): boolean {
 function impactAccent(impact: string | undefined): string {
   if (!impact) return 'border-border'
   if (impact.includes('🔴')) return 'border-l-2 border-l-destructive'
-  if (impact.includes('🟡')) return 'border-l-2 border-l-amber-500'
+  if (impact.includes('🟡')) return 'border-l-2 border-l-warning'
   return 'border-border'
 }
 
@@ -200,7 +207,9 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
           </strong>
           <span class="shrink-0 whitespace-nowrap text-sm text-muted-foreground">
             {t('questionConfirm.unanswered')}{' '}
-            <span class="font-semibold text-accent">{unanswered()}</span> / {props.questions.length}
+            {/* 未答数是「待办」语义；不能用 text-accent——accent 已回归中性 hover 底色 */}
+            <span class="font-semibold text-warning">{unanswered()}</span> /{' '}
+            {props.questions.length}
           </span>
         </div>
         {/* Same shape as the Chat composer's Send: every button that kicks off an
@@ -231,42 +240,42 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
 
                 {/* choice / freeform：沿用有序候选 + 自由项 */}
                 <Show when={q.kind === 'choice'}>
-                  <ul class="m-0 flex list-none flex-col gap-1 p-0">
+                  <RadioGroup
+                    class="m-0 flex flex-col gap-1 p-0"
+                    value={draft().selectedOptionLabel ?? ''}
+                    onChange={(v) => setChoice(q.id, v)}
+                  >
                     <For each={q.options}>
                       {(opt) => (
-                        <li>
-                          <label class="flex cursor-pointer items-center gap-1.5 px-1 py-0.5 rounded-md hover:bg-primary/5">
-                            <input
-                              type="radio"
-                              name={`q-${q.id}`}
-                              checked={draft().selectedOptionLabel === opt.label}
-                              onChange={() => setChoice(q.id, opt.label)}
-                            />
-                            <span class="min-w-0 break-words">
-                              {opt.label}
-                              <Show when={opt.recommended}>
-                                <em class="text-accent text-sm not-italic">
-                                  {' '}
-                                  {t('questionConfirm.recommended')}
-                                </em>
-                              </Show>
-                            </span>
-                          </label>
-                        </li>
+                        <RadioGroupItem
+                          value={opt.label}
+                          class="flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-primary/5"
+                        >
+                          <RadioGroupItemInput />
+                          <RadioGroupItemControl />
+                          <RadioGroupItemLabel class="min-w-0 cursor-pointer break-words">
+                            {opt.label}
+                            <Show when={opt.recommended}>
+                              <em class="text-sm not-italic text-primary">
+                                {' '}
+                                {t('questionConfirm.recommended')}
+                              </em>
+                            </Show>
+                          </RadioGroupItemLabel>
+                        </RadioGroupItem>
                       )}
                     </For>
-                    <li>
-                      <label class="qcp-option-freeform flex cursor-pointer items-center gap-1.5 px-1 py-0.5 rounded-md hover:bg-primary/5">
-                        <input
-                          type="radio"
-                          name={`q-${q.id}`}
-                          checked={draft().selectedOptionLabel === FREEFORM_SENTINEL}
-                          onChange={() => setChoice(q.id, FREEFORM_SENTINEL)}
-                        />
-                        <span>{t('questionConfirm.freeformLabel')}</span>
-                      </label>
-                    </li>
-                  </ul>
+                    <RadioGroupItem
+                      value={FREEFORM_SENTINEL}
+                      class="flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-primary/5"
+                    >
+                      <RadioGroupItemInput />
+                      <RadioGroupItemControl />
+                      <RadioGroupItemLabel class="qcp-option-freeform cursor-pointer">
+                        {t('questionConfirm.freeformLabel')}
+                      </RadioGroupItemLabel>
+                    </RadioGroupItem>
+                  </RadioGroup>
                 </Show>
 
                 {/* confirm：只读方案/影响 + 确认/否决三级单选 */}
@@ -285,87 +294,93 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
                       </p>
                     </Show>
                   </div>
-                  <ul class="m-0 flex list-none flex-col gap-1 p-0">
-                    <li>
-                      <label class="qcp-confirm-accept flex cursor-pointer items-center gap-1.5 px-1 py-0.5 rounded-md hover:bg-primary/5">
-                        <input
-                          type="radio"
-                          name={`q-${q.id}`}
-                          checked={draft().confirmTop === 'accept'}
-                          onChange={() => setConfirmTop(q.id, 'accept')}
-                        />
-                        <span>{t('questionConfirm.decisionAccept')}</span>
-                      </label>
-                    </li>
-                    <li>
-                      <label class="qcp-confirm-reject flex cursor-pointer items-center gap-1.5 px-1 py-0.5 rounded-md hover:bg-primary/5">
-                        <input
-                          type="radio"
-                          name={`q-${q.id}`}
-                          checked={draft().confirmTop === 'reject'}
-                          onChange={() => setConfirmTop(q.id, 'reject')}
-                        />
-                        <span class="font-medium text-destructive">
-                          {t('questionConfirm.decisionReject')}
-                        </span>
-                      </label>
-                    </li>
-                    {/* 二级：否决意图 */}
-                    <Show when={draft().confirmTop === 'reject'}>
-                      <ul class="m-0 ml-5 flex list-none flex-col gap-1 border-l border-border pl-2">
-                        <For
-                          each={
-                            [
-                              ['alternative', t('questionConfirm.intentAlternative')],
-                              ['constraint', t('questionConfirm.intentConstraint')],
-                              ['dropGoal', t('questionConfirm.intentDropGoal')],
-                            ] as const
-                          }
+                  <RadioGroup
+                    class="m-0 flex flex-col gap-1 p-0"
+                    value={draft().confirmTop ?? ''}
+                    onChange={(v) => setConfirmTop(q.id, v as ConfirmTop)}
+                  >
+                    <RadioGroupItem
+                      value="accept"
+                      class="flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-primary/5"
+                    >
+                      <RadioGroupItemInput />
+                      <RadioGroupItemControl />
+                      <RadioGroupItemLabel class="qcp-confirm-accept cursor-pointer">
+                        {t('questionConfirm.decisionAccept')}
+                      </RadioGroupItemLabel>
+                    </RadioGroupItem>
+                    <RadioGroupItem
+                      value="reject"
+                      class="flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-primary/5"
+                    >
+                      <RadioGroupItemInput />
+                      <RadioGroupItemControl />
+                      <RadioGroupItemLabel class="qcp-confirm-reject cursor-pointer font-medium text-destructive">
+                        {t('questionConfirm.decisionReject')}
+                      </RadioGroupItemLabel>
+                    </RadioGroupItem>
+                  </RadioGroup>
+                  {/* 二级：否决意图 */}
+                  <Show when={draft().confirmTop === 'reject'}>
+                    <RadioGroup
+                      class="m-0 ml-5 flex flex-col gap-1 border-l border-border pl-2"
+                      value={draft().confirmIntent ?? ''}
+                      onChange={(v) => setConfirmIntent(q.id, v as RejectIntent)}
+                    >
+                      <For
+                        each={
+                          [
+                            ['alternative', t('questionConfirm.intentAlternative')],
+                            ['constraint', t('questionConfirm.intentConstraint')],
+                            ['dropGoal', t('questionConfirm.intentDropGoal')],
+                          ] as const
+                        }
+                      >
+                        {([intent, label]) => (
+                          <RadioGroupItem
+                            value={intent}
+                            class="flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-primary/5"
+                          >
+                            <RadioGroupItemInput />
+                            <RadioGroupItemControl />
+                            <RadioGroupItemLabel class="min-w-0 cursor-pointer break-words">
+                              {label}
+                            </RadioGroupItemLabel>
+                          </RadioGroupItem>
+                        )}
+                      </For>
+                      {/* 三级：弃目标范围 */}
+                      <Show when={draft().confirmIntent === 'dropGoal'}>
+                        <RadioGroup
+                          class="m-0 ml-5 flex flex-col gap-1 border-l border-border pl-2"
+                          value={draft().confirmDrop ?? ''}
+                          onChange={(v) => setConfirmDrop(q.id, v as DropTarget)}
                         >
-                          {([intent, label]) => (
-                            <li>
-                              <label class="flex cursor-pointer items-center gap-1.5 px-1 py-0.5 rounded-md hover:bg-primary/5">
-                                <input
-                                  type="radio"
-                                  name={`q-${q.id}-intent`}
-                                  checked={draft().confirmIntent === intent}
-                                  onChange={() => setConfirmIntent(q.id, intent)}
-                                />
-                                <span class="min-w-0 break-words">{label}</span>
-                              </label>
-                            </li>
-                          )}
-                        </For>
-                        {/* 三级：弃目标范围 */}
-                        <Show when={draft().confirmIntent === 'dropGoal'}>
-                          <ul class="m-0 ml-5 flex list-none flex-col gap-1 border-l border-border pl-2">
-                            <For
-                              each={
-                                [
-                                  ['current', t('questionConfirm.dropGoalCurrent')],
-                                  ['spec', t('questionConfirm.dropGoalSpec')],
-                                ] as const
-                              }
-                            >
-                              {([drop, label]) => (
-                                <li>
-                                  <label class="flex cursor-pointer items-center gap-1.5 px-1 py-0.5 rounded-md hover:bg-primary/5">
-                                    <input
-                                      type="radio"
-                                      name={`q-${q.id}-drop`}
-                                      checked={draft().confirmDrop === drop}
-                                      onChange={() => setConfirmDrop(q.id, drop)}
-                                    />
-                                    <span class="min-w-0 break-words">{label}</span>
-                                  </label>
-                                </li>
-                              )}
-                            </For>
-                          </ul>
-                        </Show>
-                      </ul>
-                    </Show>
-                  </ul>
+                          <For
+                            each={
+                              [
+                                ['current', t('questionConfirm.dropGoalCurrent')],
+                                ['spec', t('questionConfirm.dropGoalSpec')],
+                              ] as const
+                            }
+                          >
+                            {([drop, label]) => (
+                              <RadioGroupItem
+                                value={drop}
+                                class="flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-primary/5"
+                              >
+                                <RadioGroupItemInput />
+                                <RadioGroupItemControl />
+                                <RadioGroupItemLabel class="min-w-0 cursor-pointer break-words">
+                                  {label}
+                                </RadioGroupItemLabel>
+                              </RadioGroupItem>
+                            )}
+                          </For>
+                        </RadioGroup>
+                      </Show>
+                    </RadioGroup>
+                  </Show>
                 </Show>
 
                 <Show when={showChoiceNote()}>

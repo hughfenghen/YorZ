@@ -1,9 +1,29 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-kb-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
     <title>YorZ</title>
+    <!--
+      主题引导：必须同步执行且早于样式表，否则首屏会先按默认亮色绘制再跳到暗色。
+      与 src/lib/theme.ts 共用 localStorage key 'yorz.theme'，模块加载后由 initTheme() 接管。
+    -->
+    <script>
+      ;(function () {
+        try {
+          var mode = localStorage.getItem('yorz.theme') || 'system'
+          var resolved =
+            mode === 'light' || mode === 'dark'
+              ? mode
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+          document.documentElement.setAttribute('data-kb-theme', resolved)
+          document.documentElement.style.colorScheme = resolved
+        } catch (e) {}
+      })()
+    </script>
     <link rel="stylesheet" href="./src/app.css" />
   </head>
   <body>

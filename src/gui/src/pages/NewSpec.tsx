@@ -9,6 +9,13 @@ import { Button } from '../components/ui/button.jsx'
 import { MentionTextarea } from '../components/MentionTextarea.jsx'
 import { AttachmentList } from '../components/AttachmentList.jsx'
 import { Checkbox, CheckboxControl, CheckboxLabel } from '../components/ui/checkbox.jsx'
+import {
+  RadioGroup,
+  RadioGroupItem,
+  RadioGroupItemInput,
+  RadioGroupItemLabel,
+  RadioGroupLabel,
+} from '../components/ui/radio-group.jsx'
 import { Breadcrumb } from '../components/Breadcrumb.jsx'
 import { t } from '../i18n/index.js'
 
@@ -147,28 +154,34 @@ export const NewSpec: Component = () => {
       <p class=" text-muted-foreground">{t('newSpec.description')}</p>
 
       <form class="flex flex-col gap-4 rounded-xl border bg-card p-4" onSubmit={submit}>
-        <fieldset class="m-0 flex flex-wrap gap-2 border-0 p-0" disabled={busy()}>
-          <legend class="mb-1.5 font-medium">{t('newSpec.type')}</legend>
+        {/*
+          卡片式单选：选中态由卡片边框表达，不显示圆点控件。原先用 class="hidden"
+          藏 input，会把它移出 tab 序导致键盘不可达；RadioGroupItemInput 是 sr-only，
+          既不可见又可聚焦，并自带方向键导航。
+        */}
+        <RadioGroup
+          class="m-0 flex flex-wrap gap-2 border-0 p-0"
+          value={type()}
+          onChange={(v) => setType(v as CreateSpecBody['type'])}
+          disabled={busy()}
+        >
+          <RadioGroupLabel class="mb-1.5 w-full font-medium">{t('newSpec.type')}</RadioGroupLabel>
           {TYPES.map((tp) => (
-            <label
-              class={`flex min-h-[44px] flex-1 cursor-pointer flex-col items-start gap-0.5 rounded-lg border p-3 transition-colors ${
-                type() === tp.value ? 'border-primary bg-primary/10' : 'border-border bg-background'
-              }`}
-            >
-              <input
-                type="radio"
-                name="type"
-                value={tp.value}
-                checked={type() === tp.value}
-                onChange={() => setType(tp.value)}
-                disabled={busy()}
-                class="hidden"
-              />
-              <strong class=" ">{t(tp.labelKey)}</strong>
-              <span class="text-sm text-muted-foreground">{t(tp.hintKey)}</span>
-            </label>
+            <RadioGroupItem value={tp.value} class="flex min-h-[44px] flex-1">
+              <RadioGroupItemInput class="sr-only" />
+              <RadioGroupItemLabel
+                class={`flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-lg border p-3 transition-colors ${
+                  type() === tp.value
+                    ? 'border-primary bg-primary/10'
+                    : 'border-border bg-background'
+                }`}
+              >
+                <strong class=" ">{t(tp.labelKey)}</strong>
+                <span class="text-sm text-muted-foreground">{t(tp.hintKey)}</span>
+              </RadioGroupItemLabel>
+            </RadioGroupItem>
           ))}
-        </fieldset>
+        </RadioGroup>
 
         <Checkbox
           checked={useWorktree()}

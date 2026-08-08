@@ -11,10 +11,10 @@ import { t } from '../i18n/index.js'
  * never drift apart.
  */
 const STATUS_TEXT: Record<CommandRunStatus, string> = {
-  running: 'text-emerald-600 dark:text-emerald-400',
+  running: 'text-success',
   exited: 'text-muted-foreground',
-  killed: 'text-amber-600 dark:text-amber-400',
-  failed: 'text-rose-600 dark:text-rose-400',
+  killed: 'text-warning',
+  failed: 'text-destructive',
 }
 
 export interface CommandStatusTextProps {

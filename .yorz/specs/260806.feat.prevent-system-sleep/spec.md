@@ -1,7 +1,7 @@
 ---
 stage: done
-last_action: 任务全部完成，标记 done
-updated_at: '2026-08-06 15:22:00'
+last_action: 用户手动置为 done
+updated_at: '2026-08-07 21:53:23'
 summary: 新增全局防休眠配置，在 Agent 会话运行期间按用户选择阻止息屏或禁止休眠。
 ---
 

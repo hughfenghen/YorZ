@@ -13,6 +13,8 @@ module.exports = {
         primary: {
           DEFAULT: 'hsl(var(--primary))',
           foreground: 'hsl(var(--primary-foreground))',
+          // 选中态底色，与 accent（悬浮）分工，见 app.css
+          soft: 'hsl(var(--primary-soft))',
         },
         secondary: {
           DEFAULT: 'hsl(var(--secondary))',
@@ -38,10 +40,24 @@ module.exports = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
-        'stage-plan': '#6366f1',
-        'stage-tasks': '#f59e0b',
-        'stage-execute': '#10b981',
-        'stage-done': '#16a34a',
+        success: {
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--success-foreground))',
+        },
+        warning: {
+          DEFAULT: 'hsl(var(--warning))',
+          foreground: 'hsl(var(--warning-foreground))',
+        },
+        info: {
+          DEFAULT: 'hsl(var(--info))',
+          foreground: 'hsl(var(--info-foreground))',
+        },
+        // 阶段轴：改由 CSS 变量驱动，随亮/暗主题切换。
+        // 徽章走 soft 形态（tint 底 + 同色文字 + 同色描边），故无需 stage-foreground。
+        'stage-plan': 'hsl(var(--stage-plan))',
+        'stage-tasks': 'hsl(var(--stage-tasks))',
+        'stage-execute': 'hsl(var(--stage-execute))',
+        'stage-done': 'hsl(var(--stage-done))',
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -72,17 +88,10 @@ module.exports = {
         'collapsible-down': 'collapsible-down 0.2s ease-out',
         'collapsible-up': 'collapsible-up 0.2s ease-out',
       },
+      // 字体轴：由 CSS 变量驱动，便于随风格整体替换
       fontFamily: {
-        sans: [
-          '-apple-system',
-          'BlinkMacSystemFont',
-          'Segoe UI',
-          'PingFang SC',
-          'Hiragino Sans GB',
-          'Microsoft YaHei',
-          'sans-serif',
-        ],
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+        sans: 'var(--font-sans)',
+        mono: 'var(--font-mono)',
       },
     },
   },

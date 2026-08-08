@@ -24,6 +24,10 @@ export const zhCN = {
     languageSwitch: '切换语言',
     langZh: '中文',
     langEn: 'English',
+    themeSwitch: '外观',
+    themeSystem: '跟随系统',
+    themeLight: '亮色',
+    themeDark: '暗色',
     globalConfig: '全局配置',
   },
   systemNotifications: {

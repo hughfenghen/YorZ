@@ -1,0 +1,1505 @@
+<!doctype html>
+<html lang="zh-CN" data-style="graphite" data-mode="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YorZ 风格选择器 · UI 重构</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Instrument+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* ============================================================
+         0. 基础
+         ============================================================ */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background: var(--page-bg);
+        color: var(--page-fg);
+        font-family: var(--font-sans);
+        font-size: 14px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+        text-wrap: pretty;
+        transition: background-color 0.24s ease, color 0.24s ease;
+      }
+      button {
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+      }
+      input {
+        font: inherit;
+      }
+
+      /* ============================================================
+         1. 风格 Token —— 5 套风格 × 亮/暗
+         每套定义同一组变量名，切换 data-style / data-mode 即整体换肤
+         ============================================================ */
+
+      :root {
+        --radius-scale: 1;
+        --density: 1;
+        --motion: 1;
+        --texture-on: 1;
+        --dur: calc(0.15s * var(--motion) + 0.001s);
+        --ease: cubic-bezier(0.2, 0, 0, 1);
+      }
+
+      /* ---------- Graphite 石墨：无色中性 + 近黑主色，最克制 ---------- */
+      [data-style='graphite'] {
+        --font-sans: 'IBM Plex Sans', sans-serif;
+        --font-mono: 'IBM Plex Mono', monospace;
+        --radius: calc(7px * var(--radius-scale));
+        --radius-sm: calc(5px * var(--radius-scale));
+        --tracking: 0;
+        --label-transform: none;
+        --label-weight: 500;
+        --texture: none;
+        --border-width: 1px;
+      }
+      [data-style='graphite'][data-mode='light'] {
+        --page-bg: #eceded;
+        --bg: #f7f8f8;
+        --surface: #ffffff;
+        --surface-2: #f1f2f3;
+        --border: #e3e5e7;
+        --border-strong: #cdd1d4;
+        --fg: #16181b;
+        --fg-2: #5f666d;
+        --fg-3: #949aa1;
+        --hover: #f0f1f2;
+        --primary: #18181b;
+        --primary-fg: #fbfbfb;
+        --primary-soft: #e8e9ea;
+        --ring: #8b9199;
+        --success: #0f766e;
+        --warning: #a16207;
+        --danger: #b42318;
+        --info: #3f5871;
+        --stage-plan: #5b6673;
+        --stage-tasks: #a16207;
+        --stage-execute: #0f766e;
+        --stage-done: #15803d;
+        --shadow-1: 0 1px 2px rgba(16, 18, 20, 0.06);
+        --shadow-2: 0 6px 20px -6px rgba(16, 18, 20, 0.14);
+        --page-fg: #16181b;
+      }
+      [data-style='graphite'][data-mode='dark'] {
+        --page-bg: #0d0e0f;
+        --bg: #121314;
+        --surface: #191b1c;
+        --surface-2: #202223;
+        --border: #262829;
+        --border-strong: #363839;
+        --fg: #ebedee;
+        --fg-2: #9198a0;
+        --fg-3: #676d73;
+        --hover: #232526;
+        --primary: #f2f3f3;
+        --primary-fg: #131415;
+        --primary-soft: #262829;
+        --ring: #6e757c;
+        --success: #2dd4a7;
+        --warning: #e0a63c;
+        --danger: #f06a5d;
+        --info: #8aa6c4;
+        --stage-plan: #8b98a6;
+        --stage-tasks: #d2a33f;
+        --stage-execute: #2dd4a7;
+        --stage-done: #4ade80;
+        --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+        --shadow-2: 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+        --page-fg: #ebedee;
+      }
+
+      /* ---------- Paper 纸感：暖白纸底 + 墨黑字 + 朱砂点缀 ---------- */
+      [data-style='paper'] {
+        --font-sans: 'Instrument Sans', sans-serif;
+        --font-mono: 'IBM Plex Mono', monospace;
+        --radius: calc(4px * var(--radius-scale));
+        --radius-sm: calc(3px * var(--radius-scale));
+        --tracking: 0.002em;
+        --label-transform: none;
+        --label-weight: 600;
+        --texture: none;
+        --border-width: 1px;
+      }
+      [data-style='paper'][data-mode='light'] {
+        --page-bg: #efece5;
+        --bg: #faf9f6;
+        --surface: #ffffff;
+        --surface-2: #f4f2ec;
+        --border: #e5e1d8;
+        --border-strong: #cbc5b8;
+        --fg: #1b1a17;
+        --fg-2: #6b6659;
+        --fg-3: #9a9488;
+        --hover: #f2efe7;
+        --primary: #1b1a17;
+        --primary-fg: #fdfcf9;
+        --primary-soft: #ebe7dd;
+        --ring: #cf4632;
+        --success: #3f6f3a;
+        --warning: #96631a;
+        --danger: #b23a2b;
+        --info: #4a5f7a;
+        --stage-plan: #6a6558;
+        --stage-tasks: #96631a;
+        --stage-execute: #3f6f3a;
+        --stage-done: #2f6b57;
+        --shadow-1: 0 1px 2px rgba(60, 50, 30, 0.06);
+        --shadow-2: 0 8px 24px -10px rgba(60, 50, 30, 0.18);
+        --page-fg: #1b1a17;
+      }
+      [data-style='paper'][data-mode='dark'] {
+        --page-bg: #131211;
+        --bg: #191817;
+        --surface: #201f1d;
+        --surface-2: #272523;
+        --border: #302e2b;
+        --border-strong: #423f3a;
+        --fg: #eeeae1;
+        --fg-2: #a09a8e;
+        --fg-3: #746f65;
+        --hover: #2a2825;
+        --primary: #eeeae1;
+        --primary-fg: #1a1918;
+        --primary-soft: #2c2a27;
+        --ring: #e0664e;
+        --success: #7cb073;
+        --warning: #d3a04a;
+        --danger: #e2705c;
+        --info: #8fa6c0;
+        --stage-plan: #a49c8c;
+        --stage-tasks: #d3a04a;
+        --stage-execute: #7cb073;
+        --stage-done: #5fbf9d;
+        --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+        --shadow-2: 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+        --page-fg: #eeeae1;
+      }
+
+      /* ---------- Signal 信号：瑞士国际主义，黑白 + 电光蓝 ---------- */
+      [data-style='signal'] {
+        --font-sans: 'Space Grotesk', sans-serif;
+        --font-mono: 'JetBrains Mono', monospace;
+        --radius: calc(2px * var(--radius-scale));
+        --radius-sm: calc(1px * var(--radius-scale));
+        --tracking: -0.01em;
+        --label-transform: uppercase;
+        --label-weight: 700;
+        --texture: none;
+        --border-width: 1px;
+      }
+      [data-style='signal'][data-mode='light'] {
+        --page-bg: #e6e6e6;
+        --bg: #ffffff;
+        --surface: #ffffff;
+        --surface-2: #f2f2f2;
+        --border: #111111;
+        --border-strong: #111111;
+        --fg: #050505;
+        --fg-2: #5a5a5a;
+        --fg-3: #8c8c8c;
+        --hover: #ececec;
+        --primary: #0b32e8;
+        --primary-fg: #ffffff;
+        --primary-soft: #dfe4ff;
+        --ring: #0b32e8;
+        --success: #0a7a3d;
+        --warning: #8a6a00;
+        --danger: #cc1414;
+        --info: #0b32e8;
+        --stage-plan: #0b32e8;
+        --stage-tasks: #8a6a00;
+        --stage-execute: #0a7a3d;
+        --stage-done: #050505;
+        --shadow-1: none;
+        --shadow-2: 4px 4px 0 rgba(5, 5, 5, 0.9);
+        --page-fg: #050505;
+      }
+      [data-style='signal'][data-mode='dark'] {
+        --page-bg: #050505;
+        --bg: #0a0a0a;
+        --surface: #0f0f0f;
+        --surface-2: #171717;
+        --border: #f5f5f5;
+        --border-strong: #f5f5f5;
+        --fg: #fafafa;
+        --fg-2: #a6a6a6;
+        --fg-3: #737373;
+        --hover: #1c1c1c;
+        --primary: #d8ff33;
+        --primary-fg: #0a0a0a;
+        --primary-soft: #2c3300;
+        --ring: #d8ff33;
+        --success: #4ade80;
+        --warning: #facc15;
+        --danger: #ff5c47;
+        --info: #7aa2ff;
+        --stage-plan: #7aa2ff;
+        --stage-tasks: #facc15;
+        --stage-execute: #4ade80;
+        --stage-done: #d8ff33;
+        --shadow-1: none;
+        --shadow-2: 4px 4px 0 rgba(245, 245, 245, 0.85);
+        --page-fg: #fafafa;
+      }
+
+      /* ---------- Blueprint 蓝图：深靛底 + 精密网格 + 青色荧光 ---------- */
+      [data-style='blueprint'] {
+        --font-sans: 'IBM Plex Sans', sans-serif;
+        --font-mono: 'IBM Plex Mono', monospace;
+        --radius: calc(6px * var(--radius-scale));
+        --radius-sm: calc(4px * var(--radius-scale));
+        --tracking: 0.005em;
+        --label-transform: uppercase;
+        --label-weight: 600;
+        --border-width: 1px;
+      }
+      [data-style='blueprint'][data-mode='light'] {
+        --page-bg: #dde5f0;
+        --bg: #f3f7fc;
+        --surface: #ffffff;
+        --surface-2: #eaf1f9;
+        --border: #cfdcec;
+        --border-strong: #a9c0d8;
+        --fg: #0e1b2a;
+        --fg-2: #4f6379;
+        --fg-3: #8399b0;
+        --hover: #e6eef8;
+        --primary: #0c7d8f;
+        --primary-fg: #ffffff;
+        --primary-soft: #d6eef3;
+        --ring: #0c7d8f;
+        --success: #0f766e;
+        --warning: #9a6700;
+        --danger: #b42318;
+        --info: #1e5fa8;
+        --stage-plan: #1e5fa8;
+        --stage-tasks: #9a6700;
+        --stage-execute: #0c7d8f;
+        --stage-done: #12734f;
+        --shadow-1: 0 1px 2px rgba(14, 40, 70, 0.07);
+        --shadow-2: 0 8px 24px -10px rgba(14, 40, 70, 0.2);
+        --texture: linear-gradient(rgba(30, 95, 168, 0.07) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(30, 95, 168, 0.07) 1px, transparent 1px);
+        --page-fg: #0e1b2a;
+      }
+      [data-style='blueprint'][data-mode='dark'] {
+        --page-bg: #060a12;
+        --bg: #0a0f1a;
+        --surface: #0e1522;
+        --surface-2: #131c2c;
+        --border: #1d2a3d;
+        --border-strong: #2c3e57;
+        --fg: #d9e4f2;
+        --fg-2: #7e91aa;
+        --fg-3: #56677e;
+        --hover: #16202f;
+        --primary: #22d3ee;
+        --primary-fg: #04121a;
+        --primary-soft: #0c2c38;
+        --ring: #22d3ee;
+        --success: #34d399;
+        --warning: #e0b04a;
+        --danger: #f4715f;
+        --info: #60a5fa;
+        --stage-plan: #60a5fa;
+        --stage-tasks: #e0b04a;
+        --stage-execute: #22d3ee;
+        --stage-done: #34d399;
+        --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+        --shadow-2: 0 10px 30px -12px rgba(0, 0, 0, 0.8);
+        --texture: linear-gradient(rgba(90, 160, 220, 0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(90, 160, 220, 0.06) 1px, transparent 1px);
+        --page-fg: #d9e4f2;
+      }
+
+      /* ---------- Terminal 终端：全等宽 + 磷光绿，极客工具 ---------- */
+      [data-style='terminal'] {
+        --font-sans: 'JetBrains Mono', monospace;
+        --font-mono: 'JetBrains Mono', monospace;
+        --radius: calc(2px * var(--radius-scale));
+        --radius-sm: calc(2px * var(--radius-scale));
+        --tracking: -0.015em;
+        --label-transform: uppercase;
+        --label-weight: 700;
+        --border-width: 1px;
+      }
+      [data-style='terminal'][data-mode='light'] {
+        --page-bg: #e7e7e0;
+        --bg: #f5f5ef;
+        --surface: #fbfbf6;
+        --surface-2: #eeeee6;
+        --border: #dcdccf;
+        --border-strong: #bcbcab;
+        --fg: #14201a;
+        --fg-2: #5b6a60;
+        --fg-3: #8b978d;
+        --hover: #ecece3;
+        --primary: #14663a;
+        --primary-fg: #f7fbf7;
+        --primary-soft: #d8ead9;
+        --ring: #14663a;
+        --success: #14663a;
+        --warning: #8a6410;
+        --danger: #a8271b;
+        --info: #2a5c7a;
+        --stage-plan: #2a5c7a;
+        --stage-tasks: #8a6410;
+        --stage-execute: #14663a;
+        --stage-done: #0f5c4a;
+        --shadow-1: none;
+        --shadow-2: 0 6px 18px -8px rgba(20, 32, 26, 0.25);
+        --texture: repeating-linear-gradient(
+          0deg,
+          rgba(20, 40, 30, 0.028) 0 1px,
+          transparent 1px 3px
+        );
+        --page-fg: #14201a;
+      }
+      [data-style='terminal'][data-mode='dark'] {
+        --page-bg: #070907;
+        --bg: #0b0f0c;
+        --surface: #0f1410;
+        --surface-2: #141a15;
+        --border: #1e281f;
+        --border-strong: #2d3a2e;
+        --fg: #cfe3cb;
+        --fg-2: #7e9179;
+        --fg-3: #576455;
+        --hover: #16201a;
+        --primary: #4ade80;
+        --primary-fg: #06170c;
+        --primary-soft: #0f2c19;
+        --ring: #4ade80;
+        --success: #4ade80;
+        --warning: #e3b341;
+        --danger: #f0736a;
+        --info: #79b8ff;
+        --stage-plan: #79b8ff;
+        --stage-tasks: #e3b341;
+        --stage-execute: #4ade80;
+        --stage-done: #3fd7b0;
+        --shadow-1: none;
+        --shadow-2: 0 8px 26px -10px rgba(0, 0, 0, 0.85);
+        --texture: repeating-linear-gradient(
+          0deg,
+          rgba(120, 220, 150, 0.022) 0 1px,
+          transparent 1px 3px
+        );
+        --page-fg: #cfe3cb;
+      }
+
+      /* ============================================================
+         2. 选择器外壳（不属于产品 UI，刻意保持中立）
+         ============================================================ */
+      .picker {
+        position: sticky;
+        top: 0;
+        z-index: 40;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        padding: 14px clamp(16px, 4vw, 40px);
+        background: color-mix(in srgb, var(--page-bg) 88%, transparent);
+        backdrop-filter: blur(14px);
+        border-bottom: 1px solid color-mix(in srgb, var(--page-fg) 12%, transparent);
+      }
+      .picker__brand {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        opacity: 0.5;
+        margin-right: 6px;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 13px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--page-fg) 16%, transparent);
+        background: transparent;
+        font-size: 13px;
+        font-weight: 500;
+        transition: all var(--dur) var(--ease);
+      }
+      .chip:hover {
+        border-color: color-mix(in srgb, var(--page-fg) 38%, transparent);
+      }
+      .chip[aria-pressed='true'] {
+        background: color-mix(in srgb, var(--page-fg) 92%, transparent);
+        color: var(--page-bg);
+        border-color: transparent;
+      }
+      .chip__swatch {
+        width: 9px;
+        height: 9px;
+        border-radius: 2px;
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--page-fg) 22%, transparent);
+      }
+      .picker__spacer {
+        margin-left: auto;
+      }
+      .seg {
+        display: inline-flex;
+        border: 1px solid color-mix(in srgb, var(--page-fg) 16%, transparent);
+        border-radius: 999px;
+        padding: 3px;
+        gap: 2px;
+      }
+      .seg button {
+        border: 0;
+        background: transparent;
+        padding: 5px 12px;
+        border-radius: 999px;
+        font-size: 12.5px;
+        opacity: 0.62;
+        transition: all var(--dur) var(--ease);
+      }
+      .seg button[aria-pressed='true'] {
+        background: color-mix(in srgb, var(--page-fg) 92%, transparent);
+        color: var(--page-bg);
+        opacity: 1;
+      }
+
+      .stage {
+        padding: clamp(16px, 3vw, 34px) clamp(16px, 4vw, 40px) 120px;
+      }
+      .stage__head {
+        max-width: 1320px;
+        margin: 0 auto 18px;
+      }
+      .stage__title {
+        margin: 0 0 4px;
+        font-size: clamp(22px, 3vw, 30px);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .stage__desc {
+        margin: 0;
+        max-width: 72ch;
+        opacity: 0.62;
+        font-size: 14px;
+      }
+
+      /* ============================================================
+         3. 产品 UI 模型（真实 YorZ 布局：顶栏 + 项目侧栏 + spec 列表）
+         ============================================================ */
+      .frame {
+        max-width: 1320px;
+        margin: 0 auto;
+        border-radius: calc(var(--radius) + 5px);
+        overflow: hidden;
+        border: var(--border-width) solid var(--border);
+        box-shadow: var(--shadow-2);
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--font-sans);
+        letter-spacing: var(--tracking);
+        transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+      }
+      .frame__chrome {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 9px 14px;
+        background: var(--surface-2);
+        border-bottom: var(--border-width) solid var(--border);
+      }
+      .frame__dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--border-strong);
+      }
+      .frame__url {
+        margin-left: 10px;
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        color: var(--fg-3);
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 218px 1fr;
+        min-height: 560px;
+      }
+      @media (max-width: 860px) {
+        .app {
+          grid-template-columns: 1fr;
+        }
+        .side {
+          display: none;
+        }
+      }
+
+      /* -- 顶栏 -- */
+      .topbar {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: calc(48px * var(--density));
+        padding: 0 16px;
+        background: var(--surface);
+        border-bottom: var(--border-width) solid var(--border);
+      }
+      .logo {
+        font-weight: 700;
+        font-size: 16px;
+        letter-spacing: -0.02em;
+      }
+      [data-style='terminal'] .logo::after,
+      [data-style='blueprint'] .logo::after {
+        content: '_';
+        color: var(--primary);
+        animation: blink 1.1s steps(1) infinite;
+      }
+      @keyframes blink {
+        50% {
+          opacity: 0;
+        }
+      }
+      .topbar__right {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      /* -- 侧栏 -- */
+      .side {
+        background: var(--bg);
+        border-right: var(--border-width) solid var(--border);
+        padding: calc(12px * var(--density)) 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .side__label {
+        font-size: 10.5px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        font-weight: var(--label-weight);
+        color: var(--fg-3);
+        padding: 6px 8px 8px;
+      }
+      .side__item {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: calc(7px * var(--density)) 9px;
+        border-radius: var(--radius-sm);
+        color: var(--fg-2);
+        font-size: 13.5px;
+        border: 1px solid transparent;
+        transition: all var(--dur) var(--ease);
+      }
+      .side__item:hover {
+        background: var(--hover);
+        color: var(--fg);
+      }
+      .side__item--active {
+        background: var(--primary-soft);
+        color: var(--fg);
+        font-weight: 600;
+      }
+      [data-style='signal'] .side__item--active {
+        border-color: var(--border);
+      }
+      .side__mark {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--fg-3);
+        flex: none;
+      }
+      .side__item--active .side__mark {
+        background: var(--primary);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
+      }
+      .side__meta {
+        margin-left: auto;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--fg-3);
+      }
+
+      /* -- 主区 -- */
+      .main {
+        padding: calc(20px * var(--density)) clamp(16px, 2.4vw, 26px);
+        background: var(--bg);
+        background-image: var(--tex, none);
+        background-size: 26px 26px;
+        min-width: 0;
+      }
+      .crumb {
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        color: var(--fg-3);
+        margin-bottom: 10px;
+      }
+      .crumb b {
+        color: var(--fg-2);
+        font-weight: 500;
+      }
+      .main__head {
+        display: flex;
+        align-items: flex-end;
+        gap: 12px;
+        margin-bottom: 18px;
+        flex-wrap: wrap;
+      }
+      .main__title {
+        margin: 0;
+        font-size: clamp(19px, 2.2vw, 24px);
+        font-weight: 700;
+        letter-spacing: -0.022em;
+      }
+      .main__count {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--fg-3);
+        padding-bottom: 3px;
+      }
+      .main__actions {
+        margin-left: auto;
+        display: flex;
+        gap: 8px;
+      }
+
+      /* -- spec 卡片网格 -- */
+      .grid {
+        display: grid;
+        gap: calc(12px * var(--density));
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 268px), 1fr));
+      }
+      .card {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        padding: calc(15px * var(--density));
+        background: var(--surface);
+        border: var(--border-width) solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow-1);
+        transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+          border-color var(--dur) var(--ease);
+        overflow: hidden;
+      }
+      .card:hover {
+        border-color: var(--border-strong);
+        transform: translateY(calc(-2px * var(--motion)));
+        box-shadow: var(--shadow-2);
+      }
+      [data-style='signal'] .card:hover {
+        transform: translate(calc(-3px * var(--motion)), calc(-3px * var(--motion)));
+      }
+      .card__top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 11px;
+      }
+      .card__time {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--fg-3);
+      }
+      .card__title {
+        margin: 0 0 6px;
+        font-size: 14.5px;
+        font-weight: 600;
+        letter-spacing: -0.012em;
+      }
+      .card__sum {
+        margin: 0 0 16px;
+        font-size: 12.8px;
+        line-height: 1.6;
+        color: var(--fg-2);
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .card__id {
+        margin-top: auto;
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        color: var(--fg-3);
+        word-break: break-all;
+      }
+      .card__id .t-feat {
+        color: var(--stage-execute);
+        font-weight: 600;
+      }
+      .card__id .t-refct {
+        color: var(--stage-plan);
+        font-weight: 600;
+      }
+      .card__id .t-fix {
+        color: var(--danger);
+        font-weight: 600;
+      }
+      /* 进度条：卡片底部一条极细的 stage 进度，纯装饰性信息层 */
+      .card__rail {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 2px;
+        background: var(--border);
+      }
+      .card__rail i {
+        display: block;
+        height: 100%;
+        background: var(--stage);
+        transition: width 0.5s var(--ease);
+      }
+
+      /* -- stage 徽章：三种形态由 Tweaks 切换 -- */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10.5px;
+        font-weight: var(--label-weight);
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        padding: 3px 9px;
+        border-radius: 999px;
+        white-space: nowrap;
+      }
+      [data-badge='solid'] .badge {
+        background: var(--stage);
+        color: var(--bg);
+      }
+      [data-badge='soft'] .badge {
+        background: color-mix(in srgb, var(--stage) 15%, transparent);
+        color: var(--stage);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--stage) 30%, transparent);
+      }
+      [data-badge='dot'] .badge {
+        background: transparent;
+        color: var(--fg-2);
+        padding-left: 0;
+      }
+      [data-badge='dot'] .badge::before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--stage);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--stage) 20%, transparent);
+      }
+
+      /* -- 按钮 -- */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: calc(32px * var(--density));
+        padding: 0 13px;
+        border-radius: var(--radius-sm);
+        border: 1px solid transparent;
+        font-size: 13px;
+        font-weight: 500;
+        white-space: nowrap;
+        transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease),
+          border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+          transform var(--dur) var(--ease);
+      }
+      .btn:active {
+        transform: translateY(calc(1px * var(--motion)));
+      }
+      .btn:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ring);
+      }
+      .btn--primary {
+        background: var(--primary);
+        color: var(--primary-fg);
+      }
+      .btn--primary:hover {
+        background: color-mix(in srgb, var(--primary) 88%, var(--fg));
+      }
+      .btn--outline {
+        border-color: var(--border-strong);
+        background: var(--surface);
+        color: var(--fg);
+      }
+      .btn--outline:hover {
+        background: var(--hover);
+      }
+      .btn--ghost {
+        background: transparent;
+        color: var(--fg-2);
+      }
+      .btn--ghost:hover {
+        background: var(--hover);
+        color: var(--fg);
+      }
+      .btn--danger {
+        background: transparent;
+        color: var(--danger);
+        border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+      }
+      .btn--danger:hover {
+        background: color-mix(in srgb, var(--danger) 12%, transparent);
+      }
+      .btn[disabled] {
+        opacity: 0.42;
+        pointer-events: none;
+      }
+      .btn--icon {
+        width: calc(32px * var(--density));
+        padding: 0;
+      }
+      [data-style='signal'] .btn--primary:hover {
+        box-shadow: 3px 3px 0 var(--fg);
+      }
+      [data-style='blueprint'] .btn--primary:hover,
+      [data-style='terminal'] .btn--primary:hover {
+        box-shadow: 0 0 0 1px var(--primary),
+          0 0 18px -4px color-mix(in srgb, var(--primary) 60%, transparent);
+      }
+
+      /* -- 面板：右侧 agent 流 / 组件走查 -- */
+      .panels {
+        display: grid;
+        grid-template-columns: 1.15fr 1fr;
+        gap: calc(12px * var(--density));
+        margin-top: calc(14px * var(--density));
+      }
+      @media (max-width: 1020px) {
+        .panels {
+          grid-template-columns: 1fr;
+        }
+      }
+      .panel {
+        border: var(--border-width) solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        overflow: hidden;
+      }
+      .panel__head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 13px;
+        border-bottom: var(--border-width) solid var(--border);
+        background: var(--surface-2);
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        font-weight: var(--label-weight);
+        color: var(--fg-2);
+      }
+      .panel__body {
+        padding: 13px;
+      }
+      .pulse {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--stage-execute);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--stage-execute) 60%, transparent);
+        animation: pulse calc(2s / var(--motion, 1)) infinite;
+      }
+      @keyframes pulse {
+        70% {
+          box-shadow: 0 0 0 6px transparent;
+        }
+        100% {
+          box-shadow: 0 0 0 0 transparent;
+        }
+      }
+      .log {
+        font-family: var(--font-mono);
+        font-size: 11.8px;
+        line-height: 1.85;
+        color: var(--fg-2);
+        margin: 0;
+        white-space: pre-wrap;
+      }
+      .log .k {
+        color: var(--primary);
+      }
+      .log .g {
+        color: var(--stage-execute);
+      }
+      .log .w {
+        color: var(--stage-tasks);
+      }
+      .log .d {
+        color: var(--fg-3);
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .row + .row {
+        margin-top: 11px;
+      }
+      .field {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: calc(32px * var(--density));
+        padding: 0 11px;
+        flex: 1;
+        min-width: 150px;
+        background: var(--bg);
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-sm);
+        color: var(--fg-3);
+        font-size: 13px;
+        transition: box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease);
+      }
+      .field:focus-within {
+        border-color: var(--ring);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 22%, transparent);
+      }
+      .field input {
+        border: 0;
+        background: transparent;
+        outline: none;
+        color: var(--fg);
+        width: 100%;
+        font-size: 13px;
+      }
+      .toast {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 9px 12px;
+        border-radius: var(--radius-sm);
+        border: 1px solid color-mix(in srgb, var(--c) 34%, transparent);
+        background: color-mix(in srgb, var(--c) 11%, var(--surface));
+        color: var(--c);
+        font-size: 12.5px;
+        font-weight: 500;
+      }
+      .toast + .toast {
+        margin-top: 7px;
+      }
+      .toast b {
+        color: var(--fg);
+        font-weight: 600;
+      }
+
+      /* -- 色板速览 -- */
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+        gap: 7px;
+      }
+      .sw {
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+        overflow: hidden;
+        background: var(--surface);
+      }
+      .sw i {
+        display: block;
+        height: 34px;
+        background: var(--c);
+      }
+      .sw span {
+        display: block;
+        padding: 5px 7px;
+        font-family: var(--font-mono);
+        font-size: 9.5px;
+        color: var(--fg-3);
+        letter-spacing: 0;
+      }
+
+      /* ============================================================
+         4. Tweaks 面板
+         ============================================================ */
+      .tweaks {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        z-index: 60;
+        font-family: var(--font-sans);
+      }
+      .tweaks__toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 16px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--page-fg) 18%, transparent);
+        background: color-mix(in srgb, var(--page-bg) 86%, transparent);
+        backdrop-filter: blur(12px);
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        box-shadow: 0 8px 26px -12px rgba(0, 0, 0, 0.5);
+      }
+      .tweaks__body {
+        display: none;
+        width: 296px;
+        margin-bottom: 10px;
+        padding: 16px;
+        border-radius: 16px;
+        border: 1px solid color-mix(in srgb, var(--page-fg) 14%, transparent);
+        background: color-mix(in srgb, var(--page-bg) 94%, transparent);
+        backdrop-filter: blur(18px);
+        box-shadow: 0 20px 50px -18px rgba(0, 0, 0, 0.55);
+      }
+      .tweaks[data-open='1'] .tweaks__body {
+        display: block;
+      }
+      .tw {
+        margin-bottom: 14px;
+      }
+      .tw:last-child {
+        margin-bottom: 0;
+      }
+      .tw__label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0.55;
+        margin-bottom: 7px;
+      }
+      .tw__opts {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+      }
+      .tw__opts button {
+        flex: 1;
+        min-width: 56px;
+        padding: 6px 8px;
+        font-size: 12px;
+        border-radius: 8px;
+        border: 1px solid color-mix(in srgb, var(--page-fg) 14%, transparent);
+        background: transparent;
+        opacity: 0.66;
+        transition: all var(--dur) var(--ease);
+      }
+      .tw__opts button[aria-pressed='true'] {
+        background: color-mix(in srgb, var(--page-fg) 90%, transparent);
+        color: var(--page-bg);
+        opacity: 1;
+        border-color: transparent;
+      }
+      .tw input[type='range'] {
+        width: 100%;
+        accent-color: currentColor;
+      }
+      .tweaks__note {
+        margin: 12px 0 0;
+        font-size: 11px;
+        line-height: 1.5;
+        opacity: 0.45;
+      }
+
+      .footnote {
+        max-width: 1320px;
+        margin: 26px auto 0;
+        font-size: 12.5px;
+        line-height: 1.7;
+        opacity: 0.55;
+      }
+      .footnote code {
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ================= 风格选择栏 ================= -->
+    <div class="picker">
+      <span class="picker__brand">YorZ / style</span>
+      <button class="chip" data-pick="graphite" aria-pressed="false">
+        <i class="chip__swatch" style="background: #18181b"></i>石墨 Graphite
+      </button>
+      <button class="chip" data-pick="paper" aria-pressed="false">
+        <i class="chip__swatch" style="background: #cf4632"></i>纸感 Paper
+      </button>
+      <button class="chip" data-pick="signal" aria-pressed="false">
+        <i class="chip__swatch" style="background: #0b32e8"></i>信号 Signal
+      </button>
+      <button class="chip" data-pick="blueprint" aria-pressed="false">
+        <i class="chip__swatch" style="background: #22d3ee"></i>蓝图 Blueprint
+      </button>
+      <button class="chip" data-pick="terminal" aria-pressed="false">
+        <i class="chip__swatch" style="background: #4ade80"></i>终端 Terminal
+      </button>
+      <span class="picker__spacer"></span>
+      <div class="seg" id="modeSeg">
+        <button data-mode="light" aria-pressed="false">亮色</button>
+        <button data-mode="dark" aria-pressed="false">暗色</button>
+      </div>
+    </div>
+
+    <main class="stage">
+      <header class="stage__head">
+        <h1 class="stage__title" id="styleName">石墨 Graphite</h1>
+        <p class="stage__desc" id="styleDesc"></p>
+      </header>
+
+      <!-- ================= 产品 UI 模型 ================= -->
+      <div class="frame" id="frame" data-badge="soft">
+        <div class="frame__chrome">
+          <i class="frame__dot"></i><i class="frame__dot"></i><i class="frame__dot"></i>
+          <span class="frame__url">localhost:7424 / yorz / specs</span>
+        </div>
+
+        <div class="app">
+          <!-- 顶栏 -->
+          <div class="topbar">
+            <span class="logo">YorZ</span>
+            <div class="topbar__right">
+              <button class="btn btn--primary">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                新建 spec
+              </button>
+              <button class="btn btn--ghost btn--icon" title="设置">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- 项目侧栏 -->
+          <aside class="side">
+            <div class="side__label">项目</div>
+            <div class="side__item side__item--active">
+              <i class="side__mark"></i>YorZ<span class="side__meta">98</span>
+            </div>
+            <div class="side__item"><i class="side__mark"></i>web-console<span class="side__meta">24</span></div>
+            <div class="side__item"><i class="side__mark"></i>edge-gateway<span class="side__meta">7</span></div>
+            <div class="side__label" style="margin-top: 10px">worktree</div>
+            <div class="side__item"><i class="side__mark"></i>feat/theme<span class="side__meta">3</span></div>
+            <div class="side__item"><i class="side__mark"></i>fix/sse-leak<span class="side__meta">1</span></div>
+          </aside>
+
+          <!-- 主区 -->
+          <section class="main" id="main">
+            <div class="crumb">YorZ <b>/</b> specs</div>
+            <div class="main__head">
+              <h2 class="main__title">Spec 列表</h2>
+              <span class="main__count">98 / 4 running</span>
+              <div class="main__actions">
+                <button class="btn btn--outline">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v12M18 9v12M6 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM18 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
+                  合并到主干
+                </button>
+                <button class="btn btn--ghost btn--icon">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="grid">
+              <article class="card" style="--stage: var(--stage-plan)">
+                <div class="card__top">
+                  <span class="badge">plan</span><time class="card__time">3 分钟前</time>
+                </div>
+                <h3 class="card__title">UI 主题统一与暗色模式重构</h3>
+                <p class="card__sum">收敛为单一语义化 token 色板，修正被误用为琥珀黄的 accent，并新增可切换的暗色模式。</p>
+                <code class="card__id">260807.<span class="t-refct">refct</span>.ui-theme-unify-dark-mode</code>
+                <span class="card__rail"><i style="width: 25%"></i></span>
+              </article>
+
+              <article class="card" style="--stage: var(--stage-execute)">
+                <div class="card__top">
+                  <span class="badge">execute</span><time class="card__time">刚刚</time>
+                </div>
+                <h3 class="card__title">快捷键模块</h3>
+                <p class="card__sum">为新建 spec、详情页全屏与项目设置提供默认快捷键，并支持在全局配置中重新录制。</p>
+                <code class="card__id">260805.<span class="t-feat">feat</span>.keyboard-shortcuts</code>
+                <span class="card__rail"><i style="width: 72%"></i></span>
+              </article>
+
+              <article class="card" style="--stage: var(--stage-tasks)">
+                <div class="card__top">
+                  <span class="badge">tasks</span><time class="card__time">1 小时前</time>
+                </div>
+                <h3 class="card__title">worktree 会话污染修复</h3>
+                <p class="card__sum">隔离 worktree 与主仓的 agent 会话上下文，避免跨分支串写执行记录。</p>
+                <code class="card__id">260804.<span class="t-fix">fix</span>.worktree-session-pollution</code>
+                <span class="card__rail"><i style="width: 48%"></i></span>
+              </article>
+
+              <article class="card" style="--stage: var(--stage-done)">
+                <div class="card__top">
+                  <span class="badge">done</span><time class="card__time">昨天</time>
+                </div>
+                <h3 class="card__title">全局技能共享安装</h3>
+                <p class="card__sum">技能安装从项目级改为全局共享，多项目复用同一份 skill 目录。</p>
+                <code class="card__id">260805.<span class="t-refct">refct</span>.global-skills-shared-install</code>
+                <span class="card__rail"><i style="width: 100%"></i></span>
+              </article>
+            </div>
+
+            <div class="panels">
+              <!-- Agent 流 -->
+              <div class="panel">
+                <div class="panel__head"><i class="pulse"></i>Agent · execute</div>
+                <div class="panel__body">
+                  <pre class="log"><span class="d">›</span> <span class="k">Read</span>  src/gui/src/app.css <span class="d">(559 行)</span>
+<span class="d">›</span> <span class="k">Edit</span>  app.css <span class="g">+42</span> <span class="d">/</span> <span class="w">-18</span>
+<span class="d">›</span> <span class="k">Bash</span>  pnpm typecheck
+      <span class="g">✓ 0 errors</span>
+<span class="d">›</span> 任务 3/7 完成 <span class="d">— 正在写回 spec.md</span></pre>
+                </div>
+              </div>
+
+              <!-- 组件状态走查 -->
+              <div class="panel">
+                <div class="panel__head">组件状态走查</div>
+                <div class="panel__body">
+                  <div class="row">
+                    <button class="btn btn--primary">主行动</button>
+                    <button class="btn btn--outline">次级</button>
+                    <button class="btn btn--ghost">幽灵</button>
+                    <button class="btn btn--danger">删除</button>
+                    <button class="btn btn--outline" disabled>禁用</button>
+                  </div>
+                  <div class="row">
+                    <label class="field">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                      <input placeholder="搜索 spec…" />
+                    </label>
+                  </div>
+                  <div class="row" style="display: block">
+                    <div class="toast" style="--c: var(--stage-execute)"><b>已保存</b> · spec.md 写回成功</div>
+                    <div class="toast" style="--c: var(--stage-tasks)"><b>待确认</b> · 1 项等待人工批注</div>
+                    <div class="toast" style="--c: var(--danger)"><b>失败</b> · 合并存在冲突</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 色板 -->
+            <div class="panel" style="margin-top: calc(12px * var(--density))">
+              <div class="panel__head">Token 色板</div>
+              <div class="panel__body">
+                <div class="swatches">
+                  <div class="sw"><i style="--c: var(--bg)"></i><span>--bg</span></div>
+                  <div class="sw"><i style="--c: var(--surface)"></i><span>--surface</span></div>
+                  <div class="sw"><i style="--c: var(--border)"></i><span>--border</span></div>
+                  <div class="sw"><i style="--c: var(--fg)"></i><span>--fg</span></div>
+                  <div class="sw"><i style="--c: var(--fg-2)"></i><span>--fg-muted</span></div>
+                  <div class="sw"><i style="--c: var(--primary)"></i><span>--primary</span></div>
+                  <div class="sw"><i style="--c: var(--stage-plan)"></i><span>plan</span></div>
+                  <div class="sw"><i style="--c: var(--stage-tasks)"></i><span>tasks</span></div>
+                  <div class="sw"><i style="--c: var(--stage-execute)"></i><span>execute</span></div>
+                  <div class="sw"><i style="--c: var(--stage-done)"></i><span>done</span></div>
+                  <div class="sw"><i style="--c: var(--danger)"></i><span>--danger</span></div>
+                  <div class="sw"><i style="--c: var(--warning)"></i><span>--warning</span></div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <p class="footnote">
+        选定后请在 spec 的「待确认项」用 <code>！！！选择：…</code> 回复风格名（可附加 Tweaks
+        里的偏好，例如「石墨 + 圆角偏方 + 紧凑密度 + 徽章用 dot」）。<br />
+        注：选择器为演示加载了 Google Fonts；正式实现中若沿用非系统字体，需自托管字体文件（离线可用），此项会在 tasks 阶段单列。
+      </p>
+    </main>
+
+    <!-- ================= Tweaks ================= -->
+    <div class="tweaks" data-open="0" id="tweaks">
+      <div class="tweaks__body">
+        <div class="tw">
+          <div class="tw__label"><span>圆角</span><span id="radiusVal">标准</span></div>
+          <input type="range" id="radiusRange" min="0" max="200" step="10" value="100" />
+        </div>
+        <div class="tw">
+          <div class="tw__label"><span>信息密度</span></div>
+          <div class="tw__opts" data-group="density">
+            <button data-val="0.86">紧凑</button>
+            <button data-val="1" aria-pressed="true">标准</button>
+            <button data-val="1.18">宽松</button>
+          </div>
+        </div>
+        <div class="tw">
+          <div class="tw__label"><span>Stage 徽章</span></div>
+          <div class="tw__opts" data-group="badge">
+            <button data-val="solid">实心</button>
+            <button data-val="soft" aria-pressed="true">柔和</button>
+            <button data-val="dot">圆点</button>
+          </div>
+        </div>
+        <div class="tw">
+          <div class="tw__label"><span>背景纹理</span></div>
+          <div class="tw__opts" data-group="texture">
+            <button data-val="1" aria-pressed="true">开</button>
+            <button data-val="0">关</button>
+          </div>
+        </div>
+        <div class="tw">
+          <div class="tw__label"><span>动效</span></div>
+          <div class="tw__opts" data-group="motion">
+            <button data-val="1" aria-pressed="true">开</button>
+            <button data-val="0">关</button>
+          </div>
+        </div>
+        <p class="tweaks__note">
+          风格 = 色板 + 字体 + 圆角 + 描边 + 动效的组合。以上开关可与任一风格自由混搭，选中后一并告诉我即可。
+        </p>
+      </div>
+      <button class="tweaks__toggle" id="tweaksToggle">Tweaks</button>
+    </div>
+
+    <script>
+      ;(function () {
+        var root = document.documentElement
+        var frame = document.getElementById('frame')
+        var main = document.getElementById('main')
+        var LS = 'yorz.styleSelector'
+
+        var META = {
+          graphite: {
+            name: '石墨 Graphite',
+            desc: '最克制的一档：几乎无色的中性灰阶，主行动按钮用近黑 / 近白，彩色只留给状态语义（stage、成功、失败）。发丝级描边、极浅阴影、7px 圆角。视觉噪音最低，信息密度最高，与现有布局的连续性最好——风险最小的选择。',
+          },
+          paper: {
+            name: '纸感 Paper',
+            desc: '暖白纸底 + 墨黑正文，朱砂色只出现在焦点环与选中态。小圆角、几乎无阴影、依赖细线分隔。像一份被精心排版的技术文档，适合 spec 这种以长文阅读为核心的产品；暗色是暖调墨黑而非冷灰。',
+          },
+          signal: {
+            name: '信号 Signal',
+            desc: '瑞士国际主义：纯黑白高对比、1px 实线描边、近乎直角、无渐变无阴影，位移式硬投影代替柔和阴影。唯一的信号色在亮色下是电光蓝、暗色下是柠檬荧光。标签全大写、字重更重——第一印象最锐利，但对排版纪律要求最高。',
+          },
+          blueprint: {
+            name: '蓝图 Blueprint',
+            desc: '深靛蓝底 + 工程网格纹理 + 青色荧光强调，focus 与 hover 带轻微辉光。科技感最直接的一档，暗色优先设计（亮色是同一套的浅色蓝图纸）。适合强调"这是一台在运转的机器"，但网格纹理需克制到几乎察觉不到。',
+          },
+          terminal: {
+            name: '终端 Terminal',
+            desc: '全等宽字体、磷光绿强调、2px 直角、极淡扫描线。把 GUI 当成终端的延伸，与 CLI 形态的 YorZ 气质同源，工具属性最强。代价是等宽字体在长段中文摘要上的可读性弱于比例字体——建议正文回退比例字体、仅 UI 标签用等宽。',
+          },
+        }
+
+        function apply(state) {
+          root.setAttribute('data-style', state.style)
+          root.setAttribute('data-mode', state.mode)
+          frame.setAttribute('data-badge', state.badge)
+          root.style.setProperty('--radius-scale', state.radius)
+          root.style.setProperty('--density', state.density)
+          root.style.setProperty('--motion', state.motion)
+          main.style.setProperty(
+            '--tex',
+            state.texture === '1' ? 'var(--texture, none)' : 'none'
+          )
+
+          document.getElementById('styleName').textContent = META[state.style].name
+          document.getElementById('styleDesc').textContent = META[state.style].desc
+
+          var r = Number(state.radius)
+          document.getElementById('radiusVal').textContent =
+            r < 0.35 ? '直角' : r < 0.85 ? '偏方' : r < 1.35 ? '标准' : r < 1.75 ? '偏圆' : '圆润'
+
+          document.querySelectorAll('[data-pick]').forEach(function (b) {
+            b.setAttribute('aria-pressed', String(b.dataset.pick === state.style))
+          })
+          document.querySelectorAll('#modeSeg button').forEach(function (b) {
+            b.setAttribute('aria-pressed', String(b.dataset.mode === state.mode))
+          })
+          document.querySelectorAll('.tw__opts').forEach(function (g) {
+            var key = g.dataset.group
+            g.querySelectorAll('button').forEach(function (b) {
+              b.setAttribute('aria-pressed', String(b.dataset.val === String(state[key])))
+            })
+          })
+          try {
+            localStorage.setItem(LS, JSON.stringify(state))
+          } catch (e) {}
+        }
+
+        var state = {
+          style: 'graphite',
+          mode: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+          radius: '1',
+          density: '1',
+          badge: 'soft',
+          texture: '1',
+          motion: '1',
+        }
+        try {
+          var saved = JSON.parse(localStorage.getItem(LS) || 'null')
+          if (saved && META[saved.style]) state = Object.assign(state, saved)
+        } catch (e) {}
+
+        document.querySelectorAll('[data-pick]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            state.style = b.dataset.pick
+            apply(state)
+          })
+        })
+        document.querySelectorAll('#modeSeg button').forEach(function (b) {
+          b.addEventListener('click', function () {
+            state.mode = b.dataset.mode
+            apply(state)
+          })
+        })
+        document.querySelectorAll('.tw__opts').forEach(function (g) {
+          g.addEventListener('click', function (e) {
+            var b = e.target.closest('button')
+            if (!b) return
+            state[g.dataset.group] = b.dataset.val
+            apply(state)
+          })
+        })
+        document.getElementById('radiusRange').addEventListener('input', function (e) {
+          state.radius = String(Number(e.target.value) / 100)
+          apply(state)
+        })
+        var tweaks = document.getElementById('tweaks')
+        document.getElementById('tweaksToggle').addEventListener('click', function () {
+          tweaks.dataset.open = tweaks.dataset.open === '1' ? '0' : '1'
+        })
+
+        // ← → 切换风格，D 切换明暗
+        var ORDER = ['graphite', 'paper', 'signal', 'blueprint', 'terminal']
+        window.addEventListener('keydown', function (e) {
+          if (e.target && /input|textarea/i.test(e.target.tagName)) return
+          if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+            var i = ORDER.indexOf(state.style)
+            state.style = ORDER[(i + (e.key === 'ArrowRight' ? 1 : ORDER.length - 1)) % ORDER.length]
+            apply(state)
+          } else if (e.key === 'd' || e.key === 'D') {
+            state.mode = state.mode === 'dark' ? 'light' : 'dark'
+            apply(state)
+          }
+        })
+
+        document.getElementById('radiusRange').value = String(Number(state.radius) * 100)
+        apply(state)
+      })()
+    </script>
+  </body>
+</html>

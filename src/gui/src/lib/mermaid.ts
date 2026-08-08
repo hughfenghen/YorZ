@@ -1,4 +1,5 @@
 import { t } from '../i18n/index.js'
+import { resolvedTheme } from './theme.js'
 
 export interface RenderMermaidCleanup {
   (): void
@@ -32,7 +33,9 @@ async function loadMermaid() {
 }
 
 function getTheme(): 'dark' | 'default' {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default'
+  // 跟随应用主题（含手动选择的 light/dark），而非系统偏好——否则在亮色系统上
+  // 手动切到暗色时，图表仍会渲染成亮色。
+  return resolvedTheme() === 'dark' ? 'dark' : 'default'
 }
 
 function nextFrame(): Promise<void> {
@@ -410,11 +413,17 @@ export async function renderMermaidIn(container: HTMLElement): Promise<RenderMer
   // event time so diagrams added by later refreshes are included too.
   const rerenderAll = () =>
     void render(Array.from(container.querySelectorAll<HTMLElement>('.mermaid')))
-  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-  mediaQuery.addEventListener('change', rerenderAll)
+  // 观察 <html data-kb-theme> 而非 matchMedia：属性是所有主题变更路径（引导脚本、
+  // 手动切换、system 模式下的系统翻转）的共同终点，一处订阅即可覆盖全部。
+  // 与本模块其余浏览器 API 一致地走 window.*，而非裸全局
+  const themeObserver = new window.MutationObserver(rerenderAll)
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-kb-theme'],
+  })
 
   return () => {
     controlsCleanup()
-    mediaQuery.removeEventListener('change', rerenderAll)
+    themeObserver.disconnect()
   }
 }

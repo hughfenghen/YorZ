@@ -1,4 +1,5 @@
 import {
+  For,
   Show,
   createEffect,
   createMemo,
@@ -9,7 +10,7 @@ import {
   type ParentComponent,
 } from 'solid-js'
 import { A, useLocation, useNavigate } from '@solidjs/router'
-import { Check, Languages, Menu, Plus, Settings } from 'lucide-solid'
+import { Check, Languages, Menu, Monitor, Moon, Plus, Settings, Sun } from 'lucide-solid'
 import { ProjectsSidebar } from './components/ProjectsSidebar.jsx'
 import { ChatPanel } from './components/ChatPanel.jsx'
 import { GlobalConfigDialog } from './components/GlobalConfigDialog.jsx'
@@ -21,6 +22,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from './components/ui/dropdown-menu.jsx'
 import { toast, Toaster } from './components/ui/toast.jsx'
 import { api, type GlobalConfig } from './lib/api.js'
@@ -32,7 +36,14 @@ import {
   isEditableShortcutTarget,
   shortcutFromEvent,
 } from './lib/shortcuts.js'
+import { setThemeMode, themeMode, type ThemeMode } from './lib/theme.js'
 import { t, useTranslation } from './i18n/index.js'
+
+const THEME_OPTIONS: { mode: ThemeMode; labelKey: string; icon: typeof Sun }[] = [
+  { mode: 'system', labelKey: 'shell.themeSystem', icon: Monitor },
+  { mode: 'light', labelKey: 'shell.themeLight', icon: Sun },
+  { mode: 'dark', labelKey: 'shell.themeDark', icon: Moon },
+]
 
 const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
   agent: {
@@ -162,18 +173,47 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
               <Menu class="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <DropdownMenuItem class="font-medium text-muted-foreground" disabled>
-                <Languages class="mr-2 h-4 w-4" />
-                {t('shell.languageSwitch')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => selectLanguage('zh-CN')}>
-                <Check class={`mr-2 h-4 w-4 ${lng() === 'zh-CN' ? 'opacity-100' : 'opacity-0'}`} />
-                {t('shell.langZh')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => selectLanguage('en')}>
-                <Check class={`mr-2 h-4 w-4 ${lng() === 'en' ? 'opacity-100' : 'opacity-0'}`} />
-                {t('shell.langEn')}
-              </DropdownMenuItem>
+              {/* 语言与外观都是低频偏好，收进二级菜单，一级只留高频的全局配置 */}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger data-submenu="language">
+                  <Languages class="mr-2 h-4 w-4" />
+                  {t('shell.languageSwitch')}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onSelect={() => selectLanguage('zh-CN')}>
+                    <Check
+                      class={`mr-2 h-4 w-4 ${lng() === 'zh-CN' ? 'opacity-100' : 'opacity-0'}`}
+                    />
+                    {t('shell.langZh')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => selectLanguage('en')}>
+                    <Check class={`mr-2 h-4 w-4 ${lng() === 'en' ? 'opacity-100' : 'opacity-0'}`} />
+                    {t('shell.langEn')}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger data-submenu="theme">
+                  <Sun class="mr-2 h-4 w-4" />
+                  {t('shell.themeSwitch')}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <For each={THEME_OPTIONS}>
+                    {(option) => (
+                      <DropdownMenuItem
+                        data-theme-option={option.mode}
+                        onSelect={() => setThemeMode(option.mode)}
+                      >
+                        <Check
+                          class={`mr-2 h-4 w-4 ${themeMode() === option.mode ? 'opacity-100' : 'opacity-0'}`}
+                        />
+                        <option.icon class="mr-2 h-4 w-4 text-muted-foreground" />
+                        {t(option.labelKey)}
+                      </DropdownMenuItem>
+                    )}
+                  </For>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => setGlobalConfigOpen(true)}>
                 <Settings class="mr-2 h-4 w-4" />

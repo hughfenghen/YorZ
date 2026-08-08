@@ -19,6 +19,14 @@ import { useFocusModePage } from '../lib/layout-focus.js'
 import { subscribeChanges, subscribeSession } from '../lib/sse.js'
 import { Button } from '../components/ui/button.jsx'
 import { Textarea } from '../components/ui/textarea.jsx'
+import { Checkbox, CheckboxControl, CheckboxLabel } from '../components/ui/checkbox.jsx'
+import {
+  RadioGroup,
+  RadioGroupItem,
+  RadioGroupItemControl,
+  RadioGroupItemInput,
+  RadioGroupItemLabel,
+} from '../components/ui/radio-group.jsx'
 import {
   Dialog,
   DialogContent,
@@ -51,12 +59,13 @@ const IDLE_LABEL_KEY: Record<GitOpsAction, string> = {
   stash: 'review.stash',
 }
 
+// git 文件状态 → 语义 token。原先是裸调色板类且无 dark: 变体，暗色下几乎不可读。
 const STATUS_COLOR: Record<string, string> = {
-  M: 'text-yellow-600',
-  A: 'text-green-600',
-  D: 'text-red-600',
-  '??': 'text-blue-600',
-  R: 'text-purple-600',
+  M: 'text-warning',
+  A: 'text-success',
+  D: 'text-destructive',
+  '??': 'text-info',
+  R: 'text-primary',
 }
 
 export const SpecReview: Component = () => {
@@ -342,28 +351,27 @@ export const SpecReview: Component = () => {
               class="resize-none"
             />
 
-            <div class="flex gap-4">
-              <label class="flex cursor-pointer items-center gap-1.5 ">
-                <input
-                  type="radio"
-                  name="fileMode"
-                  checked={fileSelectMode() === 'manual'}
-                  onChange={() => setFileSelectMode('manual')}
-                  disabled={isAnyRunning()}
-                />
-                {t('review.manualSelect')}
-              </label>
-              <label class="flex cursor-pointer items-center gap-1.5 ">
-                <input
-                  type="radio"
-                  name="fileMode"
-                  checked={fileSelectMode() === 'agent'}
-                  onChange={() => setFileSelectMode('agent')}
-                  disabled={isAnyRunning()}
-                />
-                {t('review.agentSelect')}
-              </label>
-            </div>
+            <RadioGroup
+              class="flex gap-4"
+              value={fileSelectMode()}
+              onChange={(v) => setFileSelectMode(v as FileSelectMode)}
+              disabled={isAnyRunning()}
+            >
+              <RadioGroupItem value="manual" class="flex items-center gap-1.5">
+                <RadioGroupItemInput />
+                <RadioGroupItemControl />
+                <RadioGroupItemLabel class="cursor-pointer">
+                  {t('review.manualSelect')}
+                </RadioGroupItemLabel>
+              </RadioGroupItem>
+              <RadioGroupItem value="agent" class="flex items-center gap-1.5">
+                <RadioGroupItemInput />
+                <RadioGroupItemControl />
+                <RadioGroupItemLabel class="cursor-pointer">
+                  {t('review.agentSelect')}
+                </RadioGroupItemLabel>
+              </RadioGroupItem>
+            </RadioGroup>
 
             <Show when={fileSelectMode() === 'manual' && changes().length > 0}>
               <div class="flex min-h-0 flex-1 flex-col gap-1 overflow-auto rounded-xl border">
@@ -380,20 +388,22 @@ export const SpecReview: Component = () => {
                 </div>
                 <For each={changes()}>
                   {(change) => (
-                    <label class="flex cursor-pointer items-center gap-2 px-2 py-0.5 ">
-                      <input
-                        type="checkbox"
-                        checked={selectedPaths().has(change.path)}
-                        onChange={() => togglePath(change.path)}
-                        disabled={isAnyRunning()}
-                      />
-                      <span
-                        class={`inline-block w-6 text-center text-sm font-bold ${STATUS_COLOR[change.status] ?? ''}`}
-                      >
-                        {change.status}
-                      </span>
-                      <span class="truncate font-mono text-sm">{change.path}</span>
-                    </label>
+                    <Checkbox
+                      class="flex items-center gap-2 px-2 py-0.5"
+                      checked={selectedPaths().has(change.path)}
+                      onChange={() => togglePath(change.path)}
+                      disabled={isAnyRunning()}
+                    >
+                      <CheckboxControl />
+                      <CheckboxLabel class="flex min-w-0 cursor-pointer items-center gap-2">
+                        <span
+                          class={`inline-block w-6 text-center text-sm font-bold ${STATUS_COLOR[change.status] ?? ''}`}
+                        >
+                          {change.status}
+                        </span>
+                        <span class="truncate font-mono text-sm">{change.path}</span>
+                      </CheckboxLabel>
+                    </Checkbox>
                   )}
                 </For>
               </div>

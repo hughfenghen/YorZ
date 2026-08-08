@@ -714,7 +714,7 @@ export const ChatPanel: Component = () => {
 
   return (
     <aside
-      class={`relative flex flex-col border-r bg-card text-base shrink-0 ${
+      class={`relative flex flex-col border-r bg-background text-base shrink-0 ${
         isCollapsed() ? 'w-9 transition-[width] duration-150' : ''
       }`}
       style={isCollapsed() ? undefined : { width: `${width()}px` }}
@@ -826,8 +826,8 @@ export const ChatPanel: Component = () => {
                               type="button"
                               class={`flex w-full items-center gap-1 px-2 py-1 text-left text-sm ${
                                 activeSid() === s.id
-                                  ? 'bg-background font-semibold'
-                                  : 'hover:bg-background'
+                                  ? 'bg-primary-soft font-semibold'
+                                  : 'hover:bg-accent'
                               }`}
                               title={
                                 isRunning(s.id)
@@ -884,17 +884,21 @@ export const ChatPanel: Component = () => {
                           // User input is NOT markdown: it routinely carries `@paths`,
                           // indentation and bare `*`/`_` that md would rewrite.
                           //
-                          // Tinted with `primary` rather than the old `bg-background`,
-                          // which sat within 2% lightness of the agent's `bg-muted` —
-                          // the two bubbles were effectively the same color. What you
-                          // said now reads at a glance against what the agent replied.
+                          // Tinted with `primary` rather than a plain surface color —
+                          // the two bubbles were once within 2% lightness of each other
+                          // and read as one blob. What you said now separates at a
+                          // glance from what the agent replied.
                           <div class="mb-2 whitespace-pre-wrap rounded border border-primary/20 border-l-2 border-l-primary bg-primary/10 px-2 py-1.5 font-medium text-foreground [overflow-wrap:anywhere]">
                             {(block as { text: string }).text}
                           </div>
                         }
                       >
                         {(assistant) => (
-                          <div class="mb-2 min-w-0 rounded bg-muted px-2 py-1.5 [overflow-wrap:anywhere]">
+                          // `bg-card` (the panel's brightest surface) rather than
+                          // `bg-muted`, which was *darker* than the rail it sat on and
+                          // dragged body-text contrast down. The border carries the
+                          // bubble's edge now that the fill barely differs from the rail.
+                          <div class="mb-2 min-w-0 rounded border bg-card px-2 py-1.5 [overflow-wrap:anywhere]">
                             <For each={assistant().segments}>
                               {(seg) => (
                                 <Show

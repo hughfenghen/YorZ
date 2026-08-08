@@ -3,6 +3,14 @@ import { api, type AgentConfig, type ProjectConfig } from '../lib/api.js'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog.jsx'
 import { Button } from './ui/button.jsx'
 import { Input } from './ui/input.jsx'
+import {
+  RadioGroup,
+  RadioGroupItem,
+  RadioGroupItemControl,
+  RadioGroupItemInput,
+  RadioGroupItemLabel,
+  RadioGroupLabel,
+} from './ui/radio-group.jsx'
 import { t } from '../i18n/index.js'
 
 interface Props {
@@ -127,22 +135,23 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
           fallback={<p class=" text-muted-foreground">{t('common.loading')}</p>}
         >
           <form onSubmit={submit} class="flex flex-col gap-4">
-            <fieldset class="m-0 flex flex-wrap gap-2 border-0 p-0">
-              <legend class="mb-1.5 font-medium">{t('projectConfig.agent')}</legend>
+            <RadioGroup
+              class="m-0 flex flex-wrap gap-2 border-0 p-0"
+              value={kind()}
+              onChange={(v) => setKind(v as AgentKind)}
+              disabled={busy()}
+            >
+              <RadioGroupLabel class="mb-1.5 w-full font-medium">
+                {t('projectConfig.agent')}
+              </RadioGroupLabel>
               {(['inherit', 'claude', 'opencode', 'codex', 'custom'] as const).map((k) => (
-                <label class="flex cursor-pointer items-center gap-1.5 ">
-                  <input
-                    type="radio"
-                    name="project-config-agent"
-                    value={k}
-                    checked={kind() === k}
-                    onChange={() => setKind(k)}
-                    disabled={busy()}
-                  />
-                  <span>{agentLabel(k)}</span>
-                </label>
+                <RadioGroupItem value={k} class="flex items-center gap-1.5">
+                  <RadioGroupItemInput />
+                  <RadioGroupItemControl />
+                  <RadioGroupItemLabel class="cursor-pointer">{agentLabel(k)}</RadioGroupItemLabel>
+                </RadioGroupItem>
               ))}
-            </fieldset>
+            </RadioGroup>
 
             <Show when={kind() === 'custom'}>
               <label class="flex flex-col gap-1 font-medium">

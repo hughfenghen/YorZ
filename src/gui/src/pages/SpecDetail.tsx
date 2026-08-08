@@ -39,11 +39,12 @@ import { Badge } from '../components/ui/badge.jsx'
 import { toast } from '../components/ui/toast.jsx'
 import { t } from '../i18n/index.js'
 
-const STAGE_BG: Record<string, string> = {
-  plan: 'bg-stage-plan',
-  tasks: 'bg-stage-tasks',
-  execute: 'bg-stage-execute',
-  done: 'bg-stage-done',
+/* Soft 徽章形态，与 SpecList 保持一致 —— 说明见 SpecList.tsx */
+const STAGE_BADGE: Record<string, string> = {
+  plan: 'bg-stage-plan/15 text-stage-plan border-stage-plan/30',
+  tasks: 'bg-stage-tasks/15 text-stage-tasks border-stage-tasks/30',
+  execute: 'bg-stage-execute/15 text-stage-execute border-stage-execute/30',
+  done: 'bg-stage-done/15 text-stage-done border-stage-done/30',
 }
 
 /** Coalesce the SSE event storm an agent's successive writes produce. */
@@ -401,19 +402,39 @@ export const SpecDetail: Component = () => {
                     </p>
                   </div>
                   <div class="flex items-center gap-2 text-muted-foreground">
-                    <select
-                      class={`cursor-pointer appearance-none rounded-full border-0 px-2.5 py-0.5 text-sm font-semibold uppercase text-white ${
-                        STAGE_BG[s().frontmatter.stage] ?? 'bg-muted'
-                      }`}
-                      value={s().frontmatter.stage}
-                      onChange={(e) => changeStage(e.currentTarget.value as SpecStage)}
-                      title={t('specDetail.forceStage')}
-                    >
-                      <option value="plan">plan</option>
-                      <option value="tasks">tasks</option>
-                      <option value="execute">execute</option>
-                      <option value="done">done</option>
-                    </select>
+                    {/*
+                      A bare <select> takes its intrinsic width from the WIDEST option
+                      ("execute"), not the selected one, so "plan"/"done" left ~32px of
+                      dead space to the right. The visible <span> sizes the control to
+                      the current value and carries the badge styling (same shape as
+                      SpecList's Badge); the native <select> is laid over it fully
+                      transparent, keeping the platform dropdown, keyboard support and
+                      mobile picker for free. The ring is hoisted onto the wrapper
+                      because the focused element itself is invisible.
+                    */}
+                    <div class="relative inline-flex shrink-0 rounded-md has-[:focus-visible]:ring-[1.5px] has-[:focus-visible]:ring-ring">
+                      <span
+                        aria-hidden="true"
+                        class={`inline-flex items-center rounded-md border px-2.5 py-0.5 font-mono text-sm font-semibold uppercase tracking-wider ${
+                          STAGE_BADGE[s().frontmatter.stage] ??
+                          'bg-muted text-muted-foreground border-border'
+                        }`}
+                      >
+                        {s().frontmatter.stage}
+                      </span>
+                      <select
+                        class="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                        value={s().frontmatter.stage}
+                        onChange={(e) => changeStage(e.currentTarget.value as SpecStage)}
+                        title={t('specDetail.forceStage')}
+                        aria-label={t('specDetail.forceStage')}
+                      >
+                        <option value="plan">plan</option>
+                        <option value="tasks">tasks</option>
+                        <option value="execute">execute</option>
+                        <option value="done">done</option>
+                      </select>
+                    </div>
                     <time>{formatSpecUpdatedAt(s().frontmatter.updated_at)}</time>
                     <Button
                       variant="outline"

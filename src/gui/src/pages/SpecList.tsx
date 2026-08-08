@@ -42,17 +42,22 @@ import { Input } from '../components/ui/input.jsx'
 import { toast } from '../components/ui/toast.jsx'
 import { t } from '../i18n/index.js'
 
-const STAGE_BG: Record<string, string> = {
-  plan: 'bg-stage-plan',
-  tasks: 'bg-stage-tasks',
-  execute: 'bg-stage-execute',
-  done: 'bg-stage-done',
+/*
+ * Soft 徽章（设计稿「状态」形态）：15% 同色 tint 打底、文字用 stage 原色、
+ * 30% 同色描边。相比实心填充，四个阶段在列表里靠色相区分而非靠色块抢注意，
+ * 长列表扫读时噪音低得多。类名必须写成完整字面量，Tailwind JIT 才扫得到。
+ */
+const STAGE_BADGE: Record<string, string> = {
+  plan: 'bg-stage-plan/15 text-stage-plan border-stage-plan/30',
+  tasks: 'bg-stage-tasks/15 text-stage-tasks border-stage-tasks/30',
+  execute: 'bg-stage-execute/15 text-stage-execute border-stage-execute/30',
+  done: 'bg-stage-done/15 text-stage-done border-stage-done/30',
 }
 
 const SPEC_TYPE_TEXT: Record<string, string> = {
-  feat: 'text-emerald-600 dark:text-emerald-400',
-  refct: 'text-sky-600 dark:text-sky-400',
-  fix: 'text-rose-600 dark:text-rose-400',
+  feat: 'text-success',
+  refct: 'text-info',
+  fix: 'text-destructive',
 }
 
 function splitSpecId(id: string): { prefix: string; type: string; suffix: string } | null {
@@ -248,8 +253,14 @@ export const SpecList: Component = () => {
                       class="flex min-h-40 flex-1 flex-col p-4"
                     >
                       <div class="flex items-center justify-between text-sm text-muted-foreground">
+                        {/* variant=outline：default variant 带 `hover:bg-primary/80`
+                            与 `shadow`，twMerge 去不掉跨 modifier 的 hover 规则，
+                            会让这个纯展示徽章在悬浮时变主色。它不可交互，不该有反馈。 */}
                         <Badge
-                          class={`border-transparent ${STAGE_BG[spec.stage] ?? 'bg-muted'} text-white uppercase`}
+                          variant="outline"
+                          class={`font-mono ${
+                            STAGE_BADGE[spec.stage] ?? 'bg-muted text-muted-foreground border-border'
+                          } uppercase tracking-wider`}
                         >
                           {spec.stage}
                         </Badge>

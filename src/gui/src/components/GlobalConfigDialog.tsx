@@ -12,6 +12,14 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Button } from './ui/button.jsx'
 import { Checkbox, CheckboxControl, CheckboxLabel } from './ui/checkbox.jsx'
 import {
+  RadioGroup,
+  RadioGroupItem,
+  RadioGroupItemControl,
+  RadioGroupItemInput,
+  RadioGroupItemLabel,
+  RadioGroupLabel,
+} from './ui/radio-group.jsx'
+import {
   DEFAULT_SHORTCUTS,
   SHORTCUT_ACTIONS,
   effectiveShortcuts,
@@ -178,22 +186,23 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
           fallback={<p class="text-muted-foreground">{t('common.loading')}</p>}
         >
           <form onSubmit={(e) => void submit(e)} class="flex flex-col gap-4">
-            <fieldset class="m-0 flex flex-wrap gap-2 border-0 p-0">
-              <legend class="mb-1.5 font-medium">{t('globalConfig.agentDefault')}</legend>
+            <RadioGroup
+              class="m-0 flex flex-wrap gap-2 border-0 p-0"
+              value={agentDefault()}
+              onChange={(v) => setAgentDefault(v as GlobalAgentKind)}
+              disabled={busy()}
+            >
+              <RadioGroupLabel class="mb-1.5 w-full font-medium">
+                {t('globalConfig.agentDefault')}
+              </RadioGroupLabel>
               {(['claude', 'opencode', 'codex'] as const).map((kind) => (
-                <label class="flex cursor-pointer items-center gap-1.5">
-                  <input
-                    type="radio"
-                    name="global-config-agent-default"
-                    value={kind}
-                    checked={agentDefault() === kind}
-                    onChange={() => setAgentDefault(kind)}
-                    disabled={busy()}
-                  />
-                  <span>{agentLabel(kind)}</span>
-                </label>
+                <RadioGroupItem value={kind} class="flex items-center gap-1.5">
+                  <RadioGroupItemInput />
+                  <RadioGroupItemControl />
+                  <RadioGroupItemLabel class="cursor-pointer">{agentLabel(kind)}</RadioGroupItemLabel>
+                </RadioGroupItem>
               ))}
-            </fieldset>
+            </RadioGroup>
 
             <fieldset class="m-0 flex flex-col gap-3 border-0 p-0">
               <legend class="font-medium">{t('globalConfig.sessionEnd')}</legend>
@@ -219,24 +228,27 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
               </div>
             </fieldset>
 
-            <fieldset class="m-0 flex flex-wrap gap-2 border-0 p-0">
-              <legend class="mb-1.5 font-medium">{t('globalConfig.powerTitle')}</legend>
+            <RadioGroup
+              class="m-0 flex flex-wrap gap-2 border-0 p-0"
+              value={powerMode()}
+              onChange={(v) => setPowerMode(v as PowerInhibitMode)}
+              disabled={busy()}
+            >
+              <RadioGroupLabel class="mb-1.5 w-full font-medium">
+                {t('globalConfig.powerTitle')}
+              </RadioGroupLabel>
               {(['system-default', 'prevent-display-sleep', 'keep-system-awake'] as const).map(
                 (mode) => (
-                  <label class="flex cursor-pointer items-center gap-1.5">
-                    <input
-                      type="radio"
-                      name="global-config-power-inhibit"
-                      value={mode}
-                      checked={powerMode() === mode}
-                      onChange={() => setPowerMode(mode)}
-                      disabled={busy()}
-                    />
-                    <span>{powerModeLabel(mode)}</span>
-                  </label>
+                  <RadioGroupItem value={mode} class="flex items-center gap-1.5">
+                    <RadioGroupItemInput />
+                    <RadioGroupItemControl />
+                    <RadioGroupItemLabel class="cursor-pointer">
+                      {powerModeLabel(mode)}
+                    </RadioGroupItemLabel>
+                  </RadioGroupItem>
                 ),
               )}
-            </fieldset>
+            </RadioGroup>
 
             <fieldset class="m-0 flex flex-col gap-2 border-0 p-0">
               <legend class="font-medium">{t('globalConfig.shortcutsTitle')}</legend>
