@@ -10,13 +10,19 @@ import { createSignal } from 'solid-js'
  */
 
 export type ThemeMode = 'system' | 'light' | 'dark'
+export type ThemeName = 'terminal' | 'graphite' | 'paper'
 export type ResolvedTheme = 'light' | 'dark'
 
 export const THEME_STORAGE_KEY = 'yorz.theme'
+export const THEME_NAME_STORAGE_KEY = 'yorz.themeName'
 const DARK_QUERY = '(prefers-color-scheme: dark)'
 
 export function isThemeMode(value: unknown): value is ThemeMode {
   return value === 'system' || value === 'light' || value === 'dark'
+}
+
+export function isThemeName(value: unknown): value is ThemeName {
+  return value === 'terminal' || value === 'graphite' || value === 'paper'
 }
 
 function readStoredMode(): ThemeMode {
@@ -26,6 +32,16 @@ function readStoredMode(): ThemeMode {
     return isThemeMode(raw) ? raw : 'system'
   } catch {
     return 'system'
+  }
+}
+
+function readStoredName(): ThemeName {
+  if (typeof localStorage === 'undefined') return 'terminal'
+  try {
+    const raw = localStorage.getItem(THEME_NAME_STORAGE_KEY)
+    return isThemeName(raw) ? raw : 'terminal'
+  } catch {
+    return 'terminal'
   }
 }
 
@@ -41,15 +57,17 @@ export function resolveTheme(mode: ThemeMode, prefersDark: boolean): ResolvedThe
 }
 
 const [themeMode, setThemeModeSignal] = createSignal<ThemeMode>(readStoredMode())
+const [themeName, setThemeNameSignal] = createSignal<ThemeName>(readStoredName())
 const [resolvedTheme, setResolvedTheme] = createSignal<ResolvedTheme>(
   resolveTheme(readStoredMode(), systemTheme() === 'dark'),
 )
 
-export { themeMode, resolvedTheme }
+export { themeMode, themeName, resolvedTheme }
 
-function applyToDocument(theme: ResolvedTheme): void {
+function applyToDocument(theme: ResolvedTheme, name: ThemeName): void {
   if (typeof document === 'undefined') return
   document.documentElement.setAttribute('data-kb-theme', theme)
+  document.documentElement.setAttribute('data-kb-theme-name', name)
   // 让原生控件（滚动条、表单部件）跟随主题
   document.documentElement.style.colorScheme = theme
 }
@@ -57,7 +75,7 @@ function applyToDocument(theme: ResolvedTheme): void {
 function sync(mode: ThemeMode): void {
   const theme = resolveTheme(mode, systemTheme() === 'dark')
   setResolvedTheme(theme)
-  applyToDocument(theme)
+  applyToDocument(theme, themeName())
 }
 
 export function setThemeMode(mode: ThemeMode): void {
@@ -68,6 +86,16 @@ export function setThemeMode(mode: ThemeMode): void {
     // 隐私模式下写入失败不应影响当前会话内的主题切换
   }
   sync(mode)
+}
+
+export function setThemeName(name: ThemeName): void {
+  setThemeNameSignal(name)
+  try {
+    localStorage.setItem(THEME_NAME_STORAGE_KEY, name)
+  } catch {
+    // 隐私模式下写入失败不应影响当前会话内的主题切换
+  }
+  applyToDocument(resolvedTheme(), name)
 }
 
 let initialized = false

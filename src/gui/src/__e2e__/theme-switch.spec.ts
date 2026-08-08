@@ -64,6 +64,36 @@ test.describe.serial('主题切换', () => {
     await expect(page.locator('html')).toHaveAttribute('data-kb-theme', 'dark')
   })
 
+  test('主题族切换持久化，刷新前首屏引导属性已生效', async ({ page, request }) => {
+    const pid = await resolveProjectId(request)
+    await page.goto(`/${pid}`)
+
+    await openThemeMenu(page)
+    await page.locator('[data-theme-name-option="terminal"]').click()
+    await expect(page.locator('html')).toHaveAttribute('data-kb-theme-name', 'terminal')
+    const terminalBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
+
+    await openThemeMenu(page)
+    await page.locator('[data-theme-name-option="graphite"]').click()
+    await expect(page.locator('html')).toHaveAttribute('data-kb-theme-name', 'graphite')
+    expect(await page.evaluate(() => localStorage.getItem('yorz.themeName'))).toBe('graphite')
+
+    const graphiteBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
+    expect(graphiteBg).not.toBe(terminalBg)
+
+    await page.reload({ waitUntil: 'commit' })
+    await expect(page.locator('html')).toHaveAttribute('data-kb-theme-name', 'graphite')
+  })
+
+  test('非法主题族存储值回落到默认终端', async ({ page, request }) => {
+    const pid = await resolveProjectId(request)
+    await page.goto(`/${pid}`)
+    await page.evaluate(() => localStorage.setItem('yorz.themeName', 'unknown-theme'))
+
+    await page.reload({ waitUntil: 'commit' })
+    await expect(page.locator('html')).toHaveAttribute('data-kb-theme-name', 'terminal')
+  })
+
   test('主题翻转后 mermaid 图表重新渲染', async ({ page, request }) => {
     const pid = await resolveProjectId(request)
     // 复用已 seed 的 mermaid 密集 spec，避免在测试内造数据

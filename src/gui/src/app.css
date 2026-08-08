@@ -139,6 +139,201 @@
     --stage-execute: 142 76% 58%;
     --stage-done: 275 95% 78%;
   }
+
+  :root[data-kb-theme-name='graphite'] {
+    --background: 210 11% 96%;
+    --foreground: 220 12% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 12% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 12% 10%;
+
+    --primary: 220 10% 15%;
+    --primary-foreground: 0 0% 98%;
+    --primary-soft: 220 12% 90%;
+
+    --secondary: 220 10% 92%;
+    --secondary-foreground: 220 12% 10%;
+
+    --muted: 220 10% 92%;
+    --muted-foreground: 220 7% 35%;
+
+    --accent: 220 10% 90%;
+    --accent-foreground: 220 12% 10%;
+
+    --destructive: 2 68% 40%;
+    --destructive-foreground: 0 0% 98%;
+
+    --success: 151 48% 28%;
+    --success-foreground: 0 0% 98%;
+
+    --warning: 35 74% 33%;
+    --warning-foreground: 0 0% 98%;
+
+    --info: 209 48% 34%;
+    --info-foreground: 0 0% 98%;
+
+    --border: 220 10% 80%;
+    --input: 220 8% 63%;
+    --ring: 220 10% 15%;
+
+    --stage-plan: 225 45% 40%;
+    --stage-tasks: 34 80% 31%;
+    --stage-execute: 150 56% 26%;
+    --stage-done: 270 48% 42%;
+
+    --radius: 0.375rem;
+
+    --font-sans:
+      -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+      'Microsoft YaHei', sans-serif;
+    --font-mono:
+      'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'PingFang SC', monospace;
+  }
+
+  :root[data-kb-theme-name='graphite'][data-kb-theme='dark'] {
+    --background: 220 9% 13%;
+    --foreground: 220 8% 84%;
+
+    --card: 220 9% 9%;
+    --card-foreground: 220 8% 90%;
+
+    --popover: 220 9% 9%;
+    --popover-foreground: 220 8% 90%;
+
+    --primary: 220 8% 88%;
+    --primary-foreground: 220 12% 8%;
+    --primary-soft: 220 10% 22%;
+
+    --secondary: 220 8% 17%;
+    --secondary-foreground: 220 8% 90%;
+
+    --muted: 220 8% 17%;
+    --muted-foreground: 220 6% 64%;
+
+    --accent: 220 8% 20%;
+    --accent-foreground: 220 8% 90%;
+
+    --destructive: 4 78% 68%;
+    --destructive-foreground: 220 12% 8%;
+
+    --success: 150 56% 60%;
+    --success-foreground: 220 12% 8%;
+
+    --warning: 38 84% 63%;
+    --warning-foreground: 220 12% 8%;
+
+    --info: 211 78% 73%;
+    --info-foreground: 220 12% 8%;
+
+    --border: 220 8% 25%;
+    --input: 220 7% 34%;
+    --ring: 220 8% 82%;
+
+    --stage-plan: 224 75% 74%;
+    --stage-tasks: 38 88% 63%;
+    --stage-execute: 150 64% 61%;
+    --stage-done: 272 82% 77%;
+  }
+
+  :root[data-kb-theme-name='paper'] {
+    --background: 44 42% 94%;
+    --foreground: 24 18% 13%;
+
+    --card: 48 52% 98%;
+    --card-foreground: 24 18% 13%;
+
+    --popover: 48 52% 98%;
+    --popover-foreground: 24 18% 13%;
+
+    --primary: 8 58% 36%;
+    --primary-foreground: 48 52% 98%;
+    --primary-soft: 12 52% 90%;
+
+    --secondary: 41 35% 88%;
+    --secondary-foreground: 24 18% 13%;
+
+    --muted: 41 35% 88%;
+    --muted-foreground: 24 10% 36%;
+
+    --accent: 39 32% 86%;
+    --accent-foreground: 24 18% 13%;
+
+    --destructive: 3 64% 39%;
+    --destructive-foreground: 48 52% 98%;
+
+    --success: 142 38% 30%;
+    --success-foreground: 48 52% 98%;
+
+    --warning: 34 78% 32%;
+    --warning-foreground: 48 52% 98%;
+
+    --info: 202 43% 33%;
+    --info-foreground: 48 52% 98%;
+
+    --border: 38 27% 76%;
+    --input: 34 20% 58%;
+    --ring: 8 58% 36%;
+
+    --stage-plan: 218 58% 38%;
+    --stage-tasks: 28 78% 33%;
+    --stage-execute: 141 48% 27%;
+    --stage-done: 283 46% 38%;
+
+    --radius: 0.5rem;
+
+    --font-sans:
+      Georgia, 'Times New Roman', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', serif;
+    --font-mono:
+      'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'PingFang SC', monospace;
+  }
+
+  :root[data-kb-theme-name='paper'][data-kb-theme='dark'] {
+    --background: 32 17% 14%;
+    --foreground: 40 24% 82%;
+
+    --card: 34 20% 10%;
+    --card-foreground: 40 24% 88%;
+
+    --popover: 34 20% 10%;
+    --popover-foreground: 40 24% 88%;
+
+    --primary: 12 76% 68%;
+    --primary-foreground: 32 20% 9%;
+    --primary-soft: 12 38% 21%;
+
+    --secondary: 31 17% 18%;
+    --secondary-foreground: 40 24% 88%;
+
+    --muted: 31 17% 18%;
+    --muted-foreground: 39 14% 63%;
+
+    --accent: 31 18% 21%;
+    --accent-foreground: 40 24% 88%;
+
+    --destructive: 4 80% 68%;
+    --destructive-foreground: 32 20% 9%;
+
+    --success: 142 45% 60%;
+    --success-foreground: 32 20% 9%;
+
+    --warning: 38 84% 64%;
+    --warning-foreground: 32 20% 9%;
+
+    --info: 204 75% 74%;
+    --info-foreground: 32 20% 9%;
+
+    --border: 32 16% 26%;
+    --input: 32 13% 36%;
+    --ring: 12 76% 68%;
+
+    --stage-plan: 214 82% 74%;
+    --stage-tasks: 37 88% 64%;
+    --stage-execute: 142 60% 61%;
+    --stage-done: 282 72% 78%;
+  }
 }
 
 @layer base {

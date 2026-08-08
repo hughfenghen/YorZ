@@ -25,9 +25,14 @@ export const en = {
     langZh: '中文',
     langEn: 'English',
     themeSwitch: 'Appearance',
+    themeModeGroup: 'Color Mode',
     themeSystem: 'System',
     themeLight: 'Light',
     themeDark: 'Dark',
+    themeNameGroup: 'Theme',
+    themeTerminal: 'Terminal',
+    themeGraphite: 'Graphite',
+    themePaper: 'Paper',
     globalConfig: 'Global Settings',
   },
   systemNotifications: {
@@ -80,7 +85,8 @@ export const en = {
     /** Untitled (draft) state: no session exists on the server yet. */
     draftEmpty: 'Untitled session — send a message to start.',
     inputPlaceholder: 'Type a message, / for commands, @ to reference files, Enter to send…',
-    draftPlaceholder: 'Type a message, / for commands, @ to reference files — a session starts on send…',
+    draftPlaceholder:
+      'Type a message, / for commands, @ to reference files — a session starts on send…',
     noSessionPlaceholder: 'Select a project first',
     showHistory: 'History',
     sessionListLimit: 'Session list count',

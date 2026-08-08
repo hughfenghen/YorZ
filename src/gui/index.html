@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-kb-theme="light">
+<html lang="zh-CN" data-kb-theme="light" data-kb-theme-name="terminal">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -7,19 +7,22 @@
     <title>YorZ</title>
     <!--
       主题引导：必须同步执行且早于样式表，否则首屏会先按默认亮色绘制再跳到暗色。
-      与 src/lib/theme.ts 共用 localStorage key 'yorz.theme'，模块加载后由 initTheme() 接管。
+      与 src/lib/theme.ts 共用 localStorage key，模块加载后由 initTheme() 接管。
     -->
     <script>
       ;(function () {
         try {
           var mode = localStorage.getItem('yorz.theme') || 'system'
+          var name = localStorage.getItem('yorz.themeName') || 'terminal'
           var resolved =
             mode === 'light' || mode === 'dark'
               ? mode
               : window.matchMedia('(prefers-color-scheme: dark)').matches
                 ? 'dark'
                 : 'light'
+          if (name !== 'terminal' && name !== 'graphite' && name !== 'paper') name = 'terminal'
           document.documentElement.setAttribute('data-kb-theme', resolved)
+          document.documentElement.setAttribute('data-kb-theme-name', name)
           document.documentElement.style.colorScheme = resolved
         } catch (e) {}
       })()

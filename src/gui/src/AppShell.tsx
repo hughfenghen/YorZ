@@ -10,7 +10,7 @@ import {
   type ParentComponent,
 } from 'solid-js'
 import { A, useLocation, useNavigate } from '@solidjs/router'
-import { Check, Languages, Menu, Monitor, Moon, Plus, Settings, Sun } from 'lucide-solid'
+import { Check, Languages, Menu, Monitor, Moon, Palette, Plus, Settings, Sun } from 'lucide-solid'
 import { ProjectsSidebar } from './components/ProjectsSidebar.jsx'
 import { ChatPanel } from './components/ChatPanel.jsx'
 import { GlobalConfigDialog } from './components/GlobalConfigDialog.jsx'
@@ -36,13 +36,26 @@ import {
   isEditableShortcutTarget,
   shortcutFromEvent,
 } from './lib/shortcuts.js'
-import { setThemeMode, themeMode, type ThemeMode } from './lib/theme.js'
+import {
+  setThemeMode,
+  setThemeName,
+  themeMode,
+  themeName,
+  type ThemeMode,
+  type ThemeName,
+} from './lib/theme.js'
 import { t, useTranslation } from './i18n/index.js'
 
 const THEME_OPTIONS: { mode: ThemeMode; labelKey: string; icon: typeof Sun }[] = [
   { mode: 'system', labelKey: 'shell.themeSystem', icon: Monitor },
   { mode: 'light', labelKey: 'shell.themeLight', icon: Sun },
   { mode: 'dark', labelKey: 'shell.themeDark', icon: Moon },
+]
+
+const THEME_NAME_OPTIONS: { name: ThemeName; labelKey: string }[] = [
+  { name: 'terminal', labelKey: 'shell.themeTerminal' },
+  { name: 'graphite', labelKey: 'shell.themeGraphite' },
+  { name: 'paper', labelKey: 'shell.themePaper' },
 ]
 
 const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
@@ -194,10 +207,13 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
               </DropdownMenuSub>
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger data-submenu="theme">
-                  <Sun class="mr-2 h-4 w-4" />
+                  <Palette class="mr-2 h-4 w-4" />
                   {t('shell.themeSwitch')}
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
+                  <div class="px-2 py-1 text-xs text-muted-foreground">
+                    {t('shell.themeModeGroup')}
+                  </div>
                   <For each={THEME_OPTIONS}>
                     {(option) => (
                       <DropdownMenuItem
@@ -208,6 +224,23 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
                           class={`mr-2 h-4 w-4 ${themeMode() === option.mode ? 'opacity-100' : 'opacity-0'}`}
                         />
                         <option.icon class="mr-2 h-4 w-4 text-muted-foreground" />
+                        {t(option.labelKey)}
+                      </DropdownMenuItem>
+                    )}
+                  </For>
+                  <DropdownMenuSeparator />
+                  <div class="px-2 py-1 text-xs text-muted-foreground">
+                    {t('shell.themeNameGroup')}
+                  </div>
+                  <For each={THEME_NAME_OPTIONS}>
+                    {(option) => (
+                      <DropdownMenuItem
+                        data-theme-name-option={option.name}
+                        onSelect={() => setThemeName(option.name)}
+                      >
+                        <Check
+                          class={`mr-2 h-4 w-4 ${themeName() === option.name ? 'opacity-100' : 'opacity-0'}`}
+                        />
                         {t(option.labelKey)}
                       </DropdownMenuItem>
                     )}
