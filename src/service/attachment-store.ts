@@ -360,12 +360,14 @@ function sanitize(text: string): string {
 }
 
 function uniquify(name: string, existing: string[]): string {
-  if (!existing.includes(name)) return name
+  // 所有平台统一按大小写不敏感规则分配，避免同一草稿复制到 Windows 后互相覆盖。
+  const occupied = new Set(existing.map((item) => item.toLocaleLowerCase('en-US')))
+  if (!occupied.has(name.toLocaleLowerCase('en-US'))) return name
   const ext = extname(name)
   const base = stripExt(name)
   for (let i = 1; i < 1000; i++) {
     const candidate = `${base}-${i}${ext}`
-    if (!existing.includes(candidate)) return candidate
+    if (!occupied.has(candidate.toLocaleLowerCase('en-US'))) return candidate
   }
   // Extreme fallback.
   return `${base}-${randomUUID().slice(0, 4)}${ext}`

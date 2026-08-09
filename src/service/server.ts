@@ -23,6 +23,11 @@ export interface CreateAppOptions {
   registry: ProjectRegistry
   guiRoot?: string
   systemNotifications?: SystemNotificationCenter
+  /** 受 runtime 随机令牌保护的本地停服回调。 */
+  shutdown?: {
+    token: string
+    request: () => void
+  }
 }
 
 /** Requests slower than this are surfaced at `warn` even when they succeed. */
@@ -49,6 +54,16 @@ export function createApp(opts: CreateAppOptions): Hono {
   })
 
   const api = new Hono()
+  if (opts.shutdown) {
+    api.post('/internal/shutdown', (c) => {
+      const token = c.req.header('x-yorz-shutdown-token')
+      if (token !== opts.shutdown!.token) return c.json({ error: 'Forbidden' }, 403)
+
+      // 让 Node 先把响应交给 socket，再关闭监听器，避免 CLI 将正常停服误判为网络失败。
+      setTimeout(opts.shutdown!.request, 0)
+      return c.json({ accepted: true }, 202)
+    })
+  }
   const resolveProject = (id: string) => opts.registry.getOrCreate(id)
   const projectsBus = new RegistryEventBus()
   projectsBus.start(opts.registry.configPath())

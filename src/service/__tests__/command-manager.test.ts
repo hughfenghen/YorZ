@@ -1,7 +1,8 @@
+import { execFileSync, spawn } from 'node:child_process'
 import { mkdtemp, readFile, writeFile, mkdir, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CommandManager, resetCommandManagers } from '../command-manager.js'
 import type { CommandRun } from '../command-types.js'
 
@@ -28,6 +29,18 @@ function isAlive(pid: number): boolean {
     return true
   } catch {
     return false
+  }
+}
+
+/** Best-effort Windows test cleanup for descendants intentionally leaked by the RED implementation. */
+function cleanupWindowsTree(pid: number): void {
+  try {
+    execFileSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+  } catch {
+    // The fixed implementation may already have terminated the process tree.
   }
 }
 
@@ -147,6 +160,46 @@ describe('CommandManager run lifecycle', () => {
     expect(await m.getRun(run.runId)).toBeTruthy()
     await expect(stat(join(m.projectPath, run.logFile))).resolves.toBeTruthy()
   })
+
+  it.runIf(process.platform === 'win32')(
+    'stop terminates the complete Windows process tree',
+    async () => {
+      const m = await newManager()
+      const pidsFile = join(m.projectPath, 'tree-pids.json')
+      const script = join(m.projectPath, 'tree.cjs')
+      await writeFile(
+        script,
+        [
+          "const { spawn } = require('node:child_process')",
+          "const { writeFileSync } = require('node:fs')",
+          "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })",
+          `writeFileSync(${JSON.stringify(pidsFile)}, JSON.stringify([process.pid, child.pid]))`,
+          'setInterval(() => {}, 1000)',
+        ].join('\n'),
+        'utf8',
+      )
+      const def = await m.addDef('tree', `node "${script}"`)
+      const run = await m.run(def.id)
+      let treePids: number[] = []
+
+      try {
+        expect(
+          await waitFor(async () =>
+            stat(pidsFile).then(
+              () => true,
+              () => false,
+            ),
+          ),
+        ).toBe(true)
+        treePids = JSON.parse(await readFile(pidsFile, 'utf8')) as number[]
+        await m.stop(run.runId)
+        expect(await waitFor(async () => treePids.every((pid) => !isAlive(pid)))).toBe(true)
+      } finally {
+        cleanupWindowsTree(run.pid)
+        for (const pid of treePids) cleanupWindowsTree(pid)
+      }
+    },
+  )
 
   it('stop on an already-finished run is a no-op', async () => {
     const m = await newManager()
@@ -274,6 +327,46 @@ describe('CommandManager lifecycle binding', () => {
     expect(runs[0]!.status).toBe('killed')
     expect(runs[0]!.endedAt).toBeGreaterThan(0)
   })
+
+  it.runIf(process.platform === 'win32')(
+    'reap never kills a live process identified only by a persisted PID',
+    async () => {
+      const cwd = await tmp()
+      const unrelated = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      })
+      unrelated.unref()
+      const pid = unrelated.pid!
+      const leftover: CommandRun = {
+        runId: 'stale-live',
+        commandId: 'c1',
+        name: 'stale-live',
+        cli: 'unknown',
+        pid,
+        status: 'running',
+        startedAt: Date.now() - 1000,
+        logFile: '.yorz/tmp/commands/stale-live.log',
+      }
+      await mkdir(join(cwd, '.yorz/tmp/commands'), { recursive: true })
+      await writeFile(
+        join(cwd, '.yorz/tmp/commands/index.json'),
+        JSON.stringify([leftover], null, 2),
+        'utf8',
+      )
+
+      try {
+        const m = new CommandManager(cwd)
+        started.push(m)
+        const runs = await m.listRuns()
+        expect(runs[0]?.status).toBe('killed')
+        expect(isAlive(pid)).toBe(true)
+      } finally {
+        cleanupWindowsTree(pid)
+      }
+    },
+  )
 
   it('reap drops records that finished beyond the retention window', async () => {
     const cwd = await tmp()

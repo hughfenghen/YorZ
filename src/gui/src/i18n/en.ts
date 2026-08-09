@@ -116,6 +116,7 @@ export const en = {
     mergeDialogTitle: 'Merge worktree',
     mergeDialogDescription: 'Review the merge commit message before merging into the main project.',
     mergeCommitMessage: 'Commit message',
+    runningTasksPreventMerge: 'Wait for running commands or Agent tasks to finish before merging',
     mainUnreachable: 'Main project unreachable',
     merged: 'Merged into main, redirecting…',
     conflictDispatched: 'Conflict specs dispatched to Agent, list will refresh after merge',

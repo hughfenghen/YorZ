@@ -133,16 +133,26 @@ export class ProjectRegistry {
   }
 
   async remove(id: string): Promise<boolean> {
+    await this.release(id).catch(() => {
+      // 保持 remove 的既有 best-effort 语义；调用方需要严格释放时应直接调用 release。
+    })
+    return await removeProject(id, this.globalConfigPath)
+  }
+
+  /**
+   * 关闭并移除项目的缓存实例，但保留全局 registry 配置供失败恢复。
+   *
+   * @param id 要释放的项目 id。
+   * @returns 缓存实例关闭完成后结束；关闭失败会原样抛出。
+   */
+  async release(id: string): Promise<void> {
     const cached = this.cache.get(id)
-    if (cached) {
-      try {
-        await cached.instance.close()
-      } catch {
-        // best-effort
-      }
+    if (!cached) return
+    try {
+      await cached.instance.close()
+    } finally {
       this.cache.delete(id)
     }
-    return await removeProject(id, this.globalConfigPath)
   }
 
   /**
@@ -151,14 +161,9 @@ export class ProjectRegistry {
    * project's `.yorz/config.json` changes (e.g. specsDir or agent override).
    */
   async reload(id: string): Promise<void> {
-    const cached = this.cache.get(id)
-    if (!cached) return
-    try {
-      await cached.instance.close()
-    } catch {
+    await this.release(id).catch(() => {
       // best-effort
-    }
-    this.cache.delete(id)
+    })
   }
 
   async closeAll(): Promise<void> {

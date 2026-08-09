@@ -1,8 +1,5 @@
-import { execFile } from 'node:child_process'
 import { resolve as resolvePath, sep as pathSep } from 'node:path'
-import { promisify } from 'node:util'
-
-const execFileP = promisify(execFile)
+import { execFileWithoutWindow } from './process.js'
 
 export interface GitChange {
   path: string
@@ -92,7 +89,7 @@ export function assertSafeRelativePath(cwd: string, p: string): string {
 
 async function runGit(cwd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   try {
-    const result = await execFileP('git', args, {
+    const result = await execFileWithoutWindow('git', args, {
       cwd,
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024,
@@ -127,7 +124,7 @@ export async function runGitRaw(
   args: string[],
 ): Promise<{ stdout: string; stderr: string; code: number }> {
   try {
-    const result = await execFileP('git', args, {
+    const result = await execFileWithoutWindow('git', args, {
       cwd,
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024,
