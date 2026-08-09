@@ -18,10 +18,10 @@ export interface BrowserOpenInvocation {
  * @param platform 目标平台；默认使用当前 Node.js 运行平台，测试可显式传入。
  * @returns Windows 下附加 windowsHide 的新选项，其他平台返回原对象。
  */
-export function withHiddenWindowsConsole<T extends { windowsHide?: boolean }>(
+export function withHiddenWindowsConsole<T extends object>(
   options: T,
   platform: NodeJS.Platform = process.platform,
-): T {
+): T & { windowsHide?: boolean } {
   if (platform !== 'win32') return options
   return { ...options, windowsHide: true }
 }
