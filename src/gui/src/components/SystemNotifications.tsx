@@ -2,6 +2,7 @@ import { For, Show, createEffect, createSignal, onCleanup, type JSX } from 'soli
 import { Bell, RotateCw, Trash2 } from 'lucide-solid'
 import { api, type SystemNotification } from '../lib/api.js'
 import { subscribeSystemNotifications } from '../lib/sse.js'
+import { waitForNotificationReset } from '../lib/system-notifications.js'
 import { t } from '../i18n/index.js'
 import { Button } from './ui/button.jsx'
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from './ui/popover.jsx'
@@ -50,6 +51,7 @@ export function SystemNotifications(): JSX.Element {
     try {
       await api.restartSystemNotification(id)
       setItems((current) => current.filter((item) => item.id !== id))
+      await waitForNotificationReset({ id, list: api.listSystemNotifications })
       window.location.reload()
     } finally {
       setBusyId(null)
