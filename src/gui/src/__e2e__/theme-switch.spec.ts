@@ -21,6 +21,42 @@ async function openThemeMenu(page: import('@playwright/test').Page): Promise<voi
   await expect(page.locator('[data-theme-option="dark"]')).toBeVisible()
 }
 
+async function focusSessionToggleWithTab(page: import('@playwright/test').Page): Promise<void> {
+  for (let i = 0; i < 20; i += 1) {
+    await page.keyboard.press('Tab')
+    const isTarget = await page.evaluate(() => {
+      const el = document.activeElement
+      return (
+        el instanceof HTMLButtonElement &&
+        (el.getAttribute('title') === '折叠会话列表' || el.getAttribute('title') === '展开会话列表')
+      )
+    })
+    if (isTarget) return
+  }
+  throw new Error('未能通过 Tab 聚焦会话折叠按钮')
+}
+
+async function activeOutlineAndRing(page: import('@playwright/test').Page): Promise<{
+  outlineColor: string
+  ringColor: string
+}> {
+  return page.evaluate(() => {
+    const active = document.activeElement
+    if (!(active instanceof HTMLElement)) throw new Error('当前没有可计算样式的焦点元素')
+    const probe = document.createElement('div')
+    probe.style.color = `hsl(${getComputedStyle(document.documentElement)
+      .getPropertyValue('--ring')
+      .trim()})`
+    document.body.append(probe)
+    const ringColor = getComputedStyle(probe).color
+    probe.remove()
+    return {
+      outlineColor: getComputedStyle(active).outlineColor,
+      ringColor,
+    }
+  })
+}
+
 test.describe.serial('主题切换', () => {
   test('切到暗色后 data-kb-theme、背景色与 color-scheme 同步变化', async ({ page, request }) => {
     const pid = await resolveProjectId(request)
@@ -92,6 +128,29 @@ test.describe.serial('主题切换', () => {
 
     await page.reload({ waitUntil: 'commit' })
     await expect(page.locator('html')).toHaveAttribute('data-kb-theme-name', 'terminal')
+  })
+
+  test('Tab 聚焦手写按钮时 outline 使用当前主题 ring 色', async ({ page, request }) => {
+    const pid = await resolveProjectId(request)
+    await page.goto(`/${pid}`)
+
+    await openThemeMenu(page)
+    await page.locator('[data-theme-name-option="graphite"]').click()
+    await expect(page.locator('html')).toHaveAttribute('data-kb-theme-name', 'graphite')
+
+    await focusSessionToggleWithTab(page)
+    const graphite = await activeOutlineAndRing(page)
+    expect(graphite.outlineColor).toBe(graphite.ringColor)
+    expect(graphite.outlineColor).not.toBe('rgb(0, 95, 204)')
+
+    await openThemeMenu(page)
+    await page.locator('[data-theme-name-option="paper"]').click()
+    await expect(page.locator('html')).toHaveAttribute('data-kb-theme-name', 'paper')
+
+    await focusSessionToggleWithTab(page)
+    const paper = await activeOutlineAndRing(page)
+    expect(paper.outlineColor).toBe(paper.ringColor)
+    expect(paper.outlineColor).not.toBe(graphite.outlineColor)
   })
 
   test('主题翻转后 mermaid 图表重新渲染', async ({ page, request }) => {

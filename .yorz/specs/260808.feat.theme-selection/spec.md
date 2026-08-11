@@ -1,7 +1,7 @@
 ---
 stage: done
-last_action: 用户手动置为 done
-updated_at: '2026-08-08 15:51:04'
+last_action: 追加任务全部完成，标记 done
+updated_at: '2026-08-11 14:57:48'
 summary: 基于已落地的亮暗模式与终端风格，新增终端、石墨、纸感三套主题选择能力，并保持默认终端主题。
 ---
 
@@ -81,6 +81,30 @@ CSS token 层目前只有一套视觉风格：`Terminal`。亮色变量写在 `:
 
 交互入口在 `AppShell` 的设置下拉菜单中，“外观”二级菜单目前只承载 `跟随系统 / 亮色 / 暗色` 三个色彩模式选项。把视觉主题放在同一个二级菜单下最符合现有信息架构：主题族和亮暗模式都属于低频外观偏好，不需要新增顶栏按钮。
 
+**追加任务现状（2026-08-11）：** Tab 聚焦时出现蓝色边框不是主题 token 失效，而是部分可聚焦元素没有显式 focus 样式，浏览器回落到默认 `outline`。基础 UI 组件（Button/Input/Textarea/Select/Radio/Checkbox/Dialog/Dropdown）大多已使用 `focus-visible:ring-ring` 或 `focus:ring-ring`，`--ring` 又按主题映射到 primary 轴；问题集中在少量手写原生按钮、markdown/mermaid 控件、由业务自行拼装的可聚焦节点。
+
+```mermaid
+flowchart TB
+    subgraph FocusSources[焦点来源]
+      UiKit[基础 UI 组件]
+      NativeButtons[手写原生按钮]
+      MarkdownLinks[Markdown 文件链接]
+      MermaidButtons[Mermaid 控件按钮]
+    end
+    subgraph Styles[当前焦点样式]
+      TokenRing[ring-ring 主题 token]
+      BrowserOutline[浏览器默认 outline 蓝色]
+      LocalCss[局部 CSS focus-visible]
+    end
+    UiKit --> TokenRing
+    NativeButtons --> BrowserOutline
+    MarkdownLinks --> LocalCss
+    MermaidButtons --> LocalCss
+
+    classDef affected fill:#fff3bf,stroke:#f08c00,color:#e67700
+    class NativeButtons,BrowserOutline affected
+```
+
 <details>
 <summary>精确层：相关文件与现有实现</summary>
 
@@ -91,6 +115,7 @@ CSS token 层目前只有一套视觉风格：`Terminal`。亮色变量写在 `:
 - `@src/gui/src/i18n/zh-CN.ts`、`@src/gui/src/i18n/en.ts`：已有 `shell.themeSwitch/themeSystem/themeLight/themeDark`，缺少主题族文案。
 - `@src/gui/src/__e2e__/theme-switch.spec.ts`：覆盖亮暗切换、持久化、防闪烁、mermaid 重渲染，后续可扩展主题族断言。
 - `@src/gui/src/lib/__tests__/theme.test.ts`：覆盖色彩模式解析与 localStorage key 绑定，可补充主题族合法值与默认值。
+- 追加任务相关：`@src/gui/src/components/ChatPanel.tsx` 存在会话折叠、会话行等手写 `<button>`；`@src/gui/src/components/MentionTextarea.tsx` 的候选项按钮也不是组件库 Button；`@src/gui/src/app.css` 已有 `--ring` 主题变量与局部 focus 样式。
 
 </details>
 
@@ -187,6 +212,22 @@ flowchart TB
 
 `mermaid` 只依赖亮暗模式，主题族切换不必强制重渲染；它的容器、工具条与页面色彩会通过 CSS 变量自然变化。
 
+### 4.6 追加任务：焦点边框统一
+
+```mermaid
+flowchart TB
+    TabKey[用户按 Tab] --> Focused{聚焦元素是否已有组件 focus ring}
+    Focused -->|已有| Keep[继续使用组件自身 ring-ring]
+    Focused -->|没有| Fallback[全局 focus-visible fallback]
+    Fallback --> RingColor[outline 使用主题 ring 变量]
+    RingColor --> ThemePrimary[随终端 石墨 纸感 primary 轴变化]
+    Keep --> ThemePrimary
+```
+
+采用全局兜底样式修复，而不是逐个给手写按钮补 Tailwind 类。具体做法是在 `@src/gui/src/app.css` 的 base 层新增 `:focus-visible` fallback，覆盖 `button`、`a`、`input`、`textarea`、`select`、`[tabindex]`、`[role='button']` 等可聚焦元素：`outline-color` 使用 `hsl(var(--ring))`，`outline-offset` 保持 2px。由于组件库已有 `focus-visible:outline-none` / `focus:outline-none` 的 selector specificity 更高，原本精细设计的 ring 不会被替换；兜底只接管没有显式 focus 样式的元素，消除浏览器默认蓝色。
+
+验收方式：增加主题 e2e 中的键盘 Tab 断言，至少覆盖 Chat 面板里一个手写按钮；在终端、石墨、纸感之间切换后，聚焦 outline/ring 的计算颜色应跟随 `--ring`，且不等于浏览器默认蓝色。
+
 ## 5. 待确认项
 
 _暂无_
@@ -198,8 +239,15 @@ _暂无_
 - [x] 更新 `src/gui/src/AppShell.tsx` 与 `src/gui/src/i18n/` 的外观菜单，新增主题族选择入口且所有新增文案走 i18n（验收：菜单可选择终端/石墨/纸感，选中项有勾选状态）
 - [x] 补充 `src/gui/src/lib/__tests__/theme.test.ts` 与 `src/gui/src/__e2e__/theme-switch.spec.ts` 覆盖主题族合法值、持久化与首屏引导（验收：新增测试断言覆盖 `yorz.themeName`）
 - [x] 运行格式化、lint、类型检查与相关测试，并根据结果收尾 spec（验收：命令通过或在执行记录中写明不可执行原因）
+- [x] 在 `src/gui/src/app.css` 增加全局 `:focus-visible` token fallback，消除未显式设定 focus 样式元素的浏览器默认蓝色 outline（验收：未使用组件库 ring 的原生按钮聚焦 outline 使用 `--ring`）
+- [x] 扩展主题 e2e 覆盖 Tab 聚焦 outline 颜色，并运行格式化、spec lint、typecheck 与相关测试后收尾（验收：追加任务标记为 `[fixed]`，spec 回到 `done`）
 
-## 7. 执行记录
+## 7. 追加任务
+
+- [fixed] [fix] 2026-08-11 14:54:19 | 按下 tab 键，某些被聚焦/激活的元素会有一个蓝色边框，期望所有激活元素使用对应主题 primary 颜色
+  - 描述：按下 tab 键，某些被聚焦/激活的元素会有一个蓝色边框，期望所有激活元素使用对应主题 primary 颜色
+
+## 8. 执行记录
 
 - 2026-08-08 15:08:12：新建 spec，按用户指定类型 `feat` 生成路径 `.yorz/specs/260808.feat.theme-selection/spec.md`，并完成 plan 阶段分析与方案设计。
 - 2026-08-08 15:11:30：完成主题选择实现：`theme.ts` 新增 `ThemeName`、`yorz.themeName`、`setThemeName()` 与 DOM 属性同步；`index.html` 引导脚本同步写入 `data-kb-theme-name`。
@@ -208,3 +256,7 @@ _暂无_
 - 2026-08-08 15:11:30：完成测试补充：单测覆盖 `isThemeName()` 与 `THEME_NAME_STORAGE_KEY`，e2e 覆盖主题族持久化、首屏引导和非法值回落。
 - 2026-08-08 15:12:47：完成验证：`npx prettier --write ...`、`yorz lint .yorz/specs/260808.feat.theme-selection/spec.md --format json`、`pnpm exec vitest run src/gui/src/lib/__tests__/theme.test.ts`、`pnpm run typecheck`、`pnpm run build`、`pnpm exec playwright test src/gui/src/__e2e__/theme-switch.spec.ts` 均通过。
 - 2026-08-08 15:12:47：所有非 manual 任务完成，`## 待确认项` 为空，标记 spec 为 `done`。
+- 2026-08-11 14:56:01：追加任务进入 execute：聚焦蓝色边框来自无显式 focus 样式的原生可聚焦元素回落到浏览器默认 outline；方案为补全局 token fallback，并用 e2e 覆盖。
+- 2026-08-11 14:56:57：完成焦点边框 fallback：`@src/gui/src/app.css` 新增全局 `:focus-visible` 兜底，未显式设定 focus 样式的可聚焦元素统一使用 `hsl(var(--ring))`；`@src/gui/src/__e2e__/theme-switch.spec.ts` 增加 Tab 聚焦手写按钮的主题 ring 断言。
+- 2026-08-11 14:57:48：完成验证：`npx prettier --write ...`、`yorz lint .yorz/specs/260808.feat.theme-selection/spec.md --format json`、`pnpm run typecheck`、`pnpm run build`、`pnpm exec playwright test src/gui/src/__e2e__/theme-switch.spec.ts` 均通过；追加任务标记为 `[fixed]`。
+- 2026-08-11 14:57:48：所有非 manual 任务完成，`## 待确认项` 为空，标记 spec 为 `done`。

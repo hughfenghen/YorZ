@@ -382,6 +382,11 @@
     @apply text-inherit no-underline;
   }
 
+  :where(button, a, input, textarea, select, [tabindex], [role='button']):focus-visible {
+    outline: 1.5px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
   body.is-resizing {
     user-select: none;
     cursor: col-resize;
