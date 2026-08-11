@@ -1,4 +1,4 @@
-import { Show, createSignal, onCleanup, type Component } from 'solid-js'
+import { Show, createEffect, createSignal, on, onCleanup, type Component } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
 import { Upload, Loader2, Send } from 'lucide-solid'
 import { api, type CreateSpecBody } from '../lib/api.js'
@@ -20,12 +20,71 @@ import { Breadcrumb } from '../components/Breadcrumb.jsx'
 import { t } from '../i18n/index.js'
 
 type Phase = 'idle' | 'creating' | 'failed'
+type NewSpecDraft = {
+  content?: string
+  type?: CreateSpecBody['type']
+  useWorktree?: boolean
+}
 
 const TYPES: { value: CreateSpecBody['type']; labelKey: string; hintKey: string }[] = [
   { value: 'feat', labelKey: 'newSpec.typeFeat', hintKey: 'newSpec.typeFeatHint' },
   { value: 'refct', labelKey: 'newSpec.typeRefct', hintKey: 'newSpec.typeRefctHint' },
   { value: 'fix', labelKey: 'newSpec.typeFix', hintKey: 'newSpec.typeFixHint' },
 ]
+const DRAFT_STORAGE_PREFIX = 'yorz:new-spec-draft:'
+
+function isSpecType(value: unknown): value is CreateSpecBody['type'] {
+  return value === 'feat' || value === 'refct' || value === 'fix'
+}
+
+function draftStorageKey(pid: string): string {
+  return `${DRAFT_STORAGE_PREFIX}${pid}`
+}
+
+function readDraft(pid: string): NewSpecDraft {
+  if (!pid || typeof window === 'undefined') return {}
+  try {
+    const raw = window.localStorage.getItem(draftStorageKey(pid))
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as NewSpecDraft
+    return {
+      content: typeof parsed.content === 'string' ? parsed.content : undefined,
+      type: isSpecType(parsed.type) ? parsed.type : undefined,
+      useWorktree: typeof parsed.useWorktree === 'boolean' ? parsed.useWorktree : undefined,
+    }
+  } catch {
+    return {}
+  }
+}
+
+function persistDraft(pid: string, draft: Required<NewSpecDraft>): void {
+  if (!pid || typeof window === 'undefined') return
+  try {
+    const hasDraft =
+      draft.content.trim().length > 0 || draft.type !== 'feat' || draft.useWorktree !== false
+    const key = draftStorageKey(pid)
+    if (!hasDraft) {
+      window.localStorage.removeItem(key)
+      return
+    }
+    window.localStorage.setItem(key, JSON.stringify(draft))
+  } catch {
+    // Storage is best-effort; form input must remain usable when unavailable.
+  }
+}
+
+function serializeDraft(draft: Required<NewSpecDraft>): string {
+  return JSON.stringify(draft)
+}
+
+function clearDraft(pid: string): void {
+  if (!pid || typeof window === 'undefined') return
+  try {
+    window.localStorage.removeItem(draftStorageKey(pid))
+  } catch {
+    // ignore
+  }
+}
 
 export const NewSpec: Component = () => {
   const navigate = useNavigate()
@@ -47,10 +106,36 @@ export const NewSpec: Component = () => {
   let pendingSessionId: string = ''
   let navigated = false
   let fileInputEl: HTMLInputElement | undefined
+  let restoringDraft = false
+  let suppressedDraftSnapshot = ''
 
   onCleanup(() => {
     cleanupList?.()
     sessionUnsub?.()
+  })
+
+  createEffect(
+    on(projectId, (pid) => {
+      restoringDraft = true
+      const draft = readDraft(pid)
+      setContent(draft.content ?? '')
+      setType(draft.type ?? 'feat')
+      setUseWorktree(draft.useWorktree ?? false)
+      restoringDraft = false
+    }),
+  )
+
+  createEffect(() => {
+    if (restoringDraft || busy()) return
+    const draft = {
+      content: content(),
+      type: type(),
+      useWorktree: useWorktree(),
+    }
+    const snapshot = serializeDraft(draft)
+    if (snapshot === suppressedDraftSnapshot) return
+    suppressedDraftSnapshot = ''
+    persistDraft(projectId(), draft)
   })
 
   async function pollForNewSpec() {
@@ -101,11 +186,18 @@ export const NewSpec: Component = () => {
     navigated = false
     try {
       const sourcePid = projectId()
+      suppressedDraftSnapshot = serializeDraft({
+        content: content(),
+        type: type(),
+        useWorktree: useWorktree(),
+      })
+      clearDraft(sourcePid)
       let pid = sourcePid
       if (useWorktree()) {
         const slug = deriveSlug(text)
         const wt = await api.createWorktree(sourcePid, { specSlug: slug })
         pid = wt.id
+        clearDraft(pid)
       }
       targetProjectId = pid
       const before = await api.listSpecs(pid)
