@@ -8,6 +8,7 @@ import {
   onMount,
   type Component,
 } from 'solid-js'
+import { Plus, Trash2 } from 'lucide-solid'
 import { cn } from '../lib/cn.js'
 import { api } from '../lib/api.js'
 import { Textarea } from './ui/textarea.jsx'
@@ -19,16 +20,44 @@ const DEFAULT_MIN_ROWS = 2
 const DEFAULT_MAX_ROWS = 10
 /** getComputedStyle returns `normal` for an unset line-height. */
 const NORMAL_LINE_HEIGHT_RATIO = 1.5
+const FUZZY_SCORE_MATCH = 16
+const FUZZY_SCORE_PREFIX = 48
+const FUZZY_SCORE_CONSECUTIVE = 24
+const FUZZY_SCORE_BOUNDARY = 8
 
 export interface SlashCommand {
   value: string
   label?: string
   description?: string
+  replacement?: string
+  action?: 'add'
+  customId?: string
+  deletable?: boolean
+  deleteLabel?: string
+  icon?: 'plus'
 }
 
 type CompletionItem =
   | { kind: 'mention'; value: string }
-  | { kind: 'slash'; value: string; label: string; description?: string }
+  | {
+      kind: 'slash'
+      value: string
+      label: string
+      description?: string
+      replacement?: string
+      action?: 'add'
+      customId?: string
+      deletable?: boolean
+      deleteLabel?: string
+      icon?: 'plus'
+      command: SlashCommand
+    }
+
+interface ScoredSlashCommand {
+  cmd: SlashCommand
+  score: number
+  index: number
+}
 
 export interface MentionTextareaProps {
   /** Empty id disables completion (no project scope to search). */
@@ -45,6 +74,8 @@ export interface MentionTextareaProps {
   rows?: number
   /** Static commands triggered by `/` at the beginning of the textarea. */
   slashCommands?: SlashCommand[]
+  onSlashCommandAction?: (command: SlashCommand) => void
+  onDeleteSlashCommand?: (command: SlashCommand) => void
   autofocus?: boolean
   required?: boolean
   class?: string
@@ -55,6 +86,59 @@ export interface MentionTextareaProps {
    */
   onKeyDown?: (e: KeyboardEvent) => void
   onPaste?: (e: ClipboardEvent) => void
+}
+
+function stripLeadingSlash(value: string): string {
+  return value.replace(/^\/+/, '')
+}
+
+function isFuzzyBoundary(target: string, index: number): boolean {
+  if (index === 0) return true
+  return /[\s/_.-]/.test(target[index - 1] ?? '')
+}
+
+function scoreFuzzyText(query: string, target: string): number | null {
+  if (!query) return 0
+  const q = query.toLowerCase()
+  const t = target.toLowerCase()
+  let score = 0
+  let lastIndex = -1
+
+  for (let qi = 0; qi < q.length; qi++) {
+    const nextIndex = t.indexOf(q[qi]!, lastIndex + 1)
+    if (nextIndex === -1) return null
+
+    score += FUZZY_SCORE_MATCH
+    if (nextIndex === qi) score += FUZZY_SCORE_PREFIX
+    if (nextIndex === lastIndex + 1) score += FUZZY_SCORE_CONSECUTIVE
+    if (isFuzzyBoundary(target, nextIndex)) score += FUZZY_SCORE_BOUNDARY
+    score -= Math.max(0, nextIndex - lastIndex - 1)
+    lastIndex = nextIndex
+  }
+
+  return score - target.length * 0.01
+}
+
+function scoreFuzzySlashCommand(query: string, cmd: SlashCommand): number | null {
+  const q = stripLeadingSlash(query.trim())
+  if (!q) return 0
+  const valueScore = scoreFuzzyText(q, stripLeadingSlash(cmd.value))
+  const labelScore = cmd.label ? scoreFuzzyText(q, stripLeadingSlash(cmd.label)) : null
+  if (valueScore == null) return labelScore
+  if (labelScore == null) return valueScore
+  return Math.max(valueScore, labelScore)
+}
+
+function filterSlashCommands(commands: SlashCommand[], query: string): SlashCommand[] {
+  if (!query) return commands
+  return commands
+    .map<ScoredSlashCommand | null>((cmd, index) => {
+      const score = scoreFuzzySlashCommand(query, cmd)
+      return score == null ? null : { cmd, score, index }
+    })
+    .filter((entry): entry is ScoredSlashCommand => entry != null)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((entry) => entry.cmd)
 }
 
 /**
@@ -152,15 +236,19 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
     mentionStart = -1
     mentionQuery = ''
     slashQuery = text.slice(1)
-    const query = slashQuery.toLowerCase()
-    const next = commands
-      .filter((cmd) => cmd.value.toLowerCase().startsWith(`/${query}`))
-      .map((cmd) => ({
-        kind: 'slash' as const,
-        value: cmd.value,
-        label: cmd.label ?? cmd.value,
-        description: cmd.description,
-      }))
+    const next = filterSlashCommands(commands, slashQuery).map((cmd) => ({
+      kind: 'slash' as const,
+      value: cmd.value,
+      label: cmd.label ?? cmd.value,
+      description: cmd.description,
+      replacement: cmd.replacement,
+      action: cmd.action,
+      customId: cmd.customId,
+      deletable: cmd.deletable,
+      deleteLabel: cmd.deleteLabel,
+      icon: cmd.icon,
+      command: cmd,
+    }))
     itemRefs = []
     setItems(next)
     setIndex(0)
@@ -200,13 +288,22 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
   }
 
   function selectItem(item: CompletionItem): void {
+    if (item.kind === 'slash' && item.action === 'add') {
+      const text = props.value
+      const after = text.slice(1 + slashQuery.length)
+      props.onValueChange(after)
+      closeMention()
+      props.onSlashCommandAction?.(item.command)
+      requestAnimationFrame(() => el?.focus())
+      return
+    }
     const text = props.value
     const isSlash = item.kind === 'slash'
     const start = isSlash ? 0 : mentionStart
     const queryLength = isSlash ? slashQuery.length : mentionQuery.length
     const before = text.slice(0, start)
     const after = text.slice(start + 1 + queryLength)
-    const replacement = isSlash ? `${item.value} ` : `@${item.value}`
+    const replacement = isSlash ? (item.replacement ?? `${item.value} `) : `@${item.value}`
     props.onValueChange(before + replacement + after)
     closeMention()
     const cursorPos = before.length + replacement.length
@@ -216,6 +313,21 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
       el.setSelectionRange(cursorPos, cursorPos)
       autoResize()
     })
+  }
+
+  function deleteSlashItem(item: CompletionItem): void {
+    if (item.kind !== 'slash') return
+    props.onDeleteSlashCommand?.(item.command)
+    let shouldClose = false
+    setItems((prev) => {
+      const next = prev.filter((candidate) => {
+        return candidate.kind !== 'slash' || !item.customId || candidate.customId !== item.customId
+      })
+      setIndex((current) => Math.min(current, Math.max(0, next.length - 1)))
+      shouldClose = next.length === 0
+      return next
+    })
+    if (shouldClose) closeMention()
   }
 
   function scrollActiveIntoView(): void {
@@ -300,19 +412,46 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
                     selectItem(item)
                   }}
                 >
-                  <span class="block overflow-hidden text-ellipsis whitespace-nowrap">
-                    {item.kind === 'slash' ? item.label : item.value}
-                  </span>
-                  <Show when={item.kind === 'slash' && item.description}>
-                    <span
-                      class={cn(
-                        'block overflow-hidden text-ellipsis whitespace-nowrap text-xs',
-                        index() === i() ? 'text-primary-foreground/80' : 'text-muted-foreground',
-                      )}
-                    >
-                      {item.kind === 'slash' ? item.description : ''}
+                  <span class="flex min-w-0 items-center gap-2">
+                    <Show when={item.kind === 'slash' && item.icon === 'plus'}>
+                      <Plus class="h-3.5 w-3.5 shrink-0" />
+                    </Show>
+                    <span class="min-w-0 flex-1">
+                      <span class="block overflow-hidden text-ellipsis whitespace-nowrap">
+                        {item.kind === 'slash' ? item.label : item.value}
+                      </span>
+                      <Show when={item.kind === 'slash' && item.description}>
+                        <span
+                          class={cn(
+                            'block overflow-hidden text-ellipsis whitespace-nowrap text-xs',
+                            index() === i()
+                              ? 'text-primary-foreground/80'
+                              : 'text-muted-foreground',
+                          )}
+                        >
+                          {item.kind === 'slash' ? item.description : ''}
+                        </span>
+                      </Show>
                     </span>
-                  </Show>
+                    <Show when={item.kind === 'slash' && item.deletable}>
+                      <span
+                        role="button"
+                        tabIndex={-1}
+                        title={item.kind === 'slash' ? item.deleteLabel : undefined}
+                        class={cn(
+                          'shrink-0 rounded p-1 opacity-80 hover:bg-destructive/10',
+                          index() === i() ? 'text-primary-foreground' : 'text-destructive',
+                        )}
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          deleteSlashItem(item)
+                        }}
+                      >
+                        <Trash2 class="h-3.5 w-3.5" />
+                      </span>
+                    </Show>
+                  </span>
                 </button>
               </li>
             )}

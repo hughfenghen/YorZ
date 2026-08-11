@@ -33,6 +33,9 @@ import { renderMarkdown } from '../lib/markdown.js'
 import { t, useTranslation } from '../i18n/index.js'
 import { Button } from './ui/button.jsx'
 import { Card } from './ui/card.jsx'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog.jsx'
+import { Input } from './ui/input.jsx'
+import { Textarea } from './ui/textarea.jsx'
 import { toast } from './ui/toast.jsx'
 import { MentionTextarea, type SlashCommand } from './MentionTextarea.jsx'
 import { ChatToolBlock } from './ChatToolBlock.jsx'
@@ -54,6 +57,7 @@ const LIST_COLLAPSED_KEY = 'yorz.chat.sessionList.collapsed'
 const SESSION_LIST_ROWS_KEY = 'yorz.chat.sessionList.rows'
 const LEGACY_SESSION_LIST_LIMIT_KEY = 'yorz.chat.sessionList.limit'
 const SHOW_HISTORY_KEY = 'yorz.chat.sessionList.showHistory'
+const CUSTOM_SLASH_COMMANDS_KEY = 'yorz.chat.customSlashCommands'
 const SESSION_LIST_ROW_OPTIONS = [3, 5, 10] as const
 const SESSION_ROW_HEIGHT_PX = 28
 const DEFAULT_WIDTH = 340
@@ -136,6 +140,15 @@ function writeLocal(key: string, value: string): void {
 
 type SessionListRows = (typeof SESSION_LIST_ROW_OPTIONS)[number]
 
+interface CustomSlashCommand {
+  id: string
+  name: string
+  description: string
+  systemPrompt: string
+  prefill: string
+  createdAt: number
+}
+
 function isSessionListRows(value: number): value is SessionListRows {
   return SESSION_LIST_ROW_OPTIONS.includes(value as SessionListRows)
 }
@@ -148,6 +161,56 @@ function readSessionListRows(): SessionListRows {
   return readLocal(SHOW_HISTORY_KEY, '0') === '1' ? 10 : 3
 }
 
+function isCustomSlashCommand(value: unknown): value is CustomSlashCommand {
+  if (!value || typeof value !== 'object') return false
+  const obj = value as Record<string, unknown>
+  return (
+    typeof obj.id === 'string' &&
+    typeof obj.name === 'string' &&
+    typeof obj.description === 'string' &&
+    typeof obj.systemPrompt === 'string' &&
+    typeof obj.prefill === 'string' &&
+    typeof obj.createdAt === 'number'
+  )
+}
+
+function readCustomSlashCommands(): CustomSlashCommand[] {
+  try {
+    const raw =
+      typeof window !== 'undefined' ? window.localStorage.getItem(CUSTOM_SLASH_COMMANDS_KEY) : null
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed) ? parsed.filter(isCustomSlashCommand) : []
+  } catch {
+    return []
+  }
+}
+
+function writeCustomSlashCommands(commands: CustomSlashCommand[]): void {
+  try {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(CUSTOM_SLASH_COMMANDS_KEY, JSON.stringify(commands))
+    }
+  } catch {
+    // ignore quota
+  }
+}
+
+function normalizeSlashCommandName(value: string): string {
+  return value.trim().replace(/^\/+/, '')
+}
+
+function validSlashCommandName(value: string): boolean {
+  return /^[\w-]+$/.test(value)
+}
+
+function makeCustomSlashCommandId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 export const ChatPanel: Component = () => {
   let messagesEl: HTMLDivElement | undefined
   let fileInputEl: HTMLInputElement | undefined
@@ -157,8 +220,30 @@ export const ChatPanel: Component = () => {
   // referenced by path in the outgoing prompt. Reset after each send and whenever
   // the active session / project changes.
   const attachments = createAttachments({ projectId: () => activeProjectId() || '' })
+  const [customSlashCommands, setCustomSlashCommands] =
+    createSignal<CustomSlashCommand[]>(readCustomSlashCommands())
+  const [customCommandOpen, setCustomCommandOpen] = createSignal(false)
+  const [customCommandName, setCustomCommandName] = createSignal('')
+  const [customCommandDescription, setCustomCommandDescription] = createSignal('')
+  const [customCommandSystemPrompt, setCustomCommandSystemPrompt] = createSignal('')
+  const [customCommandPrefill, setCustomCommandPrefill] = createSignal('')
+  const [customCommandError, setCustomCommandError] = createSignal<string | null>(null)
   const slashCommands = createMemo<SlashCommand[]>(() => {
     lng()
+    const custom = customSlashCommands().map((cmd) => {
+      const value = `/${cmd.name}`
+      const replacement = cmd.prefill.trim() ? cmd.prefill : `${value} `
+      return {
+        value,
+        label: value,
+        description:
+          cmd.description || cmd.systemPrompt || t('chat.customSlashCommandNoDescription'),
+        replacement,
+        customId: cmd.id,
+        deletable: true,
+        deleteLabel: t('chat.deleteCustomSlashCommand', { name: cmd.name }),
+      }
+    })
     return [
       {
         value: '/yorz-debug',
@@ -167,6 +252,14 @@ export const ChatPanel: Component = () => {
       {
         value: '/yorz-spec',
         description: t('chat.slashCommandYorzSpec'),
+      },
+      ...custom,
+      {
+        value: '/add-command',
+        label: t('chat.addSlashCommandOption'),
+        description: t('chat.addSlashCommandOptionDescription'),
+        action: 'add',
+        icon: 'plus',
       },
     ]
   })
@@ -712,6 +805,57 @@ export const ChatPanel: Component = () => {
     }
   }
 
+  function resetCustomCommandForm(): void {
+    setCustomCommandName('')
+    setCustomCommandDescription('')
+    setCustomCommandSystemPrompt('')
+    setCustomCommandPrefill('')
+    setCustomCommandError(null)
+  }
+
+  function openCustomCommandDialog(): void {
+    resetCustomCommandForm()
+    setCustomCommandOpen(true)
+  }
+
+  function saveCustomCommand(e: Event): void {
+    e.preventDefault()
+    const name = normalizeSlashCommandName(customCommandName())
+    if (!name) {
+      setCustomCommandError(t('chat.customSlashCommandNameRequired'))
+      return
+    }
+    if (!validSlashCommandName(name)) {
+      setCustomCommandError(t('chat.customSlashCommandNameInvalid'))
+      return
+    }
+    const nextCommand: CustomSlashCommand = {
+      id: makeCustomSlashCommandId(),
+      name,
+      description: customCommandDescription().trim(),
+      systemPrompt: customCommandSystemPrompt().trim(),
+      prefill: customCommandPrefill(),
+      createdAt: Date.now(),
+    }
+    setCustomSlashCommands((prev) => {
+      const next = [...prev.filter((cmd) => cmd.name !== name), nextCommand]
+      writeCustomSlashCommands(next)
+      return next
+    })
+    setCustomCommandOpen(false)
+    resetCustomCommandForm()
+  }
+
+  function deleteCustomSlashCommand(command: SlashCommand): void {
+    const id = command.customId
+    if (!id) return
+    setCustomSlashCommands((prev) => {
+      const next = prev.filter((cmd) => cmd.id !== id)
+      writeCustomSlashCommands(next)
+      return next
+    })
+  }
+
   return (
     <aside
       class={`relative flex flex-col border-r bg-background text-base shrink-0 ${
@@ -948,6 +1092,8 @@ export const ChatPanel: Component = () => {
                 value={input()}
                 onValueChange={setInput}
                 slashCommands={slashCommands()}
+                onSlashCommandAction={openCustomCommandDialog}
+                onDeleteSlashCommand={deleteCustomSlashCommand}
                 onKeyDown={onKeyDown}
                 onPaste={attachments.onPaste}
                 placeholder={
@@ -1034,6 +1180,75 @@ export const ChatPanel: Component = () => {
           onMouseDown={beginResize}
         />
       </Show>
+
+      <Dialog
+        open={customCommandOpen()}
+        onOpenChange={(open) => {
+          setCustomCommandOpen(open)
+          if (!open) resetCustomCommandForm()
+        }}
+      >
+        <DialogContent class="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('chat.addSlashCommandTitle')}</DialogTitle>
+          </DialogHeader>
+          <form class="grid gap-4" onSubmit={saveCustomCommand}>
+            <label class="grid gap-2 text-sm font-medium" for="chat-custom-command-name">
+              {t('chat.customSlashCommandName')}
+              <Input
+                id="chat-custom-command-name"
+                value={customCommandName()}
+                placeholder={t('chat.customSlashCommandNamePlaceholder')}
+                onInput={(e) => {
+                  setCustomCommandName(e.currentTarget.value)
+                  setCustomCommandError(null)
+                }}
+                required
+              />
+            </label>
+            <label class="grid gap-2 text-sm font-medium" for="chat-custom-command-description">
+              {t('chat.customSlashCommandDescription')}
+              <Input
+                id="chat-custom-command-description"
+                value={customCommandDescription()}
+                placeholder={t('chat.customSlashCommandDescriptionPlaceholder')}
+                onInput={(e) => setCustomCommandDescription(e.currentTarget.value)}
+              />
+            </label>
+            <label class="grid gap-2 text-sm font-medium" for="chat-custom-command-system-prompt">
+              {t('chat.customSlashCommandSystemPrompt')}
+              <Textarea
+                id="chat-custom-command-system-prompt"
+                value={customCommandSystemPrompt()}
+                placeholder={t('chat.customSlashCommandSystemPromptPlaceholder')}
+                rows={3}
+                onInput={(e) => setCustomCommandSystemPrompt(e.currentTarget.value)}
+              />
+            </label>
+            <label class="grid gap-2 text-sm font-medium" for="chat-custom-command-prefill">
+              {t('chat.customSlashCommandPrefill')}
+              <Textarea
+                id="chat-custom-command-prefill"
+                value={customCommandPrefill()}
+                placeholder={t('chat.customSlashCommandPrefillPlaceholder')}
+                rows={3}
+                onInput={(e) => setCustomCommandPrefill(e.currentTarget.value)}
+              />
+            </label>
+            <Show when={customCommandError()}>
+              <p class="m-0 text-sm text-destructive">{customCommandError()}</p>
+            </Show>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCustomCommandOpen(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit" disabled={!customCommandName().trim()}>
+                {t('chat.saveCustomSlashCommand')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </aside>
   )
 }
