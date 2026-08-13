@@ -5,11 +5,14 @@ import {
   getSessionMessages,
   type Options,
   type SDKMessage,
+  type SDKControlGetUsageResponse,
 } from '@anthropic-ai/claude-agent-sdk'
 import type {
   AgentEvent,
   AgentSdkAdapter,
   AgentSession,
+  AgentUsageStatus,
+  AgentUsageWindow,
   Capabilities,
   MessagePart,
   NormalizedMessage,
@@ -46,6 +49,46 @@ function toolResultText(content: unknown): string {
     return acc
   }
   return content == null ? '' : JSON.stringify(content)
+}
+
+type UsageWindowKey =
+  | 'five_hour'
+  | 'seven_day'
+  | 'seven_day_sonnet'
+  | 'seven_day_opus'
+  | 'seven_day_oauth_apps'
+
+const USAGE_WINDOWS: Array<[UsageWindowKey, string]> = [
+  ['five_hour', '5-hour'],
+  ['seven_day', '7-day'],
+  ['seven_day_sonnet', 'Sonnet 7-day'],
+  ['seven_day_opus', 'Opus 7-day'],
+  ['seven_day_oauth_apps', 'OAuth apps 7-day'],
+]
+
+function usageWindows(usage: SDKControlGetUsageResponse): AgentUsageWindow[] {
+  const out: AgentUsageWindow[] = []
+  const limits = usage.rate_limits
+  if (!limits) return out
+  for (const [key, label] of USAGE_WINDOWS) {
+    const win = limits[key]
+    if (!win) continue
+    out.push({
+      key,
+      label,
+      utilization: typeof win.utilization === 'number' ? win.utilization : null,
+      resetsAt: typeof win.resets_at === 'string' ? win.resets_at : null,
+    })
+  }
+  for (const win of limits.model_scoped ?? []) {
+    out.push({
+      key: `model:${win.display_name}`,
+      label: win.display_name,
+      utilization: typeof win.utilization === 'number' ? win.utilization : null,
+      resetsAt: typeof win.resets_at === 'string' ? win.resets_at : null,
+    })
+  }
+  return out
 }
 
 class ClaudeSession implements AgentSession {
@@ -175,6 +218,38 @@ export class ClaudeAdapter implements AgentSdkAdapter {
   }
 
   capabilities(): Capabilities {
-    return { listSessions: true, getMessages: true }
+    return { listSessions: true, getMessages: true, usageStatus: true }
+  }
+
+  async getUsageStatus(): Promise<AgentUsageStatus> {
+    const options: Options = {
+      cwd: this.cwd,
+      permissionMode: 'bypassPermissions',
+      allowDangerouslySkipPermissions: true,
+    }
+    const q = query({ prompt: '', options })
+    try {
+      const usage = await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()
+      q.close()
+      return {
+        kind: this.kind,
+        status: usage.rate_limits_available ? 'available' : 'unavailable',
+        checkedAt: Date.now(),
+        subscriptionType: usage.subscription_type,
+        rateLimitsAvailable: usage.rate_limits_available,
+        windows: usageWindows(usage),
+        message: usage.rate_limits_available
+          ? undefined
+          : 'claude usage rate limits are unavailable for this auth/provider',
+      }
+    } catch (err) {
+      q.close()
+      return {
+        kind: this.kind,
+        status: 'error',
+        checkedAt: Date.now(),
+        message: err instanceof Error ? err.message : String(err),
+      }
+    }
   }
 }

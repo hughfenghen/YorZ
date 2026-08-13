@@ -84,6 +84,17 @@ export const en = {
     empty: 'Select or create a session to start chatting.',
     /** Untitled (draft) state: no session exists on the server yet. */
     draftEmpty: 'Untitled session — send a message to start.',
+    usageLoading: 'Checking current model usage…',
+    usageUnavailable: '{{kind}} does not support remaining usage queries yet.',
+    usageInstallHint:
+      '{{kind}} requires opencode-quota before remaining usage can be queried: {{command}}',
+    usageError: 'Failed to query {{kind}} remaining usage.',
+    usageAvailableNoDetails: '{{kind}} is connected, but returned no displayable usage details.',
+    usageSummary: '{{kind}} usage: {{details}}',
+    usageWindow: '{{label}} about {{remaining}}% remaining ({{used}}% used, resets: {{reset}})',
+    usageWindowUnknown: '{{label}} remaining usage unknown',
+    usageResetUnknown: 'unknown',
+    usageSeparator: ' · ',
     inputPlaceholder: 'Type a message, / for commands, @ to reference files, Enter to send…',
     draftPlaceholder:
       'Type a message, / for commands, @ to reference files — a session starts on send…',

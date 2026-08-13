@@ -19,6 +19,8 @@ function fakeAdapter(opts: {
   messages?: Record<string, NormalizedMessage[]>
   onSend?: (prompt: string) => AsyncIterable<AgentEvent>
   onAbort?: () => void
+  usageStatus?: AgentSdkAdapter['getUsageStatus']
+  usageStatusCapable?: boolean
 }): AgentSdkAdapter {
   const makeSession = (id: string): AgentSession => ({
     id,
@@ -35,7 +37,12 @@ function fakeAdapter(opts: {
     resumeSession: async (id: string) => makeSession(id),
     listSessions: async () => opts.native ?? [],
     getMessages: async (id: string) => opts.messages?.[id] ?? [],
-    capabilities: () => ({ listSessions: true, getMessages: true }),
+    getUsageStatus: opts.usageStatus,
+    capabilities: () => ({
+      listSessions: true,
+      getMessages: true,
+      usageStatus: opts.usageStatusCapable ?? Boolean(opts.usageStatus),
+    }),
   }
 }
 
@@ -195,6 +202,54 @@ describe('SessionManager.getMessages', () => {
     const [listed] = await mgr.listSessions()
     expect(listed.kind).toBe('claude')
     expect(await mgr.getMessages('dup')).toEqual([textMessage('from claude')])
+  })
+})
+
+describe('SessionManager.getUsageStatus', () => {
+  it('returns unavailable when the adapter has no usage status capability', async () => {
+    const { mgr } = await makeManager(fakeAdapter({ usageStatusCapable: false }))
+
+    const status = await mgr.getUsageStatus()
+
+    expect(status).toMatchObject({ kind: 'claude', status: 'unavailable' })
+  })
+
+  it('returns adapter usage status when supported', async () => {
+    const { mgr } = await makeManager(
+      fakeAdapter({
+        usageStatusCapable: true,
+        usageStatus: async () => ({
+          kind: 'claude',
+          status: 'available',
+          checkedAt: 123,
+          rateLimitsAvailable: true,
+          windows: [{ key: 'five_hour', label: '5-hour', utilization: 42, resetsAt: null }],
+        }),
+      }),
+    )
+
+    const status = await mgr.getUsageStatus()
+
+    expect(status).toMatchObject({
+      kind: 'claude',
+      status: 'available',
+      windows: [{ key: 'five_hour', utilization: 42 }],
+    })
+  })
+
+  it('converts adapter usage status throws into error status', async () => {
+    const { mgr } = await makeManager(
+      fakeAdapter({
+        usageStatusCapable: true,
+        usageStatus: async () => {
+          throw new Error('usage failed')
+        },
+      }),
+    )
+
+    const status = await mgr.getUsageStatus()
+
+    expect(status).toMatchObject({ kind: 'claude', status: 'error', message: 'usage failed' })
   })
 })
 

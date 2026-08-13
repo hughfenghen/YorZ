@@ -23,7 +23,7 @@ import {
 import { format as formatTimeago, register as registerTimeago } from 'timeago.js'
 import zhCNTimeago from 'timeago.js/lib/lang/zh_CN.js'
 import { enShort } from '../lib/timeago-locale.js'
-import { api, type SessionInfo } from '../lib/api.js'
+import { api, type AgentUsageWindow, type SessionInfo } from '../lib/api.js'
 import { subscribeSession, subscribeSessions, type SessionEvent } from '../lib/sse.js'
 import { activeProjectId } from '../lib/project.js'
 import { clearRequestedChatSession, requestedChatSessionId } from '../lib/chat-session-request.js'
@@ -331,6 +331,13 @@ export const ChatPanel: Component = () => {
     () => activeProjectId() || undefined,
     (pid) => api.listSessions(pid),
   )
+  const [usageStatus] = createResource(
+    () => {
+      const pid = activeProjectId()
+      return pid && !activeSid() ? pid : undefined
+    },
+    (pid) => api.getAgentUsageStatus(pid),
+  )
 
   // Rebuild running state from each list response: the server's `running` set is
   // the authority, SSE only carries transitions. Rebuilding (rather than merging)
@@ -616,6 +623,45 @@ export const ChatPanel: Component = () => {
     if (!Number.isFinite(ts) || ts <= 0) return ''
     return new Date(ts).toLocaleString(lng())
   }
+
+  function formatUsageReset(ts: string | null): string {
+    if (!ts) return t('chat.usageResetUnknown')
+    const time = new Date(ts)
+    if (!Number.isFinite(time.getTime())) return t('chat.usageResetUnknown')
+    return time.toLocaleString(lng())
+  }
+
+  function formatUsageWindow(win: AgentUsageWindow): string {
+    if (typeof win.utilization !== 'number') {
+      return t('chat.usageWindowUnknown', { label: win.label })
+    }
+    const used = Math.min(100, Math.max(0, Math.round(win.utilization)))
+    const remaining = Math.max(0, 100 - used)
+    return t('chat.usageWindow', {
+      label: win.label,
+      remaining,
+      used,
+      reset: formatUsageReset(win.resetsAt),
+    })
+  }
+
+  const usageSummary = createMemo(() => {
+    lng()
+    if (usageStatus.loading) return t('chat.usageLoading')
+    const usage = usageStatus()
+    if (!usage) return ''
+    if (usage.status === 'error') return t('chat.usageError', { kind: usage.kind })
+    if (usage.status === 'unavailable' && usage.installCommand) {
+      return t('chat.usageInstallHint', { kind: usage.kind, command: usage.installCommand })
+    }
+    if (usage.status === 'unavailable') return t('chat.usageUnavailable', { kind: usage.kind })
+    const windows = usage.windows ?? []
+    if (windows.length === 0) return t('chat.usageAvailableNoDetails', { kind: usage.kind })
+    return t('chat.usageSummary', {
+      kind: usage.kind,
+      details: windows.slice(0, 2).map(formatUsageWindow).join(t('chat.usageSeparator')),
+    })
+  })
 
   async function copyFilePath(path: string): Promise<void> {
     try {
@@ -1012,9 +1058,12 @@ export const ChatPanel: Component = () => {
             <Show
               when={blocks().length > 0}
               fallback={
-                <p class="text-muted-foreground">
-                  {activeSid() ? t('chat.empty') : t('chat.draftEmpty')}
-                </p>
+                <div class="text-muted-foreground">
+                  <p class="m-0">{activeSid() ? t('chat.empty') : t('chat.draftEmpty')}</p>
+                  <Show when={!activeSid() && usageSummary()}>
+                    {(summary) => <p class="mt-1 text-sm">{summary()}</p>}
+                  </Show>
+                </div>
               }
             >
               <For each={blocks()}>

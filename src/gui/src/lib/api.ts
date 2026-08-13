@@ -212,6 +212,25 @@ export interface SessionInfo {
   running?: boolean
 }
 
+export interface AgentUsageWindow {
+  key: string
+  label: string
+  utilization: number | null
+  resetsAt: string | null
+}
+
+export interface AgentUsageStatus {
+  kind: AgentKind
+  status: 'available' | 'unavailable' | 'error'
+  checkedAt: number
+  source?: 'native-sdk' | 'private-api' | 'local-snapshot' | 'external-cli'
+  subscriptionType?: string | null
+  rateLimitsAvailable?: boolean
+  windows?: AgentUsageWindow[]
+  installCommand?: string
+  message?: string
+}
+
 export type MessagePart =
   | { type: 'text'; text: string; contextKind?: AgentContextKind }
   | { type: 'tool-use'; name: string; input: unknown }
@@ -447,6 +466,8 @@ export const api = {
       `${projectBase(pid)}/files?query=${encodeURIComponent(query)}&limit=${limit}`,
     ),
   listSessions: (pid: string) => request<SessionInfo[]>(`${projectBase(pid)}/sessions`),
+  getAgentUsageStatus: (pid: string) =>
+    request<AgentUsageStatus>(`${projectBase(pid)}/agent-usage`),
   createSession: (pid: string, body: { title?: string; agentKind?: AgentKind } = {}) =>
     request<{ sessionId: string; kind: AgentKind }>(`${projectBase(pid)}/sessions`, {
       method: 'POST',

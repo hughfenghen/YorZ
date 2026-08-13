@@ -5,6 +5,7 @@ import type {
   AgentEvent,
   AgentKind,
   AgentSession,
+  AgentUsageStatus,
   NormalizedMessage,
   SessionInfo,
 } from './agent-sdk/types.js'
@@ -255,6 +256,28 @@ export class SessionManager {
     const adapter = this.adapters.get(kind)
     if (!adapter.capabilities().getMessages) return []
     return adapter.getMessages(sid)
+  }
+
+  async getUsageStatus(): Promise<AgentUsageStatus> {
+    const adapter = this.adapters.get(this.defaultKind)
+    if (!adapter.capabilities().usageStatus || !adapter.getUsageStatus) {
+      return {
+        kind: this.defaultKind,
+        status: 'unavailable',
+        checkedAt: Date.now(),
+        message: `${this.defaultKind} adapter does not support usage status queries`,
+      }
+    }
+    try {
+      return await adapter.getUsageStatus()
+    } catch (err) {
+      return {
+        kind: this.defaultKind,
+        status: 'error',
+        checkedAt: Date.now(),
+        message: err instanceof Error ? err.message : String(err),
+      }
+    }
   }
 
   private async ensureLive(sid: string): Promise<LiveSession> {

@@ -35,11 +35,34 @@ export interface SessionInfo {
   running?: boolean
 }
 
+export type AgentUsageStatusKind = 'available' | 'unavailable' | 'error'
+
+export interface AgentUsageWindow {
+  key: string
+  label: string
+  utilization: number | null
+  resetsAt: string | null
+}
+
+export interface AgentUsageStatus {
+  kind: AgentKind
+  status: AgentUsageStatusKind
+  checkedAt: number
+  source?: 'native-sdk' | 'private-api' | 'local-snapshot' | 'external-cli'
+  subscriptionType?: string | null
+  rateLimitsAvailable?: boolean
+  windows?: AgentUsageWindow[]
+  installCommand?: string
+  message?: string
+}
+
 export interface Capabilities {
   /** Adapter can enumerate sessions via its own SDK/native store. */
   listSessions: boolean
   /** Adapter can read full history for a session id. */
   getMessages: boolean
+  /** Adapter can query account/model usage without sending a chat message. */
+  usageStatus: boolean
 }
 
 export interface SendOptions {
@@ -66,6 +89,8 @@ export interface AgentSdkAdapter {
   listSessions(): Promise<SessionInfo[]>
   /** Read full normalized history for a session. */
   getMessages(id: string): Promise<NormalizedMessage[]>
+  /** Query remaining quota / usage status without mutating a chat transcript. */
+  getUsageStatus?(): Promise<AgentUsageStatus>
   capabilities(): Capabilities
   /** Release any long-lived resources (e.g. opencode server). */
   dispose?(): Promise<void>

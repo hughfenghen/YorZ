@@ -6,12 +6,6 @@
   "specsDir": ".yorz/specs",
   "commands": [
     {
-      "id": "4162775309f1fb70",
-      "name": "install",
-      "cli": "ni",
-      "createdAt": 1785510478590
-    },
-    {
       "id": "1fa462c869add945",
       "name": "dev:gui",
       "cli": "nr dev:gui",

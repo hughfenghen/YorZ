@@ -11,6 +11,8 @@ import type {
   AgentSdkAdapter,
   AgentSession,
   Capabilities,
+  AgentUsageStatus,
+  AgentUsageWindow,
   MessagePart,
   NormalizedMessage,
   SendOptions,
@@ -18,6 +20,7 @@ import type {
 } from './types.js'
 
 const DEFAULT_CODEX_STORAGE_ROOT = join(homedir(), '.codex')
+const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/codex/usage'
 const TITLE_MAX_LENGTH = 64
 
 function codexThreadOptions(cwd: string): ThreadOptions {
@@ -92,6 +95,120 @@ export function parseCodexSessionIndex(text: string): Map<string, string> {
     if (id && title) out.set(id, title)
   }
   return out
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function numberFrom(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const n = Number(value)
+    if (Number.isFinite(n)) return n
+  }
+  return null
+}
+
+function resetFrom(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) {
+    const n = Number(value)
+    if (Number.isFinite(n)) return new Date(n * 1000).toISOString()
+    const d = new Date(value)
+    return Number.isFinite(d.getTime()) ? d.toISOString() : null
+  }
+  const n = numberFrom(value)
+  return n == null ? null : new Date(n * 1000).toISOString()
+}
+
+function codexWindow(key: string, label: string, value: unknown): AgentUsageWindow | null {
+  const rec = asRecord(value)
+  if (!rec) return null
+  const utilization =
+    numberFrom(rec.used_percent) ??
+    numberFrom(rec.usedPercent) ??
+    numberFrom(rec.utilization) ??
+    numberFrom(rec.percent_used)
+  if (utilization == null) return null
+  return {
+    key,
+    label,
+    utilization,
+    resetsAt: resetFrom(rec.resets_at ?? rec.reset_at ?? rec.resetsAt ?? rec.resetAt),
+  }
+}
+
+export function parseCodexUsageResponse(raw: unknown): AgentUsageStatus | null {
+  const root = asRecord(raw)
+  if (!root) return null
+  const rateLimit = asRecord(root.rate_limit)
+  const rateLimits = asRecord(root.rate_limits)
+  const windows: AgentUsageWindow[] = []
+  const primary = codexWindow(
+    'primary',
+    'Primary',
+    rateLimit?.primary_window ?? rateLimits?.primary ?? root.primary,
+  )
+  if (primary) windows.push(primary)
+  const secondary = codexWindow(
+    'secondary',
+    'Secondary',
+    rateLimit?.secondary_window ?? rateLimits?.secondary ?? root.secondary,
+  )
+  if (secondary) windows.push(secondary)
+  const additional =
+    root.additional_rate_limits ?? root.additionalRateLimits ?? rateLimit?.additional
+  if (Array.isArray(additional)) {
+    for (const [idx, item] of additional.entries()) {
+      const rec = asRecord(item)
+      const label = String(rec?.label ?? rec?.name ?? rec?.limit_name ?? `Additional ${idx + 1}`)
+      const win = codexWindow(`additional:${idx}`, label, item)
+      if (win) windows.push(win)
+    }
+  }
+  if (windows.length === 0) return null
+  return {
+    kind: 'codex',
+    status: 'available',
+    checkedAt: Date.now(),
+    source: 'private-api',
+    subscriptionType: typeof root.plan_type === 'string' ? root.plan_type : null,
+    rateLimitsAvailable: true,
+    windows,
+  }
+}
+
+export function parseCodexTokenCountSnapshot(text: string): AgentUsageStatus | null {
+  let latestTs = 0
+  let latest: AgentUsageStatus | null = null
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    let obj: unknown
+    try {
+      obj = JSON.parse(trimmed)
+    } catch {
+      continue
+    }
+    const rec = asRecord(obj)
+    const payload = asRecord(rec?.payload)
+    if (payload?.type !== 'token_count') continue
+    const parsed = parseCodexUsageResponse({ rate_limits: payload.rate_limits })
+    if (!parsed) continue
+    const ts = typeof rec?.timestamp === 'string' ? Date.parse(rec.timestamp) : 0
+    if (ts >= latestTs) {
+      latestTs = ts
+      latest = {
+        ...parsed,
+        checkedAt: Number.isFinite(ts) && ts > 0 ? ts : Date.now(),
+        source: 'local-snapshot',
+        message: 'codex local token_count snapshot',
+      }
+    }
+  }
+  return latest
 }
 
 class CodexSession implements AgentSession {
@@ -226,7 +343,57 @@ export class CodexAdapter implements AgentSdkAdapter {
   }
 
   capabilities(): Capabilities {
-    return { listSessions: true, getMessages: true }
+    return { listSessions: true, getMessages: true, usageStatus: true }
+  }
+
+  async getUsageStatus(): Promise<AgentUsageStatus> {
+    const live = await this.readPrivateUsage().catch(() => null)
+    if (live) return live
+    const snapshot = await this.readLatestUsageSnapshot().catch(() => null)
+    if (snapshot) return snapshot
+    return {
+      kind: this.kind,
+      status: 'unavailable',
+      checkedAt: Date.now(),
+      message:
+        'codex usage is unavailable: private API failed and no local token_count snapshot found',
+    }
+  }
+
+  private async readPrivateUsage(): Promise<AgentUsageStatus | null> {
+    const auth = await this.readAuth()
+    if (!auth) return null
+    const res = await fetch(CODEX_USAGE_URL, {
+      headers: {
+        authorization: `Bearer ${auth.accessToken}`,
+        'chatgpt-account-id': auth.accountId,
+      },
+    })
+    if (!res.ok) return null
+    return parseCodexUsageResponse(await res.json())
+  }
+
+  private async readAuth(): Promise<{ accessToken: string; accountId: string } | null> {
+    let raw: unknown
+    try {
+      raw = JSON.parse(await readFile(join(this.storageRoot, 'auth.json'), 'utf8'))
+    } catch {
+      return null
+    }
+    const tokens = asRecord(asRecord(raw)?.tokens)
+    const accessToken = typeof tokens?.access_token === 'string' ? tokens.access_token : ''
+    const accountId = typeof tokens?.account_id === 'string' ? tokens.account_id : ''
+    return accessToken && accountId ? { accessToken, accountId } : null
+  }
+
+  private async readLatestUsageSnapshot(): Promise<AgentUsageStatus | null> {
+    let latest: AgentUsageStatus | null = null
+    for (const file of await this.walkRollouts()) {
+      const parsed = parseCodexTokenCountSnapshot(await readFile(file, 'utf8'))
+      if (!parsed) continue
+      if (!latest || parsed.checkedAt >= latest.checkedAt) latest = parsed
+    }
+    return latest
   }
 
   private async walkRollouts(): Promise<string[]> {

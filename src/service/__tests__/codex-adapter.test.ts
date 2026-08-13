@@ -2,7 +2,12 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { CodexAdapter, summarizeCodexPromptForTitle } from '../agent-sdk/codex-adapter.js'
+import {
+  CodexAdapter,
+  parseCodexTokenCountSnapshot,
+  parseCodexUsageResponse,
+  summarizeCodexPromptForTitle,
+} from '../agent-sdk/codex-adapter.js'
 
 describe('summarizeCodexPromptForTitle', () => {
   it('cleans markdown and attachment noise into a readable short title', () => {
@@ -102,5 +107,70 @@ describe('CodexAdapter.listSessions', () => {
 
     expect(list).toHaveLength(1)
     expect(list[0].title).toBe('Use Codex resume title')
+  })
+})
+
+describe('CodexAdapter usage parsing', () => {
+  it('parses private Codex usage responses', () => {
+    const status = parseCodexUsageResponse({
+      plan_type: 'pro',
+      rate_limit: {
+        primary_window: { used_percent: 25, reset_at: 1787197564 },
+        secondary_window: { used_percent: 60, reset_at: '2026-08-14T00:00:00.000Z' },
+      },
+      additional_rate_limits: [{ name: 'GPT-5', used_percent: 10, resets_at: 1787197564 }],
+    })
+
+    expect(status).toMatchObject({
+      kind: 'codex',
+      status: 'available',
+      source: 'private-api',
+      subscriptionType: 'pro',
+      windows: [
+        { key: 'primary', utilization: 25 },
+        { key: 'secondary', utilization: 60 },
+        { key: 'additional:0', label: 'GPT-5', utilization: 10 },
+      ],
+    })
+  })
+
+  it('parses the latest local token_count snapshot', () => {
+    const status = parseCodexTokenCountSnapshot(
+      [
+        JSON.stringify({
+          timestamp: '2026-08-13T01:00:00.000Z',
+          type: 'event_msg',
+          payload: {
+            type: 'token_count',
+            rate_limits: {
+              plan_type: 'plus',
+              primary: { used_percent: 80, resets_at: 1787197564 },
+            },
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-08-13T02:00:00.000Z',
+          type: 'event_msg',
+          payload: {
+            type: 'token_count',
+            rate_limits: {
+              plan_type: 'plus',
+              primary: { used_percent: 20, resets_at: 1787197564 },
+              secondary: { used_percent: 40, resets_at: 1787283964 },
+            },
+          },
+        }),
+      ].join('\n'),
+    )
+
+    expect(status).toMatchObject({
+      kind: 'codex',
+      status: 'available',
+      source: 'local-snapshot',
+      windows: [
+        { key: 'primary', utilization: 20 },
+        { key: 'secondary', utilization: 40 },
+      ],
+    })
   })
 })
