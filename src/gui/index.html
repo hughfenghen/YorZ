@@ -7,20 +7,15 @@
     <title>YorZ</title>
     <!--
       主题引导：必须同步执行且早于样式表，否则首屏会先按默认亮色绘制再跳到暗色。
-      与 src/lib/theme.ts 共用 localStorage key，模块加载后由 initTheme() 接管。
+      最终用户偏好由服务端全局配置接管；这里仅用系统偏好给首屏兜底。
     -->
     <script>
       ;(function () {
         try {
-          var mode = localStorage.getItem('yorz.theme') || 'system'
-          var name = localStorage.getItem('yorz.themeName') || 'terminal'
-          var resolved =
-            mode === 'light' || mode === 'dark'
-              ? mode
-              : window.matchMedia('(prefers-color-scheme: dark)').matches
-                ? 'dark'
-                : 'light'
-          if (name !== 'terminal' && name !== 'graphite' && name !== 'paper') name = 'terminal'
+          var name = 'terminal'
+          var resolved = window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light'
           document.documentElement.setAttribute('data-kb-theme', resolved)
           document.documentElement.setAttribute('data-kb-theme-name', name)
           document.documentElement.style.colorScheme = resolved

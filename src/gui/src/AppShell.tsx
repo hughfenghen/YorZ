@@ -26,8 +26,8 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from './components/ui/dropdown-menu.jsx'
-import { toast, Toaster } from './components/ui/toast.jsx'
-import { api, type GlobalConfig } from './lib/api.js'
+import { Toaster } from './components/ui/toast.jsx'
+import { globalConfig, refreshGlobalConfig, updateGlobalConfig } from './lib/global-config.js'
 import { activeProjectId, projectHref, setActiveProjectId } from './lib/project.js'
 import { focusModeShortcutHandler, requestProjectConfigOpen } from './lib/shortcut-actions.js'
 import {
@@ -58,45 +58,39 @@ const THEME_NAME_OPTIONS: { name: ThemeName; labelKey: string }[] = [
   { name: 'paper', labelKey: 'shell.themePaper' },
 ]
 
-const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
-  agent: {
-    defaultKind: 'claude',
-  },
-  notifications: {
-    sessionEnd: {
-      banner: false,
-      sound: false,
-    },
-  },
-  shortcuts: {},
-  power: {
-    inhibitWhenRunning: 'system-default',
-  },
-}
-
 export const AppShell: ParentComponent = (props): JSX.Element => {
   const location = useLocation()
   const navigate = useNavigate()
   const { lng, changeLanguage } = useTranslation()
   const [globalConfigOpen, setGlobalConfigOpen] = createSignal(false)
-  const [globalConfig, setGlobalConfig] = createSignal<GlobalConfig>(DEFAULT_GLOBAL_CONFIG)
 
   // Already on the New Spec page? A same-route navigation would be a no-op, so
   // open a fresh tab instead — that's the only way "new spec" does something here.
   const onNewSpecPage = createMemo(() => location.pathname === projectHref('specs/new'))
 
-  function selectLanguage(l: string): void {
+  function selectLanguage(l: 'zh-CN' | 'en'): void {
     if (l === lng()) return
     void changeLanguage(l)
-    window.location.reload()
+    void updateGlobalConfig((current) => ({
+      ...current,
+      appearance: { ...current.appearance, language: l },
+    }))
   }
 
-  async function refreshGlobalConfig(): Promise<void> {
-    try {
-      setGlobalConfig(await api.getGlobalConfig())
-    } catch {
-      setGlobalConfig(DEFAULT_GLOBAL_CONFIG)
-    }
+  function selectThemeMode(mode: ThemeMode): void {
+    setThemeMode(mode)
+    void updateGlobalConfig((current) => ({
+      ...current,
+      appearance: { ...current.appearance, themeMode: mode },
+    }))
+  }
+
+  function selectThemeName(name: ThemeName): void {
+    setThemeName(name)
+    void updateGlobalConfig((current) => ({
+      ...current,
+      appearance: { ...current.appearance, themeName: name },
+    }))
   }
 
   function openNewSpec(): void {
@@ -218,7 +212,7 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
                     {(option) => (
                       <DropdownMenuItem
                         data-theme-option={option.mode}
-                        onSelect={() => setThemeMode(option.mode)}
+                        onSelect={() => selectThemeMode(option.mode)}
                       >
                         <Check
                           class={`mr-2 h-4 w-4 ${themeMode() === option.mode ? 'opacity-100' : 'opacity-0'}`}
@@ -236,7 +230,7 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
                     {(option) => (
                       <DropdownMenuItem
                         data-theme-name-option={option.name}
-                        onSelect={() => setThemeName(option.name)}
+                        onSelect={() => selectThemeName(option.name)}
                       >
                         <Check
                           class={`mr-2 h-4 w-4 ${themeName() === option.name ? 'opacity-100' : 'opacity-0'}`}
@@ -262,14 +256,7 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
         <main class="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">{props.children}</main>
       </div>
       <Toaster position="top-center" />
-      <GlobalConfigDialog
-        open={globalConfigOpen()}
-        onClose={() => setGlobalConfigOpen(false)}
-        onSaved={(message) => {
-          toast.success(message)
-          void refreshGlobalConfig()
-        }}
-      />
+      <GlobalConfigDialog open={globalConfigOpen()} onClose={() => setGlobalConfigOpen(false)} />
     </div>
   )
 }

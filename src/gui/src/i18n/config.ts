@@ -11,9 +11,8 @@ const initPromise = i18next.use(LanguageDetector).init({
   },
   fallbackLng: 'zh-CN',
   detection: {
-    order: ['localStorage', 'navigator'],
-    lookupLocalStorage: 'yorz.lang',
-    caches: ['localStorage'],
+    order: ['navigator'],
+    caches: [],
   },
   interpolation: {
     escapeValue: false,

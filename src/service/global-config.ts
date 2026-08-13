@@ -28,10 +28,17 @@ export interface GlobalConfig {
   notifications: GlobalNotificationsConfig
   shortcuts: GlobalShortcutsConfig
   power: GlobalPowerConfig
+  appearance: GlobalAppearanceConfig
+  customInstructions: GlobalCustomInstruction[]
 }
 
-export type GlobalConfigInput = Omit<GlobalConfig, 'power'> & {
+export type GlobalConfigInput = Omit<
+  GlobalConfig,
+  'power' | 'appearance' | 'customInstructions'
+> & {
   power?: GlobalPowerConfig
+  appearance?: GlobalAppearanceConfig
+  customInstructions?: GlobalCustomInstruction[]
 }
 
 export interface GlobalAgentConfig {
@@ -49,6 +56,24 @@ export interface GlobalPowerConfig {
 }
 
 export type PowerInhibitMode = 'system-default' | 'prevent-display-sleep' | 'keep-system-awake'
+export type GlobalThemeMode = 'system' | 'light' | 'dark'
+export type GlobalThemeName = 'terminal' | 'graphite' | 'paper'
+export type GlobalLanguage = 'zh-CN' | 'en'
+
+export interface GlobalAppearanceConfig {
+  themeMode: GlobalThemeMode
+  themeName: GlobalThemeName
+  language: GlobalLanguage
+}
+
+export interface GlobalCustomInstruction {
+  id: string
+  name: string
+  description: string
+  systemPrompt: string
+  prefill: string
+  createdAt: number
+}
 
 export interface SessionEndNotificationsConfig {
   banner: boolean
@@ -66,6 +91,11 @@ export const DEFAULT_NOTIFICATIONS: GlobalNotificationsConfig = {
 export const DEFAULT_POWER: GlobalPowerConfig = {
   inhibitWhenRunning: 'system-default',
 }
+export const DEFAULT_APPEARANCE: GlobalAppearanceConfig = {
+  themeMode: 'system',
+  themeName: 'terminal',
+  language: 'zh-CN',
+}
 export const SHORTCUT_ACTION_IDS: GlobalShortcutActionId[] = [
   'newSpec',
   'toggleSpecDetailFullscreen',
@@ -80,6 +110,10 @@ export function resolveGlobalConfigDir(env: NodeJS.ProcessEnv = process.env): st
 }
 
 export function resolveGlobalConfigPath(env: NodeJS.ProcessEnv = process.env): string {
+  return join(resolveGlobalConfigDir(env), 'config.json')
+}
+
+export function resolveLegacyGlobalProjectsPath(env: NodeJS.ProcessEnv = process.env): string {
   return join(resolveGlobalConfigDir(env), 'projects.json')
 }
 
@@ -100,7 +134,19 @@ export function resolveSkillEntry(skillName: string, env: NodeJS.ProcessEnv = pr
 
 export async function loadGlobalConfig(filePath?: string): Promise<GlobalConfig> {
   const fp = filePath ?? resolveGlobalConfigPath()
-  if (!existsSync(fp)) return defaultGlobalConfig()
+  if (!existsSync(fp)) {
+    const legacy = filePath
+      ? basename(fp) === 'config.json'
+        ? join(dirname(fp), 'projects.json')
+        : ''
+      : resolveLegacyGlobalProjectsPath()
+    if (legacy && existsSync(legacy)) return loadGlobalConfigFromPath(legacy)
+    return defaultGlobalConfig()
+  }
+  return loadGlobalConfigFromPath(fp)
+}
+
+async function loadGlobalConfigFromPath(fp: string): Promise<GlobalConfig> {
   let raw: string
   try {
     raw = await readFile(fp, 'utf8')
@@ -155,6 +201,8 @@ function normalizeConfig(value: unknown): GlobalConfig {
     notifications: normalizeNotifications(obj.notifications),
     shortcuts: normalizeShortcuts(obj.shortcuts),
     power: normalizePower(obj.power),
+    appearance: normalizeAppearance(obj.appearance),
+    customInstructions: normalizeCustomInstructions(obj.customInstructions),
   }
 }
 
@@ -173,6 +221,8 @@ export function defaultGlobalConfig(): GlobalConfig {
     power: {
       inhibitWhenRunning: DEFAULT_POWER.inhibitWhenRunning,
     },
+    appearance: { ...DEFAULT_APPEARANCE },
+    customInstructions: [],
   }
 }
 
@@ -236,6 +286,54 @@ function normalizePower(value: unknown): GlobalPowerConfig {
     return { inhibitWhenRunning: mode }
   }
   return { inhibitWhenRunning: DEFAULT_POWER.inhibitWhenRunning }
+}
+
+function normalizeAppearance(value: unknown): GlobalAppearanceConfig {
+  if (!value || typeof value !== 'object') return { ...DEFAULT_APPEARANCE }
+  const obj = value as Record<string, unknown>
+  const themeMode = obj.themeMode
+  const themeName = obj.themeName
+  const language = obj.language
+  return {
+    themeMode: isThemeMode(themeMode) ? themeMode : DEFAULT_APPEARANCE.themeMode,
+    themeName: isThemeName(themeName) ? themeName : DEFAULT_APPEARANCE.themeName,
+    language: isLanguage(language) ? language : DEFAULT_APPEARANCE.language,
+  }
+}
+
+function normalizeCustomInstructions(value: unknown): GlobalCustomInstruction[] {
+  if (!Array.isArray(value)) return []
+  const out: GlobalCustomInstruction[] = []
+  const seen = new Set<string>()
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const obj = item as Record<string, unknown>
+    const id = typeof obj.id === 'string' ? obj.id.trim() : ''
+    const name = typeof obj.name === 'string' ? obj.name.trim().replace(/^\/+/, '') : ''
+    if (!id || !name || seen.has(id) || !/^[\w-]+$/.test(name)) continue
+    seen.add(id)
+    out.push({
+      id,
+      name,
+      description: typeof obj.description === 'string' ? obj.description : '',
+      systemPrompt: typeof obj.systemPrompt === 'string' ? obj.systemPrompt : '',
+      prefill: typeof obj.prefill === 'string' ? obj.prefill : '',
+      createdAt: typeof obj.createdAt === 'number' && obj.createdAt > 0 ? obj.createdAt : 0,
+    })
+  }
+  return out
+}
+
+export function isThemeMode(value: unknown): value is GlobalThemeMode {
+  return value === 'system' || value === 'light' || value === 'dark'
+}
+
+export function isThemeName(value: unknown): value is GlobalThemeName {
+  return value === 'terminal' || value === 'graphite' || value === 'paper'
+}
+
+export function isLanguage(value: unknown): value is GlobalLanguage {
+  return value === 'zh-CN' || value === 'en'
 }
 
 export function normalizeShortcutBinding(value: string): string | null {

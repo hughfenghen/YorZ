@@ -346,13 +346,13 @@ export const zhCN = {
     shortcutRecordingButton: '录制中',
     shortcutReset: '重置',
     shortcutConflict: '快捷键不能重复绑定',
+    saveStatusSaving: '保存中...',
+    saveStatusSaved: '已保存',
     shortcuts: {
       newSpec: '新建 spec',
       toggleSpecDetailFullscreen: '页面最大化',
       projectSettings: '项目设置',
     },
-    saved: '全局配置已保存',
-    save: '保存',
   },
   commands: {
     menuTitle: '命令',

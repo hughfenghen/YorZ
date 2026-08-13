@@ -7,7 +7,7 @@ import { createSessionEndNotifier, type CommandRunner } from '../session-end-not
 
 async function tmpConfigPath(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'yorz-session-end-notifier-'))
-  return join(dir, 'projects.json')
+  return join(dir, 'config.json')
 }
 
 describe('session-end-notifier', () => {

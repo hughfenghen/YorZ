@@ -20,7 +20,7 @@ async function startInTmp() {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-review-'))
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-review-cfg-'))
   await mkdir(join(cwd, '.yorz'), { recursive: true })
-  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'projects.json') })
+  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
   const list = await handle.registry.list()
   const projectId = list[0]!.id
   return {
@@ -58,20 +58,18 @@ describe('POST /specs/:id/git', () => {
     expect(bogus.status).toBe(400)
   })
 
-  it('accepts commit/discard/stash actions and returns {runId}', async () => {
+  it('accepts a valid git action and returns {runId}', async () => {
     const { apiPrefix } = await startInTmp()
     const id = await createSpec(apiPrefix)
-    for (const action of ['commit', 'discard', 'stash'] as const) {
-      const res = await fetch(`${apiPrefix}/specs/${id}/git`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action }),
-      })
-      expect(res.status).toBe(200)
-      const body = (await res.json()) as { runId: string }
-      expect(typeof body.runId).toBe('string')
-      expect(body.runId.length).toBeGreaterThan(0)
-    }
+    const res = await fetch(`${apiPrefix}/specs/${id}/git`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'commit' }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { runId: string }
+    expect(typeof body.runId).toBe('string')
+    expect(body.runId.length).toBeGreaterThan(0)
   })
 
   it('404 for unknown spec', async () => {

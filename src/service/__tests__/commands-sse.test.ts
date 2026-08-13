@@ -18,7 +18,10 @@ interface Frame {
 }
 
 /** Opens the multiplexed SSE stream and collects `msg` frames. */
-async function openStream(clientId: string, topics: string[]): Promise<{
+async function openStream(
+  clientId: string,
+  topics: string[],
+): Promise<{
   frames: Frame[]
   close: () => void
 }> {
@@ -74,7 +77,7 @@ beforeAll(async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-cmd-sse-'))
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-cmd-sse-cfg-'))
   await mkdir(join(cwd, '.yorz'), { recursive: true })
-  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'projects.json') })
+  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
   base = handle.url
   projectId = (await handle.registry.list())[0]?.id ?? ''
   apiPrefix = `${base}api/projects/${projectId}`
@@ -118,9 +121,7 @@ describe('command SSE topics', () => {
       stream.frames.some(
         (f) =>
           f.event === 'runs-updated' &&
-          (f.data.runs as CommandRun[]).some(
-            (r) => r.runId === run.runId && r.status === 'exited',
-          ),
+          (f.data.runs as CommandRun[]).some((r) => r.runId === run.runId && r.status === 'exited'),
       ),
     )
     expect(sawExit).toBe(true)
@@ -132,7 +133,10 @@ describe('command SSE topics', () => {
       await fetch(`${apiPrefix}/commands`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: 'forever', cli: `node -e "setInterval(()=>console.log('tick'),50)"` }),
+        body: JSON.stringify({
+          name: 'forever',
+          cli: `node -e "setInterval(()=>console.log('tick'),50)"`,
+        }),
       })
     ).json()) as CommandDef
     const run = (await (
@@ -147,7 +151,9 @@ describe('command SSE topics', () => {
     const stream = await openStream('c-one', [topic])
 
     const gotOutput = await waitFor(() =>
-      stream.frames.some((f) => f.event === 'output-appended' && String(f.data.chunk).includes('tick')),
+      stream.frames.some(
+        (f) => f.event === 'output-appended' && String(f.data.chunk).includes('tick'),
+      ),
     )
     expect(gotOutput).toBe(true)
 
@@ -184,7 +190,7 @@ describe('service lifecycle binding', () => {
     const cwd = await mkdtemp(join(tmpdir(), 'yorz-cmd-close-'))
     const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-cmd-close-cfg-'))
     await mkdir(join(cwd, '.yorz'), { recursive: true })
-    const h = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'projects.json') })
+    const h = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
     const pid = (await h.registry.list())[0]!.id
     const prefix = `${h.url}api/projects/${pid}`
 

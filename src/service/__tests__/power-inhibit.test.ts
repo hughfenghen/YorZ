@@ -7,7 +7,7 @@ import { PowerInhibitController, type PowerInhibitProcess } from '../power-inhib
 
 async function tmpConfigPath(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'yorz-power-inhibit-'))
-  return join(dir, 'projects.json')
+  return join(dir, 'config.json')
 }
 
 function baseConfig(mode: 'system-default' | 'prevent-display-sleep' | 'keep-system-awake') {

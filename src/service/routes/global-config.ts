@@ -1,12 +1,18 @@
 import { Hono } from 'hono'
 import {
   loadGlobalConfig,
+  DEFAULT_APPEARANCE,
   DEFAULT_POWER,
   normalizeShortcuts,
   normalizeShortcutBinding,
   saveGlobalConfig,
   SHORTCUT_ACTION_IDS,
+  isLanguage,
+  isThemeMode,
+  isThemeName,
+  type GlobalAppearanceConfig,
   type GlobalAgentConfig,
+  type GlobalCustomInstruction,
   type GlobalPowerConfig,
   type GlobalShortcutsConfig,
   type SessionEndNotificationsConfig,
@@ -20,6 +26,8 @@ interface PutBody {
   }
   shortcuts: GlobalShortcutsConfig
   power: GlobalPowerConfig
+  appearance: GlobalAppearanceConfig
+  customInstructions: GlobalCustomInstruction[]
 }
 
 export function createGlobalConfigRoutes(
@@ -35,6 +43,8 @@ export function createGlobalConfigRoutes(
       notifications: cfg.notifications,
       shortcuts: cfg.shortcuts,
       power: cfg.power,
+      appearance: cfg.appearance,
+      customInstructions: cfg.customInstructions,
     })
   })
 
@@ -53,6 +63,8 @@ export function createGlobalConfigRoutes(
     cfg.notifications = parsed.notifications
     cfg.shortcuts = parsed.shortcuts
     cfg.power = parsed.power
+    cfg.appearance = parsed.appearance
+    cfg.customInstructions = parsed.customInstructions
     await saveGlobalConfig(cfg, globalConfigPath)
     await powerController.refresh()
     return c.json({
@@ -62,6 +74,8 @@ export function createGlobalConfigRoutes(
         notifications: cfg.notifications,
         shortcuts: cfg.shortcuts,
         power: cfg.power,
+        appearance: cfg.appearance,
+        customInstructions: cfg.customInstructions,
       },
     })
   })
@@ -128,10 +142,72 @@ function parseBody(value: unknown): PutBody | { error: string } {
         'power.inhibitWhenRunning must be system-default | prevent-display-sleep | keep-system-awake',
     }
   }
+  const appearance = parseAppearance(obj.appearance ?? DEFAULT_APPEARANCE)
+  if ('error' in appearance) return appearance
+  const customInstructions = parseCustomInstructions(obj.customInstructions)
+  if ('error' in customInstructions) return customInstructions
   return {
     agent: { defaultKind },
     notifications: { sessionEnd: { banner: s.banner, sound: s.sound } },
     shortcuts: normalizeShortcuts(shortcutObj),
     power: { inhibitWhenRunning },
+    appearance,
+    customInstructions,
   }
+}
+
+function parseAppearance(value: unknown): GlobalAppearanceConfig | { error: string } {
+  if (!value || typeof value !== 'object') return { error: 'appearance must be an object' }
+  const obj = value as Record<string, unknown>
+  const themeMode = obj.themeMode
+  if (!isThemeMode(themeMode))
+    return { error: 'appearance.themeMode must be system | light | dark' }
+  const themeName = obj.themeName
+  if (!isThemeName(themeName)) {
+    return { error: 'appearance.themeName must be terminal | graphite | paper' }
+  }
+  const language = obj.language
+  if (!isLanguage(language)) return { error: 'appearance.language must be zh-CN | en' }
+  return { themeMode, themeName, language }
+}
+
+function parseCustomInstructions(value: unknown): GlobalCustomInstruction[] | { error: string } {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) return { error: 'customInstructions must be an array' }
+  const out: GlobalCustomInstruction[] = []
+  const seen = new Set<string>()
+  for (const [index, item] of value.entries()) {
+    if (!item || typeof item !== 'object') {
+      return { error: `customInstructions.${index} must be an object` }
+    }
+    const obj = item as Record<string, unknown>
+    const id = typeof obj.id === 'string' ? obj.id.trim() : ''
+    const name = typeof obj.name === 'string' ? obj.name.trim().replace(/^\/+/, '') : ''
+    if (!id) return { error: `customInstructions.${index}.id required` }
+    if (!name || !/^[\w-]+$/.test(name)) {
+      return {
+        error: `customInstructions.${index}.name must use letters, numbers, underscores, or hyphens`,
+      }
+    }
+    if (seen.has(id)) return { error: `duplicate custom instruction id: ${id}` }
+    seen.add(id)
+    const description = obj.description
+    const systemPrompt = obj.systemPrompt
+    const prefill = obj.prefill
+    const createdAt = obj.createdAt
+    if (typeof description !== 'string') {
+      return { error: `customInstructions.${index}.description must be a string` }
+    }
+    if (typeof systemPrompt !== 'string') {
+      return { error: `customInstructions.${index}.systemPrompt must be a string` }
+    }
+    if (typeof prefill !== 'string') {
+      return { error: `customInstructions.${index}.prefill must be a string` }
+    }
+    if (typeof createdAt !== 'number' || createdAt <= 0) {
+      return { error: `customInstructions.${index}.createdAt must be a positive number` }
+    }
+    out.push({ id, name, description, systemPrompt, prefill, createdAt })
+  }
+  return out
 }

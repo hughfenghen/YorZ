@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   addProject,
@@ -20,7 +20,7 @@ import {
 
 async function tmpConfigPath(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'yorz-global-config-'))
-  return join(dir, 'projects.json')
+  return join(dir, 'config.json')
 }
 
 describe('global-config: resolveGlobalConfigPath', () => {
@@ -34,9 +34,9 @@ describe('global-config: resolveGlobalConfigPath', () => {
     expect(dir).toBe('/tmp/xdg/yorz')
   })
 
-  it('default ends with /yorz/projects.json', () => {
+  it('default ends with /yorz/config.json', () => {
     const fp = resolveGlobalConfigPath({})
-    expect(fp.endsWith('/yorz/projects.json')).toBe(true)
+    expect(fp.endsWith('/yorz/config.json')).toBe(true)
   })
 })
 
@@ -70,6 +70,12 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     expect(cfg.notifications.sessionEnd).toEqual({ banner: false, sound: false })
     expect(cfg.shortcuts).toEqual({})
     expect(cfg.power).toEqual({ inhibitWhenRunning: 'system-default' })
+    expect(cfg.appearance).toEqual({
+      themeMode: 'system',
+      themeName: 'terminal',
+      language: 'zh-CN',
+    })
+    expect(cfg.customInstructions).toEqual([])
   })
 
   it('roundtrips via atomic save', async () => {
@@ -94,6 +100,12 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     expect(cfg.notifications.sessionEnd).toEqual({ banner: false, sound: false })
     expect(cfg.shortcuts).toEqual({})
     expect(cfg.power).toEqual({ inhibitWhenRunning: 'system-default' })
+    expect(cfg.appearance).toEqual({
+      themeMode: 'system',
+      themeName: 'terminal',
+      language: 'zh-CN',
+    })
+    expect(cfg.customInstructions).toEqual([])
   })
 
   it('returns empty list when file is malformed JSON', async () => {
@@ -105,6 +117,11 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     expect(cfg.notifications.sessionEnd).toEqual({ banner: false, sound: false })
     expect(cfg.shortcuts).toEqual({})
     expect(cfg.power).toEqual({ inhibitWhenRunning: 'system-default' })
+    expect(cfg.appearance).toEqual({
+      themeMode: 'system',
+      themeName: 'terminal',
+      language: 'zh-CN',
+    })
   })
 
   it('roundtrips session end notification preferences', async () => {
@@ -206,6 +223,60 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     )
     const cfg = await loadGlobalConfig(fp)
     expect(cfg.power).toEqual({ inhibitWhenRunning: 'system-default' })
+  })
+
+  it('roundtrips appearance and custom instructions', async () => {
+    const fp = await tmpConfigPath()
+    await saveGlobalConfig(
+      {
+        version: 1,
+        projects: [],
+        agent: { defaultKind: 'claude' },
+        notifications: { sessionEnd: { banner: false, sound: false } },
+        shortcuts: {},
+        appearance: { themeMode: 'dark', themeName: 'paper', language: 'en' },
+        customInstructions: [
+          {
+            id: 'commit',
+            name: '/commit',
+            description: 'Commit changes',
+            systemPrompt: 'Commit related files',
+            prefill: '/commit ',
+            createdAt: 1785511681636,
+          },
+        ],
+      },
+      fp,
+    )
+    const cfg = await loadGlobalConfig(fp)
+    expect(cfg.appearance).toEqual({ themeMode: 'dark', themeName: 'paper', language: 'en' })
+    expect(cfg.customInstructions).toEqual([
+      {
+        id: 'commit',
+        name: 'commit',
+        description: 'Commit changes',
+        systemPrompt: 'Commit related files',
+        prefill: '/commit ',
+        createdAt: 1785511681636,
+      },
+    ])
+  })
+
+  it('reads legacy projects.json when config.json is missing', async () => {
+    const fp = await tmpConfigPath()
+    const legacy = join(dirname(fp), 'projects.json')
+    await writeFile(
+      legacy,
+      JSON.stringify({
+        version: 1,
+        projects: [{ id: 'legacy', path: '/tmp/legacy', addedAt: 'x', lastActivityAt: null }],
+        agent: { defaultKind: 'codex' },
+      }),
+      'utf8',
+    )
+    const cfg = await loadGlobalConfig(fp)
+    expect(cfg.projects[0]!.id).toBe('legacy')
+    expect(cfg.agent).toEqual({ defaultKind: 'codex' })
   })
 })
 

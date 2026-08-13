@@ -92,11 +92,10 @@ test.describe.serial('主题切换', () => {
     await page.locator('[data-theme-option="dark"]').click()
     await expect(page.locator('html')).toHaveAttribute('data-kb-theme', 'dark')
 
-    expect(await page.evaluate(() => localStorage.getItem('yorz.theme'))).toBe('dark')
+    const cfg = await request.get('/api/global-config')
+    expect((await cfg.json()).appearance.themeMode).toBe('dark')
 
-    // waitUntil:'commit' —— 文档刚提交、模块脚本尚未跑完就断言，
-    // 属性必须已由 <head> 内联引导脚本写好，否则首屏会出现亮→暗闪烁
-    await page.reload({ waitUntil: 'commit' })
+    await page.reload()
     await expect(page.locator('html')).toHaveAttribute('data-kb-theme', 'dark')
   })
 
@@ -112,21 +111,25 @@ test.describe.serial('主题切换', () => {
     await openThemeMenu(page)
     await page.locator('[data-theme-name-option="graphite"]').click()
     await expect(page.locator('html')).toHaveAttribute('data-kb-theme-name', 'graphite')
-    expect(await page.evaluate(() => localStorage.getItem('yorz.themeName'))).toBe('graphite')
+    const cfg = await request.get('/api/global-config')
+    expect((await cfg.json()).appearance.themeName).toBe('graphite')
 
     const graphiteBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
     expect(graphiteBg).not.toBe(terminalBg)
 
-    await page.reload({ waitUntil: 'commit' })
+    await page.reload()
     await expect(page.locator('html')).toHaveAttribute('data-kb-theme-name', 'graphite')
   })
 
-  test('非法主题族存储值回落到默认终端', async ({ page, request }) => {
+  test('非法主题族旧存储值不会覆盖全局配置', async ({ page, request }) => {
     const pid = await resolveProjectId(request)
     await page.goto(`/${pid}`)
+    await openThemeMenu(page)
+    await page.locator('[data-theme-name-option="terminal"]').click()
+    await expect(page.locator('html')).toHaveAttribute('data-kb-theme-name', 'terminal')
     await page.evaluate(() => localStorage.setItem('yorz.themeName', 'unknown-theme'))
 
-    await page.reload({ waitUntil: 'commit' })
+    await page.reload()
     await expect(page.locator('html')).toHaveAttribute('data-kb-theme-name', 'terminal')
   })
 

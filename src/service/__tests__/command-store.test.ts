@@ -53,9 +53,7 @@ describe('CommandRunStore', () => {
   it('does not lose data when upserts are issued concurrently', async () => {
     const cwd = await tmp()
     const store = new CommandRunStore(cwd)
-    await Promise.all(
-      Array.from({ length: 20 }, (_, i) => store.upsert(run(`r${i}`, 1000 + i))),
-    )
+    await Promise.all(Array.from({ length: 20 }, (_, i) => store.upsert(run(`r${i}`, 1000 + i))))
     const raw = JSON.parse(await readFile(join(cwd, '.yorz/tmp/commands/index.json'), 'utf8'))
     expect(raw).toHaveLength(20)
   })

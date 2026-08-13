@@ -177,6 +177,21 @@ export interface GlobalConfig {
   power: {
     inhibitWhenRunning: 'system-default' | 'prevent-display-sleep' | 'keep-system-awake'
   }
+  appearance: {
+    themeMode: 'system' | 'light' | 'dark'
+    themeName: 'terminal' | 'graphite' | 'paper'
+    language: 'zh-CN' | 'en'
+  }
+  customInstructions: CustomInstruction[]
+}
+
+export interface CustomInstruction {
+  id: string
+  name: string
+  description: string
+  systemPrompt: string
+  prefill: string
+  createdAt: number
 }
 
 export interface FileCompletionResult {

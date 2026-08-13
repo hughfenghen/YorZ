@@ -350,13 +350,13 @@ export const en = {
     shortcutRecordingButton: 'Recording',
     shortcutReset: 'Reset',
     shortcutConflict: 'Shortcut bindings must be unique',
+    saveStatusSaving: 'Saving...',
+    saveStatusSaved: 'Saved',
     shortcuts: {
       newSpec: 'New Spec',
       toggleSpecDetailFullscreen: 'Page fullscreen',
       projectSettings: 'Project Settings',
     },
-    saved: 'Global settings saved',
-    save: 'Save',
   },
   commands: {
     menuTitle: 'Commands',

@@ -45,7 +45,7 @@ async function startInTmp() {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-service-'))
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-service-cfg-'))
   await mkdir(join(cwd, '.yorz'), { recursive: true })
-  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'projects.json') })
+  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
   const list = await handle.registry.list()
   const projectId = list[0]!.id
   return {
@@ -97,7 +97,7 @@ describe('YorZ Service HTTP', () => {
       host: '0.0.0.0',
       port: 0,
       noRegisterCwd: true,
-      globalConfigPath: join(cfgDir, 'projects.json'),
+      globalConfigPath: join(cfgDir, 'config.json'),
     }).then(async (started) => {
       // 旧实现会成功监听；先关闭它，确保 RED 测试不会泄漏端口或全局资源。
       await started.close()
@@ -296,7 +296,7 @@ describe('YorZ Service HTTP', () => {
     const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-service-cfg-'))
     await mkdir(join(cwd, '.yorz'), { recursive: true })
     await initGitRepoIn(cwd)
-    handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'projects.json') })
+    handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
     const list = await handle.registry.list()
     const projectId = list[0]!.id
     const apiRoot = `${handle.url}api`
@@ -332,6 +332,8 @@ describe('YorZ Service HTTP', () => {
       notifications: { sessionEnd: { banner: false, sound: false } },
       shortcuts: {},
       power: { inhibitWhenRunning: 'system-default' },
+      appearance: { themeMode: 'system', themeName: 'terminal', language: 'zh-CN' },
+      customInstructions: [],
     })
 
     const update = await fetch(`${apiRoot}/global-config`, {
@@ -342,6 +344,17 @@ describe('YorZ Service HTTP', () => {
         notifications: { sessionEnd: { banner: true, sound: true } },
         shortcuts: { newSpec: 'Ctrl+Shift+K' },
         power: { inhibitWhenRunning: 'prevent-display-sleep' },
+        appearance: { themeMode: 'dark', themeName: 'paper', language: 'en' },
+        customInstructions: [
+          {
+            id: 'commit',
+            name: 'commit',
+            description: 'Commit files',
+            systemPrompt: 'Commit related files',
+            prefill: '/commit ',
+            createdAt: 1785511681636,
+          },
+        ],
       }),
     })
     expect(update.status).toBe(200)
@@ -352,6 +365,17 @@ describe('YorZ Service HTTP', () => {
       notifications: { sessionEnd: { banner: true, sound: true } },
       shortcuts: { newSpec: 'Ctrl+Shift+K' },
       power: { inhibitWhenRunning: 'prevent-display-sleep' },
+      appearance: { themeMode: 'dark', themeName: 'paper', language: 'en' },
+      customInstructions: [
+        {
+          id: 'commit',
+          name: 'commit',
+          description: 'Commit files',
+          systemPrompt: 'Commit related files',
+          prefill: '/commit ',
+          createdAt: 1785511681636,
+        },
+      ],
     })
   })
 
@@ -364,6 +388,21 @@ describe('YorZ Service HTTP', () => {
         agent: { defaultKind: 'claude' },
         notifications: { sessionEnd: { banner: 'yes', sound: false } },
         shortcuts: {},
+      }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('PUT /api/global-config rejects invalid appearance values', async () => {
+    const { apiRoot } = await startInTmp()
+    const res = await fetch(`${apiRoot}/global-config`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        agent: { defaultKind: 'claude' },
+        notifications: { sessionEnd: { banner: false, sound: false } },
+        shortcuts: {},
+        appearance: { themeMode: 'blue', themeName: 'paper', language: 'en' },
       }),
     })
     expect(res.status).toBe(400)
@@ -466,7 +505,7 @@ describe('service logging', () => {
   it('logs route errors at [error] [http] with method and path', async () => {
     await withLogDir(async (dir) => {
       const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-service-cfg-'))
-      const registry = new ProjectRegistry({ globalConfigPath: join(cfgDir, 'projects.json') })
+      const registry = new ProjectRegistry({ globalConfigPath: join(cfgDir, 'config.json') })
       const app = createApp({ registry })
       // POST is not claimed by the API sub-app nor the static SPA fallback, so
       // this reaches our handler and exercises the real `app.onError`.

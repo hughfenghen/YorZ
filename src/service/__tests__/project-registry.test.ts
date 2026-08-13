@@ -9,14 +9,14 @@ const registries: ProjectRegistry[] = []
 
 async function newRegistry(): Promise<ProjectRegistry> {
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-registry-cfg-'))
-  const reg = new ProjectRegistry({ globalConfigPath: join(cfgDir, 'projects.json') })
+  const reg = new ProjectRegistry({ globalConfigPath: join(cfgDir, 'config.json') })
   registries.push(reg)
   return reg
 }
 
 async function newRegistryWithConfigPath(): Promise<{ reg: ProjectRegistry; configPath: string }> {
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-registry-cfg-'))
-  const configPath = join(cfgDir, 'projects.json')
+  const configPath = join(cfgDir, 'config.json')
   const reg = new ProjectRegistry({ globalConfigPath: configPath })
   registries.push(reg)
   return { reg, configPath }

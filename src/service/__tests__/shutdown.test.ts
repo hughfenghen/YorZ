@@ -13,7 +13,7 @@ describe('内部停服接口', () => {
       cwd,
       port: 0,
       noRegisterCwd: true,
-      globalConfigPath: join(cfgDir, 'projects.json'),
+      globalConfigPath: join(cfgDir, 'config.json'),
       shutdownToken: 'runtime-secret',
       onShutdownRequest: () => {
         requested = true

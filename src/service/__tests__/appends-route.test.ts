@@ -22,7 +22,7 @@ async function startInTmp(opts?: { fakeAgent?: boolean }) {
   if (opts?.fakeAgent) {
     process.env.YORZ_AGENT_CMD = `${process.execPath} ${FAKE_CLAUDE}`
   }
-  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'projects.json') })
+  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
   const list = await handle.registry.list()
   const projectId = list[0]!.id
   return { cwd, url: handle.url, apiPrefix: `${handle.url}api/projects/${projectId}` }

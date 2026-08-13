@@ -53,7 +53,7 @@ export class RegistryEventBus {
         this.scheduleEmit()
       })
     } catch (err) {
-      registryLog().warn('projects.json watch failed', { dir, message: (err as Error).message })
+      registryLog().warn('global config watch failed', { dir, message: (err as Error).message })
     }
   }
 

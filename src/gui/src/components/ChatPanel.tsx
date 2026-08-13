@@ -23,7 +23,8 @@ import {
 import { format as formatTimeago, register as registerTimeago } from 'timeago.js'
 import zhCNTimeago from 'timeago.js/lib/lang/zh_CN.js'
 import { enShort } from '../lib/timeago-locale.js'
-import { api, type AgentUsageWindow, type SessionInfo } from '../lib/api.js'
+import { api, type AgentUsageWindow, type CustomInstruction, type SessionInfo } from '../lib/api.js'
+import { globalConfig, saveCustomInstructions } from '../lib/global-config.js'
 import { subscribeSession, subscribeSessions, type SessionEvent } from '../lib/sse.js'
 import { activeProjectId } from '../lib/project.js'
 import { clearRequestedChatSession, requestedChatSessionId } from '../lib/chat-session-request.js'
@@ -57,7 +58,6 @@ const LIST_COLLAPSED_KEY = 'yorz.chat.sessionList.collapsed'
 const SESSION_LIST_ROWS_KEY = 'yorz.chat.sessionList.rows'
 const LEGACY_SESSION_LIST_LIMIT_KEY = 'yorz.chat.sessionList.limit'
 const SHOW_HISTORY_KEY = 'yorz.chat.sessionList.showHistory'
-const CUSTOM_SLASH_COMMANDS_KEY = 'yorz.chat.customSlashCommands'
 const SESSION_LIST_ROW_OPTIONS = [3, 5, 10] as const
 const SESSION_ROW_HEIGHT_PX = 28
 const DEFAULT_WIDTH = 340
@@ -140,15 +140,6 @@ function writeLocal(key: string, value: string): void {
 
 type SessionListRows = (typeof SESSION_LIST_ROW_OPTIONS)[number]
 
-interface CustomSlashCommand {
-  id: string
-  name: string
-  description: string
-  systemPrompt: string
-  prefill: string
-  createdAt: number
-}
-
 function isSessionListRows(value: number): value is SessionListRows {
   return SESSION_LIST_ROW_OPTIONS.includes(value as SessionListRows)
 }
@@ -159,41 +150,6 @@ function readSessionListRows(): SessionListRows {
   const legacyRaw = Number(readLocal(LEGACY_SESSION_LIST_LIMIT_KEY, ''))
   if (isSessionListRows(legacyRaw)) return legacyRaw
   return readLocal(SHOW_HISTORY_KEY, '0') === '1' ? 10 : 3
-}
-
-function isCustomSlashCommand(value: unknown): value is CustomSlashCommand {
-  if (!value || typeof value !== 'object') return false
-  const obj = value as Record<string, unknown>
-  return (
-    typeof obj.id === 'string' &&
-    typeof obj.name === 'string' &&
-    typeof obj.description === 'string' &&
-    typeof obj.systemPrompt === 'string' &&
-    typeof obj.prefill === 'string' &&
-    typeof obj.createdAt === 'number'
-  )
-}
-
-function readCustomSlashCommands(): CustomSlashCommand[] {
-  try {
-    const raw =
-      typeof window !== 'undefined' ? window.localStorage.getItem(CUSTOM_SLASH_COMMANDS_KEY) : null
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-    return Array.isArray(parsed) ? parsed.filter(isCustomSlashCommand) : []
-  } catch {
-    return []
-  }
-}
-
-function writeCustomSlashCommands(commands: CustomSlashCommand[]): void {
-  try {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(CUSTOM_SLASH_COMMANDS_KEY, JSON.stringify(commands))
-    }
-  } catch {
-    // ignore quota
-  }
 }
 
 function normalizeSlashCommandName(value: string): string {
@@ -220,8 +176,7 @@ export const ChatPanel: Component = () => {
   // referenced by path in the outgoing prompt. Reset after each send and whenever
   // the active session / project changes.
   const attachments = createAttachments({ projectId: () => activeProjectId() || '' })
-  const [customSlashCommands, setCustomSlashCommands] =
-    createSignal<CustomSlashCommand[]>(readCustomSlashCommands())
+  const customSlashCommands = createMemo(() => globalConfig().customInstructions)
   const [customCommandOpen, setCustomCommandOpen] = createSignal(false)
   const [customCommandName, setCustomCommandName] = createSignal('')
   const [customCommandDescription, setCustomCommandDescription] = createSignal('')
@@ -875,7 +830,7 @@ export const ChatPanel: Component = () => {
       setCustomCommandError(t('chat.customSlashCommandNameInvalid'))
       return
     }
-    const nextCommand: CustomSlashCommand = {
+    const nextCommand: CustomInstruction = {
       id: makeCustomSlashCommandId(),
       name,
       description: customCommandDescription().trim(),
@@ -883,10 +838,9 @@ export const ChatPanel: Component = () => {
       prefill: customCommandPrefill(),
       createdAt: Date.now(),
     }
-    setCustomSlashCommands((prev) => {
-      const next = [...prev.filter((cmd) => cmd.name !== name), nextCommand]
-      writeCustomSlashCommands(next)
-      return next
+    const next = [...customSlashCommands().filter((cmd) => cmd.name !== name), nextCommand]
+    void saveCustomInstructions(next).catch((err) => {
+      setCustomCommandError((err as Error).message)
     })
     setCustomCommandOpen(false)
     resetCustomCommandForm()
@@ -895,11 +849,7 @@ export const ChatPanel: Component = () => {
   function deleteCustomSlashCommand(command: SlashCommand): void {
     const id = command.customId
     if (!id) return
-    setCustomSlashCommands((prev) => {
-      const next = prev.filter((cmd) => cmd.id !== id)
-      writeCustomSlashCommands(next)
-      return next
-    })
+    void saveCustomInstructions(customSlashCommands().filter((cmd) => cmd.id !== id))
   }
 
   return (

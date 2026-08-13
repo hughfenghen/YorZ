@@ -8,7 +8,8 @@ import {
   type Component,
 } from 'solid-js'
 import { api, type GlobalConfig } from '../lib/api.js'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog.jsx'
+import { DEFAULT_GLOBAL_CONFIG, globalConfig, saveGlobalConfig } from '../lib/global-config.js'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog.jsx'
 import { Button } from './ui/button.jsx'
 import { Checkbox, CheckboxControl, CheckboxLabel } from './ui/checkbox.jsx'
 import {
@@ -33,27 +34,10 @@ import { t } from '../i18n/index.js'
 interface Props {
   open: boolean
   onClose: () => void
-  onSaved?: (message: string) => void
 }
 
 type GlobalAgentKind = 'claude' | 'opencode' | 'codex'
 type PowerInhibitMode = 'system-default' | 'prevent-display-sleep' | 'keep-system-awake'
-
-const DEFAULT_CONFIG: GlobalConfig = {
-  agent: {
-    defaultKind: 'claude',
-  },
-  notifications: {
-    sessionEnd: {
-      banner: false,
-      sound: false,
-    },
-  },
-  shortcuts: {},
-  power: {
-    inhibitWhenRunning: 'system-default',
-  },
-}
 
 export const GlobalConfigDialog: Component<Props> = (props) => {
   const [agentDefault, setAgentDefault] = createSignal<GlobalAgentKind>('claude')
@@ -63,20 +47,23 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
   const [shortcuts, setShortcuts] = createSignal<ShortcutConfig>({})
   const [recording, setRecording] = createSignal<ShortcutActionId | null>(null)
   const [loading, setLoading] = createSignal(false)
-  const [busy, setBusy] = createSignal(false)
+  const [saveStatus, setSaveStatus] = createSignal<'idle' | 'saving' | 'saved'>('idle')
   const [error, setError] = createSignal<string | null>(null)
   const conflicts = createMemo(() => new Set(findShortcutConflicts(shortcuts())))
+  let saveStatusTimer: ReturnType<typeof setTimeout> | undefined
 
   createEffect(() => {
     if (!props.open) return
     setError(null)
+    clearSaveStatusTimer()
+    setSaveStatus('idle')
     setLoading(true)
     void (async () => {
       try {
         applyConfig(await api.getGlobalConfig())
       } catch (err) {
         setError((err as Error).message)
-        applyConfig(DEFAULT_CONFIG)
+        applyConfig(DEFAULT_GLOBAL_CONFIG)
       } finally {
         setLoading(false)
       }
@@ -103,51 +90,65 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
         return
       }
       if (event.key === 'Backspace' || event.key === 'Delete') {
-        setShortcuts((prev) => ({ ...prev, [action]: null }))
+        const next = { ...shortcuts(), [action]: null }
+        setShortcuts(next)
         setRecording(null)
+        void persistPatch({ shortcuts: next })
         return
       }
       const binding = shortcutFromEvent(event)
       if (!binding) return
-      setShortcuts((prev) => ({ ...prev, [action]: binding }))
+      const next = { ...shortcuts(), [action]: binding }
+      setShortcuts(next)
       setRecording(null)
+      void persistPatch({ shortcuts: next })
     }
     window.addEventListener('keydown', onKeyDown, true)
     onCleanup(() => window.removeEventListener('keydown', onKeyDown, true))
   })
 
-  async function submit(e: Event): Promise<void> {
-    e.preventDefault()
+  async function persistPatch(patch: Partial<GlobalConfig>): Promise<void> {
     setError(null)
-    if (conflicts().size > 0) {
+    const nextShortcuts = patch.shortcuts ?? shortcuts()
+    if (findShortcutConflicts(nextShortcuts).length > 0) {
       setError(t('globalConfig.shortcutConflict'))
       return
     }
-    setBusy(true)
+    clearSaveStatusTimer()
+    setSaveStatus('saving')
     try {
-      await api.updateGlobalConfig({
+      await saveGlobalConfig({
         agent: {
-          defaultKind: agentDefault(),
+          defaultKind: patch.agent?.defaultKind ?? agentDefault(),
         },
         notifications: {
           sessionEnd: {
-            banner: banner(),
-            sound: sound(),
+            banner: patch.notifications?.sessionEnd.banner ?? banner(),
+            sound: patch.notifications?.sessionEnd.sound ?? sound(),
           },
         },
-        shortcuts: shortcuts(),
+        shortcuts: nextShortcuts,
         power: {
-          inhibitWhenRunning: powerMode(),
+          inhibitWhenRunning: patch.power?.inhibitWhenRunning ?? powerMode(),
         },
+        appearance: globalConfig().appearance,
+        customInstructions: globalConfig().customInstructions,
       })
-      props.onSaved?.(t('globalConfig.saved'))
-      props.onClose()
+      setSaveStatus('saved')
+      saveStatusTimer = setTimeout(() => setSaveStatus('idle'), 2000)
     } catch (err) {
+      setSaveStatus('idle')
       setError((err as Error).message)
-    } finally {
-      setBusy(false)
     }
   }
+
+  function clearSaveStatusTimer(): void {
+    if (!saveStatusTimer) return
+    clearTimeout(saveStatusTimer)
+    saveStatusTimer = undefined
+  }
+
+  onCleanup(clearSaveStatusTimer)
 
   function agentLabel(kind: GlobalAgentKind): string {
     if (kind === 'codex') return t('projectConfig.agentCodex')
@@ -171,26 +172,56 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
   }
 
   function resetShortcut(action: ShortcutActionId): void {
-    setShortcuts((prev) => ({ ...prev, [action]: null }))
+    const next = { ...shortcuts(), [action]: null }
+    setShortcuts(next)
+    void persistPatch({ shortcuts: next })
+  }
+
+  function updateAgentDefault(kind: GlobalAgentKind): void {
+    setAgentDefault(kind)
+    void persistPatch({ agent: { defaultKind: kind } })
+  }
+
+  function updateBanner(value: boolean): void {
+    setBanner(value)
+    void persistPatch({ notifications: { sessionEnd: { banner: value, sound: sound() } } })
+  }
+
+  function updateSound(value: boolean): void {
+    setSound(value)
+    void persistPatch({ notifications: { sessionEnd: { banner: banner(), sound: value } } })
+  }
+
+  function updatePowerMode(mode: PowerInhibitMode): void {
+    setPowerMode(mode)
+    void persistPatch({ power: { inhibitWhenRunning: mode } })
   }
 
   return (
     <Dialog open={props.open} onOpenChange={(o) => !o && props.onClose()}>
       <DialogContent class="max-w-[560px]">
         <DialogHeader>
-          <DialogTitle>{t('globalConfig.title')}</DialogTitle>
+          <DialogTitle class="flex items-baseline gap-2">
+            <span>{t('globalConfig.title')}</span>
+            <Show when={saveStatus() !== 'idle'}>
+              <span class="text-xs font-normal text-muted-foreground">
+                {saveStatus() === 'saving'
+                  ? t('globalConfig.saveStatusSaving')
+                  : t('globalConfig.saveStatusSaved')}
+              </span>
+            </Show>
+          </DialogTitle>
         </DialogHeader>
 
         <Show
           when={!loading()}
           fallback={<p class="text-muted-foreground">{t('common.loading')}</p>}
         >
-          <form onSubmit={(e) => void submit(e)} class="flex flex-col gap-4">
+          <div class="flex flex-col gap-4">
             <RadioGroup
               class="m-0 flex flex-wrap gap-2 border-0 p-0"
               value={agentDefault()}
-              onChange={(v) => setAgentDefault(v as GlobalAgentKind)}
-              disabled={busy()}
+              onChange={(v) => updateAgentDefault(v as GlobalAgentKind)}
             >
               <RadioGroupLabel class="mb-1.5 w-full font-medium">
                 {t('globalConfig.agentDefault')}
@@ -199,7 +230,9 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
                 <RadioGroupItem value={kind} class="flex items-center gap-1.5">
                   <RadioGroupItemInput />
                   <RadioGroupItemControl />
-                  <RadioGroupItemLabel class="cursor-pointer">{agentLabel(kind)}</RadioGroupItemLabel>
+                  <RadioGroupItemLabel class="cursor-pointer">
+                    {agentLabel(kind)}
+                  </RadioGroupItemLabel>
                 </RadioGroupItem>
               ))}
             </RadioGroup>
@@ -209,19 +242,13 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
               <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
                 <Checkbox
                   checked={banner()}
-                  onChange={(v) => setBanner(v)}
-                  disabled={busy()}
+                  onChange={updateBanner}
                   class="flex items-center gap-2"
                 >
                   <CheckboxControl />
                   <CheckboxLabel>{t('globalConfig.banner')}</CheckboxLabel>
                 </Checkbox>
-                <Checkbox
-                  checked={sound()}
-                  onChange={(v) => setSound(v)}
-                  disabled={busy()}
-                  class="flex items-center gap-2"
-                >
+                <Checkbox checked={sound()} onChange={updateSound} class="flex items-center gap-2">
                   <CheckboxControl />
                   <CheckboxLabel>{t('globalConfig.sound')}</CheckboxLabel>
                 </Checkbox>
@@ -231,8 +258,7 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
             <RadioGroup
               class="m-0 flex flex-wrap gap-2 border-0 p-0"
               value={powerMode()}
-              onChange={(v) => setPowerMode(v as PowerInhibitMode)}
-              disabled={busy()}
+              onChange={(v) => updatePowerMode(v as PowerInhibitMode)}
             >
               <RadioGroupLabel class="mb-1.5 w-full font-medium">
                 {t('globalConfig.powerTitle')}
@@ -271,7 +297,6 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
                         variant="outline"
                         size="sm"
                         onClick={() => setRecording(action)}
-                        disabled={busy()}
                       >
                         {recording() === action
                           ? t('globalConfig.shortcutRecordingButton')
@@ -282,7 +307,7 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
                         variant="ghost"
                         size="sm"
                         onClick={() => resetShortcut(action)}
-                        disabled={busy() || shortcutValue(action) === DEFAULT_SHORTCUTS[action]}
+                        disabled={shortcutValue(action) === DEFAULT_SHORTCUTS[action]}
                       >
                         {t('globalConfig.shortcutReset')}
                       </Button>
@@ -296,16 +321,7 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
             </fieldset>
 
             {error() && <p class="text-destructive">{error()}</p>}
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={props.onClose} disabled={busy()}>
-                {t('common.cancel')}
-              </Button>
-              <Button type="submit" disabled={busy() || conflicts().size > 0}>
-                {busy() ? t('common.saving') : t('globalConfig.save')}
-              </Button>
-            </DialogFooter>
-          </form>
+          </div>
         </Show>
       </DialogContent>
     </Dialog>

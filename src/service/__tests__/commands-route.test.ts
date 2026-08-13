@@ -48,7 +48,7 @@ beforeAll(async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-cmd-route-'))
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-cmd-route-cfg-'))
   await mkdir(join(cwd, '.yorz'), { recursive: true })
-  const handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'projects.json') })
+  const handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
   const projectId = (await handle.registry.list())[0]?.id ?? ''
   if (!projectId) throw new Error('project was not auto-registered')
   svc = { url: handle.url, projectId, apiPrefix: `${handle.url}api/projects/${projectId}`, handle }
@@ -162,9 +162,9 @@ describe('commands routes — runs', () => {
     expect(
       (await fetch(`${svc.apiPrefix}/command-runs/nope/stop`, { method: 'POST' })).status,
     ).toBe(404)
-    expect(
-      (await fetch(`${svc.apiPrefix}/command-runs/nope`, { method: 'DELETE' })).status,
-    ).toBe(404)
+    expect((await fetch(`${svc.apiPrefix}/command-runs/nope`, { method: 'DELETE' })).status).toBe(
+      404,
+    )
   })
 
   it('rejects a run without commandId and a bad offset', async () => {
@@ -199,9 +199,9 @@ describe('project config preserves commands', () => {
     })
     expect(put.status).toBe(200)
 
-    const cfg = (await (
-      await fetch(`${svc.url}api/projects/${svc.projectId}/config`)
-    ).json()) as { commands: CommandDef[] }
+    const cfg = (await (await fetch(`${svc.url}api/projects/${svc.projectId}/config`)).json()) as {
+      commands: CommandDef[]
+    }
     expect(cfg.commands.map((c) => c.id)).toContain(def.id)
   })
 })

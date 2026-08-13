@@ -15,7 +15,7 @@ async function startInTmp(): Promise<{ cwd: string; url: string; apiPrefix: stri
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-spec-drafts-'))
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-spec-drafts-cfg-'))
   await mkdir(join(cwd, '.yorz'), { recursive: true })
-  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'projects.json') })
+  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
   const list = await handle.registry.list()
   const projectId = list[0]!.id
   return { cwd, url: handle.url, apiPrefix: `${handle.url}api/projects/${projectId}` }
