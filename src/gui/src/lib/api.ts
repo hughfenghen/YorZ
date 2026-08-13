@@ -189,7 +189,8 @@ export interface CustomInstruction {
   id: string
   name: string
   description: string
-  systemPrompt: string
+  /** Appended on send, hidden from the composer and the chat bubble. */
+  hiddenPrompt: string
   prefill: string
   createdAt: number
 }

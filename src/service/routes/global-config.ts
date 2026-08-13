@@ -192,14 +192,16 @@ function parseCustomInstructions(value: unknown): GlobalCustomInstruction[] | { 
     if (seen.has(id)) return { error: `duplicate custom instruction id: ${id}` }
     seen.add(id)
     const description = obj.description
-    const systemPrompt = obj.systemPrompt
+    // Accept the pre-rename `systemPrompt` key so an older GUI build can still
+    // PUT successfully; responses always use `hiddenPrompt`.
+    const hiddenPrompt = obj.hiddenPrompt ?? obj.systemPrompt
     const prefill = obj.prefill
     const createdAt = obj.createdAt
     if (typeof description !== 'string') {
       return { error: `customInstructions.${index}.description must be a string` }
     }
-    if (typeof systemPrompt !== 'string') {
-      return { error: `customInstructions.${index}.systemPrompt must be a string` }
+    if (typeof hiddenPrompt !== 'string') {
+      return { error: `customInstructions.${index}.hiddenPrompt must be a string` }
     }
     if (typeof prefill !== 'string') {
       return { error: `customInstructions.${index}.prefill must be a string` }
@@ -207,7 +209,7 @@ function parseCustomInstructions(value: unknown): GlobalCustomInstruction[] | { 
     if (typeof createdAt !== 'number' || createdAt <= 0) {
       return { error: `customInstructions.${index}.createdAt must be a positive number` }
     }
-    out.push({ id, name, description, systemPrompt, prefill, createdAt })
+    out.push({ id, name, description, hiddenPrompt, prefill, createdAt })
   }
   return out
 }

@@ -11,6 +11,7 @@ import {
 import { Plus, Trash2 } from 'lucide-solid'
 import { cn } from '../lib/cn.js'
 import { api } from '../lib/api.js'
+import { Button } from './ui/button.jsx'
 import { Textarea } from './ui/textarea.jsx'
 
 const SEARCH_DEBOUNCE_MS = 150
@@ -76,6 +77,12 @@ export interface MentionTextareaProps {
   slashCommands?: SlashCommand[]
   onSlashCommandAction?: (command: SlashCommand) => void
   onDeleteSlashCommand?: (command: SlashCommand) => void
+  /**
+   * Shown instead of hiding the popup when a `/` query matches nothing. Without
+   * it the popup vanishes, which reads as "commands are broken" rather than
+   * "no such command". Host-supplied so this component stays i18n-free.
+   */
+  slashEmptyLabel?: string
   autofocus?: boolean
   required?: boolean
   class?: string
@@ -151,6 +158,8 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
   const [open, setOpen] = createSignal(false)
   const [items, setItems] = createSignal<CompletionItem[]>([])
   const [index, setIndex] = createSignal(0)
+  /** Popup is open on a `/` query that matched nothing. */
+  const [slashEmpty, setSlashEmpty] = createSignal(false)
 
   let el: HTMLTextAreaElement | undefined
   let itemRefs: (HTMLLIElement | null)[] = []
@@ -198,6 +207,7 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
 
   function closeMention(): void {
     setOpen(false)
+    setSlashEmpty(false)
     setItems([])
     setIndex(0)
     mentionStart = -1
@@ -252,8 +262,15 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
     itemRefs = []
     setItems(next)
     setIndex(0)
-    if (next.length > 0) setOpen(true)
-    else closeMention()
+    if (next.length > 0) {
+      setSlashEmpty(false)
+      setOpen(true)
+    } else if (props.slashEmptyLabel) {
+      setSlashEmpty(true)
+      setOpen(true)
+    } else {
+      closeMention()
+    }
     return true
   }
 
@@ -389,70 +406,76 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
           blurTimer = setTimeout(closeMention, BLUR_CLOSE_DELAY_MS)
         }}
       />
-      <Show when={open() && items().length > 0}>
+      <Show when={open() && (items().length > 0 || slashEmpty())}>
         <ul class="absolute bottom-full left-0 right-0 z-[100] m-0 max-h-60 list-none overflow-y-auto rounded-lg border bg-card py-1 shadow-lg">
+          <Show when={slashEmpty()}>
+            <li class="px-3 py-1.5 text-sm text-muted-foreground">{props.slashEmptyLabel}</li>
+          </Show>
           <For each={items()}>
             {(item, i) => (
-              <li ref={(node) => (itemRefs[i()] = node)}>
+              // The row highlight lives on the <li> so the delete control can be a
+              // real sibling <button> — nesting one inside the select button was
+              // invalid HTML, which is why it used to be a <span role="button">.
+              <li
+                ref={(node) => (itemRefs[i()] = node)}
+                class={cn(
+                  'flex items-center',
+                  index() === i()
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-foreground hover:bg-accent hover:text-accent-foreground',
+                )}
+                onMouseEnter={() => setIndex(i())}
+              >
                 <button
                   type="button"
                   title={item.kind === 'slash' && item.description ? item.description : item.value}
-                  // cn() (tailwind-merge) is load-bearing: a hand-joined string kept
-                  // `bg-transparent` alongside `bg-primary`, and CSS order decided the
-                  // winner — the active row rendered white-on-white.
-                  class={cn(
-                    'block w-full overflow-hidden border-0 px-3 py-1.5 text-left text-sm',
-                    index() === i()
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground',
-                  )}
-                  onMouseEnter={() => setIndex(i())}
+                  class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden border-0 bg-transparent px-3 py-1.5 text-left text-sm text-inherit"
                   onMouseDown={(e) => {
                     e.preventDefault()
                     selectItem(item)
                   }}
                 >
-                  <span class="flex min-w-0 items-center gap-2">
-                    <Show when={item.kind === 'slash' && item.icon === 'plus'}>
-                      <Plus class="h-3.5 w-3.5 shrink-0" />
-                    </Show>
-                    <span class="min-w-0 flex-1">
-                      <span class="block overflow-hidden text-ellipsis whitespace-nowrap">
-                        {item.kind === 'slash' ? item.label : item.value}
-                      </span>
-                      <Show when={item.kind === 'slash' && item.description}>
-                        <span
-                          class={cn(
-                            'block overflow-hidden text-ellipsis whitespace-nowrap text-xs',
-                            index() === i()
-                              ? 'text-primary-foreground/80'
-                              : 'text-muted-foreground',
-                          )}
-                        >
-                          {item.kind === 'slash' ? item.description : ''}
-                        </span>
-                      </Show>
+                  <Show when={item.kind === 'slash' && item.icon === 'plus'}>
+                    <Plus class="h-3.5 w-3.5 shrink-0" />
+                  </Show>
+                  <span class="min-w-0 flex-1">
+                    <span class="block overflow-hidden text-ellipsis whitespace-nowrap">
+                      {item.kind === 'slash' ? item.label : item.value}
                     </span>
-                    <Show when={item.kind === 'slash' && item.deletable}>
+                    <Show when={item.kind === 'slash' && item.description}>
                       <span
-                        role="button"
-                        tabIndex={-1}
-                        title={item.kind === 'slash' ? item.deleteLabel : undefined}
                         class={cn(
-                          'shrink-0 rounded p-1 opacity-80 hover:bg-destructive/10',
-                          index() === i() ? 'text-primary-foreground' : 'text-destructive',
+                          'block overflow-hidden text-ellipsis whitespace-nowrap text-xs',
+                          index() === i() ? 'text-primary-foreground/80' : 'text-muted-foreground',
                         )}
-                        onMouseDown={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          deleteSlashItem(item)
-                        }}
                       >
-                        <Trash2 class="h-3.5 w-3.5" />
+                        {item.kind === 'slash' ? item.description : ''}
                       </span>
                     </Show>
                   </span>
                 </button>
+                <Show when={item.kind === 'slash' && item.deletable}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    tabIndex={-1}
+                    title={item.kind === 'slash' ? item.deleteLabel : undefined}
+                    class={cn(
+                      'mr-1 h-7 w-7 shrink-0 p-0',
+                      index() === i()
+                        ? 'text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground'
+                        : 'text-destructive hover:bg-destructive/10 hover:text-destructive',
+                    )}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      deleteSlashItem(item)
+                    }}
+                  >
+                    <Trash2 class="h-3.5 w-3.5" />
+                  </Button>
+                </Show>
               </li>
             )}
           </For>

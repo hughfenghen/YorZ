@@ -175,17 +175,19 @@ export class SessionManager {
           const indexed = byId.get(info.id)
           if (!indexed) {
             byId.set(info.id, info)
-          } else if (
-            isOpaqueTitle(indexed.title, indexed.id) &&
-            !isOpaqueTitle(info.title, info.id)
-          ) {
-            byId.set(info.id, {
-              ...indexed,
-              title: info.title,
-              createdAt: Math.min(indexed.createdAt, info.createdAt),
-              updatedAt: Math.max(indexed.updatedAt, info.updatedAt),
-            })
+            continue
           }
+          // 时间戳始终取两边的并集：adapter 侧（claude 用 transcript mtime）可能
+          // 反映了 YorZ 之外的继续对话，排序要认最新的那一个。
+          const merged: SessionInfo = {
+            ...indexed,
+            createdAt: Math.min(indexed.createdAt, info.createdAt),
+            updatedAt: Math.max(indexed.updatedAt, info.updatedAt),
+          }
+          if (isOpaqueTitle(indexed.title, indexed.id) && !isOpaqueTitle(info.title, info.id)) {
+            merged.title = info.title
+          }
+          byId.set(info.id, merged)
         }
       } catch {
         // adapter unavailable (e.g. not authenticated); skip
@@ -193,14 +195,19 @@ export class SessionManager {
     }
 
     // Drop "ghost" sessions: indexed entries that never ran a turn (createdAt
-    // === updatedAt, since touch() only fires in send()'s finally) AND have no
-    // transcript on the adapter side. Those can never yield history.
+    // === updatedAt, since touch() only fires when a turn starts / ends) AND
+    // have no transcript on the adapter side. Those can never yield history.
     const alive = [...byId.values()].filter(
       (s) => nativeIds.has(s.id) || s.createdAt !== s.updatedAt || this.running.has(s.id),
     )
 
+    // 进行中的会话「最新活动时间就是此刻」，排在所有已结束会话之前；否则一个跑了
+    // 很久的任务会被执行期间刚跑完的短会话挤下去。同组内仍按 updatedAt 倒序。
+    const activityRank = (s: SessionInfo): number => (this.running.has(s.id) ? 1 : 0)
     const out: SessionInfo[] = []
-    for (const s of alive.sort((a, b) => b.updatedAt - a.updatedAt)) {
+    for (const s of alive.sort(
+      (a, b) => activityRank(b) - activityRank(a) || b.updatedAt - a.updatedAt,
+    )) {
       out.push({ ...s, running: this.running.has(s.id) })
       if (out.length >= SESSION_LIST_LIMIT) break
     }
@@ -293,14 +300,23 @@ export class SessionManager {
     return ls
   }
 
-  async send(sid: string, prompt: string): Promise<SessionRunHandle> {
+  /**
+   * `titleSource` lets callers derive the session title from the user's own
+   * text while sending an expanded prompt to the Agent. Without it, an injected
+   * hidden prompt would become the title.
+   */
+  async send(sid: string, prompt: string, titleSource?: string): Promise<SessionRunHandle> {
     const runId = randomUUID()
     const emitter = this.emitterFor(sid)
     // `sid` may be rewritten mid-run by reconcile() (codex assigns the real
     // thread id on `session-started`); track the live id for status bookkeeping.
     let currentSid = sid
     const startedAt = Date.now()
-    await this.maybeUpdateTitleFromPrompt(currentSid, prompt).catch(() => {})
+    await this.maybeUpdateTitleFromPrompt(currentSid, titleSource ?? prompt).catch(() => {})
+    // 列表按「最新活动时间」排序：turn 一开始就落盘活动时间，进行中的任务立刻
+    // 上浮，而不是等本轮结束才更新——否则重开一个几天前的 spec 并跑起来时，
+    // 它会在整个执行期间一直停留在几天前的位置。
+    await this.store.touch(sid).catch(() => {})
     this.setRunning(sid, true)
     agentLog().info('dispatch start', { sessionId: sid, runId, promptLength: prompt.length })
     const task = (async () => {

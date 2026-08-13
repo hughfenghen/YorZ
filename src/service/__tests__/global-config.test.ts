@@ -240,7 +240,7 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
             id: 'commit',
             name: '/commit',
             description: 'Commit changes',
-            systemPrompt: 'Commit related files',
+            hiddenPrompt: 'Commit related files',
             prefill: '/commit ',
             createdAt: 1785511681636,
           },
@@ -255,11 +255,35 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
         id: 'commit',
         name: 'commit',
         description: 'Commit changes',
-        systemPrompt: 'Commit related files',
+        hiddenPrompt: 'Commit related files',
         prefill: '/commit ',
         createdAt: 1785511681636,
       },
     ])
+  })
+
+  it('reads a pre-rename systemPrompt into hiddenPrompt', async () => {
+    const fp = await tmpConfigPath()
+    await writeFile(
+      fp,
+      JSON.stringify({
+        version: 1,
+        projects: [],
+        customInstructions: [
+          {
+            id: 'commit',
+            name: 'commit',
+            description: '',
+            systemPrompt: 'Commit related files',
+            prefill: '',
+            createdAt: 1785511681636,
+          },
+        ],
+      }),
+      'utf8',
+    )
+    const cfg = await loadGlobalConfig(fp)
+    expect(cfg.customInstructions[0]?.hiddenPrompt).toBe('Commit related files')
   })
 
   it('reads legacy projects.json when config.json is missing', async () => {

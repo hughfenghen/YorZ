@@ -69,6 +69,25 @@ export type ChatBlock = UserBlock | AssistantBlock | AgentContextBlock
 const MESSAGE_TEXT_SEPARATOR = '\n\n'
 
 /**
+ * Mirror of the markers in `src/service/custom-instruction.ts`. The GUI reaches
+ * the service over HTTP and shares no module graph with it, so the pair is
+ * duplicated here — keep both sides in sync.
+ */
+const HIDDEN_PROMPT_OPEN = '<!-- yorz:hidden -->'
+const HIDDEN_PROMPT_RE = /<!-- yorz:hidden -->[\s\S]*?<!-- \/yorz:hidden -->\n?/g
+
+/**
+ * Remove prompt text the service injected on the user's behalf (a custom slash
+ * command's hidden prompt, the `/yorz-debug` expansion, attachment paths). The
+ * user's own words are stored outside the markers, so what remains equals the
+ * text the composer optimistically rendered at send time.
+ */
+export function stripHiddenPrompt(text: string): string {
+  if (!text.includes(HIDDEN_PROMPT_OPEN)) return text
+  return text.replace(HIDDEN_PROMPT_RE, '').trim()
+}
+
+/**
  * Translate one wire-level `MessagePart` into a `ChatPart`.
  *
  * Note the role is dropped for tool parts. The protocol reports `tool-result`
@@ -79,7 +98,7 @@ const MESSAGE_TEXT_SEPARATOR = '\n\n'
 export function toPart(role: ChatRole, part: MessagePart): ChatPart {
   if (part.type === 'text') {
     if (part.contextKind) return { kind: 'context', contextKind: part.contextKind, text: part.text }
-    return { kind: 'text', role, text: part.text }
+    return { kind: 'text', role, text: role === 'user' ? stripHiddenPrompt(part.text) : part.text }
   }
   if (part.type === 'tool-use') return { kind: 'tool', name: part.name, input: part.input }
   return { kind: 'tool', result: part.text }

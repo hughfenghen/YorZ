@@ -134,21 +134,43 @@ function readLegacyCustomInstructions(raw: string | null): GlobalConfig['customI
   try {
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
-    return parsed.filter(isCustomInstruction)
+    return parsed
+      .map(toCustomInstruction)
+      .filter((item): item is GlobalConfig['customInstructions'][number] => item !== null)
   } catch {
     return []
   }
 }
 
-function isCustomInstruction(value: unknown): value is GlobalConfig['customInstructions'][number] {
-  if (!value || typeof value !== 'object') return false
+/**
+ * Legacy localStorage entries predate the `systemPrompt` → `hiddenPrompt`
+ * rename, so accept either key and normalise to the current shape.
+ */
+function toCustomInstruction(value: unknown): GlobalConfig['customInstructions'][number] | null {
+  if (!value || typeof value !== 'object') return null
   const obj = value as Record<string, unknown>
-  return (
-    typeof obj.id === 'string' &&
-    typeof obj.name === 'string' &&
-    typeof obj.description === 'string' &&
-    typeof obj.systemPrompt === 'string' &&
-    typeof obj.prefill === 'string' &&
-    typeof obj.createdAt === 'number'
-  )
+  const hiddenPrompt =
+    typeof obj.hiddenPrompt === 'string'
+      ? obj.hiddenPrompt
+      : typeof obj.systemPrompt === 'string'
+        ? obj.systemPrompt
+        : null
+  if (
+    typeof obj.id !== 'string' ||
+    typeof obj.name !== 'string' ||
+    typeof obj.description !== 'string' ||
+    hiddenPrompt === null ||
+    typeof obj.prefill !== 'string' ||
+    typeof obj.createdAt !== 'number'
+  ) {
+    return null
+  }
+  return {
+    id: obj.id,
+    name: obj.name,
+    description: obj.description,
+    hiddenPrompt,
+    prefill: obj.prefill,
+    createdAt: obj.createdAt,
+  }
 }

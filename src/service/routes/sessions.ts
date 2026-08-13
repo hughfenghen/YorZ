@@ -2,11 +2,10 @@ import { Hono } from 'hono'
 import type { AgentKind } from '../agent-sdk/types.js'
 import type { AttachmentMeta } from '../attachment-store.js'
 import type { ProjectInstance } from '../project-registry.js'
-import {
-  buildChatDebugPrompt,
-  cleanupExpiredChatDebugFiles,
-  isYorzDebugCommand,
-} from '../chat-debug.js'
+import { cleanupExpiredChatDebugFiles } from '../chat-debug.js'
+import { appendHiddenPrompt } from '../custom-instruction.js'
+import { loadGlobalConfig } from '../global-config.js'
+import { isSlashCommand, resolveChatPrompt } from '../slash-command.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
@@ -29,13 +28,16 @@ export function buildChatPrompt(
     const rel = `${dir}/${a.storedName}`
     return a.kind === 'image' ? `- ![${a.name}](${rel})` : `- [${a.name}](${rel})`
   })
-  return [
+  // Hidden: the GUI renders attachments from its own state, so echoing the
+  // paths into the bubble would desync it from the optimistic render.
+  return appendHiddenPrompt(
     prompt,
-    '',
-    '---',
-    `本次消息附带 ${attachments.length} 个附件，已保存在临时目录 \`${dir}/\`（请按需用文件工具直接读取，无需迁移）：`,
-    ...lines,
-  ].join('\n')
+    [
+      '---',
+      `本次消息附带 ${attachments.length} 个附件，已保存在临时目录 \`${dir}/\`（请按需用文件工具直接读取，无需迁移）：`,
+      ...lines,
+    ].join('\n'),
+  )
 }
 
 export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
@@ -123,10 +125,22 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
     if (!prompt) return c.json({ error: 'prompt required' }, 400)
 
+    // Expansion chain: slash command (built-ins, then the user's configured
+    // instructions, then the unknown-command fallback), then attachments. Each
+    // step keeps the user's own text verbatim so the GUI can strip the injected
+    // blocks back out.
+    const instructions = isSlashCommand(prompt)
+      ? await loadGlobalConfig()
+          .then((cfg) => cfg.customInstructions)
+          .catch(() => [])
+      : []
+    const resolved = resolveChatPrompt(prompt, instructions, {
+      specsDirRelative: p.specsDirRelative,
+    })
+    let finalPrompt = resolved.prompt
     // Optional attachment draft: list its files and append their readable paths so
     // the Agent can read them in place. A malformed/missing draft degrades to the
     // plain prompt rather than failing the send.
-    let finalPrompt = isYorzDebugCommand(prompt) ? buildChatDebugPrompt(prompt) : prompt
     if (body.draftId !== undefined) {
       if (typeof body.draftId !== 'string' || !DRAFT_ID_RE.test(body.draftId)) {
         return c.json({ error: 'draftId has invalid format' }, 400)
@@ -137,9 +151,10 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
         finalPrompt = buildChatPrompt(finalPrompt, draftId, metas)
       }
     }
-    if (isYorzDebugCommand(prompt)) void cleanupExpiredChatDebugFiles(p.path).catch(() => {})
+    if (resolved.builtin === 'yorz-debug') void cleanupExpiredChatDebugFiles(p.path).catch(() => {})
 
-    const handle = await p.sessions.send(c.req.param('sid'), finalPrompt)
+    // Title comes from what the user typed, not the expanded prompt.
+    const handle = await p.sessions.send(c.req.param('sid'), finalPrompt, prompt)
     return c.json({ runId: handle.runId, sessionId: handle.sessionId }, 202)
   })
 

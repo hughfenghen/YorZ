@@ -70,7 +70,12 @@ export interface GlobalCustomInstruction {
   id: string
   name: string
   description: string
-  systemPrompt: string
+  /**
+   * Prompt text appended on send but never shown in the composer or the chat
+   * bubble. Deliberately *not* an SDK system prompt: it rides the user message,
+   * so the old `systemPrompt` name overstated its authority.
+   */
+  hiddenPrompt: string
   prefill: string
   createdAt: number
 }
@@ -316,7 +321,14 @@ function normalizeCustomInstructions(value: unknown): GlobalCustomInstruction[] 
       id,
       name,
       description: typeof obj.description === 'string' ? obj.description : '',
-      systemPrompt: typeof obj.systemPrompt === 'string' ? obj.systemPrompt : '',
+      // Fall back to the pre-rename `systemPrompt` so existing configs keep
+      // working; the next save rewrites them under the new key.
+      hiddenPrompt:
+        typeof obj.hiddenPrompt === 'string'
+          ? obj.hiddenPrompt
+          : typeof obj.systemPrompt === 'string'
+            ? obj.systemPrompt
+            : '',
       prefill: typeof obj.prefill === 'string' ? obj.prefill : '',
       createdAt: typeof obj.createdAt === 'number' && obj.createdAt > 0 ? obj.createdAt : 0,
     })

@@ -135,6 +135,20 @@ describe('SessionManager.listSessions', () => {
     expect(list.find((s) => s.id === id)?.updatedAt).toBe(12)
   })
 
+  it('takes the newest activity time when merging a native session', async () => {
+    // 两边标题都可读：旧实现会整条丢弃 adapter 侧时间戳，导致 YorZ 之外的继续
+    // 对话（claude transcript mtime 变新）不影响排序。
+    const id = 'sid-merge'
+    const native = [info({ id, title: 'readable', createdAt: 5, updatedAt: 99 })]
+    const { mgr, store } = await makeManager(fakeAdapter({ native }))
+    await store.upsert(info({ id, title: 'readable', createdAt: 7, updatedAt: 12 }))
+
+    const merged = (await mgr.listSessions()).find((s) => s.id === id)
+
+    expect(merged?.updatedAt).toBe(99)
+    expect(merged?.createdAt).toBe(5)
+  })
+
   it('treats UUIDv7-looking titles as opaque when merging native titles', async () => {
     const id = '019f9858-1fa6-7550-b514-7de5300c3a0b'
     const native = [info({ id, title: 'hello', createdAt: 5, updatedAt: 9 })]
@@ -356,6 +370,60 @@ describe('SessionManager run status', () => {
       { sessionId: 'sid-1', running: false },
     ])
     expect((await mgr.listSessions()).find((s) => s.id === 'sid-1')?.running).toBe(false)
+  })
+
+  /** 用一个门控住 turn，让测试可以观察「执行中」这一瞬间的列表顺序。 */
+  function gatedAdapter(): { adapter: AgentSdkAdapter; release: () => void } {
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const adapter = fakeAdapter({
+      onSend: async function* () {
+        await gate
+        yield { type: 'turn-completed' } satisfies AgentEvent
+      },
+    })
+    return { adapter, release: () => release() }
+  }
+
+  it('bumps updatedAt when a turn starts so a days-old session sorts to the top', async () => {
+    const { adapter, release } = gatedAdapter()
+    const { mgr, store } = await makeManager(adapter)
+    // 几天前跑过的 spec 会话 + 今天刚跑完的会话。标题都给可读值，避免走
+    // maybeUpdateTitleFromPrompt 那条顺带刷新 updatedAt 的旁路，隔离出 touch 本身。
+    await store.upsert(info({ id: 'old-spec', title: '几天前的 spec', createdAt: 1, updatedAt: 2 }))
+    await store.upsert(
+      info({ id: 'today', title: '今天的会话', createdAt: 1, updatedAt: Date.now() }),
+    )
+    expect((await mgr.listSessions()).map((s) => s.id)).toEqual(['today', 'old-spec'])
+
+    const handle = await mgr.send('old-spec', 'hello')
+
+    // 任务「进行中」就应该已经排到最前，而不是等结束。
+    expect((await mgr.listSessions()).map((s) => s.id)).toEqual(['old-spec', 'today'])
+    expect((await store.get('old-spec'))?.updatedAt).toBeGreaterThan(2)
+
+    const done = new Promise<void>((r) => handle.onDone(() => r()))
+    release()
+    await done
+    expect((await mgr.listSessions()).map((s) => s.id)).toEqual(['old-spec', 'today'])
+  })
+
+  it('keeps a running session ahead of one that finished more recently', async () => {
+    const { adapter, release } = gatedAdapter()
+    const { mgr, store } = await makeManager(adapter)
+    await store.upsert(info({ id: 'long-run', createdAt: 1, updatedAt: 2 }))
+
+    const handle = await mgr.send('long-run', 'hello')
+    // 执行期间另一个短会话跑完，时间戳更新——但进行中的会话仍是「此刻活动」。
+    await store.upsert(info({ id: 'short-run', createdAt: 1, updatedAt: Date.now() + 60_000 }))
+
+    expect((await mgr.listSessions()).map((s) => s.id)).toEqual(['long-run', 'short-run'])
+
+    const done = new Promise<void>((r) => handle.onDone(() => r()))
+    release()
+    await done
   })
 
   it('calls onSessionStatusChange for running status edges', async () => {

@@ -34,7 +34,14 @@ import { renderMarkdown } from '../lib/markdown.js'
 import { t, useTranslation } from '../i18n/index.js'
 import { Button } from './ui/button.jsx'
 import { Card } from './ui/card.jsx'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog.jsx'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog.jsx'
 import { Input } from './ui/input.jsx'
 import { Textarea } from './ui/textarea.jsx'
 import { toast } from './ui/toast.jsx'
@@ -180,9 +187,12 @@ export const ChatPanel: Component = () => {
   const [customCommandOpen, setCustomCommandOpen] = createSignal(false)
   const [customCommandName, setCustomCommandName] = createSignal('')
   const [customCommandDescription, setCustomCommandDescription] = createSignal('')
-  const [customCommandSystemPrompt, setCustomCommandSystemPrompt] = createSignal('')
+  const [customCommandHiddenPrompt, setCustomCommandHiddenPrompt] = createSignal('')
   const [customCommandPrefill, setCustomCommandPrefill] = createSignal('')
   const [customCommandError, setCustomCommandError] = createSignal<string | null>(null)
+  const [customCommandBusy, setCustomCommandBusy] = createSignal(false)
+  const [deletingCommand, setDeletingCommand] = createSignal<SlashCommand | null>(null)
+  const [deleteCommandBusy, setDeleteCommandBusy] = createSignal(false)
   const slashCommands = createMemo<SlashCommand[]>(() => {
     lng()
     const custom = customSlashCommands().map((cmd) => {
@@ -191,8 +201,9 @@ export const ChatPanel: Component = () => {
       return {
         value,
         label: value,
-        description:
-          cmd.description || cmd.systemPrompt || t('chat.customSlashCommandNoDescription'),
+        // Never fall back to the hidden prompt: it is by definition the part the
+        // user does not see, so surfacing it in the picker contradicts the field.
+        description: cmd.description || t('chat.customSlashCommandNoDescription'),
         replacement,
         customId: cmd.id,
         deletable: true,
@@ -809,7 +820,7 @@ export const ChatPanel: Component = () => {
   function resetCustomCommandForm(): void {
     setCustomCommandName('')
     setCustomCommandDescription('')
-    setCustomCommandSystemPrompt('')
+    setCustomCommandHiddenPrompt('')
     setCustomCommandPrefill('')
     setCustomCommandError(null)
   }
@@ -819,8 +830,14 @@ export const ChatPanel: Component = () => {
     setCustomCommandOpen(true)
   }
 
-  function saveCustomCommand(e: Event): void {
+  /**
+   * Persisting hits the network, so the dialog stays open until it resolves —
+   * closing on the optimistic path used to discard the error message set in the
+   * rejection handler, leaving a silent failure.
+   */
+  async function saveCustomCommand(e: Event): Promise<void> {
     e.preventDefault()
+    if (customCommandBusy()) return
     const name = normalizeSlashCommandName(customCommandName())
     if (!name) {
       setCustomCommandError(t('chat.customSlashCommandNameRequired'))
@@ -834,22 +851,37 @@ export const ChatPanel: Component = () => {
       id: makeCustomSlashCommandId(),
       name,
       description: customCommandDescription().trim(),
-      systemPrompt: customCommandSystemPrompt().trim(),
+      hiddenPrompt: customCommandHiddenPrompt().trim(),
+      // Deliberately not trimmed: a trailing space lets the user keep typing
+      // right after the prefill lands in the composer.
       prefill: customCommandPrefill(),
       createdAt: Date.now(),
     }
     const next = [...customSlashCommands().filter((cmd) => cmd.name !== name), nextCommand]
-    void saveCustomInstructions(next).catch((err) => {
+    setCustomCommandBusy(true)
+    try {
+      await saveCustomInstructions(next)
+      setCustomCommandOpen(false)
+      resetCustomCommandForm()
+    } catch (err) {
       setCustomCommandError((err as Error).message)
-    })
-    setCustomCommandOpen(false)
-    resetCustomCommandForm()
+    } finally {
+      setCustomCommandBusy(false)
+    }
   }
 
-  function deleteCustomSlashCommand(command: SlashCommand): void {
-    const id = command.customId
+  async function confirmDeleteCustomSlashCommand(): Promise<void> {
+    const id = deletingCommand()?.customId
     if (!id) return
-    void saveCustomInstructions(customSlashCommands().filter((cmd) => cmd.id !== id))
+    setDeleteCommandBusy(true)
+    try {
+      await saveCustomInstructions(customSlashCommands().filter((cmd) => cmd.id !== id))
+      setDeletingCommand(null)
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setDeleteCommandBusy(false)
+    }
   }
 
   return (
@@ -1091,8 +1123,9 @@ export const ChatPanel: Component = () => {
                 value={input()}
                 onValueChange={setInput}
                 slashCommands={slashCommands()}
+                slashEmptyLabel={t('chat.slashCommandNoMatch')}
                 onSlashCommandAction={openCustomCommandDialog}
-                onDeleteSlashCommand={deleteCustomSlashCommand}
+                onDeleteSlashCommand={setDeletingCommand}
                 onKeyDown={onKeyDown}
                 onPaste={attachments.onPaste}
                 placeholder={
@@ -1183,16 +1216,18 @@ export const ChatPanel: Component = () => {
       <Dialog
         open={customCommandOpen()}
         onOpenChange={(open) => {
+          if (!open && customCommandBusy()) return
           setCustomCommandOpen(open)
           if (!open) resetCustomCommandForm()
         }}
       >
-        <DialogContent class="max-w-md">
+        <DialogContent class="max-w-[480px]">
           <DialogHeader>
             <DialogTitle>{t('chat.addSlashCommandTitle')}</DialogTitle>
+            <DialogDescription>{t('chat.addSlashCommandDescription')}</DialogDescription>
           </DialogHeader>
-          <form class="grid gap-4" onSubmit={saveCustomCommand}>
-            <label class="grid gap-2 text-sm font-medium" for="chat-custom-command-name">
+          <form class="flex flex-col gap-4" onSubmit={(e) => void saveCustomCommand(e)}>
+            <label class="flex flex-col gap-1 font-medium" for="chat-custom-command-name">
               {t('chat.customSlashCommandName')}
               <Input
                 id="chat-custom-command-name"
@@ -1205,7 +1240,7 @@ export const ChatPanel: Component = () => {
                 required
               />
             </label>
-            <label class="grid gap-2 text-sm font-medium" for="chat-custom-command-description">
+            <label class="flex flex-col gap-1 font-medium" for="chat-custom-command-description">
               {t('chat.customSlashCommandDescription')}
               <Input
                 id="chat-custom-command-description"
@@ -1214,17 +1249,20 @@ export const ChatPanel: Component = () => {
                 onInput={(e) => setCustomCommandDescription(e.currentTarget.value)}
               />
             </label>
-            <label class="grid gap-2 text-sm font-medium" for="chat-custom-command-system-prompt">
-              {t('chat.customSlashCommandSystemPrompt')}
+            <label class="flex flex-col gap-1 font-medium" for="chat-custom-command-hidden-prompt">
+              {t('chat.customSlashCommandHiddenPrompt')}
               <Textarea
-                id="chat-custom-command-system-prompt"
-                value={customCommandSystemPrompt()}
-                placeholder={t('chat.customSlashCommandSystemPromptPlaceholder')}
+                id="chat-custom-command-hidden-prompt"
+                value={customCommandHiddenPrompt()}
+                placeholder={t('chat.customSlashCommandHiddenPromptPlaceholder')}
                 rows={3}
-                onInput={(e) => setCustomCommandSystemPrompt(e.currentTarget.value)}
+                onInput={(e) => setCustomCommandHiddenPrompt(e.currentTarget.value)}
               />
+              <span class="text-xs font-normal text-muted-foreground">
+                {t('chat.customSlashCommandHiddenPromptHint')}
+              </span>
             </label>
-            <label class="grid gap-2 text-sm font-medium" for="chat-custom-command-prefill">
+            <label class="flex flex-col gap-1 font-medium" for="chat-custom-command-prefill">
               {t('chat.customSlashCommandPrefill')}
               <Textarea
                 id="chat-custom-command-prefill"
@@ -1233,19 +1271,59 @@ export const ChatPanel: Component = () => {
                 rows={3}
                 onInput={(e) => setCustomCommandPrefill(e.currentTarget.value)}
               />
+              <span class="text-xs font-normal text-muted-foreground">
+                {t('chat.customSlashCommandPrefillHint')}
+              </span>
             </label>
             <Show when={customCommandError()}>
               <p class="m-0 text-sm text-destructive">{customCommandError()}</p>
             </Show>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCustomCommandOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCustomCommandOpen(false)}
+                disabled={customCommandBusy()}
+              >
                 {t('common.cancel')}
               </Button>
-              <Button type="submit" disabled={!customCommandName().trim()}>
-                {t('chat.saveCustomSlashCommand')}
+              <Button type="submit" disabled={!customCommandName().trim() || customCommandBusy()}>
+                {customCommandBusy() ? t('common.saving') : t('chat.saveCustomSlashCommand')}
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deletingCommand() !== null}
+        onOpenChange={(o) => !o && !deleteCommandBusy() && setDeletingCommand(null)}
+      >
+        <DialogContent class="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('chat.deleteSlashCommandTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('chat.deleteSlashCommandConfirm', {
+                name: normalizeSlashCommandName(deletingCommand()?.value ?? ''),
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeletingCommand(null)}
+              disabled={deleteCommandBusy()}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmDeleteCustomSlashCommand()}
+              disabled={deleteCommandBusy()}
+            >
+              {deleteCommandBusy() ? t('common.deleting') : t('common.confirmDelete')}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </aside>
