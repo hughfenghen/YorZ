@@ -8,7 +8,7 @@ import {
   onMount,
   type Component,
 } from 'solid-js'
-import { Plus, Trash2 } from 'lucide-solid'
+import { Pencil, Plus, Trash2 } from 'lucide-solid'
 import { cn } from '../lib/cn.js'
 import { api } from '../lib/api.js'
 import { Button } from './ui/button.jsx'
@@ -33,6 +33,8 @@ export interface SlashCommand {
   replacement?: string
   action?: 'add'
   customId?: string
+  editable?: boolean
+  editLabel?: string
   deletable?: boolean
   deleteLabel?: string
   icon?: 'plus'
@@ -48,6 +50,8 @@ type CompletionItem =
       replacement?: string
       action?: 'add'
       customId?: string
+      editable?: boolean
+      editLabel?: string
       deletable?: boolean
       deleteLabel?: string
       icon?: 'plus'
@@ -76,6 +80,7 @@ export interface MentionTextareaProps {
   /** Static commands triggered by `/` at the beginning of the textarea. */
   slashCommands?: SlashCommand[]
   onSlashCommandAction?: (command: SlashCommand) => void
+  onEditSlashCommand?: (command: SlashCommand) => void
   onDeleteSlashCommand?: (command: SlashCommand) => void
   /**
    * Shown instead of hiding the popup when a `/` query matches nothing. Without
@@ -254,6 +259,8 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
       replacement: cmd.replacement,
       action: cmd.action,
       customId: cmd.customId,
+      editable: cmd.editable,
+      editLabel: cmd.editLabel,
       deletable: cmd.deletable,
       deleteLabel: cmd.deleteLabel,
       icon: cmd.icon,
@@ -345,6 +352,13 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
       return next
     })
     if (shouldClose) closeMention()
+  }
+
+  function editSlashItem(item: CompletionItem): void {
+    if (item.kind !== 'slash') return
+    props.onEditSlashCommand?.(item.command)
+    closeMention()
+    requestAnimationFrame(() => el?.focus())
   }
 
   function scrollActiveIntoView(): void {
@@ -454,27 +468,53 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
                     </Show>
                   </span>
                 </button>
-                <Show when={item.kind === 'slash' && item.deletable}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    tabIndex={-1}
-                    title={item.kind === 'slash' ? item.deleteLabel : undefined}
-                    class={cn(
-                      'mr-1 h-7 w-7 shrink-0 p-0',
-                      index() === i()
-                        ? 'text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground'
-                        : 'text-destructive hover:bg-destructive/10 hover:text-destructive',
-                    )}
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      deleteSlashItem(item)
-                    }}
-                  >
-                    <Trash2 class="h-3.5 w-3.5" />
-                  </Button>
+                <Show when={item.kind === 'slash' && (item.editable || item.deletable)}>
+                  <div class="mr-1 flex shrink-0 items-center gap-0.5">
+                    <Show when={item.kind === 'slash' && item.editable}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        tabIndex={-1}
+                        title={item.kind === 'slash' ? item.editLabel : undefined}
+                        class={cn(
+                          'h-7 w-7 p-0',
+                          index() === i()
+                            ? 'text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground'
+                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                        )}
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          editSlashItem(item)
+                        }}
+                      >
+                        <Pencil class="h-3.5 w-3.5" />
+                      </Button>
+                    </Show>
+                    <Show when={item.kind === 'slash' && item.deletable}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        tabIndex={-1}
+                        title={item.kind === 'slash' ? item.deleteLabel : undefined}
+                        class={cn(
+                          'h-7 w-7 p-0',
+                          index() === i()
+                            ? 'text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground'
+                            : 'text-destructive hover:bg-destructive/10 hover:text-destructive',
+                        )}
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          deleteSlashItem(item)
+                        }}
+                      >
+                        <Trash2 class="h-3.5 w-3.5" />
+                      </Button>
+                    </Show>
+                  </div>
                 </Show>
               </li>
             )}

@@ -122,6 +122,9 @@ export const en = {
     addSlashCommandTitle: 'Add Command',
     addSlashCommandDescription:
       'Custom commands are available in the composer by typing `/`, and are shared across all projects.',
+    editSlashCommandTitle: 'Edit Command',
+    editSlashCommandDescription:
+      'Changes to custom commands update the slash suggestions across all projects.',
     slashCommandNoMatch: 'No matching command',
     deleteSlashCommandTitle: 'Delete command',
     deleteSlashCommandConfirm: 'Delete the custom command /{{name}}? This cannot be undone.',
@@ -140,6 +143,7 @@ export const en = {
     customSlashCommandNameRequired: 'Enter a command name',
     customSlashCommandNameInvalid: 'Use only letters, numbers, underscores, and hyphens',
     customSlashCommandNoDescription: 'Custom command',
+    editCustomSlashCommand: 'Edit {{name}}',
     deleteCustomSlashCommand: 'Delete {{name}}',
     saveCustomSlashCommand: 'Save',
   },

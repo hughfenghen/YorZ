@@ -191,6 +191,7 @@ export const ChatPanel: Component = () => {
   const [customCommandPrefill, setCustomCommandPrefill] = createSignal('')
   const [customCommandError, setCustomCommandError] = createSignal<string | null>(null)
   const [customCommandBusy, setCustomCommandBusy] = createSignal(false)
+  const [editingCommandId, setEditingCommandId] = createSignal<string | null>(null)
   const [deletingCommand, setDeletingCommand] = createSignal<SlashCommand | null>(null)
   const [deleteCommandBusy, setDeleteCommandBusy] = createSignal(false)
   const slashCommands = createMemo<SlashCommand[]>(() => {
@@ -206,6 +207,8 @@ export const ChatPanel: Component = () => {
         description: cmd.description || t('chat.customSlashCommandNoDescription'),
         replacement,
         customId: cmd.id,
+        editable: true,
+        editLabel: t('chat.editCustomSlashCommand', { name: cmd.name }),
         deletable: true,
         deleteLabel: t('chat.deleteCustomSlashCommand', { name: cmd.name }),
       }
@@ -824,10 +827,24 @@ export const ChatPanel: Component = () => {
     setCustomCommandHiddenPrompt('')
     setCustomCommandPrefill('')
     setCustomCommandError(null)
+    setEditingCommandId(null)
   }
 
   function openCustomCommandDialog(): void {
     resetCustomCommandForm()
+    setCustomCommandOpen(true)
+  }
+
+  function openEditCustomCommandDialog(command: SlashCommand): void {
+    const id = command.customId
+    const target = id ? customSlashCommands().find((cmd) => cmd.id === id) : undefined
+    if (!target) return
+    setEditingCommandId(target.id)
+    setCustomCommandName(target.name)
+    setCustomCommandDescription(target.description)
+    setCustomCommandHiddenPrompt(target.hiddenPrompt)
+    setCustomCommandPrefill(target.prefill)
+    setCustomCommandError(null)
     setCustomCommandOpen(true)
   }
 
@@ -848,17 +865,24 @@ export const ChatPanel: Component = () => {
       setCustomCommandError(t('chat.customSlashCommandNameInvalid'))
       return
     }
+    const existingId = editingCommandId()
+    const existing = existingId
+      ? customSlashCommands().find((cmd) => cmd.id === existingId)
+      : undefined
     const nextCommand: CustomInstruction = {
-      id: makeCustomSlashCommandId(),
+      id: existing?.id ?? makeCustomSlashCommandId(),
       name,
       description: customCommandDescription().trim(),
       hiddenPrompt: customCommandHiddenPrompt().trim(),
       // Deliberately not trimmed: a trailing space lets the user keep typing
       // right after the prefill lands in the composer.
       prefill: customCommandPrefill(),
-      createdAt: Date.now(),
+      createdAt: existing?.createdAt ?? Date.now(),
     }
-    const next = [...customSlashCommands().filter((cmd) => cmd.name !== name), nextCommand]
+    const next = [
+      ...customSlashCommands().filter((cmd) => cmd.id !== nextCommand.id && cmd.name !== name),
+      nextCommand,
+    ]
     setCustomCommandBusy(true)
     try {
       await saveCustomInstructions(next)
@@ -1126,6 +1150,7 @@ export const ChatPanel: Component = () => {
                 slashCommands={slashCommands()}
                 slashEmptyLabel={t('chat.slashCommandNoMatch')}
                 onSlashCommandAction={openCustomCommandDialog}
+                onEditSlashCommand={openEditCustomCommandDialog}
                 onDeleteSlashCommand={setDeletingCommand}
                 onKeyDown={onKeyDown}
                 onPaste={attachments.onPaste}
@@ -1224,8 +1249,16 @@ export const ChatPanel: Component = () => {
       >
         <DialogContent class="max-w-[480px]">
           <DialogHeader>
-            <DialogTitle>{t('chat.addSlashCommandTitle')}</DialogTitle>
-            <DialogDescription>{t('chat.addSlashCommandDescription')}</DialogDescription>
+            <DialogTitle>
+              {editingCommandId()
+                ? t('chat.editSlashCommandTitle')
+                : t('chat.addSlashCommandTitle')}
+            </DialogTitle>
+            <DialogDescription>
+              {editingCommandId()
+                ? t('chat.editSlashCommandDescription')
+                : t('chat.addSlashCommandDescription')}
+            </DialogDescription>
           </DialogHeader>
           <form class="flex flex-col gap-4" onSubmit={(e) => void saveCustomCommand(e)}>
             <label class="flex flex-col gap-1 font-medium" for="chat-custom-command-name">
