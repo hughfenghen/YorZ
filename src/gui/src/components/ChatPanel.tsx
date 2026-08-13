@@ -354,9 +354,10 @@ export const ChatPanel: Component = () => {
     const unsub = subscribeSessions(pid, {
       onStatus: (ev) => {
         setRunningSids((prev) => ({ ...prev, [ev.sessionId]: ev.running }))
-        // A session's first turn just finished — it now has a transcript and
-        // belongs in the list.
-        if (!ev.running) void refetchSessions()
+        // 两个边沿都要重拉列表：running=true 时服务端已刷新该会话的活动时间并让它
+        // 上浮，只在结束时重拉会让顺序在整个执行期间都停留在旧位置；running=false
+        // 时重拉则是因为首轮跑完后会话才有 transcript，需要正式进入列表。
+        void refetchSessions()
       },
     })
     onCleanup(unsub)
