@@ -117,9 +117,12 @@ export const CommandMenu: Component<CommandMenuProps> = (props) => {
                     type="button"
                     class="shrink-0 rounded p-1 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100"
                     title={t('commands.deleteDef')}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onPointerUp={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
-                      // Keep the click from bubbling into onSelect, which would
-                      // run the command we are trying to delete.
+                      // Kobalte selects menu items on pointerup/keyboard before
+                      // click, so the earlier handlers guard the run action.
                       e.stopPropagation()
                       e.preventDefault()
                       void onDelete(def)
