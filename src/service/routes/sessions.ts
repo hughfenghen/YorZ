@@ -3,11 +3,33 @@ import type { AgentKind } from '../agent-sdk/types.js'
 import type { AttachmentMeta } from '../attachment-store.js'
 import type { ProjectInstance } from '../project-registry.js'
 import { cleanupExpiredChatDebugFiles } from '../chat-debug.js'
-import { appendHiddenPrompt } from '../custom-instruction.js'
+import {
+  appendHiddenPrompt,
+  mergeCustomInstructions,
+  type CustomInstruction,
+} from '../custom-instruction.js'
 import { loadGlobalConfig } from '../global-config.js'
+import { loadProjectConfig } from '../project-config.js'
 import { isSlashCommand, resolveChatPrompt } from '../slash-command.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
+
+/**
+ * Slash commands the user can invoke, project scope first. Either config
+ * failing to load degrades to that scope being empty rather than failing the
+ * send.
+ */
+async function loadCustomInstructions(projectPath: string): Promise<CustomInstruction[]> {
+  const [project, global] = await Promise.all([
+    loadProjectConfig(projectPath)
+      .then((cfg) => cfg.customInstructions)
+      .catch(() => [] as CustomInstruction[]),
+    loadGlobalConfig()
+      .then((cfg) => cfg.customInstructions)
+      .catch(() => [] as CustomInstruction[]),
+  ])
+  return mergeCustomInstructions(project, global)
+}
 
 const KINDS: AgentKind[] = ['claude', 'codex', 'opencode']
 const DRAFT_ID_RE = /^[a-zA-Z0-9-]{1,64}$/
@@ -129,11 +151,12 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
     // instructions, then the unknown-command fallback), then attachments. Each
     // step keeps the user's own text verbatim so the GUI can strip the injected
     // blocks back out.
+    // Both scopes are read per send rather than cached on the ProjectInstance:
+    // `.yorz/config.json` has no watcher, so a cached copy would go stale the
+    // moment the user hand-edits it.
     const instructions = isSlashCommand(prompt)
-      ? await loadGlobalConfig()
-          .then((cfg) => cfg.customInstructions)
-          .catch(() => [])
-      : []
+      ? await loadCustomInstructions(p.path)
+      : ([] as CustomInstruction[])
     const resolved = resolveChatPrompt(prompt, instructions, {
       specsDirRelative: p.specsDirRelative,
     })

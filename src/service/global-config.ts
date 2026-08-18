@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
+import { type CustomInstruction, normalizeCustomInstructions } from './custom-instruction.js'
 
 export interface WorktreeMeta {
   mainProjectId: string
@@ -66,19 +67,11 @@ export interface GlobalAppearanceConfig {
   language: GlobalLanguage
 }
 
-export interface GlobalCustomInstruction {
-  id: string
-  name: string
-  description: string
-  /**
-   * Prompt text appended on send but never shown in the composer or the chat
-   * bubble. Deliberately *not* an SDK system prompt: it rides the user message,
-   * so the old `systemPrompt` name overstated its authority.
-   */
-  hiddenPrompt: string
-  prefill: string
-  createdAt: number
-}
+/**
+ * Alias kept for existing call sites; the shape is shared with the project
+ * scope and owned by `custom-instruction.ts`.
+ */
+export type GlobalCustomInstruction = CustomInstruction
 
 export interface SessionEndNotificationsConfig {
   banner: boolean
@@ -304,36 +297,6 @@ function normalizeAppearance(value: unknown): GlobalAppearanceConfig {
     themeName: isThemeName(themeName) ? themeName : DEFAULT_APPEARANCE.themeName,
     language: isLanguage(language) ? language : DEFAULT_APPEARANCE.language,
   }
-}
-
-function normalizeCustomInstructions(value: unknown): GlobalCustomInstruction[] {
-  if (!Array.isArray(value)) return []
-  const out: GlobalCustomInstruction[] = []
-  const seen = new Set<string>()
-  for (const item of value) {
-    if (!item || typeof item !== 'object') continue
-    const obj = item as Record<string, unknown>
-    const id = typeof obj.id === 'string' ? obj.id.trim() : ''
-    const name = typeof obj.name === 'string' ? obj.name.trim().replace(/^\/+/, '') : ''
-    if (!id || !name || seen.has(id) || !/^[\w-]+$/.test(name)) continue
-    seen.add(id)
-    out.push({
-      id,
-      name,
-      description: typeof obj.description === 'string' ? obj.description : '',
-      // Fall back to the pre-rename `systemPrompt` so existing configs keep
-      // working; the next save rewrites them under the new key.
-      hiddenPrompt:
-        typeof obj.hiddenPrompt === 'string'
-          ? obj.hiddenPrompt
-          : typeof obj.systemPrompt === 'string'
-            ? obj.systemPrompt
-            : '',
-      prefill: typeof obj.prefill === 'string' ? obj.prefill : '',
-      createdAt: typeof obj.createdAt === 'number' && obj.createdAt > 0 ? obj.createdAt : 0,
-    })
-  }
-  return out
 }
 
 export function isThemeMode(value: unknown): value is GlobalThemeMode {

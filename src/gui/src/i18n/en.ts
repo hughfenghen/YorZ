@@ -120,14 +120,17 @@ export const en = {
     addSlashCommandOption: 'Add Command',
     addSlashCommandOptionDescription: 'Create a custom slash command',
     addSlashCommandTitle: 'Add Command',
-    addSlashCommandDescription:
-      'Custom commands are available in the composer by typing `/`, and are shared across all projects.',
     editSlashCommandTitle: 'Edit Command',
-    editSlashCommandDescription:
-      'Changes to custom commands update the slash suggestions across all projects.',
     slashCommandNoMatch: 'No matching command',
     deleteSlashCommandTitle: 'Delete command',
     deleteSlashCommandConfirm: 'Delete the custom command /{{name}}? This cannot be undone.',
+    slashCommandScopeProject: 'This project',
+    slashCommandScopeGlobal: 'Global',
+    customSlashCommandScope: 'Saved in',
+    customSlashCommandScopeProjectHint:
+      'Available only in this project, shadows a global command of the same name, and cannot be moved after saving',
+    customSlashCommandScopeGlobalHint:
+      'Available in every project, and cannot be moved after saving',
     customSlashCommandName: 'Name',
     customSlashCommandNamePlaceholder: 'git-commit',
     customSlashCommandDescription: 'Description',
@@ -139,7 +142,7 @@ export const en = {
     customSlashCommandPrefill: 'Prefill Content',
     customSlashCommandPrefillPlaceholder: 'Content inserted into the input when selected',
     customSlashCommandPrefillHint:
-      'Inserted into the composer on select; you can edit before sending',
+      'Inserted into the composer on select, prefixed with /command-name; you can edit before sending',
     customSlashCommandNameRequired: 'Enter a command name',
     customSlashCommandNameInvalid: 'Use only letters, numbers, underscores, and hyphens',
     customSlashCommandNoDescription: 'Custom command',

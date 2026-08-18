@@ -159,6 +159,11 @@ export interface ProjectConfig {
    * so a round-trip through this object cannot silently drop it.
    */
   commands: CommandDef[]
+  /**
+   * Project-scoped slash commands, managed by their own routes for the same
+   * reason as `commands`.
+   */
+  customInstructions: CustomInstruction[]
 }
 
 export interface GlobalConfig {
@@ -428,6 +433,19 @@ export const api = {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
+      },
+    ),
+  getProjectCustomInstructions: (pid: string) =>
+    request<{ customInstructions: CustomInstruction[] }>(
+      `/api/projects/${encodeURIComponent(pid)}/custom-instructions`,
+    ),
+  updateProjectCustomInstructions: (pid: string, customInstructions: CustomInstruction[]) =>
+    request<{ ok: true; customInstructions: CustomInstruction[] }>(
+      `/api/projects/${encodeURIComponent(pid)}/custom-instructions`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ customInstructions }),
       },
     ),
   getGlobalConfig: () => request<GlobalConfig>('/api/global-config'),

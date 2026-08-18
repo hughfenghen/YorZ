@@ -25,6 +25,16 @@ import zhCNTimeago from 'timeago.js/lib/lang/zh_CN.js'
 import { enShort } from '../lib/timeago-locale.js'
 import { api, type AgentUsageWindow, type CustomInstruction, type SessionInfo } from '../lib/api.js'
 import { globalConfig, saveCustomInstructions } from '../lib/global-config.js'
+import {
+  projectInstructions,
+  refreshProjectInstructions,
+  saveProjectInstructions,
+} from '../lib/project-instructions.js'
+import {
+  buildSlashReplacement,
+  mergeScopedInstructions,
+  type SlashCommandScope,
+} from '../lib/slash-commands.js'
 import { subscribeSession, subscribeSessions, type SessionEvent } from '../lib/sse.js'
 import { activeProjectId } from '../lib/project.js'
 import { clearRequestedChatSession, requestedChatSessionId } from '../lib/chat-session-request.js'
@@ -183,12 +193,25 @@ export const ChatPanel: Component = () => {
   // referenced by path in the outgoing prompt. Reset after each send and whenever
   // the active session / project changes.
   const attachments = createAttachments({ projectId: () => activeProjectId() || '' })
-  const customSlashCommands = createMemo(() => globalConfig().customInstructions)
+  // Both scopes in one list, project first and shadowing same-named global
+  // commands — the server merges identically, so the picker cannot offer a
+  // command that resolves to a different one on send.
+  const customSlashCommands = createMemo(() =>
+    mergeScopedInstructions(
+      projectInstructions(activeProjectId() || ''),
+      globalConfig().customInstructions,
+    ),
+  )
+  createEffect(() => {
+    const pid = activeProjectId() || ''
+    if (pid) void refreshProjectInstructions(pid)
+  })
   const [customCommandOpen, setCustomCommandOpen] = createSignal(false)
   const [customCommandName, setCustomCommandName] = createSignal('')
   const [customCommandDescription, setCustomCommandDescription] = createSignal('')
   const [customCommandHiddenPrompt, setCustomCommandHiddenPrompt] = createSignal('')
   const [customCommandPrefill, setCustomCommandPrefill] = createSignal('')
+  const [customCommandScope, setCustomCommandScope] = createSignal<SlashCommandScope>('project')
   const [customCommandError, setCustomCommandError] = createSignal<string | null>(null)
   const [customCommandBusy, setCustomCommandBusy] = createSignal(false)
   const [editingCommandId, setEditingCommandId] = createSignal<string | null>(null)
@@ -198,14 +221,13 @@ export const ChatPanel: Component = () => {
     lng()
     const custom = customSlashCommands().map((cmd) => {
       const value = `/${cmd.name}`
-      const replacement = cmd.prefill.trim() ? cmd.prefill : `${value} `
       return {
         value,
         label: value,
         // Never fall back to the hidden prompt: it is by definition the part the
         // user does not see, so surfacing it in the picker contradicts the field.
         description: cmd.description || t('chat.customSlashCommandNoDescription'),
-        replacement,
+        replacement: buildSlashReplacement(cmd.name, cmd.prefill),
         customId: cmd.id,
         editable: true,
         editLabel: t('chat.editCustomSlashCommand', { name: cmd.name }),
@@ -821,11 +843,25 @@ export const ChatPanel: Component = () => {
     }
   }
 
+  /**
+   * Editing keeps the scope fixed, and there is nothing to choose without a
+   * project. Both cases render read-only text instead of a disabled control:
+   * the radio control selects on click without consulting its disabled state,
+   * so a "locked" radio would still be switchable — and Tailwind's `disabled:`
+   * variant never matches it (it is a div), so the lock would also be invisible.
+   */
+  function scopeSwitchable(): boolean {
+    return editingCommandId() === null && Boolean(activeProjectId())
+  }
+
   function resetCustomCommandForm(): void {
     setCustomCommandName('')
     setCustomCommandDescription('')
     setCustomCommandHiddenPrompt('')
     setCustomCommandPrefill('')
+    // Default to the project: a command created from inside a project is
+    // usually about that project, and the global scope is one click away.
+    setCustomCommandScope(activeProjectId() ? 'project' : 'global')
     setCustomCommandError(null)
     setEditingCommandId(null)
   }
@@ -844,6 +880,9 @@ export const ChatPanel: Component = () => {
     setCustomCommandDescription(target.description)
     setCustomCommandHiddenPrompt(target.hiddenPrompt)
     setCustomCommandPrefill(target.prefill)
+    // Locked while editing: moving between scopes is a delete plus a create
+    // across two stores, with no way to roll back a half-applied move.
+    setCustomCommandScope(target.scope)
     setCustomCommandError(null)
     setCustomCommandOpen(true)
   }
@@ -866,9 +905,12 @@ export const ChatPanel: Component = () => {
       return
     }
     const existingId = editingCommandId()
-    const existing = existingId
-      ? customSlashCommands().find((cmd) => cmd.id === existingId)
-      : undefined
+    const projectId = activeProjectId() || ''
+    const scope: SlashCommandScope =
+      customCommandScope() === 'project' && projectId ? 'project' : 'global'
+    const current =
+      scope === 'project' ? projectInstructions(projectId) : globalConfig().customInstructions
+    const existing = existingId ? current.find((cmd) => cmd.id === existingId) : undefined
     const nextCommand: CustomInstruction = {
       id: existing?.id ?? makeCustomSlashCommandId(),
       name,
@@ -880,12 +922,13 @@ export const ChatPanel: Component = () => {
       createdAt: existing?.createdAt ?? Date.now(),
     }
     const next = [
-      ...customSlashCommands().filter((cmd) => cmd.id !== nextCommand.id && cmd.name !== name),
+      ...current.filter((cmd) => cmd.id !== nextCommand.id && cmd.name !== name),
       nextCommand,
     ]
     setCustomCommandBusy(true)
     try {
-      await saveCustomInstructions(next)
+      if (scope === 'project') await saveProjectInstructions(projectId, next)
+      else await saveCustomInstructions(next)
       setCustomCommandOpen(false)
       resetCustomCommandForm()
     } catch (err) {
@@ -898,9 +941,21 @@ export const ChatPanel: Component = () => {
   async function confirmDeleteCustomSlashCommand(): Promise<void> {
     const id = deletingCommand()?.customId
     if (!id) return
+    const target = customSlashCommands().find((cmd) => cmd.id === id)
+    if (!target) return
     setDeleteCommandBusy(true)
     try {
-      await saveCustomInstructions(customSlashCommands().filter((cmd) => cmd.id !== id))
+      if (target.scope === 'project') {
+        const projectId = activeProjectId() || ''
+        await saveProjectInstructions(
+          projectId,
+          projectInstructions(projectId).filter((cmd) => cmd.id !== id),
+        )
+      } else {
+        await saveCustomInstructions(
+          globalConfig().customInstructions.filter((cmd) => cmd.id !== id),
+        )
+      }
       setDeletingCommand(null)
     } catch (err) {
       toast.error((err as Error).message)
@@ -1254,13 +1309,51 @@ export const ChatPanel: Component = () => {
                 ? t('chat.editSlashCommandTitle')
                 : t('chat.addSlashCommandTitle')}
             </DialogTitle>
-            <DialogDescription>
-              {editingCommandId()
-                ? t('chat.editSlashCommandDescription')
-                : t('chat.addSlashCommandDescription')}
-            </DialogDescription>
           </DialogHeader>
           <form class="flex flex-col gap-4" onSubmit={(e) => void saveCustomCommand(e)}>
+            <div class="flex flex-col gap-1 font-medium">
+              {t('chat.customSlashCommandScope')}
+              <Show
+                when={scopeSwitchable()}
+                fallback={
+                  <span class="text-sm font-normal text-muted-foreground">
+                    {customCommandScope() === 'project'
+                      ? t('chat.slashCommandScopeProject')
+                      : t('chat.slashCommandScopeGlobal')}
+                  </span>
+                }
+              >
+                <RadioGroup
+                  value={customCommandScope()}
+                  onChange={(v) => setCustomCommandScope(v as SlashCommandScope)}
+                  class="flex items-center gap-4"
+                >
+                  <For
+                    each={
+                      [
+                        { value: 'project', label: t('chat.slashCommandScopeProject') },
+                        { value: 'global', label: t('chat.slashCommandScopeGlobal') },
+                      ] as const
+                    }
+                  >
+                    {(option) => (
+                      <RadioGroupItem value={option.value} class="flex items-center gap-1">
+                        <RadioGroupItemInput />
+                        <RadioGroupItemControl class="h-3 w-3" />
+                        <RadioGroupItemLabel class="cursor-pointer text-sm font-normal">
+                          {option.label}
+                        </RadioGroupItemLabel>
+                      </RadioGroupItem>
+                    )}
+                  </For>
+                </RadioGroup>
+              </Show>
+              <span class="text-xs font-normal text-muted-foreground">
+                {customCommandScope() === 'project'
+                  ? t('chat.customSlashCommandScopeProjectHint')
+                  : t('chat.customSlashCommandScopeGlobalHint')}
+              </span>
+            </div>
             <label class="flex flex-col gap-1 font-medium" for="chat-custom-command-name">
               {t('chat.customSlashCommandName')}
               <Input

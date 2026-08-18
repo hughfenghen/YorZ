@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { CommandDef } from './command-types.js'
+import { type CustomInstruction, normalizeCustomInstructions } from './custom-instruction.js'
 
 export type AgentConfig =
   | { kind: 'inherit' }
@@ -16,6 +17,11 @@ export interface ProjectConfig {
   specsDir: string
   /** User-configured commands runnable from the GUI. */
   commands: CommandDef[]
+  /**
+   * Project-scoped slash commands. Merged with the global list on send, with
+   * this scope winning on a name clash (see `mergeCustomInstructions`).
+   */
+  customInstructions: CustomInstruction[]
 }
 
 const CURRENT_VERSION = 1 as const
@@ -27,6 +33,7 @@ export function defaultProjectConfig(): ProjectConfig {
     agent: { kind: 'inherit' },
     specsDir: DEFAULT_SPECS_DIR,
     commands: [],
+    customInstructions: [],
   }
 }
 
@@ -94,7 +101,10 @@ function normalizeConfig(value: unknown): ProjectConfig {
   const agent = normalizeAgent(obj.agent)
   const specsDir = normalizeSpecsDir(obj.specsDir)
   const commands = normalizeCommands(obj.commands)
-  return { version: CURRENT_VERSION, agent, specsDir, commands }
+  // Whitelisted output: any field missing here is dropped on the next save, so
+  // new config fields must be added to this object too.
+  const customInstructions = normalizeCustomInstructions(obj.customInstructions)
+  return { version: CURRENT_VERSION, agent, specsDir, commands, customInstructions }
 }
 
 /**

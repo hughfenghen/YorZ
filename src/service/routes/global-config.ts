@@ -17,6 +17,7 @@ import {
   type GlobalShortcutsConfig,
   type SessionEndNotificationsConfig,
 } from '../global-config.js'
+import { parseCustomInstructions } from '../custom-instruction.js'
 import { getPowerInhibitController, type PowerInhibitController } from '../power-inhibit.js'
 
 interface PutBody {
@@ -169,47 +170,4 @@ function parseAppearance(value: unknown): GlobalAppearanceConfig | { error: stri
   const language = obj.language
   if (!isLanguage(language)) return { error: 'appearance.language must be zh-CN | en' }
   return { themeMode, themeName, language }
-}
-
-function parseCustomInstructions(value: unknown): GlobalCustomInstruction[] | { error: string } {
-  if (value === undefined) return []
-  if (!Array.isArray(value)) return { error: 'customInstructions must be an array' }
-  const out: GlobalCustomInstruction[] = []
-  const seen = new Set<string>()
-  for (const [index, item] of value.entries()) {
-    if (!item || typeof item !== 'object') {
-      return { error: `customInstructions.${index} must be an object` }
-    }
-    const obj = item as Record<string, unknown>
-    const id = typeof obj.id === 'string' ? obj.id.trim() : ''
-    const name = typeof obj.name === 'string' ? obj.name.trim().replace(/^\/+/, '') : ''
-    if (!id) return { error: `customInstructions.${index}.id required` }
-    if (!name || !/^[\w-]+$/.test(name)) {
-      return {
-        error: `customInstructions.${index}.name must use letters, numbers, underscores, or hyphens`,
-      }
-    }
-    if (seen.has(id)) return { error: `duplicate custom instruction id: ${id}` }
-    seen.add(id)
-    const description = obj.description
-    // Accept the pre-rename `systemPrompt` key so an older GUI build can still
-    // PUT successfully; responses always use `hiddenPrompt`.
-    const hiddenPrompt = obj.hiddenPrompt ?? obj.systemPrompt
-    const prefill = obj.prefill
-    const createdAt = obj.createdAt
-    if (typeof description !== 'string') {
-      return { error: `customInstructions.${index}.description must be a string` }
-    }
-    if (typeof hiddenPrompt !== 'string') {
-      return { error: `customInstructions.${index}.hiddenPrompt must be a string` }
-    }
-    if (typeof prefill !== 'string') {
-      return { error: `customInstructions.${index}.prefill must be a string` }
-    }
-    if (typeof createdAt !== 'number' || createdAt <= 0) {
-      return { error: `customInstructions.${index}.createdAt must be a positive number` }
-    }
-    out.push({ id, name, description, hiddenPrompt, prefill, createdAt })
-  }
-  return out
 }

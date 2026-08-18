@@ -4,6 +4,8 @@ import {
   appendHiddenPrompt,
   applyCustomInstruction,
   matchCustomInstruction,
+  mergeCustomInstructions,
+  normalizeCustomInstructions,
   stripHiddenPrompt,
   wrapHiddenPrompt,
 } from '../custom-instruction.js'
@@ -83,5 +85,53 @@ describe('applyCustomInstruction', () => {
   it('leaves the prompt untouched when the hidden prompt is empty', () => {
     const list = [instruction({ hiddenPrompt: '' })]
     expect(applyCustomInstruction('/git-commit', list)).toBe('/git-commit')
+  })
+})
+
+describe('mergeCustomInstructions', () => {
+  it('keeps project entries first and appends the global-only ones', () => {
+    const project = [instruction({ id: 'p-1', name: 'deploy' })]
+    const global = [instruction({ id: 'g-1', name: 'review' })]
+    expect(mergeCustomInstructions(project, global).map((item) => item.name)).toEqual([
+      'deploy',
+      'review',
+    ])
+  })
+
+  it('lets the project scope shadow a global command with the same name', () => {
+    const project = [instruction({ id: 'p-1', hiddenPrompt: 'project prompt' })]
+    const global = [instruction({ id: 'g-1', hiddenPrompt: 'global prompt' })]
+    const merged = mergeCustomInstructions(project, global)
+    expect(merged).toHaveLength(1)
+    expect(merged[0].hiddenPrompt).toBe('project prompt')
+    expect(matchCustomInstruction('/git-commit', merged)?.id).toBe('p-1')
+  })
+
+  it('returns the global list untouched when the project scope is empty', () => {
+    const global = [instruction()]
+    expect(mergeCustomInstructions([], global)).toEqual(global)
+  })
+})
+
+describe('normalizeCustomInstructions', () => {
+  it('drops malformed entries and strips the leading slash from names', () => {
+    const out = normalizeCustomInstructions([
+      { id: 'a', name: '/deploy', createdAt: 3 },
+      { id: 'a', name: 'dup-id' },
+      { id: '', name: 'no-id' },
+      { id: 'b', name: 'bad name' },
+      'not-an-object',
+    ])
+    expect(out.map((item) => item.name)).toEqual(['deploy'])
+    expect(out[0]).toMatchObject({ description: '', hiddenPrompt: '', prefill: '', createdAt: 3 })
+  })
+
+  it('falls back to the pre-rename systemPrompt key', () => {
+    const out = normalizeCustomInstructions([{ id: 'a', name: 'deploy', systemPrompt: 'legacy' }])
+    expect(out[0].hiddenPrompt).toBe('legacy')
+  })
+
+  it('returns an empty list for non-array input', () => {
+    expect(normalizeCustomInstructions(undefined)).toEqual([])
   })
 })
