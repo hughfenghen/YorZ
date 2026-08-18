@@ -210,8 +210,13 @@ export async function commit(cwd: string, opts: CommitOptions): Promise<{ commit
   const extraPaths = renamed.map((r) => r.renamedFrom)
   const allPaths = [...opts.paths, ...extraPaths]
 
+  // Stage first, then commit the index without a pathspec. A pathspec commit
+  // (`git commit -- <paths>`) builds a temporary index, so a pre-commit hook
+  // that rewrites files (e.g. a formatter) writes into that throwaway index:
+  // after the commit the real index and the worktree disagree and the same file
+  // shows up as both staged and unstaged with opposite diffs.
   await runGit(cwd, ['add', '--', ...allPaths])
-  await runGit(cwd, ['commit', '-m', message, '--', ...allPaths])
+  await runGit(cwd, ['commit', '-m', message])
   const { stdout } = await runGit(cwd, ['rev-parse', 'HEAD'])
   return { commit: stdout.trim() }
 }

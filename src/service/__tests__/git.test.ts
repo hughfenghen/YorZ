@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises'
+import { mkdtemp, writeFile, rm, mkdir, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -179,6 +179,27 @@ describe('git.commit mixed states', () => {
     expect(status.find((c) => c.path === 'staged.txt')).toBeUndefined()
     expect(status.find((c) => c.path === 'existing.txt')).toBeUndefined()
     expect(status.find((c) => c.path === 'untracked.txt')).toBeUndefined()
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  // Regression: a pathspec commit (`git commit -- <paths>`) runs the hook against
+  // a temporary index, so a formatting hook's rewrite never lands in the real
+  // index and the file ends up both staged and unstaged with opposite diffs.
+  it('leaves no staged/unstaged residue when a pre-commit hook rewrites the file', async () => {
+    const cwd = await initRepo()
+    const hook = join(cwd, '.git', 'hooks', 'pre-commit')
+    await writeFile(hook, '#!/bin/sh\nprintf "formatted\\n" > fmt.txt\ngit add fmt.txt\n', 'utf8')
+    await chmod(hook, 0o755)
+
+    await writeFile(join(cwd, 'fmt.txt'), 'raw\n', 'utf8')
+    await commit(cwd, { message: 'hook rewrite', paths: ['fmt.txt'] })
+
+    // Worktree, index and HEAD must all agree on the hook-formatted content.
+    const status = await listChanges(cwd)
+    expect(status.filter((c) => c.path === 'fmt.txt')).toEqual([])
+    const committed = await git(cwd, ['show', 'HEAD:fmt.txt'])
+    expect(committed).toBe('formatted\n')
 
     await rm(cwd, { recursive: true, force: true })
   })
