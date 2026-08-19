@@ -124,8 +124,13 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
     const binding = shortcutFromEvent(event)
     if (!binding) return
     const shortcuts = effectiveShortcuts(globalConfig().shortcuts)
-    const isFocusModeBinding = binding === shortcuts.toggleSpecDetailFullscreen
-    if (isEditableShortcutTarget(event.target) && !isFocusModeBinding) return
+    // Toggles must stay reachable from inside a text field: focus mode is often
+    // entered while typing, and the settings dialog autofocuses its own input —
+    // if that swallowed the key, the shortcut could open the dialog but never
+    // close it.
+    const isToggleBinding =
+      binding === shortcuts.toggleSpecDetailFullscreen || binding === shortcuts.projectSettings
+    if (isEditableShortcutTarget(event.target) && !isToggleBinding) return
     if (
       binding !== DEFAULT_SHORTCUTS.newSpec &&
       binding !== DEFAULT_SHORTCUTS.projectSettings &&

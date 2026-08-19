@@ -1,7 +1,7 @@
 {
   "version": 1,
   "agent": {
-    "kind": "codex"
+    "kind": "claude"
   },
   "specsDir": ".yorz/specs",
   "commands": [

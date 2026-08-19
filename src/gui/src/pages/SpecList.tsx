@@ -15,8 +15,7 @@ import { Plus, MoreHorizontal, GitMerge } from 'lucide-solid'
 import { api, type SpecListItem } from '../lib/api.js'
 import type { ProjectListItem } from '../lib/project.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
-import { toggleFocusMode, useFocusModePage } from '../lib/layout-focus.js'
-import { registerFocusModeShortcut } from '../lib/shortcut-actions.js'
+import { useFocusModePage } from '../lib/layout-focus.js'
 import { subscribeProjectsList, subscribeSpecsList } from '../lib/sse.js'
 import { formatSpecUpdatedAt } from '../lib/time.js'
 import { createWorktreeMergeGuard } from '../lib/worktree-merge.js'
@@ -102,7 +101,6 @@ export const SpecList: Component = () => {
   const [deleteError, setDeleteError] = createSignal<string | null>(null)
   const mergeGuard = createWorktreeMergeGuard(api, setCheckingMergeTasks)
   useFocusModePage(() => mergeDialogOpen() || confirmDeleteId() !== null)
-  registerFocusModeShortcut(toggleFocusMode)
 
   let cleanupSpecsList: (() => void) | null = null
 
@@ -296,7 +294,8 @@ export const SpecList: Component = () => {
                         <Badge
                           variant="outline"
                           class={`font-mono ${
-                            STAGE_BADGE[spec.stage] ?? 'bg-muted text-muted-foreground border-border'
+                            STAGE_BADGE[spec.stage] ??
+                            'bg-muted text-muted-foreground border-border'
                           } uppercase tracking-wider`}
                         >
                           {spec.stage}

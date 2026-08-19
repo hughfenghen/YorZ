@@ -150,6 +150,13 @@ export const ProjectsSidebar: Component = () => {
   createEffect(() => {
     const tick = projectConfigRequestTick()
     if (tick === 0 || tick === handledConfigTick) return
+    // Toggle: a second press closes whatever the first press opened. `editing`
+    // is read untracked so closing the dialog doesn't re-run this effect.
+    if (untrack(editing)) {
+      handledConfigTick = tick
+      setEditing(null)
+      return
+    }
     const pid = untrack(activeProjectId)
     const project = (projects() ?? []).find((p) => p.id === pid)
     if (!project) return

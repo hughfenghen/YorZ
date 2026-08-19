@@ -1,4 +1,5 @@
 import { createEffect, createSignal, onCleanup } from 'solid-js'
+import { registerFocusModeShortcut } from './shortcut-actions.js'
 
 /**
  * Transient "give the page the whole window" override.
@@ -55,6 +56,12 @@ function releaseFocusPage(): void {
 export function useFocusModePage(isEscapeBlocked?: () => boolean): void {
   focusPages += 1
   onCleanup(releaseFocusPage)
+
+  // Opting into focus mode IS opting into its shortcut: registering here (rather
+  // than per page) is what keeps SpecList / SpecDetail / SpecReview / SpecDebug
+  // from drifting apart — a page that renders the toggle button but forgot the
+  // separate `registerFocusModeShortcut` call used to silently ignore the key.
+  registerFocusModeShortcut(toggleFocusMode)
 
   createEffect(() => {
     if (!focusMode()) return

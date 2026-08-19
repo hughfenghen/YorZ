@@ -61,7 +61,25 @@ test('默认快捷键触发高频操作', async ({ page, request }) => {
   await expect(focusButton).toHaveAttribute('aria-pressed', 'true')
 
   await dispatchShortcut(page, 'S')
-  await expect(
-    page.getByRole('dialog').filter({ hasText: /项目配置|Project Config/ }),
-  ).toBeVisible()
+  const configDialog = page.getByRole('dialog').filter({ hasText: /项目配置|Project Config/ })
+  await expect(configDialog).toBeVisible()
+
+  // 再按一次关闭（toggle）。这里用真实键盘事件而非 dispatchEvent：对话框会把焦点
+  // 放进自己的输入框，关闭这条路径必须不被「可编辑元素吞掉快捷键」的规则拦下。
+  await page.keyboard.press('Control+Shift+S')
+  await expect(configDialog).toBeHidden()
+})
+
+test('review 页的全屏快捷键与列表/详情页一致', async ({ page, request }) => {
+  const pid = await resolveProjectId(request)
+
+  await page.goto(`/${pid}/specs/${SPEC_ID}/review`)
+  const focusButton = page.getByRole('button', { name: /全屏|Fullscreen/ })
+  await expect(focusButton).toBeVisible()
+  await expect(focusButton).toHaveAttribute('aria-pressed', 'false')
+
+  await dispatchShortcut(page, 'F')
+  await expect(focusButton).toHaveAttribute('aria-pressed', 'true')
+  await dispatchShortcut(page, 'F')
+  await expect(focusButton).toHaveAttribute('aria-pressed', 'false')
 })

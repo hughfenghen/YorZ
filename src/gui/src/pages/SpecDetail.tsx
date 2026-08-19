@@ -19,8 +19,7 @@ import {
 } from '../lib/api.js'
 import { Copy } from 'lucide-solid'
 import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/project.js'
-import { toggleFocusMode, useFocusModePage } from '../lib/layout-focus.js'
-import { registerFocusModeShortcut } from '../lib/shortcut-actions.js'
+import { useFocusModePage } from '../lib/layout-focus.js'
 import morphdom from 'morphdom'
 import { renderMarkdown } from '../lib/markdown.js'
 import { renderMermaidIn } from '../lib/mermaid.js'
@@ -214,7 +213,6 @@ export const SpecDetail: Component = () => {
   // Focus mode is page-scoped: leaving the page restores the chrome, and Escape
   // exits unless a page-level popover/dialog should consume the key first.
   useFocusModePage(() => appendOpen() || popoverOpen())
-  registerFocusModeShortcut(toggleFocusMode)
 
   // Re-render on every spec() change via INCREMENTAL DOM DIFF (morphdom): only the
   // nodes that actually changed are patched; unchanged nodes (including already
