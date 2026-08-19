@@ -17,7 +17,7 @@ import {
   type SpecDetail as SpecDetailDoc,
   type SpecStage,
 } from '../lib/api.js'
-import { Copy } from 'lucide-solid'
+import { Copy, GitBranch } from 'lucide-solid'
 import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/project.js'
 import { useFocusModePage } from '../lib/layout-focus.js'
 import morphdom from 'morphdom'
@@ -444,10 +444,11 @@ export const SpecDetail: Component = () => {
                       {t('specDetail.appendTask')}
                     </Button>
                     <A
-                      class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 font-medium hover:bg-accent hover:text-accent-foreground"
+                      class="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
                       href={projectHref(`specs/${s().id}/review`)}
+                      title={t('git.title')}
                     >
-                      {t('specDetail.review')}
+                      <GitBranch class="h-4 w-4" />
                     </A>
                     <Show when={debugDoc()?.exists}>
                       <A

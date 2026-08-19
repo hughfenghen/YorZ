@@ -327,9 +327,12 @@ export function subscribeCommandOutput(
   })
 }
 
-export function subscribeChanges(
+/**
+ * Repo-wide git working-tree changes. The topic carries no spec id — the server
+ * watcher is keyed on the project path — so every git surface shares one stream.
+ */
+export function subscribeProjectChanges(
   pid: string,
-  id: string,
   onUpdate: (changes: GitChange[]) => void,
 ): SseSubscription {
   if (!pid) {
@@ -337,7 +340,7 @@ export function subscribeChanges(
     noop.readyState = () => 2
     return noop
   }
-  const topic = `project:${pid}:spec:${id}:changes`
+  const topic = `project:${pid}:changes`
   const unsub = mux.subscribe(topic, (event, data) => {
     if (event === 'changes-updated') {
       const payload = data as { changes: GitChange[] }

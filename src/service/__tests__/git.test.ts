@@ -4,7 +4,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { describe, expect, it } from 'vitest'
-import { GitError, assertSafeRelativePath, commit, discard, stash, listChanges } from '../git.js'
+import {
+  GitError,
+  assertSafeRelativePath,
+  commit,
+  discard,
+  stash,
+  listChanges,
+  fileDiff,
+  push,
+  pull,
+} from '../git.js'
 
 const execFileP = promisify(execFile)
 
@@ -202,5 +212,208 @@ describe('git.commit mixed states', () => {
     expect(committed).toBe('formatted\n')
 
     await rm(cwd, { recursive: true, force: true })
+  })
+})
+
+describe('git.fileDiff', () => {
+  it('diffs a modified tracked file against HEAD', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'a.txt'), 'one\n', 'utf8')
+    await git(cwd, ['add', 'a.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'seed'])
+    await writeFile(join(cwd, 'a.txt'), 'two\n', 'utf8')
+
+    const diff = await fileDiff(cwd, 'a.txt')
+    expect(diff.binary).toBe(false)
+    expect(diff.truncated).toBe(false)
+    expect(diff.patch).toContain('-one')
+    expect(diff.patch).toContain('+two')
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('covers staged edits too (diff is taken against HEAD)', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'a.txt'), 'one\n', 'utf8')
+    await git(cwd, ['add', 'a.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'seed'])
+    await writeFile(join(cwd, 'a.txt'), 'staged\n', 'utf8')
+    await git(cwd, ['add', 'a.txt'])
+
+    const diff = await fileDiff(cwd, 'a.txt')
+    expect(diff.patch).toContain('+staged')
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('renders an untracked file as an all-additions patch', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'new.txt'), 'hello\nworld\n', 'utf8')
+
+    const diff = await fileDiff(cwd, 'new.txt')
+    expect(diff.binary).toBe(false)
+    expect(diff.patch).toContain('+++ b/new.txt')
+    expect(diff.patch).toContain('@@ -0,0 +1,2 @@')
+    expect(diff.patch).toContain('+hello')
+    expect(diff.patch).toContain('+world')
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('includes both sides of a rename', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'old.txt'), 'content\n', 'utf8')
+    await git(cwd, ['add', 'old.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'seed'])
+    await git(cwd, ['mv', 'old.txt', 'new.txt'])
+
+    const diff = await fileDiff(cwd, 'new.txt')
+    expect(diff.patch).toContain('old.txt')
+    expect(diff.patch).toContain('new.txt')
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('flags binary files instead of dumping bytes', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'blob.bin'), Buffer.from([0, 1, 2, 0, 3]))
+
+    const diff = await fileDiff(cwd, 'blob.bin')
+    expect(diff.binary).toBe(true)
+    expect(diff.patch).toBe('')
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('truncates oversized patches', async () => {
+    const cwd = await initRepo()
+    const big = Array.from({ length: 5000 }, (_, i) => `line ${i}`).join('\n')
+    await writeFile(join(cwd, 'big.txt'), `${big}\n`, 'utf8')
+
+    const diff = await fileDiff(cwd, 'big.txt')
+    expect(diff.truncated).toBe(true)
+    expect(diff.patch.split('\n').length).toBeLessThanOrEqual(3000)
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('rejects paths outside the repository', async () => {
+    const cwd = await initRepo()
+    await expect(fileDiff(cwd, '../escape.txt')).rejects.toBeInstanceOf(GitError)
+    await rm(cwd, { recursive: true, force: true })
+  })
+})
+
+/** A bare repo on disk stands in for `origin` so push/pull stay offline. */
+async function initRepoWithRemote(): Promise<{ cwd: string; remote: string }> {
+  const remote = await mkdtemp(join(tmpdir(), 'yorz-git-remote-'))
+  await git(remote, ['init', '-q', '--bare', '-b', 'main'])
+  const cwd = await initRepo()
+  await git(cwd, ['remote', 'add', 'origin', remote])
+  return { cwd, remote }
+}
+
+describe('git.push', () => {
+  it('publishes a branch that has no upstream yet', async () => {
+    const { cwd, remote } = await initRepoWithRemote()
+
+    const result = await push(cwd)
+    expect(result.branch).toBe('main')
+    expect(result.createdUpstream).toBe(true)
+    expect(await git(remote, ['rev-parse', 'main'])).toBe(await git(cwd, ['rev-parse', 'HEAD']))
+
+    await rm(cwd, { recursive: true, force: true })
+    await rm(remote, { recursive: true, force: true })
+  })
+
+  it('pushes over an existing upstream without recreating it', async () => {
+    const { cwd, remote } = await initRepoWithRemote()
+    await push(cwd)
+    await writeFile(join(cwd, 'next.txt'), 'next\n', 'utf8')
+    await commit(cwd, { message: 'next', paths: ['next.txt'] })
+
+    const result = await push(cwd)
+    expect(result.createdUpstream).toBe(false)
+    expect(await git(remote, ['rev-parse', 'main'])).toBe(await git(cwd, ['rev-parse', 'HEAD']))
+
+    await rm(cwd, { recursive: true, force: true })
+    await rm(remote, { recursive: true, force: true })
+  })
+
+  it('surfaces a rejected push as GitError with git stderr', async () => {
+    const { cwd, remote } = await initRepoWithRemote()
+    await push(cwd)
+    // Someone else advanced the remote branch.
+    const other = await mkdtemp(join(tmpdir(), 'yorz-git-other-'))
+    await git(other, ['clone', '-q', remote, 'work'])
+    const work = join(other, 'work')
+    await git(work, ['config', 'user.email', 'other@example.com'])
+    await git(work, ['config', 'user.name', 'Other'])
+    await writeFile(join(work, 'remote-only.txt'), 'x\n', 'utf8')
+    await git(work, ['add', '.'])
+    await git(work, ['commit', '-q', '-m', 'remote side'])
+    await git(work, ['push', '-q'])
+    // Local makes a diverging commit.
+    await writeFile(join(cwd, 'local-only.txt'), 'y\n', 'utf8')
+    await commit(cwd, { message: 'local side', paths: ['local-only.txt'] })
+
+    await expect(push(cwd)).rejects.toBeInstanceOf(GitError)
+
+    await rm(cwd, { recursive: true, force: true })
+    await rm(remote, { recursive: true, force: true })
+    await rm(other, { recursive: true, force: true })
+  })
+})
+
+describe('git.pull', () => {
+  it('fast-forwards and reports the update', async () => {
+    const { cwd, remote } = await initRepoWithRemote()
+    await push(cwd)
+    const other = await mkdtemp(join(tmpdir(), 'yorz-git-other-'))
+    await git(other, ['clone', '-q', remote, 'work'])
+    const work = join(other, 'work')
+    await git(work, ['config', 'user.email', 'other@example.com'])
+    await git(work, ['config', 'user.name', 'Other'])
+    await writeFile(join(work, 'from-remote.txt'), 'x\n', 'utf8')
+    await git(work, ['add', '.'])
+    await git(work, ['commit', '-q', '-m', 'remote side'])
+    await git(work, ['push', '-q'])
+
+    const result = await pull(cwd)
+    expect(result.branch).toBe('main')
+    expect(result.updated).toBe(true)
+    expect(await listChanges(cwd)).toEqual([])
+
+    // Nothing new the second time around.
+    const again = await pull(cwd)
+    expect(again.updated).toBe(false)
+
+    await rm(cwd, { recursive: true, force: true })
+    await rm(remote, { recursive: true, force: true })
+    await rm(other, { recursive: true, force: true })
+  })
+
+  it('refuses to merge a diverged branch', async () => {
+    const { cwd, remote } = await initRepoWithRemote()
+    await push(cwd)
+    const other = await mkdtemp(join(tmpdir(), 'yorz-git-other-'))
+    await git(other, ['clone', '-q', remote, 'work'])
+    const work = join(other, 'work')
+    await git(work, ['config', 'user.email', 'other@example.com'])
+    await git(work, ['config', 'user.name', 'Other'])
+    await writeFile(join(work, 'remote-only.txt'), 'x\n', 'utf8')
+    await git(work, ['add', '.'])
+    await git(work, ['commit', '-q', '-m', 'remote side'])
+    await git(work, ['push', '-q'])
+    await writeFile(join(cwd, 'local-only.txt'), 'y\n', 'utf8')
+    await commit(cwd, { message: 'local side', paths: ['local-only.txt'] })
+
+    await expect(pull(cwd)).rejects.toBeInstanceOf(GitError)
+    // --ff-only leaves no merge in progress.
+    expect(await git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])).toContain('main')
+
+    await rm(cwd, { recursive: true, force: true })
+    await rm(remote, { recursive: true, force: true })
+    await rm(other, { recursive: true, force: true })
   })
 })

@@ -44,6 +44,9 @@ importers:
       morphdom:
         specifier: ^2.7.8
         version: 2.7.8
+      parse-diff:
+        specifier: ^0.12.0
+        version: 0.12.0
       timeago.js:
         specifier: ^4.0.2
         version: 4.0.2
@@ -2172,6 +2175,9 @@ packages:
 
   package-manager-detector@1.6.0:
     resolution: {integrity: sha512-61A5ThoTiDG/C8s8UMZwSorAGwMJ0ERVGj2OjoW5pAalsNOg15+iQiPzrLJ4jhZ1HJzmC2PIHT2oEiH3R5fzNA==}
+
+  parse-diff@0.12.0:
+    resolution: {integrity: sha512-2Xr5mW4Bqd4CqYq2zttfw/RZraK+KcRuJvNkJzbDk3ea67Ap525XeTvBdtDE5tigJMVzIx/DMUzsShAf6+5SCA==}
 
   parse5@7.3.0:
     resolution: {integrity: sha512-IInvU7fabl34qmi9gY8XOVxhYyMyuH2xUNpb2q8/Y+7552KlejkRvqvD19nMoUW/uQGGbqNpA6Tufu5FL5BZgw==}
@@ -4843,6 +4849,8 @@ snapshots:
   p-map@7.0.5: {}
 
   package-manager-detector@1.6.0: {}
+
+  parse-diff@0.12.0: {}
 
   parse5@7.3.0:
     dependencies:

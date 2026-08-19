@@ -11,7 +11,7 @@ import {
   type Component,
 } from 'solid-js'
 import { A, useNavigate } from '@solidjs/router'
-import { Plus, MoreHorizontal, GitMerge } from 'lucide-solid'
+import { Plus, MoreHorizontal, GitMerge, GitBranch } from 'lucide-solid'
 import { api, type SpecListItem } from '../lib/api.js'
 import type { ProjectListItem } from '../lib/project.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
@@ -230,6 +230,16 @@ export const SpecList: Component = () => {
             projectId={projectId}
             onRunStarted={() => setCommandRevision((n) => n + 1)}
           />
+          <Button
+            as={A}
+            href={projectHref('git')}
+            variant="ghost"
+            size="icon"
+            class="h-8 w-8"
+            title={t('git.title')}
+          >
+            <GitBranch class="h-4 w-4" />
+          </Button>
         </div>
         <FocusModeButton />
       </header>

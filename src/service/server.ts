@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { createSpecsRoutes } from './routes/specs.js'
 import { createSessionsRoutes } from './routes/sessions.js'
 import { createSpecReviewRoutes } from './routes/spec-review.js'
+import { createGitRoutes } from './routes/git.js'
 import { createEventsRoutes } from './routes/events.js'
 import { createProjectRoutes } from './routes/project.js'
 import { createProjectConfigRoutes } from './routes/project-config.js'
@@ -96,6 +97,7 @@ export function createApp(opts: CreateAppOptions): Hono {
   api.route('/', createSpecsRoutes(resolveProject))
   api.route('/', createSessionsRoutes(resolveProject))
   api.route('/', createSpecReviewRoutes(resolveProject))
+  api.route('/', createGitRoutes(resolveProject))
   api.route('/', createSpecDraftsRoutes(resolveProject))
   api.route('/', createWorktreeRoutes(opts.registry, worktreeManager))
   api.route('/', createProjectFilesRoutes(resolveProject))

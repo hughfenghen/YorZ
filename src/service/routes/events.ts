@@ -22,7 +22,7 @@ export type { ResolveProject }
 //   project:<pid>:specs
 //   project:<pid>:sessions                (run status of every session)
 //   project:<pid>:spec:<specId>
-//   project:<pid>:spec:<specId>:changes
+//   project:<pid>:changes                 (repo-wide git working-tree changes)
 //   project:<pid>:session:<sid>
 //   project:<pid>:commands                (running-command list)
 //   project:<pid>:command:<runId>         (one run: stdout tail + status)

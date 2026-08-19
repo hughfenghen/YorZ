@@ -83,6 +83,14 @@ export interface GitChange {
   renamedFrom?: string
 }
 
+export interface FileDiff {
+  path: string
+  /** Unified diff text; empty for binary files or when nothing differs. */
+  patch: string
+  binary: boolean
+  truncated: boolean
+}
+
 export interface CreateWorktreeBody {
   specSlug: string
   branch?: string
@@ -366,27 +374,36 @@ export const api = {
         body: JSON.stringify({ action }),
       },
     ),
-  getChanges: (pid: string, id: string) =>
-    request<{ changes: GitChange[] }>(
-      `${projectBase(pid)}/specs/${encodeURIComponent(id)}/changes`,
+  getProjectChanges: (pid: string) =>
+    request<{ changes: GitChange[] }>(`${projectBase(pid)}/git/changes`),
+  getFileDiff: (pid: string, path: string) =>
+    request<FileDiff>(`${projectBase(pid)}/git/diff?path=${encodeURIComponent(path)}`),
+  projectCommit: (pid: string, body: { message: string; paths: string[] }) =>
+    request<{ commit: string }>(`${projectBase(pid)}/git/commit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  projectDiscard: (pid: string, body: { paths: string[] }) =>
+    request<{ ok: true }>(`${projectBase(pid)}/git/discard`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  projectPush: (pid: string) =>
+    request<{ ok: true; branch: string; createdUpstream: boolean }>(
+      `${projectBase(pid)}/git/push`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      },
     ),
-  directCommit: (pid: string, id: string, body: { message: string; paths: string[] }) =>
-    request<{ commit: string }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/commit`, {
+  projectPull: (pid: string) =>
+    request<{ ok: true; branch: string; updated: boolean }>(`${projectBase(pid)}/git/pull`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    }),
-  directDiscard: (pid: string, id: string, body: { paths: string[] }) =>
-    request<{ ok: true }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/discard`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    }),
-  directStash: (pid: string, id: string, body: { message: string; paths: string[] }) =>
-    request<{ ok: true }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/stash`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
+      body: '{}',
     }),
   getDebug: (pid: string, id: string) =>
     request<{ exists: boolean; text: string }>(

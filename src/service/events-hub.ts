@@ -264,9 +264,8 @@ export class EventsHub {
     if (rest === 'commands') return this.attachCommandRuns(s, topic, project)
     const cm = /^command:(.+)$/.exec(rest)
     if (cm) return this.attachCommandRun(s, topic, project, cm[1])
-    let sm = /^spec:([^:]+):changes$/.exec(rest)
-    if (sm) return this.attachSpecChanges(s, topic, project, sm[1])
-    sm = /^spec:([^:]+)$/.exec(rest)
+    if (rest === 'changes') return this.attachProjectChanges(s, topic, project)
+    let sm = /^spec:([^:]+)$/.exec(rest)
     if (sm) return this.attachSpec(s, topic, project, sm[1])
     sm = /^session:(.+)$/.exec(rest)
     if (sm) return this.attachSession(s, topic, project, sm[1])
@@ -313,14 +312,12 @@ export class EventsHub {
     })
   }
 
-  private async attachSpecChanges(
-    s: Session,
-    topic: string,
-    project: ProjectInstance,
-    specId: string,
-  ): Promise<() => void> {
-    const exists = await project.store.read(specId)
-    if (!exists) throw new Error('spec not found')
+  /**
+   * Git changes are repository-wide: the watcher is keyed on the project path,
+   * so this topic carries no spec id and both the standalone Git page and the
+   * spec Review page share one subscription.
+   */
+  private attachProjectChanges(s: Session, topic: string, project: ProjectInstance): () => void {
     this.emit(s, topic, 'ready', {})
     const { current, unsubscribe } = subscribeGitChanges(project.path, (changes) => {
       this.emit(s, topic, 'changes-updated', { changes })

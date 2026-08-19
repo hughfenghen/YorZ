@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { resolve as resolvePath, sep as pathSep } from 'node:path'
 import { execFileWithoutWindow } from './process.js'
 
@@ -21,6 +22,14 @@ export interface DiscardOptions {
 export interface StashOptions {
   message: string
   paths: string[]
+}
+
+export interface FileDiff {
+  path: string
+  /** Unified diff text; empty when there is nothing to show (binary/no change). */
+  patch: string
+  binary: boolean
+  truncated: boolean
 }
 
 export interface PartitionedPaths {
@@ -177,10 +186,7 @@ function parsePorcelain(raw: string): GitChange[] {
   return out
 }
 
-async function partitionPathsByStatus(
-  cwd: string,
-  paths: string[],
-): Promise<PartitionedPaths> {
+async function partitionPathsByStatus(cwd: string, paths: string[]): Promise<PartitionedPaths> {
   const all = await listChanges(cwd)
   const byPath = new Map(all.map((c) => [c.path, c]))
   const result: PartitionedPaths = { tracked: [], untracked: [], renamed: [] }
@@ -240,6 +246,116 @@ export async function discard(cwd: string, opts: DiscardOptions): Promise<void> 
     await runGit(cwd, ['restore', '--worktree', '--', r.renamedFrom])
     await runGit(cwd, ['clean', '-fd', '--', r.path])
   }
+}
+
+/** Patches larger than this are cut off — the browser cannot usefully render them. */
+const MAX_PATCH_BYTES = 512 * 1024
+const MAX_PATCH_LINES = 3000
+
+function truncatePatch(patch: string): { patch: string; truncated: boolean } {
+  let text = patch
+  let truncated = false
+  if (Buffer.byteLength(text, 'utf8') > MAX_PATCH_BYTES) {
+    text = text.slice(0, MAX_PATCH_BYTES)
+    truncated = true
+  }
+  const lines = text.split('\n')
+  if (lines.length > MAX_PATCH_LINES) {
+    text = lines.slice(0, MAX_PATCH_LINES).join('\n')
+    truncated = true
+  }
+  return { patch: text, truncated }
+}
+
+/**
+ * Synthesise an all-additions patch for an untracked file. `git diff --no-index`
+ * against the null device would do the same, but the null device path differs on
+ * Windows, so we build the hunk ourselves and keep the code platform-neutral.
+ */
+async function untrackedDiff(cwd: string, path: string): Promise<FileDiff> {
+  let buf: Buffer
+  try {
+    buf = await readFile(resolvePath(cwd, path))
+  } catch {
+    // Vanished between `git status` and here — nothing to show.
+    return { path, patch: '', binary: false, truncated: false }
+  }
+  if (buf.subarray(0, 8000).includes(0)) {
+    return { path, patch: '', binary: true, truncated: false }
+  }
+  const text = buf.toString('utf8')
+  const lines = text.length === 0 ? [] : text.replace(/\n$/, '').split('\n')
+  const body = lines.map((l) => `+${l}`).join('\n')
+  const header = `--- /dev/null\n+++ b/${path}\n@@ -0,0 +1,${lines.length} @@\n`
+  const { patch, truncated } = truncatePatch(lines.length ? `${header}${body}` : header)
+  return { path, patch, binary: false, truncated }
+}
+
+/**
+ * Unified diff of a single working-tree path against HEAD (covers both staged
+ * and unstaged edits, which is what the review UI shows as one file entry).
+ */
+export async function fileDiff(cwd: string, path: string): Promise<FileDiff> {
+  assertSafeRelativePath(cwd, path)
+  const change = (await listChanges(cwd)).find((c) => c.path === path)
+  if (change?.status === '??') return untrackedDiff(cwd, path)
+
+  const pathArgs = change?.renamedFrom ? [change.renamedFrom, path] : [path]
+  const res = await runGitRaw(cwd, ['diff', 'HEAD', '--', ...pathArgs])
+  if (res.code !== 0 && !res.stdout) {
+    throw new GitError('git_failed', res.stderr.trim() || 'git diff failed', res.stderr)
+  }
+  const raw = res.stdout
+  if (!raw.includes('@@') && /^Binary files .* differ$/m.test(raw)) {
+    return { path, patch: '', binary: true, truncated: false }
+  }
+  const { patch, truncated } = truncatePatch(raw)
+  return { path, patch, binary: false, truncated }
+}
+
+async function currentBranch(cwd: string): Promise<string> {
+  const { stdout } = await runGit(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])
+  const branch = stdout.trim()
+  if (!branch || branch === 'HEAD') {
+    throw new GitError('detached_head', 'cannot push or pull from a detached HEAD')
+  }
+  return branch
+}
+
+/**
+ * Push the current branch. Never force-pushes; when the branch has no upstream
+ * it is published to `origin` under the same name.
+ */
+export async function push(cwd: string): Promise<{ branch: string; createdUpstream: boolean }> {
+  const branch = await currentBranch(cwd)
+  const upstream = await runGitRaw(cwd, [
+    'rev-parse',
+    '--abbrev-ref',
+    '--symbolic-full-name',
+    '@{u}',
+  ])
+  const hasUpstream = upstream.code === 0 && upstream.stdout.trim().length > 0
+  const args = hasUpstream ? ['push'] : ['push', '--set-upstream', 'origin', branch]
+  const res = await runGitRaw(cwd, args)
+  if (res.code !== 0) {
+    throw new GitError('push_failed', res.stderr.trim() || 'git push failed', res.stderr)
+  }
+  return { branch, createdUpstream: !hasUpstream }
+}
+
+/**
+ * Fast-forward-only pull. A diverged branch fails loudly instead of leaving the
+ * worktree in a MERGING state the UI has no way to resolve.
+ */
+export async function pull(cwd: string): Promise<{ branch: string; updated: boolean }> {
+  const branch = await currentBranch(cwd)
+  const before = (await runGit(cwd, ['rev-parse', 'HEAD'])).stdout.trim()
+  const res = await runGitRaw(cwd, ['pull', '--ff-only'])
+  if (res.code !== 0) {
+    throw new GitError('pull_failed', res.stderr.trim() || 'git pull failed', res.stderr)
+  }
+  const after = (await runGit(cwd, ['rev-parse', 'HEAD'])).stdout.trim()
+  return { branch, updated: before !== after }
 }
 
 export async function stash(cwd: string, opts: StashOptions): Promise<void> {
