@@ -149,6 +149,21 @@ describe('groupParts bubble boundaries', () => {
     const blocks = groupParts([userText('first'), userText('\n\nsecond')])
     expect(blocks).toEqual([{ kind: 'user', text: 'first\n\nsecond' }])
   })
+
+  // The live path pushes the composer's prompt verbatim (no `messagesToParts`),
+  // so two user turns with no visible agent output between them arrive as bare
+  // adjacent parts — they used to render as one run-on line.
+  it('separates adjacent user text parts that carry no separator of their own', () => {
+    const blocks = groupParts([userText('first'), userText('second')])
+    expect(blocks).toEqual([{ kind: 'user', text: 'first\n\nsecond' }])
+  })
+
+  it('does not double the separator when the text already breaks a line', () => {
+    expect(groupParts([userText('first\n'), userText('second')])).toEqual([
+      { kind: 'user', text: 'first\nsecond' },
+    ])
+    expect(groupParts([userText('first'), userText('')])).toEqual([{ kind: 'user', text: 'first' }])
+  })
 })
 
 describe('groupParts agent context blocks', () => {

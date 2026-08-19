@@ -137,6 +137,27 @@ export function messagesToParts(messages: readonly SessionMessage[]): ChatPart[]
   return out
 }
 
+/**
+ * Concatenate two user texts that fold into the same bubble without letting them
+ * run together.
+ *
+ * The separator has to be applied *here*, at the single place the merge happens:
+ * only the transcript path goes through `messagesToParts` (which prefixes a new
+ * same-role message with `MESSAGE_TEXT_SEPARATOR`), while the live path pushes
+ * the composer's prompt verbatim. Two user turns become adjacent parts there
+ * whenever the agent produced no visible output in between — an aborted or empty
+ * turn — and used to render as one run-on line.
+ *
+ * Idempotent by design: a line break already present on either side (the
+ * transcript path's injected separator, or a prompt that ends in a newline) is
+ * left alone rather than doubled.
+ */
+function joinUserText(prev: string, next: string): string {
+  if (!prev || !next) return prev + next
+  if (prev.endsWith('\n') || next.startsWith('\n')) return prev + next
+  return prev + MESSAGE_TEXT_SEPARATOR + next
+}
+
 /** Attach a tool-result to the last tool that is still waiting for one. */
 function absorbResult(tools: ToolPart[], result: string): void {
   for (let i = tools.length - 1; i >= 0; i--) {
@@ -185,7 +206,7 @@ export function groupParts(parts: readonly ChatPart[]): ChatBlock[] {
       // Close the open assistant bubble; the next agent output starts a fresh one.
       current = null
       const lastBlock = blocks[blocks.length - 1]
-      if (lastBlock?.kind === 'user') lastBlock.text += part.text
+      if (lastBlock?.kind === 'user') lastBlock.text = joinUserText(lastBlock.text, part.text)
       else blocks.push({ kind: 'user', text: part.text })
       continue
     }
