@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { createReadStream } from 'node:fs'
 import { Codex, type Thread, type ThreadEvent, type ThreadOptions } from '@openai/codex-sdk'
+import { normalizeUsage } from '../telemetry/index.js'
 import type {
   AgentContextKind,
   AgentEvent,
@@ -250,7 +251,11 @@ class CodexSession implements AgentSession {
             yield { type: 'error', message: item.message }
           }
         } else if (ev.type === 'turn.completed') {
-          yield { type: 'turn-completed', usage: ev.usage }
+          yield {
+            type: 'turn-completed',
+            usage: ev.usage,
+            metrics: { usage: normalizeUsage('codex', ev.usage) },
+          }
         } else if (ev.type === 'turn.failed') {
           yield { type: 'error', message: ev.error.message }
         } else if (ev.type === 'error') {

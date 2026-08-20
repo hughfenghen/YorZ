@@ -5,6 +5,7 @@ import { Hono } from 'hono'
 import { stash as gitStash, GitError } from '../git.js'
 import type { ProjectInstance } from '../project-registry.js'
 import { skillRef } from '../skill-ref.js'
+import { trackSpecStage } from '../telemetry/index.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
@@ -44,7 +45,18 @@ export function createSpecReviewRoutes(resolveProject: ResolveProject): Hono {
     const specRel = `${p.specsDirRelative}/${specId}/spec.md`
     const prompt = buildGitOpsPrompt(action as GitOpsAction, specId, specRel)
     const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
-    const handle = await p.sessions.send(sessionId, prompt)
+    const handle = await p.sessions.send(sessionId, prompt, undefined, {
+      trigger: 'git-ops',
+      specId,
+    })
+    trackSpecStage({
+      projectRoot: p.path,
+      store: p.store,
+      specId,
+      handle,
+      before: detail,
+      trigger: 'git-ops',
+    })
     return c.json({ runId: handle.runId, sessionId })
   })
 

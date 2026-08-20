@@ -6,6 +6,7 @@ import { cleanupLegacyAgentSkills } from './install.js'
 import { runRestartServe, runServe, runStopServe } from './serve.js'
 import { runAdd, AddGitAbortedError } from './add.js'
 import { runLint } from './lint.js'
+import { runMetrics } from './metrics.js'
 
 interface UninstallSkillsOpts {
   legacy?: boolean
@@ -107,6 +108,33 @@ program
         all: opts.all === true,
         cwd: opts.cwd ?? process.cwd(),
         skipMermaidParse: opts.skipMermaidParse === true,
+      })
+      if (result.exitCode !== 0) process.exit(result.exitCode)
+    },
+  )
+
+program
+  .command('metrics')
+  .description('Summarize collected telemetry (token / cost / duration per spec).')
+  .option('--format <format>', 'output format: text | json', 'text')
+  .option('--project <idOrPath>', 'project id or absolute path (default: project of --cwd)')
+  .option('--all', 'aggregate across every project that has telemetry', false)
+  .option('--since <date>', 'only events on or after this local date (YYYY-MM-DD)')
+  .option('--cwd <path>', 'working directory (default: process.cwd())')
+  .action(
+    async (opts: {
+      format?: string
+      project?: string
+      all?: boolean
+      since?: string
+      cwd?: string
+    }) => {
+      const result = await runMetrics({
+        cwd: opts.cwd ?? process.cwd(),
+        format: opts.format === 'json' ? 'json' : 'text',
+        project: opts.project,
+        all: opts.all === true,
+        since: opts.since,
       })
       if (result.exitCode !== 0) process.exit(result.exitCode)
     },

@@ -1,3 +1,5 @@
+import type { CompactMetrics, TurnMetrics } from '../telemetry/types.js'
+
 export type AgentKind = 'claude' | 'codex' | 'opencode'
 
 export type AgentContextKind = 'recommended_plugins' | 'agents_instructions' | 'environment_context'
@@ -8,7 +10,14 @@ export type AgentEvent =
   | { type: 'text'; delta: string }
   | { type: 'tool-use'; name: string; input: unknown }
   | { type: 'tool-result'; text: string }
-  | { type: 'turn-completed'; usage?: unknown }
+  /**
+   * `usage` stays the raw agent-specific payload (the GUI has always received
+   * it as such); `metrics` carries the normalized, cross-agent comparable view
+   * produced at the adapter boundary.
+   */
+  | { type: 'turn-completed'; usage?: unknown; metrics?: TurnMetrics }
+  /** Context was compacted mid-turn (auto or manual). */
+  | { type: 'compact'; metrics: CompactMetrics }
   | { type: 'error'; message: string }
 
 export type MessagePart =

@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { resolve as resolvePath, sep as pathSep } from 'node:path'
 import { execFileWithoutWindow } from './process.js'
+import { getTelemetry } from './telemetry/index.js'
 
 export interface GitChange {
   path: string
@@ -96,16 +97,33 @@ export function assertSafeRelativePath(cwd: string, p: string): string {
   return p
 }
 
+/**
+ * Record one git invocation. Only the subcommand name is kept — arguments
+ * carry paths, branch names and commit messages, none of which any planned
+ * metric needs.
+ */
+function recordGitOp(cwd: string, args: string[], startedAt: number, ok: boolean, code?: number) {
+  getTelemetry(cwd).record('git.op', {
+    op: args[0] ?? 'unknown',
+    ok,
+    exitCode: code,
+    durMs: Date.now() - startedAt,
+  })
+}
+
 async function runGit(cwd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+  const startedAt = Date.now()
   try {
     const result = await execFileWithoutWindow('git', args, {
       cwd,
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024,
     })
+    recordGitOp(cwd, args, startedAt, true, 0)
     return { stdout: result.stdout, stderr: result.stderr }
   } catch (err) {
     const e = err as NodeJS.ErrnoException & { stderr?: string; stdout?: string }
+    recordGitOp(cwd, args, startedAt, false, typeof e.code === 'number' ? e.code : undefined)
     if (e.code === 'ENOENT') {
       throw new GitError('git_missing', 'git not found on PATH')
     }
@@ -132,12 +150,14 @@ export async function runGitRaw(
   cwd: string,
   args: string[],
 ): Promise<{ stdout: string; stderr: string; code: number }> {
+  const startedAt = Date.now()
   try {
     const result = await execFileWithoutWindow('git', args, {
       cwd,
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024,
     })
+    recordGitOp(cwd, args, startedAt, true, 0)
     return { stdout: result.stdout, stderr: result.stderr, code: 0 }
   } catch (err) {
     const e = err as NodeJS.ErrnoException & {
@@ -146,9 +166,11 @@ export async function runGitRaw(
       code?: number | string
     }
     if (e.code === 'ENOENT') {
+      recordGitOp(cwd, args, startedAt, false)
       throw new GitError('git_missing', 'git not found on PATH')
     }
     const code = typeof e.code === 'number' ? e.code : 1
+    recordGitOp(cwd, args, startedAt, false, code)
     return { stdout: e.stdout ?? '', stderr: e.stderr ?? e.message ?? '', code }
   }
 }

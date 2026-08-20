@@ -11,6 +11,7 @@ import type {
 } from './agent-sdk/types.js'
 import { SessionStore } from './session-store.js'
 import { getLogger } from './logger.js'
+import { getTelemetry } from './telemetry/index.js'
 
 /**
  * Agent-scoped logger. Never logs prompt or agent output bodies — only
@@ -24,6 +25,22 @@ export interface SessionRunHandle {
   sessionId: string
   onEvent(cb: (ev: AgentEvent) => void): () => void
   onDone(cb: (sessionId: string) => void): () => void
+}
+
+/** What made this dispatch happen. Pure attribution — never changes behaviour. */
+export type DispatchTrigger =
+  | 'run'
+  | 'append'
+  | 'explain'
+  | 'git-ops'
+  | 'chat'
+  | 'new-spec'
+  | 'conflict'
+
+/** Optional telemetry attribution for a dispatch. */
+export interface DispatchMeta {
+  trigger?: DispatchTrigger
+  specId?: string
 }
 
 /** Broadcast when a session starts / finishes a turn (project-level SSE topic). */
@@ -305,9 +322,16 @@ export class SessionManager {
    * text while sending an expanded prompt to the Agent. Without it, an injected
    * hidden prompt would become the title.
    */
-  async send(sid: string, prompt: string, titleSource?: string): Promise<SessionRunHandle> {
+  async send(
+    sid: string,
+    prompt: string,
+    titleSource?: string,
+    meta: DispatchMeta = {},
+  ): Promise<SessionRunHandle> {
     const runId = randomUUID()
     const emitter = this.emitterFor(sid)
+    const telemetry = getTelemetry(this.cwd)
+    const attribution = { specId: meta.specId, trigger: meta.trigger }
     // `sid` may be rewritten mid-run by reconcile() (codex assigns the real
     // thread id on `session-started`); track the live id for status bookkeeping.
     let currentSid = sid
@@ -319,18 +343,57 @@ export class SessionManager {
     await this.store.touch(sid).catch(() => {})
     this.setRunning(sid, true)
     agentLog().info('dispatch start', { sessionId: sid, runId, promptLength: prompt.length })
+    telemetry.record('agent.dispatch', {
+      ...attribution,
+      phase: 'start',
+      sessionId: sid,
+      traceId: runId,
+      promptLength: prompt.length,
+    })
+    let agentKind: AgentKind | undefined
+    let dispatchError: string | undefined
     const task = (async () => {
       try {
         const ls = await this.ensureLive(sid)
+        agentKind = ls.kind
         for await (const ev of ls.session.send(prompt)) {
           if (ev.type === 'session-started' && ev.sessionId !== currentSid) {
             const oldSid = currentSid
             currentSid = ev.sessionId
             await this.reconcile(oldSid, ev.sessionId)
+          } else if (ev.type === 'turn-completed') {
+            const m = ev.metrics ?? {}
+            telemetry.record('agent.turn', {
+              ...attribution,
+              sessionId: currentSid,
+              traceId: runId,
+              agentKind,
+              usage: m.usage,
+              modelUsage: m.modelUsage,
+              numTurns: m.numTurns,
+              stopReason: m.stopReason,
+              model: m.model,
+              durMs: m.durationMs,
+              apiDurMs: m.apiDurationMs,
+            })
+          } else if (ev.type === 'compact') {
+            telemetry.record('agent.compact', {
+              ...attribution,
+              sessionId: currentSid,
+              traceId: runId,
+              agentKind,
+              // Named apart from the dispatch `trigger` so both survive on the
+              // same line: which action started the run, and what compacted it.
+              compactTrigger: ev.metrics.trigger,
+              preTokens: ev.metrics.preTokens,
+              postTokens: ev.metrics.postTokens,
+              durMs: ev.metrics.durationMs,
+            })
           }
           emitter.emit('event', ev)
         }
       } catch (err) {
+        dispatchError = err instanceof Error ? err.message : String(err)
         // This used to be swallowed into an SSE event and never persisted —
         // the main blind spot when an Agent dispatch fails.
         agentLog().error('dispatch failed', {
@@ -349,6 +412,17 @@ export class SessionManager {
           sessionId: currentSid,
           runId,
           durationMs: Date.now() - startedAt,
+        })
+        telemetry.record('agent.dispatch', {
+          ...attribution,
+          phase: 'end',
+          sessionId: currentSid,
+          traceId: runId,
+          agentKind,
+          promptLength: prompt.length,
+          durMs: Date.now() - startedAt,
+          ok: dispatchError === undefined,
+          errorMessage: dispatchError,
         })
         await this.store.touch(currentSid).catch(() => {})
         this.setRunning(currentSid, false)

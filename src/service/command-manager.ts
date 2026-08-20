@@ -15,6 +15,7 @@ import {
 } from './command-types.js'
 import { loadProjectConfig, saveProjectConfig } from './project-config.js'
 import { getLogger } from './logger.js'
+import { getTelemetry } from './telemetry/index.js'
 
 const log = () => getLogger().child('commands')
 
@@ -514,6 +515,17 @@ export class CommandManager {
     this.notifyRuns()
     this.notifyRun(next)
     log().info('command ended', { runId, status, exitCode, signal })
+    // Every termination path (exit, error, SIGTERM, race compensation) funnels
+    // through here, so one call covers the whole command lifecycle.
+    getTelemetry(this.projectPath).record('cmd.exec', {
+      commandId: next.commandId,
+      name: next.name,
+      runId,
+      status,
+      exitCode: exitCode ?? undefined,
+      signal: signal ?? undefined,
+      durMs: (next.endedAt ?? Date.now()) - next.startedAt,
+    })
   }
 
   private notifyRuns(): void {

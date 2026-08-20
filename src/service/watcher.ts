@@ -3,6 +3,7 @@ import { stat } from 'node:fs/promises'
 import { basename, join, relative, sep } from 'node:path'
 import chokidar, { type FSWatcher } from 'chokidar'
 import { getLogger } from './logger.js'
+import { getTelemetry } from './telemetry/index.js'
 
 const watcherLog = () => getLogger().child('watcher')
 
@@ -31,6 +32,7 @@ export interface WatcherOptions {
 
 export class SpecWatcher {
   private readonly root: string
+  private readonly cwd: string
   private readonly unlinkSettleMs: number
   private readonly detailListeners = new Map<string, Set<DetailListener>>()
   private readonly listListeners = new Set<ListListener>()
@@ -42,6 +44,7 @@ export class SpecWatcher {
 
   constructor(opts: WatcherOptions) {
     this.root = opts.specsDir ?? join(opts.cwd, '.yorz', 'specs')
+    this.cwd = opts.cwd
     this.unlinkSettleMs = opts.unlinkSettleMs ?? UNLINK_SETTLE_MS
   }
 
@@ -152,6 +155,9 @@ export class SpecWatcher {
   }
 
   private emit(id: string, evt: WatcherEvent, mtimeMs: number): void {
+    // Single funnel for every spec mutation the service observes — self-writes
+    // are already filtered upstream, so each event is real external activity.
+    getTelemetry(this.cwd).record('spec.change', { specId: id, kind: evt, mtimeMs })
     for (const cb of this.detailListeners.get(id) ?? []) cb(evt, mtimeMs)
     for (const cb of this.listListeners) cb()
   }

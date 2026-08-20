@@ -10,3 +10,9 @@ configureLogger({
   dir: mkdtempSync(join(tmpdir(), 'yorz-test-logs-')),
   mirrorConsole: false,
 })
+
+// Telemetry resolves its directory from the environment on every write, so —
+// unlike the logger — it cannot be redirected by a setter. Point YORZ_HOME at a
+// throwaway dir so no test run appends to the developer's real
+// `<globalConfigDir>/metrics`. Tests that need their own home still override it.
+process.env.YORZ_HOME ??= mkdtempSync(join(tmpdir(), 'yorz-test-home-'))

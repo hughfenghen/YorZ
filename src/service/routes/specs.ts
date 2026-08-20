@@ -8,6 +8,7 @@ import type { ProjectInstance } from '../project-registry.js'
 import type { CommandRun } from '../command-types.js'
 import { getLogger } from '../logger.js'
 import { skillRef } from '../skill-ref.js'
+import { trackSpecStage } from '../telemetry/index.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
@@ -44,7 +45,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
       const beforeIds = new Set((await p.store.list()).map((s) => s.id))
       const prompt = buildDraftPrompt(input.type, input.requirement, input.draftId)
       const { sessionId } = await p.sessions.createSession()
-      const handle = await p.sessions.send(sessionId, prompt)
+      const handle = await p.sessions.send(sessionId, prompt, undefined, { trigger: 'new-spec' })
       handle.onDone((finalSessionId) => {
         void bindDraftSessionToCreatedSpec(p, beforeIds, finalSessionId)
       })
@@ -192,7 +193,18 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
               await buildDebugRuntimeContext(p),
             )
           : `${skillRef('yorz-spec')}，然后处理 spec：${p.specsDirRelative}/${specId}/spec.md`
-      const handle = await p.sessions.send(sessionId, prompt)
+      const handle = await p.sessions.send(sessionId, prompt, undefined, {
+        trigger: 'append',
+        specId,
+      })
+      trackSpecStage({
+        projectRoot: p.path,
+        store: p.store,
+        specId,
+        handle,
+        before: detail,
+        trigger: 'append',
+      })
       return c.json({ ok: true, runId: handle.runId, sessionId })
     }
     return c.json({ ok: true })
@@ -210,7 +222,18 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     const prompt = debugActive
       ? buildDebugPrompt(p.specsDirRelative, specId, 'resume', await buildDebugRuntimeContext(p))
       : `${skillRef('yorz-spec')}，然后处理 spec：${p.specsDirRelative}/${specId}/spec.md`
-    const handle = await p.sessions.send(sessionId, prompt)
+    const handle = await p.sessions.send(sessionId, prompt, undefined, {
+      trigger: 'run',
+      specId,
+    })
+    trackSpecStage({
+      projectRoot: p.path,
+      store: p.store,
+      specId,
+      handle,
+      before: detail,
+      trigger: 'run',
+    })
     return c.json({ runId: handle.runId, sessionId })
   })
 
@@ -238,7 +261,12 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
       `请用中文简洁解释其含义、背景与可能的实施影响。**不要**修改任何文件，只在终端输出解释文本。\n\n` +
       `引用：\n"""\n${text}\n"""\n`
     const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
-    const handle = await p.sessions.send(sessionId, prompt)
+    // Explain never edits the spec, so only the dispatch cost is attributed —
+    // no `spec.stage` transition to record.
+    const handle = await p.sessions.send(sessionId, prompt, undefined, {
+      trigger: 'explain',
+      specId,
+    })
     return c.json({ runId: handle.runId, sessionId })
   })
 

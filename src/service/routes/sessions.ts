@@ -177,7 +177,9 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
     if (resolved.builtin === 'yorz-debug') void cleanupExpiredChatDebugFiles(p.path).catch(() => {})
 
     // Title comes from what the user typed, not the expanded prompt.
-    const handle = await p.sessions.send(c.req.param('sid'), finalPrompt, prompt)
+    const handle = await p.sessions.send(c.req.param('sid'), finalPrompt, prompt, {
+      trigger: 'chat',
+    })
     return c.json({ runId: handle.runId, sessionId: handle.sessionId }, 202)
   })
 

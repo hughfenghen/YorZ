@@ -84,6 +84,8 @@ export function createApp(opts: CreateAppOptions): Hono {
       void main.sessions.send(
         sessionId,
         `${skillRef('yorz-spec')}，然后处理 spec：${main.specsDirRelative}/${specId}/spec.md`,
+        undefined,
+        { trigger: 'conflict', specId },
       )
     },
   })

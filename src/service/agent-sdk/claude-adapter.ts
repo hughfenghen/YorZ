@@ -7,6 +7,8 @@ import {
   type SDKMessage,
   type SDKControlGetUsageResponse,
 } from '@anthropic-ai/claude-agent-sdk'
+import { normalizeUsage } from '../telemetry/index.js'
+import type { TurnMetrics, UsageSnapshot } from '../telemetry/index.js'
 import type {
   AgentEvent,
   AgentSdkAdapter,
@@ -91,6 +93,35 @@ function usageWindows(usage: SDKControlGetUsageResponse): AgentUsageWindow[] {
   return out
 }
 
+function num(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+/** Attach the run's cost to the usage snapshot without inventing a snapshot. */
+function withCost(usage: UsageSnapshot | undefined, costUsd?: number): UsageSnapshot | undefined {
+  if (costUsd === undefined) return usage
+  return { ...(usage ?? {}), costUsd }
+}
+
+/** `modelUsage` is keyed by model id; the busiest key names the turn's model. */
+function primaryModel(modelUsage: unknown): string | undefined {
+  if (!isRecord(modelUsage)) return undefined
+  let best: string | undefined
+  let bestOutput = -1
+  for (const [model, raw] of Object.entries(modelUsage)) {
+    const output = isRecord(raw) ? (num(raw.outputTokens) ?? 0) : 0
+    if (output > bestOutput) {
+      bestOutput = output
+      best = model
+    }
+  }
+  return best
+}
+
 class ClaudeSession implements AgentSession {
   private started = false
   private ctrl: AbortController | null = null
@@ -119,6 +150,7 @@ class ClaudeSession implements AgentSession {
     try {
       const q = query({ prompt, options })
       let usage: unknown
+      let metrics: TurnMetrics | undefined
       let completed = false
       for await (const msg of q as AsyncIterable<SDKMessage>) {
         const m = msg as {
@@ -128,6 +160,18 @@ class ClaudeSession implements AgentSession {
           session_id?: string
           message?: unknown
           usage?: unknown
+          total_cost_usd?: unknown
+          modelUsage?: unknown
+          num_turns?: unknown
+          stop_reason?: unknown
+          duration_ms?: unknown
+          duration_api_ms?: unknown
+          compact_metadata?: {
+            trigger?: unknown
+            pre_tokens?: unknown
+            post_tokens?: unknown
+            duration_ms?: unknown
+          }
         }
         if (!this.started && typeof m.session_id === 'string') {
           this.started = true
@@ -150,16 +194,43 @@ class ClaudeSession implements AgentSession {
           }
         } else if (m.type === 'result') {
           usage = m.usage
+          // The SDK reports cost / model split / turn count on the SAME message
+          // it reports `usage` on; capturing only `usage` threw the rest away.
+          // These numbers scope to this `query()` call, not the whole session
+          // (the session-cumulative view is a separate `get_usage` control
+          // request), so callers may sum them across dispatches directly.
+          metrics = {
+            usage: withCost(normalizeUsage('claude', m.usage), num(m.total_cost_usd)),
+            modelUsage: isRecord(m.modelUsage) ? m.modelUsage : undefined,
+            numTurns: num(m.num_turns),
+            stopReason: typeof m.stop_reason === 'string' ? m.stop_reason : undefined,
+            model: primaryModel(m.modelUsage),
+            durationMs: num(m.duration_ms),
+            apiDurationMs: num(m.duration_api_ms),
+          }
+        } else if (m.type === 'system' && m.subtype === 'compact_boundary') {
+          // Auto-compaction used to be entirely invisible, yet it is the single
+          // biggest step change in a session's token profile.
+          const meta = m.compact_metadata ?? {}
+          yield {
+            type: 'compact',
+            metrics: {
+              trigger: meta.trigger === 'manual' || meta.trigger === 'auto' ? meta.trigger : undefined,
+              preTokens: num(meta.pre_tokens),
+              postTokens: num(meta.post_tokens),
+              durationMs: num(meta.duration_ms),
+            },
+          }
         } else if (
           m.type === 'system' &&
           m.subtype === 'session_state_changed' &&
           m.state === 'idle'
         ) {
           completed = true
-          yield { type: 'turn-completed', usage }
+          yield { type: 'turn-completed', usage, metrics }
         }
       }
-      if (!completed) yield { type: 'turn-completed', usage }
+      if (!completed) yield { type: 'turn-completed', usage, metrics }
     } catch (err) {
       if (ctrl.signal.aborted) return
       yield { type: 'error', message: err instanceof Error ? err.message : String(err) }

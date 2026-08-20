@@ -4,6 +4,7 @@ import { join, resolve, basename, dirname, relative } from 'node:path'
 import { lintFile } from '../lint/index.js'
 import type { LintReport } from '../lint/index.js'
 import { loadProjectConfig, resolveSpecsDir } from '../service/project-config.js'
+import { findProjectRoot, getTelemetry } from '../service/telemetry/index.js'
 
 export interface RunLintOptions {
   paths: string[]
@@ -21,6 +22,7 @@ export interface RunLintResult {
 }
 
 export async function runLint(opts: RunLintOptions): Promise<RunLintResult> {
+  const startedAt = Date.now()
   const cwd = resolve(opts.cwd)
   let targets: string[] = []
   if (opts.all) {
@@ -84,5 +86,24 @@ export async function runLint(opts: RunLintOptions): Promise<RunLintResult> {
     }
     process.stdout.write(`\nTotal: ${errorCount} error(s), ${warnCount} warn(s) across ${reports.length} file(s).\n`)
   }
+  await recordLintRun(cwd, {
+    fileCount: targets.length,
+    errorCount,
+    warnCount,
+    exitCode,
+    durMs: Date.now() - startedAt,
+  })
   return { reports, errorCount, warnCount, exitCode }
+}
+
+/**
+ * Lint is CLI-only, so it has to locate the project root itself and flush
+ * before the process exits — the sink's queue would otherwise die with it.
+ */
+async function recordLintRun(cwd: string, payload: Record<string, number>): Promise<void> {
+  const root = findProjectRoot(cwd)
+  if (!root) return
+  const telemetry = getTelemetry(root)
+  telemetry.record('lint.run', payload)
+  await telemetry.flush()
 }

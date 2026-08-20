@@ -170,6 +170,7 @@ User 在浏览器 / 手机打开链接 → GUI 加载该 spec.md
 | `yorz status` | 显示运行中的 Service / 端口 / 项目路径 |
 | `yorz serve stop` | 停止后台 Service |
 | `yorz resume <spec-id>` | 手动续跑：构造 prompt 并 spawn Agent 继续指定 spec（模式 B 备选） |
+| `yorz metrics [--all] [--project <id\|path>] [--since <date>] [--format json]` | 汇总埋点数据：按 spec 输出 token / 成本 / 耗时 / 派发次数（数据源见 4.2 Telemetry） |
 
 **Skill 安装目标路径**：内置 skills 只安装到 **yorz 全局配置目录**，所有项目、所有 Agent 共享同一份：
 
@@ -244,6 +245,18 @@ GET    /api/projects/current      → 当前 Service 关联的项目信息
 - 接口：`relaunch({ specId, stage })` —— 根据 spec md 派生 `stage`，构造对应 skill 触发 prompt
 - 适配器封装：`adapters/claude.ts` / `adapters/opencode.ts`，处理 CLI 参数与 stdio 解析差异
 - 多 spec 并行：每个 spec 一个 Agent 子进程实例，互不阻塞；Service 维护 `Map<specId, ChildProcess>`
+
+**Telemetry（埋点）**：
+
+Service 与 CLI 的可观测数据统一走 `src/service/telemetry/`，目的是让「一次 spec 从新建到 done 花了多少 token / 多少钱 / 多少时间」可被回答，从而给后续优化策略提供可对比的基线。
+
+- **事件模型**：稳定信封 + 开放事件名。信封为 `{ v, ts, event, projectId, traceId?, durMs?, ...payload }`，`event` 采用 `<域>.<动作>` 两段式；新增可观测点只需定义新的事件字符串，核心模块零改动。
+- **首期事件**：`agent.dispatch`（派发起止、trigger、耗时、成败）、`agent.turn`（归一化 token 用量 / 成本 / 模型分桶）、`agent.compact`（上下文压缩前后 token）、`spec.stage`（阶段迁移与任务完成度）、`spec.change`（watcher 观察到的 spec 变更）、`cmd.exec`、`git.op`（仅记子命令名）、`lint.run`。
+- **归一化**：三个 Agent 各自的 usage 结构在 adapter 出口统一映射为 `UsageSnapshot`（`inputTokens` / `cacheReadTokens` / `cacheCreateTokens` / `outputTokens` / `costUsd`）；无法提供的字段留空而非补零，以区分「缺测」与「真零」。
+- **落盘位置**：**全局** `<globalConfigDir>/metrics/<projectId>/telemetry.jsonl`（与 `logs/` 同级，遵循 `YORZ_HOME` > `XDG_CONFIG_HOME` > `~/.config` 解析）。目录名即 `generateProjectId(项目绝对路径)`，同目录下的 `project.json` 记录 id → 路径映射；数据不进入项目工作区，因此无需改动 `.gitignore`，跨项目对比只需 `cat <globalConfigDir>/metrics/*/telemetry.jsonl`。
+- **零侵入**：复用 `RotatingFileSink`（入队即返、单链串行、错误全吞、按大小轮转），埋点失败或磁盘异常绝不影响主流程。
+- **开关**：默认开启；`YORZ_TELEMETRY=off` 关闭采集。
+- **读取侧**：`yorz metrics [--all|--project <id|path>] [--since YYYY-MM-DD] [--format json]` 按 spec 聚合 token / 成本 / 耗时 / 派发次数。
 
 ### 4.3 Skill 设计
 

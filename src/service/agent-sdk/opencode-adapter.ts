@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { createOpencode } from '@opencode-ai/sdk'
 import type { OpencodeClient, Message, Part } from '@opencode-ai/sdk'
+import { normalizeUsage } from '../telemetry/index.js'
 import type {
   AgentEvent,
   AgentSdkAdapter,
@@ -216,7 +217,14 @@ class OpenCodeSession implements AgentSession {
       for (const part of textParts(data.parts)) {
         if (part.type === 'text') yield { type: 'text', delta: part.text }
       }
-      yield { type: 'turn-completed', usage: data.info.tokens }
+      yield {
+        type: 'turn-completed',
+        usage: data.info.tokens,
+        metrics: {
+          usage: normalizeUsage('opencode', data.info.tokens),
+          model: typeof data.info.modelID === 'string' ? data.info.modelID : undefined,
+        },
+      }
     } catch (err) {
       if (this.aborted) return
       yield { type: 'error', message: err instanceof Error ? err.message : String(err) }
