@@ -91,6 +91,11 @@ export interface FileDiff {
   truncated: boolean
 }
 
+export interface GitBranchState {
+  current: string
+  branches: string[]
+}
+
 export interface CreateWorktreeBody {
   specSlug: string
   branch?: string
@@ -378,6 +383,13 @@ export const api = {
     request<{ changes: GitChange[] }>(`${projectBase(pid)}/git/changes`),
   getFileDiff: (pid: string, path: string) =>
     request<FileDiff>(`${projectBase(pid)}/git/diff?path=${encodeURIComponent(path)}`),
+  getGitBranches: (pid: string) => request<GitBranchState>(`${projectBase(pid)}/git/branches`),
+  checkoutGitBranch: (pid: string, branch: string) =>
+    request<{ ok: true; current: string }>(`${projectBase(pid)}/git/checkout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ branch }),
+    }),
   projectCommit: (pid: string, body: { message: string; paths: string[] }) =>
     request<{ commit: string }>(`${projectBase(pid)}/git/commit`, {
       method: 'POST',

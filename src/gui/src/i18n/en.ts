@@ -257,6 +257,10 @@ export const en = {
   },
   git: {
     title: 'Git status',
+    branchSelect: 'Switch branch',
+    branchPlaceholder: 'Select branch',
+    branchFilterPlaceholder: 'Filter branches…',
+    noBranches: 'No matching branches',
     push: 'Push',
     pushing: 'Pushing…',
     pushed: 'Pushed to remote ({{branch}})',

@@ -251,6 +251,10 @@ export const zhCN = {
   },
   git: {
     title: 'Git 状态',
+    branchSelect: '切换分支',
+    branchPlaceholder: '选择分支',
+    branchFilterPlaceholder: '过滤分支…',
+    noBranches: '没有匹配的分支',
     push: '推送',
     pushing: '推送中…',
     pushed: '已推送到远端（{{branch}}）',

@@ -12,6 +12,8 @@ import {
   stash,
   listChanges,
   fileDiff,
+  listBranches,
+  checkoutBranch,
   push,
   pull,
 } from '../git.js'
@@ -300,6 +302,58 @@ describe('git.fileDiff', () => {
   it('rejects paths outside the repository', async () => {
     const cwd = await initRepo()
     await expect(fileDiff(cwd, '../escape.txt')).rejects.toBeInstanceOf(GitError)
+    await rm(cwd, { recursive: true, force: true })
+  })
+})
+
+describe('git branches', () => {
+  it('lists local branches and the current branch', async () => {
+    const cwd = await initRepo()
+    await git(cwd, ['checkout', '-q', '-b', 'feature/demo'])
+
+    const state = await listBranches(cwd)
+    expect(state.current).toBe('feature/demo')
+    expect(state.branches).toEqual(expect.arrayContaining(['main', 'feature/demo']))
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('checks out a known local branch', async () => {
+    const cwd = await initRepo()
+    await git(cwd, ['checkout', '-q', '-b', 'feature/demo'])
+    await git(cwd, ['checkout', '-q', 'main'])
+
+    const result = await checkoutBranch(cwd, 'feature/demo')
+    expect(result.current).toBe('feature/demo')
+    expect((await git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()).toBe('feature/demo')
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('rejects unknown branches before calling checkout', async () => {
+    const cwd = await initRepo()
+
+    await expect(checkoutBranch(cwd, '../escape')).rejects.toBeInstanceOf(GitError)
+    expect((await git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()).toBe('main')
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('surfaces checkout failures as GitError', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'tracked.txt'), 'main\n', 'utf8')
+    await git(cwd, ['add', 'tracked.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'main file'])
+    await git(cwd, ['checkout', '-q', '-b', 'feature/demo'])
+    await writeFile(join(cwd, 'tracked.txt'), 'feature\n', 'utf8')
+    await git(cwd, ['add', 'tracked.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'feature file'])
+    await git(cwd, ['checkout', '-q', 'main'])
+    await writeFile(join(cwd, 'tracked.txt'), 'dirty\n', 'utf8')
+
+    await expect(checkoutBranch(cwd, 'feature/demo')).rejects.toBeInstanceOf(GitError)
+    expect((await git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()).toBe('main')
+
     await rm(cwd, { recursive: true, force: true })
   })
 })

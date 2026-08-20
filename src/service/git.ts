@@ -335,13 +335,46 @@ export async function fileDiff(cwd: string, path: string): Promise<FileDiff> {
   return { path, patch, binary: false, truncated }
 }
 
-async function currentBranch(cwd: string): Promise<string> {
+export interface GitBranchState {
+  current: string
+  branches: string[]
+}
+
+export async function currentBranch(cwd: string): Promise<string> {
   const { stdout } = await runGit(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])
   const branch = stdout.trim()
   if (!branch || branch === 'HEAD') {
-    throw new GitError('detached_head', 'cannot push or pull from a detached HEAD')
+    throw new GitError('detached_head', 'cannot operate from a detached HEAD')
   }
   return branch
+}
+
+export async function listBranches(cwd: string): Promise<GitBranchState> {
+  const [current, branchesResult] = await Promise.all([
+    currentBranch(cwd),
+    runGit(cwd, ['branch', '--format=%(refname:short)']),
+  ])
+  const branches = branchesResult.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  return { current, branches }
+}
+
+export async function checkoutBranch(cwd: string, branch: string): Promise<{ current: string }> {
+  const target = branch?.trim() ?? ''
+  if (!target) throw new GitError('invalid_branch', 'branch must not be empty')
+  const state = await listBranches(cwd)
+  if (!state.branches.includes(target)) {
+    throw new GitError('invalid_branch', `unknown local branch: ${target}`)
+  }
+  if (state.current === target) return { current: state.current }
+
+  const res = await runGitRaw(cwd, ['checkout', target])
+  if (res.code !== 0) {
+    throw new GitError('checkout_failed', res.stderr.trim() || 'git checkout failed', res.stderr)
+  }
+  return { current: await currentBranch(cwd) }
 }
 
 /**

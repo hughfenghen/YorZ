@@ -10,13 +10,15 @@ import {
   onMount,
   type Component,
 } from 'solid-js'
-import { Loader2 } from 'lucide-solid'
+import { GitBranch, Loader2 } from 'lucide-solid'
 import { api, type GitOpsAction, type GitChange } from '../lib/api.js'
 import { requestChatSession } from '../lib/project.js'
 import { subscribeProjectChanges, subscribeSession } from '../lib/sse.js'
 import { Button } from './ui/button.jsx'
 import { Textarea } from './ui/textarea.jsx'
+import { Input } from './ui/input.jsx'
 import { Checkbox, CheckboxControl } from './ui/checkbox.jsx'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select.jsx'
 import {
   RadioGroup,
   RadioGroupItem,
@@ -38,7 +40,7 @@ import { t } from '../i18n/index.js'
 
 type FileSelectMode = 'manual' | 'agent'
 /** Repo-wide actions (push/pull) never take a file selection. */
-type GitAction = 'commit' | 'discard' | 'push' | 'pull'
+type GitAction = 'commit' | 'discard' | 'push' | 'pull' | 'checkout'
 
 export interface GitPanelProps {
   projectId: () => string
@@ -70,6 +72,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
   const [commitMessage, setCommitMessage] = createSignal('')
   const [userEditedMsg, setUserEditedMsg] = createSignal(false)
   const [directAction, setDirectAction] = createSignal<GitAction | null>(null)
+  const [branchQuery, setBranchQuery] = createSignal('')
 
   const [busy, setBusy] = createSignal<GitOpsAction | null>(null)
   const [error, setError] = createSignal<string | null>(null)
@@ -122,6 +125,18 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
 
   onMount(() => autoResize(commitMsgRef))
 
+  const [branchState, { refetch: refetchBranches, mutate: mutateBranchState }] = createResource(
+    props.projectId,
+    (pid) => api.getGitBranches(pid),
+  )
+
+  const filteredBranches = createMemo(() => {
+    const query = branchQuery().trim().toLowerCase()
+    const branches = branchState()?.branches ?? []
+    if (!query) return branches
+    return branches.filter((branch) => branch.toLowerCase().includes(query))
+  })
+
   createEffect(() => {
     const pid = props.projectId()
     if (!pid) return
@@ -157,6 +172,9 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
   }
   const isAnyRunning = createMemo(
     () => busy() !== null || agentKind() !== null || directAction() !== null,
+  )
+  const visibleError = createMemo(
+    () => error() ?? (branchState.error ? (branchState.error as Error).message : null),
   )
 
   // Track a dispatched agent round on the spec session and clear the running
@@ -257,10 +275,42 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
     }
   }
 
+  async function triggerBranchCheckout(branch: string | null): Promise<void> {
+    const target = branch?.trim()
+    const pid = props.projectId()
+    if (!target || !pid || isAnyRunning()) return
+    if (target === branchState()?.current) return
+
+    setError(null)
+    setDirectAction('checkout')
+    try {
+      const res = await api.checkoutGitBranch(pid, target)
+      mutateBranchState((prev) => ({
+        current: res.current,
+        branches: prev?.branches.includes(res.current)
+          ? prev.branches
+          : [...(prev?.branches ?? []), res.current].sort(),
+      }))
+      setSelectedPaths(new Set<string>())
+      setActivePath(null)
+      setBranchQuery('')
+      const changesResult = await api.getProjectChanges(pid)
+      setChanges(changesResult.changes)
+      await refetchBranches()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setDirectAction(null)
+    }
+  }
+
   function buttonLoading(kind: GitAction): boolean {
     return (
       directAction() === kind ||
-      (kind !== 'push' && kind !== 'pull' && (isKindRunning(kind) || busy() === kind))
+      (kind !== 'push' &&
+        kind !== 'pull' &&
+        kind !== 'checkout' &&
+        (isKindRunning(kind) || busy() === kind))
     )
   }
 
@@ -304,6 +354,52 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
         class="flex min-h-0 min-w-0 flex-1 flex-col gap-3"
       >
         <div class="flex flex-wrap items-center gap-2">
+          <Select<string>
+            options={filteredBranches()}
+            value={branchState()?.current ?? null}
+            onChange={(branch) => void triggerBranchCheckout(branch)}
+            optionValue={(branch) => branch}
+            optionTextValue={(branch) => branch}
+            disabled={isAnyRunning() || branchState.loading || Boolean(branchState.error)}
+            placeholder={t('git.branchPlaceholder')}
+            itemComponent={(itemProps) => (
+              <SelectItem item={itemProps.item}>
+                <span class="truncate font-mono text-sm">{itemProps.item.rawValue}</span>
+              </SelectItem>
+            )}
+          >
+            <SelectTrigger
+              class="h-8 w-56 max-w-full gap-2 px-2 text-sm"
+              title={t('git.branchSelect')}
+              aria-label={t('git.branchSelect')}
+            >
+              <Show
+                when={!branchState.loading && directAction() !== 'checkout'}
+                fallback={<Loader2 class="h-3.5 w-3.5 shrink-0 animate-spin" />}
+              >
+                <GitBranch class="h-3.5 w-3.5 shrink-0" />
+              </Show>
+              <span class="min-w-0 flex-1 truncate text-left font-mono">
+                <SelectValue<string>>
+                  {(state) => state.selectedOption() ?? t('git.branchPlaceholder')}
+                </SelectValue>
+              </span>
+            </SelectTrigger>
+            <SelectContent class="w-64">
+              <div class="border-b p-1">
+                <Input
+                  value={branchQuery()}
+                  onInput={(e) => setBranchQuery(e.currentTarget.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  placeholder={t('git.branchFilterPlaceholder')}
+                  class="h-8 text-sm"
+                />
+              </div>
+              <Show when={!branchState.loading && filteredBranches().length === 0}>
+                <div class="px-2 py-2 text-sm text-muted-foreground">{t('git.noBranches')}</div>
+              </Show>
+            </SelectContent>
+          </Select>
           <Button
             variant="default"
             size="sm"
@@ -442,8 +538,8 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
           <p class=" text-muted-foreground">{t('review.noChanges')}</p>
         </Show>
 
-        <Show when={error()}>
-          <p class="text-destructive ">{error()}</p>
+        <Show when={visibleError()}>
+          <p class="text-destructive ">{visibleError()}</p>
         </Show>
         <Show when={lastRun()}>
           <p class=" text-muted-foreground">

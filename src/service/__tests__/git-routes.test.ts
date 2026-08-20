@@ -85,6 +85,46 @@ describe('GET /git/diff', () => {
   })
 })
 
+describe('GET /git/branches and POST /git/checkout', () => {
+  it('lists branches and switches to a selected local branch', async () => {
+    const { cwd, apiPrefix } = await startInRepo()
+    await git(cwd, ['checkout', '-q', '-b', 'feature/demo'])
+    await git(cwd, ['checkout', '-q', 'main'])
+
+    const listed = await fetch(`${apiPrefix}/git/branches`)
+    expect(listed.status).toBe(200)
+    expect(await listed.json()).toMatchObject({
+      current: 'main',
+      branches: expect.arrayContaining(['main', 'feature/demo']),
+    })
+
+    const switched = await postJson(`${apiPrefix}/git/checkout`, { branch: 'feature/demo' })
+    expect(switched.status).toBe(200)
+    expect(await switched.json()).toMatchObject({ ok: true, current: 'feature/demo' })
+  })
+
+  it('400s on empty, unknown, or blocked branch checkout', async () => {
+    const { cwd, apiPrefix } = await startInRepo()
+    expect((await postJson(`${apiPrefix}/git/checkout`, { branch: '' })).status).toBe(400)
+    expect((await postJson(`${apiPrefix}/git/checkout`, { branch: '../escape' })).status).toBe(400)
+
+    await writeFile(join(cwd, 'tracked.txt'), 'main\n', 'utf8')
+    await git(cwd, ['add', 'tracked.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'main file'])
+    await git(cwd, ['checkout', '-q', '-b', 'feature/demo'])
+    await writeFile(join(cwd, 'tracked.txt'), 'feature\n', 'utf8')
+    await git(cwd, ['add', 'tracked.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'feature file'])
+    await git(cwd, ['checkout', '-q', 'main'])
+    await writeFile(join(cwd, 'tracked.txt'), 'dirty\n', 'utf8')
+
+    const blocked = await postJson(`${apiPrefix}/git/checkout`, { branch: 'feature/demo' })
+    expect(blocked.status).toBe(400)
+    const body = (await blocked.json()) as { error: string }
+    expect(body.error).toBeTruthy()
+  })
+})
+
 describe('POST /git/commit', () => {
   it('commits the selected paths', async () => {
     const { cwd, apiPrefix } = await startInRepo()

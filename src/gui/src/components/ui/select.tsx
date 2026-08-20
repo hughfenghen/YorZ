@@ -1,10 +1,6 @@
 import { cn } from '@/lib/cn'
 import type { PolymorphicProps } from '@kobalte/core/polymorphic'
-import type {
-  SelectContentProps,
-  SelectItemProps,
-  SelectTriggerProps,
-} from '@kobalte/core/select'
+import type { SelectContentProps, SelectItemProps, SelectTriggerProps } from '@kobalte/core/select'
 import { Select as SelectPrimitive } from '@kobalte/core/select'
 import type { ParentProps, ValidComponent } from 'solid-js'
 import { splitProps } from 'solid-js'
@@ -63,7 +59,7 @@ type selectContentProps<T extends ValidComponent = 'div'> = SelectContentProps<T
 export const SelectContent = <T extends ValidComponent = 'div'>(
   props: PolymorphicProps<T, selectContentProps<T>>,
 ) => {
-  const [local, rest] = splitProps(props as selectContentProps, ['class'])
+  const [local, rest] = splitProps(props as ParentProps<selectContentProps>, ['class', 'children'])
 
   return (
     <SelectPrimitive.Portal>
@@ -74,6 +70,7 @@ export const SelectContent = <T extends ValidComponent = 'div'>(
         )}
         {...rest}
       >
+        {local.children}
         <SelectPrimitive.Listbox class="p-1 focus-visible:outline-none" />
       </SelectPrimitive.Content>
     </SelectPrimitive.Portal>

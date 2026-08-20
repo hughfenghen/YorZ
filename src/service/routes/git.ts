@@ -4,6 +4,8 @@ import {
   fileDiff,
   commit as gitCommit,
   discard as gitDiscard,
+  listBranches,
+  checkoutBranch,
   push as gitPush,
   pull as gitPull,
   GitError,
@@ -59,6 +61,33 @@ export function createGitRoutes(resolveProject: ResolveProject): Hono {
     if (!path) return c.json({ error: 'path required' }, 400)
     try {
       return c.json(await fileDiff(p.path, path))
+    } catch (err) {
+      if (err instanceof GitError) return c.json({ error: err.message }, 400)
+      throw err
+    }
+  })
+
+  app.get('/projects/:projectId/git/branches', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    try {
+      return c.json(await listBranches(p.path))
+    } catch (err) {
+      if (err instanceof GitError) return c.json({ error: err.message }, 400)
+      throw err
+    }
+  })
+
+  app.post('/projects/:projectId/git/checkout', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    const body = await readBody(c)
+    if (!body) return c.json({ error: 'invalid JSON body' }, 400)
+    const branch = typeof body.branch === 'string' ? body.branch.trim() : ''
+    if (!branch) return c.json({ error: 'branch must not be empty' }, 400)
+    try {
+      const result = await checkoutBranch(p.path, branch)
+      return c.json({ ok: true, ...result })
     } catch (err) {
       if (err instanceof GitError) return c.json({ error: err.message }, 400)
       throw err
