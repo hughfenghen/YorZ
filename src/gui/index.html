@@ -6,16 +6,32 @@
     <meta name="color-scheme" content="light dark" />
     <title>YorZ</title>
     <!--
-      主题引导：必须同步执行且早于样式表，否则首屏会先按默认亮色绘制再跳到暗色。
-      最终用户偏好由服务端全局配置接管；这里仅用系统偏好给首屏兜底。
+      主题引导：必须同步执行且早于样式表，否则首屏会先按默认 terminal 亮色绘制再跳到目标主题。
+      最终真值由服务端全局配置接管，但那是一次异步 GET；这里读 localStorage 里的
+      外观提示（由 src/gui/src/lib/theme.ts 的 writeAppearanceHint 同步写入）抢在首帧前落好属性，
+      读不到时才退回系统偏好 + 默认主题族。
+      键名与校验逻辑跟 theme.ts 的 APPEARANCE_HINT_KEY 是两份，改动需同步。
     -->
     <script>
       ;(function () {
         try {
-          var name = 'terminal'
-          var resolved = window.matchMedia('(prefers-color-scheme: dark)').matches
-            ? 'dark'
-            : 'light'
+          var THEME_NAMES = ['terminal', 'graphite', 'paper']
+          var THEME_MODES = ['system', 'light', 'dark']
+          var hint = null
+          try {
+            hint = JSON.parse(window.localStorage.getItem('yorz.appearanceHint') || 'null')
+          } catch (e) {}
+          if (!hint || typeof hint !== 'object') hint = {}
+
+          var name = THEME_NAMES.indexOf(hint.name) >= 0 ? hint.name : 'terminal'
+          var mode = THEME_MODES.indexOf(hint.mode) >= 0 ? hint.mode : 'system'
+          var resolved =
+            mode === 'light' || mode === 'dark'
+              ? mode
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+
           document.documentElement.setAttribute('data-kb-theme', resolved)
           document.documentElement.setAttribute('data-kb-theme-name', name)
           document.documentElement.style.colorScheme = resolved

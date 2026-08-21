@@ -36,6 +36,44 @@ async function focusSessionToggleWithTab(page: import('@playwright/test').Page):
   throw new Error('未能通过 Tab 聚焦会话折叠按钮')
 }
 
+/**
+ * 在 document-start 记录 `<html>` 主题属性的首个值，用于证明首屏引导脚本已按目标主题落好属性。
+ * 只断言刷新后的最终值是抓不到闪烁的——那是 API 响应回来之后的状态。
+ */
+async function captureFirstPaintTheme(page: import('@playwright/test').Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as {
+      __firstPaintTheme?: { name: string | null; theme: string | null }
+    }
+    const record = () => {
+      if (w.__firstPaintTheme || !document.documentElement) return false
+      w.__firstPaintTheme = {
+        name: document.documentElement.getAttribute('data-kb-theme-name'),
+        theme: document.documentElement.getAttribute('data-kb-theme'),
+      }
+      return true
+    }
+    // documentElement 在 document-start 时刻可能尚未创建，轮询到它出现为止
+    if (!record()) {
+      const timer = setInterval(() => {
+        if (record()) clearInterval(timer)
+      }, 0)
+    }
+  })
+}
+
+async function firstPaintTheme(
+  page: import('@playwright/test').Page,
+): Promise<{ name: string | null; theme: string | null }> {
+  return page.evaluate(() => {
+    const w = window as unknown as {
+      __firstPaintTheme?: { name: string | null; theme: string | null }
+    }
+    if (!w.__firstPaintTheme) throw new Error('未捕获到首屏主题属性')
+    return w.__firstPaintTheme
+  })
+}
+
 async function activeOutlineAndRing(page: import('@playwright/test').Page): Promise<{
   outlineColor: string
   ringColor: string
@@ -95,8 +133,12 @@ test.describe.serial('主题切换', () => {
     const cfg = await request.get('/api/global-config')
     expect((await cfg.json()).appearance.themeMode).toBe('dark')
 
+    await captureFirstPaintTheme(page)
     await page.reload()
     await expect(page.locator('html')).toHaveAttribute('data-kb-theme', 'dark')
+
+    // 首屏就必须是 dark，而不是等 /api/global-config 回来才翻转
+    expect((await firstPaintTheme(page)).theme).toBe('dark')
   })
 
   test('主题族切换持久化，刷新前首屏引导属性已生效', async ({ page, request }) => {
@@ -117,8 +159,12 @@ test.describe.serial('主题切换', () => {
     const graphiteBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
     expect(graphiteBg).not.toBe(terminalBg)
 
+    await captureFirstPaintTheme(page)
     await page.reload()
     await expect(page.locator('html')).toHaveAttribute('data-kb-theme-name', 'graphite')
+
+    // 首屏就必须是 graphite：若引导脚本读不到外观提示，这里会是 terminal（刷新闪烁）
+    expect((await firstPaintTheme(page)).name).toBe('graphite')
   })
 
   test('非法主题族旧存储值不会覆盖全局配置', async ({ page, request }) => {

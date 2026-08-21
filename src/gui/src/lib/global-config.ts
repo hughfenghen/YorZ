@@ -1,6 +1,6 @@
 import { createSignal } from 'solid-js'
 import { api, type CustomInstruction, type GlobalConfig } from './api.js'
-import { applyAppearance } from './theme.js'
+import { applyAppearance, writeAppearanceHint } from './theme.js'
 import { i18next } from '../i18n/config.js'
 
 export const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
@@ -38,7 +38,7 @@ export async function refreshGlobalConfig(): Promise<GlobalConfig> {
     return cfg
   } catch {
     setGlobalConfig(DEFAULT_GLOBAL_CONFIG)
-    applyGlobalAppearance(DEFAULT_GLOBAL_CONFIG)
+    applyGlobalAppearance(DEFAULT_GLOBAL_CONFIG, false)
     return DEFAULT_GLOBAL_CONFIG
   }
 }
@@ -63,8 +63,13 @@ export async function saveCustomInstructions(
   return updateGlobalConfig((current) => ({ ...current, customInstructions }))
 }
 
-export function applyGlobalAppearance(cfg: GlobalConfig): void {
+/**
+ * @param persistHint 是否把外观写入首屏提示。仅在 cfg 来自服务端时为真——
+ *   接口失败时落的是内存默认值，写进去会让下次刷新按错误主题绘制首屏。
+ */
+export function applyGlobalAppearance(cfg: GlobalConfig, persistHint = true): void {
   applyAppearance(cfg.appearance.themeMode, cfg.appearance.themeName)
+  if (persistHint) writeAppearanceHint(cfg.appearance.themeMode, cfg.appearance.themeName)
   if (i18next.language !== cfg.appearance.language) {
     void i18next.changeLanguage(cfg.appearance.language)
   }
