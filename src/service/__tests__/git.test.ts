@@ -25,6 +25,18 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return stdout
 }
 
+async function gitWithDates(cwd: string, args: string[], isoDate: string): Promise<string> {
+  const { stdout } = await execFileP('git', args, {
+    cwd,
+    env: {
+      ...process.env,
+      GIT_AUTHOR_DATE: isoDate,
+      GIT_COMMITTER_DATE: isoDate,
+    },
+  })
+  return stdout
+}
+
 async function initRepo(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'yorz-git-'))
   await git(dir, ['init', '-q', '-b', 'main'])
@@ -309,11 +321,20 @@ describe('git.fileDiff', () => {
 describe('git branches', () => {
   it('lists local branches and the current branch', async () => {
     const cwd = await initRepo()
-    await git(cwd, ['checkout', '-q', '-b', 'feature/demo'])
+    await git(cwd, ['checkout', '-q', '-b', 'older'])
+    await writeFile(join(cwd, 'older.txt'), 'older\n', 'utf8')
+    await git(cwd, ['add', 'older.txt'])
+    await gitWithDates(cwd, ['commit', '-q', '-m', 'older branch'], '2030-01-01T00:00:00Z')
+    await git(cwd, ['checkout', '-q', 'main'])
+    await git(cwd, ['checkout', '-q', '-b', 'newer'])
+    await writeFile(join(cwd, 'newer.txt'), 'newer\n', 'utf8')
+    await git(cwd, ['add', 'newer.txt'])
+    await gitWithDates(cwd, ['commit', '-q', '-m', 'newer branch'], '2030-01-02T00:00:00Z')
 
     const state = await listBranches(cwd)
-    expect(state.current).toBe('feature/demo')
-    expect(state.branches).toEqual(expect.arrayContaining(['main', 'feature/demo']))
+    expect(state.current).toBe('newer')
+    expect(state.branches).toEqual(expect.arrayContaining(['main', 'older', 'newer']))
+    expect(state.branches.indexOf('newer')).toBeLessThan(state.branches.indexOf('older'))
 
     await rm(cwd, { recursive: true, force: true })
   })

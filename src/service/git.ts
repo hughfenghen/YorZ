@@ -352,7 +352,12 @@ export async function currentBranch(cwd: string): Promise<string> {
 export async function listBranches(cwd: string): Promise<GitBranchState> {
   const [current, branchesResult] = await Promise.all([
     currentBranch(cwd),
-    runGit(cwd, ['branch', '--format=%(refname:short)']),
+    runGit(cwd, [
+      'for-each-ref',
+      '--sort=-committerdate',
+      '--format=%(refname:short)',
+      'refs/heads',
+    ]),
   ])
   const branches = branchesResult.stdout
     .split('\n')
