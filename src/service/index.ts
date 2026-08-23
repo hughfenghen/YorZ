@@ -8,6 +8,7 @@ import { stopAllCommandManagers, stopAllCommandManagersSync } from './command-ma
 import { HEARTBEAT_INTERVAL_MS } from './routes/events.js'
 import { getLogger } from './logger.js'
 import { SystemNotificationCenter } from './system-notifications.js'
+import { initTelemetryStore } from './telemetry/index.js'
 import pkg from '../../package.json' with { type: 'json' }
 import { resolveBrowserOpenInvocation, spawnWithoutWindow } from './process.js'
 
@@ -72,6 +73,15 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
     } catch {
       // best-effort
     }
+  }
+
+  // Housekeeping before anything can record: the prune rewrites the shared
+  // telemetry file, which is only safe while no sink is attached to it yet.
+  try {
+    const stats = await initTelemetryStore()
+    log().info('telemetry store ready', { ...stats })
+  } catch (err) {
+    log().warn('telemetry housekeeping failed', { err })
   }
 
   const projects = await registry.list()

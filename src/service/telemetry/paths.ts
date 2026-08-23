@@ -1,35 +1,42 @@
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { generateProjectId, resolveGlobalConfigDir } from '../global-config.js'
+import { resolveGlobalConfigDir } from '../global-config.js'
 
 /** Telemetry lives next to `logs/` under the global config dir, never in the project. */
 export const METRICS_DIR_NAME = 'metrics'
+/** Every project appends to this one file; the in-line `projectId` separates them. */
 export const TELEMETRY_FILE_NAME = 'telemetry.jsonl'
-export const PROJECT_META_FILE_NAME = 'project.json'
+/** `projectId` → `{ path, firstSeenAt }`, so short ids stay resolvable. */
+export const PROJECTS_INDEX_FILE_NAME = 'projects.json'
 
-/** Single log file size cap: 5 MiB, matching `logger.ts`. */
-export const DEFAULT_TELEMETRY_MAX_BYTES = 5 * 1024 * 1024
-/** Keep two archives; disk peak per project ≈ 15 MiB. */
-export const DEFAULT_TELEMETRY_MAX_ARCHIVES = 2
+/**
+ * How long a recorded event is kept. Enforced by the startup prune, not by
+ * size-based rotation: rotation would evict a busy project's neighbours and
+ * could never express "one year" in the first place.
+ */
+export const TELEMETRY_RETENTION_DAYS = 365
+export const TELEMETRY_RETENTION_MS = TELEMETRY_RETENTION_DAYS * 24 * 60 * 60 * 1000
+
+/**
+ * Sink caps that switch rotation off: the size branch of `RotatingFileSink`
+ * can never trigger, so the file only ever shrinks at startup.
+ */
+export const TELEMETRY_MAX_BYTES = Number.POSITIVE_INFINITY
+export const TELEMETRY_MAX_ARCHIVES = 0
 
 /** `<globalConfigDir>/metrics` — honours `YORZ_HOME` / `XDG_CONFIG_HOME`. */
 export function resolveMetricsDir(env: NodeJS.ProcessEnv = process.env): string {
   return join(resolveGlobalConfigDir(env), METRICS_DIR_NAME)
 }
 
-/**
- * `<globalConfigDir>/metrics/<projectId>`.
- *
- * The directory name IS the project attribution: `generateProjectId` yields a
- * stable `<slug>-<hash>` for an absolute path, identical to the id the global
- * project registry assigns. Per-project directories also give each project its
- * own rotation budget, so a busy project cannot evict a quiet one's history.
- */
-export function resolveProjectMetricsDir(
-  projectRoot: string,
-  env: NodeJS.ProcessEnv = process.env,
-): string {
-  return join(resolveMetricsDir(env), generateProjectId(resolve(projectRoot)))
+/** `<globalConfigDir>/metrics/telemetry.jsonl` — the single data file. */
+export function resolveTelemetryFile(env: NodeJS.ProcessEnv = process.env): string {
+  return join(resolveMetricsDir(env), TELEMETRY_FILE_NAME)
+}
+
+/** `<globalConfigDir>/metrics/projects.json` — the id → path index. */
+export function resolveProjectsIndexFile(env: NodeJS.ProcessEnv = process.env): string {
+  return join(resolveMetricsDir(env), PROJECTS_INDEX_FILE_NAME)
 }
 
 /**

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -316,7 +317,34 @@ describe('generateProjectId', () => {
     const id = generateProjectId('/')
     expect(id).toMatch(/^proj-[0-9a-f]{6}$/)
   })
+
+  it('names a worktree after its main project instead of the branch dir', () => {
+    const main = '/home/foo/storify-editor'
+    const wt = '/home/foo/storify-editor.wt/wt__cutview-editor-app-components-cut-trackl'
+    const id = generateProjectId(wt)
+    expect(id).toBe(`${generateProjectId(main)}_wt-${idHash(wt)}`)
+    // the hash still covers the worktree's own path, so it survives the rule change
+    expect(id.endsWith(idHash(wt))).toBe(true)
+    expect(id.length).toBeLessThan(generateProjectId(main).length + 12)
+  })
+
+  it('leaves non-worktree paths on the original rule', () => {
+    expect(generateProjectId('/home/foo/storify-editor')).toMatch(/^storify-editor-[0-9a-f]{6}$/)
+    // `.wt` has to be the *parent* directory, not the project itself
+    expect(generateProjectId('/home/foo/thing.wt')).toMatch(/^thing-wt-[0-9a-f]{6}$/)
+  })
+
+  it('terminates on pathologically nested .wt paths', () => {
+    const deep = `${'/a.wt'.repeat(12)}/leaf`
+    expect(() => generateProjectId(deep)).not.toThrow()
+    expect(generateProjectId(deep)).toContain('_wt-')
+  })
 })
+
+/** Mirrors the id rule's hash so tests assert shape, not a frozen literal. */
+function idHash(absPath: string): string {
+  return createHash('sha256').update(absPath).digest('hex').slice(0, 6)
+}
 
 describe('addProject / removeProject / touchProjectActivity', () => {
   it('addProject is idempotent for same path', async () => {

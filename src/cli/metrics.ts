@@ -1,22 +1,23 @@
 import { existsSync } from 'node:fs'
-import { readFile, readdir } from 'node:fs/promises'
-import { isAbsolute, join, resolve } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { isAbsolute, resolve } from 'node:path'
+import { generateProjectId } from '../service/global-config.js'
 import {
-  PROJECT_META_FILE_NAME,
-  TELEMETRY_FILE_NAME,
   findProjectRoot,
-  resolveMetricsDir,
-  resolveProjectMetricsDir,
+  parseTs,
+  resolveProjectsIndexFile,
+  resolveTelemetryFile,
+  type ProjectsIndex,
 } from '../service/telemetry/index.js'
 
 export interface RunMetricsOptions {
   cwd: string
   format: 'text' | 'json'
-  /** Project id (directory name under `metrics/`) or an absolute project path. */
+  /** Project id (as recorded on each line) or an absolute project path. */
   project?: string
   /** Aggregate every project instead of just the current one. */
   all?: boolean
-  /** Keep only events whose `ts` is on or after this local `YYYY-MM-DD`. */
+  /** Keep only events at or after this local `YYYY-MM-DD`. */
   since?: string
 }
 
@@ -53,25 +54,28 @@ export interface RunMetricsResult {
 const UNATTRIBUTED = '(no spec)'
 
 /**
- * Read side of the telemetry files: aggregate raw JSONL into the per-spec
- * cost / token / duration view the spec was built to answer.
+ * Read side of telemetry: aggregate the shared JSONL into the per-spec
+ * cost / token / duration view the module was built to answer.
  */
 export async function runMetrics(opts: RunMetricsOptions): Promise<RunMetricsResult> {
-  const dirs = await resolveTargetDirs(opts)
-  if (dirs.length === 0) {
-    process.stderr.write(
-      'no telemetry found — run a dispatch first, or pass --project <id|path> / --all\n',
-    )
+  const file = resolveTelemetryFile()
+  if (!existsSync(file)) {
+    process.stderr.write('no telemetry found — run a dispatch first\n')
     return { exitCode: 1, summary: emptySummary() }
   }
+  const filter = resolveProjectFilter(opts)
   const summary = emptySummary()
-  for (const dir of dirs) {
-    summary.projects.push(await projectLabel(dir))
-    for (const file of await telemetryFiles(dir)) {
-      summary.files.push(file)
-      await consumeFile(file, opts.since, summary)
-    }
+  summary.files.push(file)
+  await consumeFile(file, opts, filter, summary)
+  if (summary.lines === 0) {
+    process.stderr.write(
+      filter
+        ? `no telemetry for project ${filter} — pass --project <id|path> / --all\n`
+        : 'no telemetry matched the given filters\n',
+    )
+    return { exitCode: 1, summary }
   }
+  summary.projects = await projectLabels(summary.projects)
   summary.specs.sort((a, b) => b.costUsd - a.costUsd || b.turns - a.turns)
   if (opts.format === 'json') {
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`)
@@ -81,56 +85,54 @@ export async function runMetrics(opts: RunMetricsOptions): Promise<RunMetricsRes
   return { exitCode: 0, summary }
 }
 
-async function resolveTargetDirs(opts: RunMetricsOptions): Promise<string[]> {
-  const metricsDir = resolveMetricsDir()
-  if (opts.all) {
-    if (!existsSync(metricsDir)) return []
-    const entries = await readdir(metricsDir, { withFileTypes: true })
-    return entries.filter((e) => e.isDirectory()).map((e) => join(metricsDir, e.name))
-  }
+/**
+ * Which `projectId` to keep, or `null` for "every project".
+ *
+ * Projects are no longer separated by directory, so selection happens per line.
+ * An absolute path is hashed exactly the way the service hashes it; anything
+ * else is taken as an already-computed id.
+ */
+export function resolveProjectFilter(opts: RunMetricsOptions): string | null {
+  if (opts.all) return null
   if (opts.project) {
-    // An absolute path is hashed the same way the service does; anything else
-    // is taken as an already-computed project id (the directory name).
-    const dir = isAbsolute(opts.project)
-      ? resolveProjectMetricsDir(opts.project)
-      : join(metricsDir, opts.project)
-    return existsSync(dir) ? [dir] : []
+    return isAbsolute(opts.project) ? generateProjectId(resolve(opts.project)) : opts.project
   }
   const root = findProjectRoot(opts.cwd)
-  if (!root) return []
-  const dir = resolveProjectMetricsDir(root)
-  return existsSync(dir) ? [dir] : []
+  return root ? generateProjectId(root) : null
 }
 
-/** Current file plus its rotated archives, oldest first. */
-async function telemetryFiles(dir: string): Promise<string[]> {
-  if (!existsSync(dir)) return []
-  const entries = await readdir(dir)
-  const archives = entries
-    .filter((name) => name.startsWith(`${TELEMETRY_FILE_NAME}.`))
-    .sort((a, b) => Number(b.split('.').pop()) - Number(a.split('.').pop()))
-    .map((name) => join(dir, name))
-  const current = join(dir, TELEMETRY_FILE_NAME)
-  return existsSync(current) ? [...archives, current] : archives
-}
-
-async function projectLabel(dir: string): Promise<string> {
+/** Turn collected ids into `id (path)` labels using the projects index. */
+async function projectLabels(ids: string[]): Promise<string[]> {
+  let index: ProjectsIndex = {}
   try {
-    const raw = await readFile(join(dir, PROJECT_META_FILE_NAME), 'utf8')
-    const meta = JSON.parse(raw) as { id?: string; path?: string }
-    return meta.path ? `${meta.id ?? '?'} (${meta.path})` : (meta.id ?? dir)
+    index = JSON.parse(await readFile(resolveProjectsIndexFile(), 'utf8')) as ProjectsIndex
   } catch {
-    return dir
+    // no index — fall back to bare ids
   }
+  return ids.map((id) => (index[id]?.path ? `${id} (${index[id].path})` : id))
 }
 
-async function consumeFile(file: string, since: string | undefined, out: MetricsSummary) {
+/** Local midnight of a `YYYY-MM-DD` string, in epoch ms. */
+function sinceMs(since: string | undefined): number | null {
+  if (!since) return null
+  const ms = Date.parse(`${since}T00:00:00`)
+  return Number.isNaN(ms) ? null : ms
+}
+
+async function consumeFile(
+  file: string,
+  opts: RunMetricsOptions,
+  filter: string | null,
+  out: MetricsSummary,
+) {
   let raw: string
   try {
     raw = await readFile(file, 'utf8')
   } catch {
     return
   }
+  const from = sinceMs(opts.since)
+  const seenProjects = new Set<string>()
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue
     let ev: Record<string, unknown>
@@ -142,8 +144,14 @@ async function consumeFile(file: string, since: string | undefined, out: Metrics
       out.skipped += 1
       continue
     }
-    const ts = typeof ev.ts === 'string' ? ev.ts : ''
-    if (since && ts.slice(0, 10) < since) continue
+    const projectId = typeof ev.projectId === 'string' ? ev.projectId : ''
+    if (filter && projectId !== filter) continue
+    const ts = parseTs(ev.ts)
+    if (from !== null && (ts === null || ts < from)) continue
+    if (projectId && !seenProjects.has(projectId)) {
+      seenProjects.add(projectId)
+      out.projects.push(projectId)
+    }
     out.lines += 1
     const event = typeof ev.event === 'string' ? ev.event : 'unknown'
     out.eventCounts[event] = (out.eventCounts[event] ?? 0) + 1
@@ -275,5 +283,3 @@ function renderText(s: MetricsSummary): string {
   return `${lines.join('\n')}\n`
 }
 
-/** Exported for tests: resolve which metrics directories a run would read. */
-export { resolveTargetDirs as resolveMetricsTargets }

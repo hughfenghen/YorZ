@@ -1,10 +1,13 @@
 export {
   METRICS_DIR_NAME,
-  PROJECT_META_FILE_NAME,
+  PROJECTS_INDEX_FILE_NAME,
   TELEMETRY_FILE_NAME,
+  TELEMETRY_RETENTION_DAYS,
+  TELEMETRY_RETENTION_MS,
   findProjectRoot,
   resolveMetricsDir,
-  resolveProjectMetricsDir,
+  resolveProjectsIndexFile,
+  resolveTelemetryFile,
 } from './paths.js'
 export { normalizeUsage } from './normalize.js'
 export {
@@ -21,10 +24,17 @@ export {
   resetTelemetry,
 } from './recorder.js'
 export {
+  initTelemetryStore,
+  parseTs,
+  type InitTelemetryStoreOptions,
+  type TelemetryStoreStats,
+} from './retention.js'
+export {
   TELEMETRY_SCHEMA_VERSION,
   type CompactMetrics,
   type ModelUsageMap,
   type ProjectMetricsMeta,
+  type ProjectsIndex,
   type TelemetryEnvelope,
   type TelemetryEventName,
   type TelemetryPayload,

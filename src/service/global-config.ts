@@ -361,10 +361,41 @@ function normalizeWorktree(value: unknown): WorktreeMeta | undefined {
   return meta
 }
 
-export function generateProjectId(absPath: string): string {
-  const base = basename(absPath)
-  const slug = slugify(base) || 'proj'
+/** Worktrees live in a sibling `<mainName>.wt/` directory — see WorktreeManager. */
+const WORKTREE_DIR_SUFFIX = '.wt'
+/** Guard against pathological `a.wt/b.wt/c…` paths dragging us into deep recursion. */
+const MAX_WORKTREE_NESTING = 4
+
+/**
+ * The main project a worktree path belongs to, or `null` for a normal project.
+ *
+ * Derived purely from the path: `WorktreeManager` always creates worktrees as
+ * `<parent>/<mainName>.wt/<branch>`, so the main project is the sibling of the
+ * `.wt` directory. Doing it this way keeps `generateProjectId` a pure function,
+ * which matters because the telemetry recorder and `yorz metrics` call it with
+ * nothing but a path — no registry in reach.
+ */
+export function resolveWorktreeMainPath(absPath: string): string | null {
+  const parent = dirname(absPath)
+  const parentName = basename(parent)
+  if (!parentName.endsWith(WORKTREE_DIR_SUFFIX) || parentName === WORKTREE_DIR_SUFFIX) return null
+  return join(dirname(parent), parentName.slice(0, -WORKTREE_DIR_SUFFIX.length))
+}
+
+/**
+ * Stable id for a project path.
+ *
+ * Normal projects get `<slug>-<hash6>`. Worktrees instead get
+ * `<mainProjectId>_wt-<hash6>`: the old rule slugified the escaped branch name
+ * and truncated it at 40 chars, producing long ids that hid which project the
+ * worktree belonged to. The hash still covers the worktree's own path, so ids
+ * stay stable and the suffix is unchanged across the rule switch.
+ */
+export function generateProjectId(absPath: string, depth = 0): string {
   const hash = createHash('sha256').update(absPath).digest('hex').slice(0, 6)
+  const mainPath = depth < MAX_WORKTREE_NESTING ? resolveWorktreeMainPath(absPath) : null
+  if (mainPath) return `${generateProjectId(mainPath, depth + 1)}_wt-${hash}`
+  const slug = slugify(basename(absPath)) || 'proj'
   return `${slug}-${hash}`
 }
 

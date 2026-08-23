@@ -1,18 +1,21 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { generateProjectId } from '../global-config.js'
 import {
-  PROJECT_META_FILE_NAME,
+  PROJECTS_INDEX_FILE_NAME,
   TELEMETRY_FILE_NAME,
   findProjectRoot,
   getTelemetry,
+  initTelemetryStore,
   normalizeUsage,
   resetTelemetry,
   resolveMetricsDir,
-  resolveProjectMetricsDir,
+  resolveProjectsIndexFile,
+  resolveTelemetryFile,
   snapshotSpec,
+  type ProjectsIndex,
   type TelemetryEnvelope,
 } from '../telemetry/index.js'
 
@@ -23,13 +26,15 @@ function env(): NodeJS.ProcessEnv {
   return { YORZ_HOME: home }
 }
 
-function readLines(root: string): TelemetryEnvelope[] {
-  const file = join(resolveProjectMetricsDir(root, env()), TELEMETRY_FILE_NAME)
+/** Every project shares one file; `projectId` is what separates them. */
+function readLines(projectId?: string): TelemetryEnvelope[] {
+  const file = resolveTelemetryFile(env())
   if (!existsSync(file)) return []
-  return readFileSync(file, 'utf8')
+  const all = readFileSync(file, 'utf8')
     .split('\n')
     .filter((l) => l.trim())
     .map((l) => JSON.parse(l) as TelemetryEnvelope)
+  return projectId ? all.filter((l) => l.projectId === projectId) : all
 }
 
 beforeEach(() => {
@@ -45,11 +50,10 @@ afterEach(() => {
 })
 
 describe('telemetry paths', () => {
-  it('honors YORZ_HOME and names the directory after the project id', () => {
+  it('honors YORZ_HOME and keeps every project in one file', () => {
     expect(resolveMetricsDir(env())).toBe(join(home, 'metrics'))
-    expect(resolveProjectMetricsDir(projectRoot, env())).toBe(
-      join(home, 'metrics', generateProjectId(projectRoot)),
-    )
+    expect(resolveTelemetryFile(env())).toBe(join(home, 'metrics', TELEMETRY_FILE_NAME))
+    expect(resolveProjectsIndexFile(env())).toBe(join(home, 'metrics', PROJECTS_INDEX_FILE_NAME))
   })
 
   it('walks up to the nearest .yorz directory', () => {
@@ -127,34 +131,56 @@ describe('recorder', () => {
     const t = getTelemetry(projectRoot, env())
     t.record('agent.turn', { sessionId: 's1', traceId: 'r1', usage: { inputTokens: 5 } })
     await t.flush()
-    const [line, ...rest] = readLines(projectRoot)
+    const [line, ...rest] = readLines()
     expect(rest).toHaveLength(0)
-    expect(line.v).toBe(1)
+    expect(line.v).toBe(2)
     expect(line.event).toBe('agent.turn')
     expect(line.projectId).toBe(generateProjectId(projectRoot))
-    expect(line.ts).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
+    expect(typeof line.ts).toBe('number')
+    expect(line.ts).toBeGreaterThan(Date.parse('2020-01-01'))
     expect(line.sessionId).toBe('s1')
     expect(line.traceId).toBe('r1')
     expect(line.usage).toEqual({ inputTokens: 5 })
   })
 
-  it('writes the id → path sidecar once', async () => {
+  it('indexes the project id → path mapping once', async () => {
     const t = getTelemetry(projectRoot, env())
     t.record('cmd.exec', { status: 'exited' })
     await t.flush()
-    // the sidecar is written off the write path; give it a tick to land
-    await new Promise((r) => setTimeout(r, 30))
-    const meta = JSON.parse(
-      readFileSync(join(resolveProjectMetricsDir(projectRoot, env()), PROJECT_META_FILE_NAME), 'utf8'),
-    ) as { id: string; path: string }
-    expect(meta).toMatchObject({ id: generateProjectId(projectRoot), path: projectRoot })
+    const index = JSON.parse(
+      readFileSync(resolveProjectsIndexFile(env()), 'utf8'),
+    ) as ProjectsIndex
+    const entry = index[generateProjectId(projectRoot)]
+    expect(entry?.path).toBe(projectRoot)
+    expect(typeof entry?.firstSeenAt).toBe('number')
+  })
+
+  it('merges two projects into one file, told apart by projectId', async () => {
+    const other = mkdtempSync(join(tmpdir(), 'yorz-metrics-proj2-'))
+    try {
+      const a = getTelemetry(projectRoot, env())
+      const b = getTelemetry(other, env())
+      a.record('agent.turn', { sessionId: 'a' })
+      b.record('agent.turn', { sessionId: 'b' })
+      a.record('cmd.exec', { status: 'exited' })
+      await Promise.all([a.flush(), b.flush()])
+      expect(readLines()).toHaveLength(3)
+      expect(readLines(generateProjectId(projectRoot))).toHaveLength(2)
+      expect(readLines(generateProjectId(other))).toHaveLength(1)
+      const index = JSON.parse(
+        readFileSync(resolveProjectsIndexFile(env()), 'utf8'),
+      ) as ProjectsIndex
+      expect(Object.keys(index)).toHaveLength(2)
+    } finally {
+      rmSync(other, { recursive: true, force: true })
+    }
   })
 
   it('drops undefined payload values rather than writing nulls', async () => {
     const t = getTelemetry(projectRoot, env())
-    t.record('git.op', { op: 'status', ok: true, exitCode: undefined })
+    t.record('cmd.exec', { status: 'exited', ok: true, exitCode: undefined })
     await t.flush()
-    const [line] = readLines(projectRoot)
+    const [line] = readLines()
     expect('exitCode' in line).toBe(false)
     expect(line.ok).toBe(true)
   })
@@ -164,7 +190,7 @@ describe('recorder', () => {
     expect(t.enabled).toBe(false)
     t.record('agent.turn', { sessionId: 's1' })
     await t.flush()
-    expect(readLines(projectRoot)).toHaveLength(0)
+    expect(readLines()).toHaveLength(0)
   })
 
   it('never throws on an unserializable payload', async () => {
@@ -173,7 +199,7 @@ describe('recorder', () => {
     const t = getTelemetry(projectRoot, env())
     expect(() => t.record('agent.turn', { cyclic })).not.toThrow()
     await t.flush()
-    expect(readLines(projectRoot)).toHaveLength(0)
+    expect(readLines()).toHaveLength(0)
   })
 
   it('returns the same recorder for the same root', () => {
@@ -195,5 +221,84 @@ describe('spec snapshot', () => {
 
   it('returns null when the spec is gone', () => {
     expect(snapshotSpec(null)).toBeNull()
+  })
+})
+
+describe('telemetry store housekeeping', () => {
+  const YEAR_MS = 365 * 24 * 60 * 60 * 1000
+  const now = Date.parse('2026-08-23T12:00:00Z')
+
+  function writeUnified(lines: unknown[]): void {
+    mkdirSync(resolveMetricsDir(env()), { recursive: true })
+    writeFileSync(resolveTelemetryFile(env()), lines.map((l) => `${JSON.stringify(l)}\n`).join(''))
+  }
+
+  it('drops expired lines and keeps the file sorted by ts', async () => {
+    const fresh = now - 1000
+    const older = now - 2000
+    writeUnified([
+      { v: 2, ts: fresh, event: 'agent.turn', projectId: 'p1' },
+      { v: 2, ts: now - 2 * YEAR_MS, event: 'agent.turn', projectId: 'p1' },
+      { v: 2, ts: older, event: 'cmd.exec', projectId: 'p2' },
+    ])
+    const stats = await initTelemetryStore({ env: env(), now })
+    expect(stats).toMatchObject({ kept: 2, dropped: 1, migrated: 0 })
+    expect(readLines().map((l) => l.ts)).toEqual([older, fresh])
+  })
+
+  it('drops unparseable lines instead of counting them as kept', async () => {
+    mkdirSync(resolveMetricsDir(env()), { recursive: true })
+    writeFileSync(
+      resolveTelemetryFile(env()),
+      `${JSON.stringify({ v: 2, ts: now, event: 'agent.turn', projectId: 'p1' })}\n{"broken":\n`,
+    )
+    const stats = await initTelemetryStore({ env: env(), now })
+    expect(stats).toMatchObject({ kept: 1, dropped: 1 })
+  })
+
+  it('migrates legacy per-project directories and retires dead event kinds', async () => {
+    const projectId = generateProjectId(projectRoot)
+    const legacyDir = join(resolveMetricsDir(env()), projectId)
+    mkdirSync(legacyDir, { recursive: true })
+    const stamp = (ms: number): string => {
+      const d = new Date(ms)
+      const pad = (n: number) => String(n).padStart(2, '0')
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+    }
+    const keptAt = now - 60_000
+    writeFileSync(
+      join(legacyDir, TELEMETRY_FILE_NAME),
+      [
+        { v: 1, ts: stamp(keptAt), event: 'agent.turn', projectId, usage: { inputTokens: 5 } },
+        { v: 1, ts: stamp(now - 1000), event: 'git.op', projectId, op: 'status' },
+        { v: 1, ts: stamp(now - 2 * YEAR_MS), event: 'agent.turn', projectId },
+      ]
+        .map((l) => `${JSON.stringify(l)}\n`)
+        .join(''),
+    )
+    writeFileSync(
+      `${join(legacyDir, TELEMETRY_FILE_NAME)}.1`,
+      `${JSON.stringify({ v: 1, ts: stamp(now - 120_000), event: 'spec.change', projectId })}\n`,
+    )
+    writeFileSync(
+      join(legacyDir, 'project.json'),
+      JSON.stringify({ id: projectId, path: projectRoot, firstSeenAt: stamp(keptAt) }),
+    )
+
+    const stats = await initTelemetryStore({ env: env(), now })
+
+    expect(existsSync(legacyDir)).toBe(false)
+    expect(stats).toMatchObject({ migrated: 1, kept: 1, legacyDirs: 1 })
+    const [line, ...rest] = readLines()
+    expect(rest).toHaveLength(0)
+    expect(line).toMatchObject({ v: 2, ts: keptAt, event: 'agent.turn', projectId })
+    const index = JSON.parse(readFileSync(resolveProjectsIndexFile(env()), 'utf8')) as ProjectsIndex
+    expect(index[projectId]?.path).toBe(projectRoot)
+  })
+
+  it('is a no-op when nothing has ever been recorded', async () => {
+    const stats = await initTelemetryStore({ env: env(), now })
+    expect(stats).toMatchObject({ kept: 0, dropped: 0, migrated: 0 })
+    expect(existsSync(resolveTelemetryFile(env()))).toBe(false)
   })
 })

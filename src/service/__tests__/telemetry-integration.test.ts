@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
 import { start, type ServeHandle } from '../index.js'
@@ -10,11 +10,13 @@ import { CommandManager, resetCommandManagers } from '../command-manager.js'
 import { SessionManager } from '../session-manager.js'
 import { SessionStore } from '../session-store.js'
 import type { AgentEvent, AgentSdkAdapter, AgentSession } from '../agent-sdk/types.js'
+import { generateProjectId } from '../global-config.js'
 import {
   TELEMETRY_FILE_NAME,
   flushTelemetry,
   resetTelemetry,
-  resolveProjectMetricsDir,
+  resolveMetricsDir,
+  resolveTelemetryFile,
   type TelemetryEnvelope,
 } from '../telemetry/index.js'
 
@@ -28,14 +30,17 @@ afterEach(async () => {
   resetTelemetry()
 })
 
+/** Read the shared file back, keeping only the lines of this test's project. */
 async function readEvents(cwd: string): Promise<TelemetryEnvelope[]> {
   await flushTelemetry()
-  const file = join(resolveProjectMetricsDir(cwd), TELEMETRY_FILE_NAME)
+  const file = resolveTelemetryFile()
   if (!existsSync(file)) return []
+  const projectId = generateProjectId(resolve(cwd))
   return readFileSync(file, 'utf8')
     .split('\n')
     .filter((l) => l.trim())
     .map((l) => JSON.parse(l) as TelemetryEnvelope)
+    .filter((l) => l.projectId === projectId)
 }
 
 /** Boots the real service on a throwaway git repo. */
@@ -147,48 +152,37 @@ describe('telemetry around a project command', () => {
   })
 })
 
-describe('telemetry through the real service', () => {
-  it('records git.op for a route-driven git invocation', async () => {
-    const { cwd, apiPrefix } = await startInRepo()
-    const res = await fetch(`${apiPrefix}/git/changes`)
-    expect(res.status).toBe(200)
-
-    const gitOps = (await readEvents(cwd)).filter((e) => e.event === 'git.op')
-    expect(gitOps.length).toBeGreaterThan(0)
-    const status = gitOps.find((e) => e.op === 'status')
-    expect(status).toBeDefined()
-    expect(status?.ok).toBe(true)
-    expect(typeof status?.durMs).toBe('number')
-    // arguments carry paths and messages — only the subcommand is kept
-    expect(JSON.stringify(status)).not.toContain('--porcelain')
-  })
-
-  it('records spec.change when a spec file is written outside the service', async () => {
-    // fsevents does not reliably surface a freshly nested file inside the test
-    // window; polling makes the watcher deterministic here.
-    const savedPolling = process.env.YORZ_WATCH_USE_POLLING
-    process.env.YORZ_WATCH_USE_POLLING = '1'
-    const { cwd, apiPrefix } = await startInRepo()
-    if (savedPolling === undefined) delete process.env.YORZ_WATCH_USE_POLLING
-    else process.env.YORZ_WATCH_USE_POLLING = savedPolling
-    // project instances (and their watchers) are materialized lazily on first
-    // use — without this the file lands before anything is watching
-    expect((await fetch(`${apiPrefix}/specs`)).status).toBe(200)
-    const specDir = join(cwd, '.yorz', 'specs', '260819.feat.demo')
-    await mkdir(specDir, { recursive: true })
+describe('telemetry housekeeping at service startup', () => {
+  it('folds a legacy per-project directory into the shared file', async () => {
+    const legacyRoot = '/tmp/yorz-legacy-project'
+    const legacyId = generateProjectId(legacyRoot)
+    const legacyDir = join(resolveMetricsDir(), legacyId)
+    await mkdir(legacyDir, { recursive: true })
     await writeFile(
-      join(specDir, 'spec.md'),
-      '---\nstage: plan\nlast_action: x\nupdated_at: 2026-08-19 10:00:00\nsummary: s\n---\n\n# demo\n',
+      join(legacyDir, TELEMETRY_FILE_NAME),
+      [
+        // v1 shape: string ts, plus one of the retired event kinds
+        `${JSON.stringify({ v: 1, ts: '2026-08-19 10:00:00', event: 'agent.turn', projectId: legacyId })}\n`,
+        `${JSON.stringify({ v: 1, ts: '2026-08-19 10:00:01', event: 'git.op', projectId: legacyId })}\n`,
+      ].join(''),
       'utf8',
     )
-    // the watcher debounces; poll until the event lands rather than sleeping blind
-    let changes: TelemetryEnvelope[] = []
-    for (let i = 0; i < 40 && changes.length === 0; i++) {
-      await new Promise((r) => setTimeout(r, 50))
-      changes = (await readEvents(cwd)).filter((e) => e.event === 'spec.change')
-    }
-    expect(changes.length).toBeGreaterThan(0)
-    expect(changes[0]).toMatchObject({ specId: '260819.feat.demo', kind: 'updated' })
-    expect(apiPrefix).toContain('/api/projects/')
+    await writeFile(
+      join(legacyDir, 'project.json'),
+      JSON.stringify({ id: legacyId, path: legacyRoot, firstSeenAt: '2026-08-19 10:00:00' }),
+      'utf8',
+    )
+
+    await startInRepo()
+
+    expect(existsSync(legacyDir)).toBe(false)
+    const migrated = readFileSync(resolveTelemetryFile(), 'utf8')
+      .split('\n')
+      .filter((l) => l.trim())
+      .map((l) => JSON.parse(l) as TelemetryEnvelope)
+      .filter((l) => l.projectId === legacyId)
+    expect(migrated).toHaveLength(1)
+    expect(migrated[0]).toMatchObject({ v: 2, event: 'agent.turn' })
+    expect(typeof migrated[0]?.ts).toBe('number')
   })
 })

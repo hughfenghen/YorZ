@@ -7,21 +7,24 @@
  * inventing a new `event` string — the recorder never needs to change.
  */
 
-/** Schema version of the envelope. Bump on breaking field changes. */
-export const TELEMETRY_SCHEMA_VERSION = 1
+/** Schema version of the envelope. Bump on breaking field changes.
+ *
+ * `2` — `ts` became a numeric epoch and every project now shares one file. */
+export const TELEMETRY_SCHEMA_VERSION = 2
 
 /**
  * `<domain>.<action>`. The union documents the events shipped today while the
  * trailing `(string & {})` keeps the namespace open for future ones.
+ *
+ * `git.op` and `spec.change` used to live here and were dropped: together they
+ * accounted for 99% of all recorded lines while feeding no metric.
  */
 export type TelemetryEventName =
   | 'agent.dispatch'
   | 'agent.turn'
   | 'agent.compact'
   | 'spec.stage'
-  | 'spec.change'
   | 'cmd.exec'
-  | 'git.op'
   | 'lint.run'
   | (string & {})
 
@@ -72,20 +75,23 @@ export type TelemetryPayload = Record<string, unknown>
 export interface TelemetryEnvelope extends TelemetryPayload {
   /** Schema version — see {@link TELEMETRY_SCHEMA_VERSION}. */
   v: number
-  /** Local `YYYY-MM-DD HH:mm:ss`, same shape as spec frontmatter `updated_at`. */
-  ts: string
+  /** Epoch milliseconds (`Date.now()`), matching the `durMs` / `mtimeMs` unit. */
+  ts: number
   event: TelemetryEventName
-  /** `generateProjectId(projectRoot)`; redundant with the directory name so
-   * merged files stay attributable. */
+  /** `generateProjectId(projectRoot)` — the only thing separating projects now
+   * that every one of them appends to the same file. */
   projectId: string
   /** Correlates every event of one dispatch (reuses the existing `runId`). */
   traceId?: string
   durMs?: number
 }
 
-/** Sidecar written once per project directory, mapping the short id back. */
+/** One entry of the `projects.json` index, mapping a short id back to a path. */
 export interface ProjectMetricsMeta {
-  id: string
   path: string
-  firstSeenAt: string
+  /** Epoch milliseconds of the first event recorded for this project. */
+  firstSeenAt: number
 }
+
+/** `projects.json`: `projectId` → where that project lives on disk. */
+export type ProjectsIndex = Record<string, ProjectMetricsMeta>

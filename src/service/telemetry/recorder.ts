@@ -1,17 +1,17 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { generateProjectId } from '../global-config.js'
 import { RotatingFileSink } from '../logger.js'
 import {
-  DEFAULT_TELEMETRY_MAX_ARCHIVES,
-  DEFAULT_TELEMETRY_MAX_BYTES,
-  PROJECT_META_FILE_NAME,
   TELEMETRY_FILE_NAME,
-  resolveProjectMetricsDir,
+  TELEMETRY_MAX_ARCHIVES,
+  TELEMETRY_MAX_BYTES,
+  resolveMetricsDir,
+  resolveProjectsIndexFile,
 } from './paths.js'
 import {
   TELEMETRY_SCHEMA_VERSION,
-  type ProjectMetricsMeta,
+  type ProjectsIndex,
   type TelemetryEnvelope,
   type TelemetryEventName,
   type TelemetryPayload,
@@ -25,30 +25,57 @@ export function isTelemetryEnabled(env: NodeJS.ProcessEnv = process.env): boolea
 }
 
 /**
+ * One sink per metrics directory, shared by every project.
+ *
+ * Sharing is not an optimisation but a correctness requirement: the sink's
+ * atomicity comes from serialising all writes onto a single promise chain, and
+ * two sinks pointed at the same path would each keep their own chain — enough
+ * to interleave halves of two lines.
+ */
+const sinks = new Map<string, RotatingFileSink>()
+
+/**
+ * One read-modify-write chain per index file, for the same reason: two
+ * recorders merging themselves into `projects.json` concurrently would each
+ * read the pre-merge state and the later write would erase the earlier one.
+ */
+const indexQueues = new Map<string, Promise<void>>()
+
+function enqueueIndexUpdate(file: string, task: () => Promise<void>): void {
+  const next = (indexQueues.get(file) ?? Promise.resolve()).then(task).catch(() => {
+    // the index is a convenience for the read side, not a requirement
+  })
+  indexQueues.set(file, next)
+}
+
+function getSink(dir: string): RotatingFileSink {
+  let sink = sinks.get(dir)
+  if (!sink) {
+    sink = new RotatingFileSink(dir, TELEMETRY_FILE_NAME, TELEMETRY_MAX_BYTES, TELEMETRY_MAX_ARCHIVES)
+    sinks.set(dir, sink)
+  }
+  return sink
+}
+
+/**
  * Append-only recorder for one project.
  *
- * Every method is fire-and-forget: writes are queued on the sink's single
- * promise chain (no interleaved lines, no back-pressure on the caller) and all
- * disk errors are swallowed. Telemetry must never be able to break a dispatch.
+ * Every method is fire-and-forget: writes are queued on the shared sink's
+ * single promise chain (no interleaved lines, no back-pressure on the caller)
+ * and all disk errors are swallowed. Telemetry must never break a dispatch.
  */
 export class TelemetryRecorder {
   private readonly sink: RotatingFileSink | null
-  private metaWritten = false
+  private indexWritten = false
 
   constructor(
     readonly projectRoot: string,
     readonly projectId: string,
     readonly dir: string,
     readonly enabled: boolean,
+    private readonly indexFile: string,
   ) {
-    this.sink = enabled
-      ? new RotatingFileSink(
-          dir,
-          TELEMETRY_FILE_NAME,
-          DEFAULT_TELEMETRY_MAX_BYTES,
-          DEFAULT_TELEMETRY_MAX_ARCHIVES,
-        )
-      : null
+    this.sink = enabled ? getSink(dir) : null
   }
 
   get filePath(): string {
@@ -62,7 +89,7 @@ export class TelemetryRecorder {
     try {
       const envelope: TelemetryEnvelope = {
         v: TELEMETRY_SCHEMA_VERSION,
-        ts: nowStamp(),
+        ts: Date.now(),
         event,
         projectId: this.projectId,
         ...payload,
@@ -75,31 +102,35 @@ export class TelemetryRecorder {
       return
     }
     this.sink.write(line)
-    this.ensureMeta()
+    this.ensureIndexed()
   }
 
   /** Resolve once every queued line has hit the disk (tests / shutdown). */
   async flush(): Promise<void> {
     await this.sink?.flush()
+    await indexQueues.get(this.indexFile)
   }
 
-  /** Write the id → absolute path sidecar once per process. Best-effort. */
-  private ensureMeta(): void {
-    if (this.metaWritten || !this.sink) return
-    this.metaWritten = true
-    const meta: ProjectMetricsMeta = {
-      id: this.projectId,
-      path: this.projectRoot,
-      firstSeenAt: nowStamp(),
-    }
-    void (async () => {
+  /** Merge this project into `projects.json` once per process. Best-effort. */
+  private ensureIndexed(): void {
+    if (this.indexWritten || !this.sink) return
+    this.indexWritten = true
+    const { projectId, projectRoot, indexFile } = this
+    enqueueIndexUpdate(indexFile, async () => {
+      let index: ProjectsIndex = {}
       try {
-        await mkdir(this.dir, { recursive: true })
-        await writeFile(join(this.dir, PROJECT_META_FILE_NAME), `${JSON.stringify(meta, null, 2)}\n`)
+        index = JSON.parse(await readFile(indexFile, 'utf8')) as ProjectsIndex
       } catch {
-        // metrics metadata is a convenience, not a requirement
+        // no index yet (or it was corrupted) — start a fresh one
       }
-    })()
+      const existing = index[projectId]
+      if (existing?.path === projectRoot) return
+      index[projectId] = {
+        path: projectRoot,
+        firstSeenAt: existing?.firstSeenAt ?? Date.now(),
+      }
+      await writeFile(indexFile, `${JSON.stringify(index, null, 2)}\n`)
+    })
   }
 }
 
@@ -109,8 +140,9 @@ const recorders = new Map<string, TelemetryRecorder>()
  * Per-project recorder singleton.
  *
  * Every instrumentation point already holds the project root (SessionManager /
- * CommandManager cwd, `git.ts` cwd argument, watcher cwd, CLI `--cwd`), so no
- * existing signature has to grow a telemetry parameter.
+ * CommandManager cwd, watcher cwd, CLI `--cwd`), so no existing signature has
+ * to grow a telemetry parameter. All recorders write the same file and are
+ * told apart by the `projectId` carried on every line.
  */
 export function getTelemetry(
   projectRoot: string,
@@ -122,8 +154,9 @@ export function getTelemetry(
   const recorder = new TelemetryRecorder(
     root,
     generateProjectId(root),
-    resolveProjectMetricsDir(root, env),
+    resolveMetricsDir(env),
     isTelemetryEnabled(env),
+    resolveProjectsIndexFile(env),
   )
   recorders.set(root, recorder)
   return recorder
@@ -134,14 +167,13 @@ export async function flushTelemetry(): Promise<void> {
   await Promise.all([...recorders.values()].map((r) => r.flush()))
 }
 
-/** Drop cached recorders so the next `getTelemetry()` re-reads the environment. */
+/**
+ * Drop cached recorders and sinks so the next `getTelemetry()` re-reads the
+ * environment. Also used by the startup prune, which must not rewrite a file
+ * while a stale sink still believes it knows the file's size.
+ */
 export function resetTelemetry(): void {
   recorders.clear()
-}
-
-/** Local `YYYY-MM-DD HH:mm:ss`, matching spec frontmatter `updated_at`. */
-function nowStamp(date: Date = new Date()): string {
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  const ymd = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-  return `${ymd} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  sinks.clear()
+  indexQueues.clear()
 }

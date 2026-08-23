@@ -10,23 +10,30 @@ let projectRoot: string
 let savedHome: string | undefined
 let writes: string[]
 
-function line(event: string, payload: Record<string, unknown>): string {
+const TS = Date.parse('2026-08-19T10:00:00')
+
+function line(
+  event: string,
+  payload: Record<string, unknown>,
+  opts: { ts?: number; projectId?: string } = {},
+): string {
   return JSON.stringify({
-    v: 1,
-    ts: '2026-08-19 10:00:00',
+    v: 2,
+    ts: opts.ts ?? TS,
     event,
-    projectId: generateProjectId(projectRoot),
+    projectId: opts.projectId ?? generateProjectId(projectRoot),
     ...payload,
   })
 }
 
+/** Every project shares one file now; the index maps ids back to paths. */
 function seed(...lines: string[]): void {
-  const dir = join(home, 'metrics', generateProjectId(projectRoot))
+  const dir = join(home, 'metrics')
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'telemetry.jsonl'), `${lines.join('\n')}\n`)
   writeFileSync(
-    join(dir, 'project.json'),
-    JSON.stringify({ id: generateProjectId(projectRoot), path: projectRoot }),
+    join(dir, 'projects.json'),
+    JSON.stringify({ [generateProjectId(projectRoot)]: { path: projectRoot, firstSeenAt: TS } }),
   )
 }
 
@@ -69,15 +76,16 @@ describe('yorz metrics', () => {
         usage: { inputTokens: 1, outputTokens: 1, costUsd: 0.01 },
       }),
       line('agent.compact', { specId: 'a', compactTrigger: 'auto' }),
-      line('git.op', { op: 'status', ok: true }),
+      line('cmd.exec', { status: 'exited', exitCode: 0 }),
     )
     const { exitCode, summary } = await runMetrics({ cwd: projectRoot, format: 'json' })
     expect(exitCode).toBe(0)
     expect(summary.eventCounts).toMatchObject({
       'agent.dispatch': 2,
       'agent.turn': 2,
-      'git.op': 1,
+      'cmd.exec': 1,
     })
+    expect(summary.projects).toEqual([`${generateProjectId(projectRoot)} (${projectRoot})`])
     // one dispatch, counted from its `end` line only — not twice
     expect(summary.totals.dispatches).toBe(1)
     expect(summary.totals.costUsd).toBeCloseTo(0.26, 6)
@@ -89,12 +97,9 @@ describe('yorz metrics', () => {
 
   it('filters by --since and survives a truncated trailing line', async () => {
     seed(
-      line('agent.turn', { specId: 'old', usage: { costUsd: 1 } }).replace(
-        '2026-08-19',
-        '2026-08-01',
-      ),
+      line('agent.turn', { specId: 'old', usage: { costUsd: 1 } }, { ts: Date.parse('2026-08-01T10:00:00') }),
       line('agent.turn', { specId: 'new', usage: { costUsd: 2 } }),
-      '{"v":1,"event":"agent.tur',
+      '{"v":2,"event":"agent.tur',
     )
     const { summary } = await runMetrics({ cwd: projectRoot, format: 'json', since: '2026-08-19' })
     expect(summary.specs.map((s) => s.specId)).toEqual(['new'])
@@ -105,6 +110,25 @@ describe('yorz metrics', () => {
     const { exitCode, summary } = await runMetrics({ cwd: projectRoot, format: 'json' })
     expect(exitCode).toBe(1)
     expect(summary.lines).toBe(0)
+  })
+
+  it('keeps other projects out of the default view but counts them under --all', async () => {
+    seed(
+      line('agent.turn', { specId: 'mine', usage: { costUsd: 0.5 } }),
+      line('agent.turn', { specId: 'theirs', usage: { costUsd: 4 } }, { projectId: 'other-abc123' }),
+    )
+    const mine = await runMetrics({ cwd: projectRoot, format: 'json' })
+    expect(mine.summary.specs.map((s) => s.specId)).toEqual(['mine'])
+
+    const all = await runMetrics({ cwd: projectRoot, format: 'json', all: true })
+    expect(all.summary.specs.map((s) => s.specId)).toEqual(['theirs', 'mine'])
+    expect(all.summary.projects).toContain('other-abc123')
+
+    const byId = await runMetrics({ cwd: projectRoot, format: 'json', project: 'other-abc123' })
+    expect(byId.summary.specs.map((s) => s.specId)).toEqual(['theirs'])
+
+    const byPath = await runMetrics({ cwd: projectRoot, format: 'json', project: projectRoot })
+    expect(byPath.summary.specs.map((s) => s.specId)).toEqual(['mine'])
   })
 
   it('renders a text report by default', async () => {
