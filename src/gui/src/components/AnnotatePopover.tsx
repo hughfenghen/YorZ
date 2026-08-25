@@ -1,11 +1,12 @@
 import { createSignal, Show, type Component } from 'solid-js'
 import type { SelectionSnapshot } from '../lib/selection.js'
 import { Button } from './ui/button.jsx'
-import { Textarea } from './ui/textarea.jsx'
+import { MentionTextarea } from './MentionTextarea.jsx'
 import { t } from '../i18n/index.js'
 
 interface Props {
   open: boolean
+  projectId: string
   snap: SelectionSnapshot | null
   onCancel: () => void
   onSubmit: (note: string) => Promise<void>
@@ -68,7 +69,7 @@ export const AnnotatePopover: Component<Props> = (props) => {
             }
           })
         }}
-        class="fixed z-[60] flex max-h-[calc(100vh-16px)] flex-col gap-2.5 overflow-auto rounded-lg border bg-card p-3.5 shadow-xl"
+        class="fixed z-[60] flex max-h-[calc(100vh-16px)] flex-col gap-2.5 overflow-visible rounded-lg border bg-card p-3.5 shadow-xl"
         style={{
           top: `${position().top}px`,
           left: `${position().left}px`,
@@ -84,10 +85,12 @@ export const AnnotatePopover: Component<Props> = (props) => {
           {(props.snap?.text ?? '').slice(0, 200)}"
         </blockquote>
         <form onSubmit={submit}>
-          <Textarea
+          <MentionTextarea
+            projectId={props.projectId}
             rows={3}
+            autosize={false}
             value={note()}
-            onInput={(e) => setNote(e.currentTarget.value)}
+            onValueChange={setNote}
             placeholder={t('annotate.placeholder')}
             class="resize-y min-h-[64px]"
             autofocus

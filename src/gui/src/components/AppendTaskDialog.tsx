@@ -3,6 +3,7 @@ import { Send, X } from 'lucide-solid'
 import type { AppendItemBody, AppendItemKind } from '../lib/api.js'
 import { Button } from './ui/button.jsx'
 import { Checkbox, CheckboxControl, CheckboxLabel } from './ui/checkbox.jsx'
+import { MentionTextarea } from './MentionTextarea.jsx'
 import {
   RadioGroup,
   RadioGroupItem,
@@ -11,11 +12,11 @@ import {
   RadioGroupItemLabel,
   RadioGroupLabel,
 } from './ui/radio-group.jsx'
-import { Textarea } from './ui/textarea.jsx'
 import { t } from '../i18n/index.js'
 
 interface Props {
   open: boolean
+  projectId: string
   sectionPath?: string
   quote?: string
   anchorEl?: HTMLElement
@@ -53,6 +54,7 @@ export const AppendTaskDialog: Component<Props> = (props) => {
   createEffect(() => {
     if (!props.open) return
     const handler = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return
       if (e.key === 'Escape') {
         e.preventDefault()
         cancel()
@@ -147,13 +149,16 @@ export const AppendTaskDialog: Component<Props> = (props) => {
 
             <label class="flex flex-col gap-1 ">
               <span>{t('appendTask.description')}</span>
-              <Textarea
+              <MentionTextarea
+                projectId={props.projectId}
                 rows={5}
+                autosize={false}
                 value={description()}
-                onInput={(e) => setDescription(e.currentTarget.value)}
+                onValueChange={setDescription}
                 placeholder={t('appendTask.descPlaceholder')}
                 autofocus
                 disabled={busy()}
+                class="resize-y"
               />
             </label>
 

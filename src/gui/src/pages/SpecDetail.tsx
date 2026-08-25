@@ -492,12 +492,14 @@ export const SpecDetail: Component = () => {
                 />
                 <AnnotatePopover
                   open={popoverOpen()}
+                  projectId={projectId()}
                   snap={popoverSnap()}
                   onCancel={() => setPopoverOpen(false)}
                   onSubmit={submitAnnotate}
                 />
                 <AppendTaskDialog
                   open={appendOpen()}
+                  projectId={projectId()}
                   sectionPath={appendSnap()?.sectionPath}
                   quote={appendSnap()?.text}
                   anchorEl={appendBtnEl}

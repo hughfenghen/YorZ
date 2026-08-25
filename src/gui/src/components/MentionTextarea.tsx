@@ -281,17 +281,12 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
     return true
   }
 
-  /** An `@` only opens the popup at a word boundary, and only while the run after
-   *  it still looks like a path fragment. */
+  /** An `@` opens the popup while the run after it still looks like a path fragment. */
   function checkMention(target: HTMLTextAreaElement): void {
     const pos = target.selectionStart
     const text = target.value.slice(0, pos)
     const atIdx = text.lastIndexOf('@')
     if (atIdx === -1) {
-      closeMention()
-      return
-    }
-    if (atIdx > 0 && !/\s/.test(text[atIdx - 1])) {
       closeMention()
       return
     }
