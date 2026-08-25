@@ -1,6 +1,7 @@
 import { For, Show, createMemo, type Component } from 'solid-js'
 import parseDiff from 'parse-diff'
 import hljs from 'highlight.js/lib/common'
+import { X } from 'lucide-solid'
 import { t } from '../i18n/index.js'
 
 /*
@@ -58,6 +59,7 @@ export interface DiffViewProps {
   truncated: boolean
   loading?: boolean
   error?: string | null
+  onClose?: () => void
 }
 
 /*
@@ -99,11 +101,22 @@ export const DiffView: Component<DiffViewProps> = (props) => {
       class="code-highlight flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card"
     >
       <div class="flex items-center gap-2 border-b px-2 py-1">
-        <span class="truncate font-mono text-sm" title={props.path}>
+        <span class="min-w-0 flex-1 truncate font-mono text-sm" title={props.path}>
           {props.path}
         </span>
         <Show when={props.truncated}>
           <span class="shrink-0 text-sm text-warning">{t('git.diffTruncated')}</span>
+        </Show>
+        <Show when={props.onClose}>
+          <button
+            type="button"
+            class="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border-0 bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+            aria-label={t('common.close')}
+            title={t('common.close')}
+            onClick={() => props.onClose?.()}
+          >
+            <X class="h-4 w-4" />
+          </button>
         </Show>
       </div>
 

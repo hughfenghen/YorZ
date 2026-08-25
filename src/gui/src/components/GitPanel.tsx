@@ -559,6 +559,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
             truncated={diff()?.truncated ?? false}
             loading={diff.loading}
             error={diff.error ? (diff.error as Error).message : null}
+            onClose={() => setActivePath(null)}
           />
         )}
       </Show>
