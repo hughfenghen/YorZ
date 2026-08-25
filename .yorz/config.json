@@ -11,5 +11,6 @@
       "cli": "nr dev:gui",
       "createdAt": 1785511681636
     }
-  ]
+  ],
+  "customInstructions": []
 }
