@@ -93,7 +93,10 @@ export interface FileDiff {
 
 export interface GitBranchState {
   current: string
+  /** Local branches only — the only valid checkout targets. */
   branches: string[]
+  /** Remote-tracking branches (`origin/x`); merge sources only. */
+  remoteBranches: string[]
 }
 
 export interface CreateWorktreeBody {
@@ -390,6 +393,15 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ branch }),
     }),
+  mergeGitBranch: (pid: string, branch: string) =>
+    request<{ ok: true; current: string; merged: string; alreadyUpToDate: boolean }>(
+      `${projectBase(pid)}/git/merge`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ branch }),
+      },
+    ),
   projectCommit: (pid: string, body: { message: string; paths: string[] }) =>
     request<{ commit: string }>(`${projectBase(pid)}/git/commit`, {
       method: 'POST',

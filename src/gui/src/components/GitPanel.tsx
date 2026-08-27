@@ -10,7 +10,7 @@ import {
   onMount,
   type Component,
 } from 'solid-js'
-import { GitBranch, Loader2 } from 'lucide-solid'
+import { GitBranch, GitMerge, Loader2 } from 'lucide-solid'
 import { api, type GitOpsAction, type GitChange } from '../lib/api.js'
 import { requestChatSession } from '../lib/project.js'
 import { subscribeProjectChanges, subscribeSession } from '../lib/sse.js'
@@ -19,6 +19,7 @@ import { Textarea } from './ui/textarea.jsx'
 import { Input } from './ui/input.jsx'
 import { Checkbox, CheckboxControl } from './ui/checkbox.jsx'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select.jsx'
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.jsx'
 import {
   RadioGroup,
   RadioGroupItem,
@@ -39,8 +40,10 @@ import { toast } from './ui/toast.jsx'
 import { t } from '../i18n/index.js'
 
 type FileSelectMode = 'manual' | 'agent'
-/** Repo-wide actions (push/pull) never take a file selection. */
-type GitAction = 'commit' | 'discard' | 'push' | 'pull' | 'checkout'
+/** Repo-wide actions (push/pull/merge) never take a file selection. */
+type GitAction = 'commit' | 'discard' | 'push' | 'pull' | 'checkout' | 'merge'
+/** Actions that can also run through the Agent, so they track an agent kind. */
+const AGENT_CAPABLE: ReadonlySet<GitAction> = new Set<GitAction>(['commit', 'discard'])
 
 export interface GitPanelProps {
   projectId: () => string
@@ -73,6 +76,11 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
   const [userEditedMsg, setUserEditedMsg] = createSignal(false)
   const [directAction, setDirectAction] = createSignal<GitAction | null>(null)
   const [branchQuery, setBranchQuery] = createSignal('')
+  // The merge picker keeps its own query/selection/open state so it never
+  // disturbs the checkout Select sitting next to it.
+  const [mergeQuery, setMergeQuery] = createSignal('')
+  const [mergeTarget, setMergeTarget] = createSignal<string | null>(null)
+  const [mergeOpen, setMergeOpen] = createSignal(false)
 
   const [busy, setBusy] = createSignal<GitOpsAction | null>(null)
   const [error, setError] = createSignal<string | null>(null)
@@ -135,6 +143,20 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
     const branches = branchState()?.branches ?? []
     if (!query) return branches
     return branches.filter((branch) => branch.toLowerCase().includes(query))
+  })
+
+  // Merge sources span local + remote-tracking branches; locals come first so
+  // the common case stays at the top of the list.
+  const mergeCandidates = createMemo(() => {
+    const state = branchState()
+    return [...(state?.branches ?? []), ...(state?.remoteBranches ?? [])]
+  })
+
+  const filteredMergeCandidates = createMemo(() => {
+    const query = mergeQuery().trim().toLowerCase()
+    const candidates = mergeCandidates()
+    if (!query) return candidates
+    return candidates.filter((branch) => branch.toLowerCase().includes(query))
   })
 
   createEffect(() => {
@@ -290,6 +312,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
         branches: prev?.branches.includes(res.current)
           ? prev.branches
           : [...(prev?.branches ?? []), res.current].sort(),
+        remoteBranches: prev?.remoteBranches ?? [],
       }))
       setSelectedPaths(new Set<string>())
       setActivePath(null)
@@ -304,13 +327,41 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
     }
   }
 
+  /**
+   * Merge the picked branch into the current one. Errors (including aborted
+   * conflicting merges) surface verbatim in the panel's error line.
+   */
+  async function triggerMerge(branch: string): Promise<void> {
+    const pid = props.projectId()
+    if (!branch || !pid || isAnyRunning()) return
+
+    setError(null)
+    setDirectAction('merge')
+    try {
+      const res = await api.mergeGitBranch(pid, branch)
+      toast.success(
+        res.alreadyUpToDate
+          ? t('git.mergeUpToDate', { current: res.current, branch: res.merged })
+          : t('git.merged', { current: res.current, branch: res.merged }),
+      )
+      setMergeTarget(null)
+      setMergeQuery('')
+      const changesResult = await api.getProjectChanges(pid)
+      setChanges(changesResult.changes)
+      await refetchBranches()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setDirectAction(null)
+      // Close either way: on failure the dropdown would cover the error line.
+      setMergeOpen(false)
+    }
+  }
+
   function buttonLoading(kind: GitAction): boolean {
     return (
       directAction() === kind ||
-      (kind !== 'push' &&
-        kind !== 'pull' &&
-        kind !== 'checkout' &&
-        (isKindRunning(kind) || busy() === kind))
+      (AGENT_CAPABLE.has(kind) && (isKindRunning(kind as GitOpsAction) || busy() === kind))
     )
   }
 
@@ -423,6 +474,89 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
             </Show>
             {buttonLoading('discard') ? t('review.discarding') : t('review.discard')}
           </Button>
+          <span aria-hidden="true" class="select-none text-border">
+            |
+          </span>
+          <Popover
+            open={mergeOpen()}
+            onOpenChange={(open) => {
+              setMergeOpen(open)
+              if (!open) {
+                setMergeQuery('')
+                setMergeTarget(null)
+              }
+            }}
+          >
+            {/* Deliberately not a Select: typing in a filter box nested inside a
+                Kobalte Select closes the dropdown on the first keystroke. */}
+            <PopoverTrigger
+              as={Button}
+              variant="ghost"
+              size="sm"
+              disabled={isAnyRunning() || branchState.loading || Boolean(branchState.error)}
+              title={t('git.mergeBranch')}
+            >
+              <Show
+                when={!buttonLoading('merge')}
+                fallback={<Loader2 class="mr-1 h-3 w-3 animate-spin" />}
+              >
+                <GitMerge class="mr-1 h-3 w-3" />
+              </Show>
+              {buttonLoading('merge') ? t('git.merging') : t('git.mergeBranch')}
+            </PopoverTrigger>
+            <PopoverContent class="w-72 p-0">
+              <div class="border-b p-1 pr-9">
+                <Input
+                  value={mergeQuery()}
+                  onInput={(e) => setMergeQuery(e.currentTarget.value)}
+                  placeholder={t('git.mergeFilterPlaceholder')}
+                  class="h-8 text-sm"
+                />
+              </div>
+              <div class="max-h-64 overflow-auto p-1">
+                <For each={filteredMergeCandidates()}>
+                  {(branch) => (
+                    <div
+                      class={`flex items-center gap-2 rounded-sm px-2 py-1 ${
+                        mergeTarget() === branch ? 'bg-accent' : ''
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        class="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left font-mono text-sm disabled:opacity-50"
+                        disabled={branch === branchState()?.current}
+                        title={
+                          branch === branchState()?.current ? t('git.mergeSelfHint') : branch
+                        }
+                        onClick={() => setMergeTarget(branch)}
+                      >
+                        {branch}
+                      </button>
+                      {/* The merge only fires from this explicit action, so a
+                          stray click on a row can never rewrite history. */}
+                      <Show when={mergeTarget() === branch}>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          class="h-6 shrink-0 px-2 text-xs"
+                          disabled={isAnyRunning()}
+                          onClick={() => void triggerMerge(branch)}
+                        >
+                          <Show when={buttonLoading('merge')}>
+                            <Loader2 class="mr-1 h-3 w-3 animate-spin" />
+                          </Show>
+                          {buttonLoading('merge') ? t('git.merging') : t('git.mergeAction')}
+                        </Button>
+                      </Show>
+                    </div>
+                  )}
+                </For>
+                <Show when={!branchState.loading && filteredMergeCandidates().length === 0}>
+                  <div class="px-2 py-2 text-sm text-muted-foreground">{t('git.noBranches')}</div>
+                </Show>
+              </div>
+            </PopoverContent>
+          </Popover>
           <span aria-hidden="true" class="select-none text-border">
             |
           </span>

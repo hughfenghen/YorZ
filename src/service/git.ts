@@ -315,7 +315,16 @@ export async function fileDiff(cwd: string, path: string): Promise<FileDiff> {
 
 export interface GitBranchState {
   current: string
+  /** Local branches only — `checkoutBranch` uses this list as its whitelist. */
   branches: string[]
+  /** Remote-tracking branches (`origin/x`): merge sources, never checkout targets. */
+  remoteBranches: string[]
+}
+
+export interface MergeResult {
+  current: string
+  merged: string
+  alreadyUpToDate: boolean
 }
 
 export async function currentBranch(cwd: string): Promise<string> {
@@ -327,8 +336,15 @@ export async function currentBranch(cwd: string): Promise<string> {
   return branch
 }
 
+function parseRefLines(stdout: string): string[] {
+  return stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
+
 export async function listBranches(cwd: string): Promise<GitBranchState> {
-  const [current, branchesResult] = await Promise.all([
+  const [current, branchesResult, remotesResult] = await Promise.all([
     currentBranch(cwd),
     runGit(cwd, [
       'for-each-ref',
@@ -336,12 +352,19 @@ export async function listBranches(cwd: string): Promise<GitBranchState> {
       '--format=%(refname:short)',
       'refs/heads',
     ]),
+    runGit(cwd, [
+      'for-each-ref',
+      '--sort=-committerdate',
+      '--format=%(refname:short)',
+      'refs/remotes',
+    ]),
   ])
-  const branches = branchesResult.stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-  return { current, branches }
+  const branches = parseRefLines(branchesResult.stdout)
+  // `origin/HEAD` is a symbolic alias, not a branch anyone can merge meaningfully.
+  const remoteBranches = parseRefLines(remotesResult.stdout).filter(
+    (ref) => !ref.endsWith('/HEAD'),
+  )
+  return { current, branches, remoteBranches }
 }
 
 export async function checkoutBranch(cwd: string, branch: string): Promise<{ current: string }> {
@@ -358,6 +381,50 @@ export async function checkoutBranch(cwd: string, branch: string): Promise<{ cur
     throw new GitError('checkout_failed', res.stderr.trim() || 'git checkout failed', res.stderr)
   }
   return { current: await currentBranch(cwd) }
+}
+
+async function conflictFiles(cwd: string): Promise<string[]> {
+  const res = await runGitRaw(cwd, ['diff', '--name-only', '--diff-filter=U'])
+  if (res.code !== 0) return []
+  return parseRefLines(res.stdout)
+}
+
+/**
+ * Merge `branch` into the current branch. A conflicting merge never survives the
+ * call: the conflict list is captured, the merge is aborted, and the working
+ * tree returns to its pre-merge state — the GUI has no conflict-resolution
+ * surface, same stance as the deliberate `pull --ff-only`.
+ */
+export async function mergeBranch(cwd: string, branch: string): Promise<MergeResult> {
+  const target = branch?.trim() ?? ''
+  if (!target) throw new GitError('invalid_branch', 'branch must not be empty')
+
+  const state = await listBranches(cwd)
+  // Whitelist first: the branch name is only handed to git once it is known.
+  if (!state.branches.includes(target) && !state.remoteBranches.includes(target)) {
+    throw new GitError('invalid_branch', `unknown branch: ${target}`)
+  }
+  if (state.current === target) {
+    throw new GitError('merge_self', `cannot merge ${target} into itself`)
+  }
+
+  const before = (await runGit(cwd, ['rev-parse', 'HEAD'])).stdout.trim()
+  const res = await runGitRaw(cwd, ['merge', '--no-edit', target])
+  if (res.code !== 0) {
+    const conflicts = await conflictFiles(cwd)
+    // Best-effort rollback; a failing abort (e.g. no merge in progress) must not
+    // mask the real reason the merge failed.
+    await runGitRaw(cwd, ['merge', '--abort'])
+    const detail =
+      [res.stdout.trim(), res.stderr.trim()].filter(Boolean).join('\n') || 'git merge failed'
+    const message = conflicts.length
+      ? `${detail}\nconflicting files (merge aborted): ${conflicts.join(', ')}`
+      : detail
+    throw new GitError(conflicts.length ? 'merge_conflict' : 'merge_failed', message, res.stderr)
+  }
+
+  const after = (await runGit(cwd, ['rev-parse', 'HEAD'])).stdout.trim()
+  return { current: state.current, merged: target, alreadyUpToDate: before === after }
 }
 
 /**

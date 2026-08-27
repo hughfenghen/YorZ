@@ -14,6 +14,7 @@ import {
   fileDiff,
   listBranches,
   checkoutBranch,
+  mergeBranch,
   push,
   pull,
 } from '../git.js'
@@ -335,8 +336,23 @@ describe('git branches', () => {
     expect(state.current).toBe('newer')
     expect(state.branches).toEqual(expect.arrayContaining(['main', 'older', 'newer']))
     expect(state.branches.indexOf('newer')).toBeLessThan(state.branches.indexOf('older'))
+    expect(state.remoteBranches).toEqual([])
 
     await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('lists remote-tracking branches separately from local ones', async () => {
+    const { cwd, remote } = await initRepoWithRemote()
+    await push(cwd)
+    await git(cwd, ['fetch', '-q', 'origin'])
+
+    const state = await listBranches(cwd)
+    expect(state.remoteBranches).toContain('origin/main')
+    expect(state.branches).not.toContain('origin/main')
+    expect(state.remoteBranches.some((ref) => ref.endsWith('/HEAD'))).toBe(false)
+
+    await rm(cwd, { recursive: true, force: true })
+    await rm(remote, { recursive: true, force: true })
   })
 
   it('checks out a known local branch', async () => {
@@ -374,6 +390,99 @@ describe('git branches', () => {
 
     await expect(checkoutBranch(cwd, 'feature/demo')).rejects.toBeInstanceOf(GitError)
     expect((await git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()).toBe('main')
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+})
+
+describe('git.mergeBranch', () => {
+  /** main + a `feature` branch carrying one extra file. */
+  async function initRepoWithFeature(): Promise<string> {
+    const cwd = await initRepo()
+    await git(cwd, ['checkout', '-q', '-b', 'feature'])
+    await writeFile(join(cwd, 'feature.txt'), 'feature\n', 'utf8')
+    await git(cwd, ['add', 'feature.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'feature work'])
+    await git(cwd, ['checkout', '-q', 'main'])
+    return cwd
+  }
+
+  it('merges another branch into the current one', async () => {
+    const cwd = await initRepoWithFeature()
+
+    const result = await mergeBranch(cwd, 'feature')
+    expect(result).toMatchObject({ current: 'main', merged: 'feature', alreadyUpToDate: false })
+    expect(await git(cwd, ['rev-parse', 'HEAD'])).toBe(await git(cwd, ['rev-parse', 'feature']))
+    expect(await listChanges(cwd)).toEqual([])
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('reports an already up-to-date merge without moving HEAD', async () => {
+    const cwd = await initRepo()
+    await git(cwd, ['branch', 'stale'])
+    const before = await git(cwd, ['rev-parse', 'HEAD'])
+
+    const result = await mergeBranch(cwd, 'stale')
+    expect(result.alreadyUpToDate).toBe(true)
+    expect(await git(cwd, ['rev-parse', 'HEAD'])).toBe(before)
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('merges a remote-tracking branch', async () => {
+    const { cwd, remote } = await initRepoWithRemote()
+    await push(cwd)
+    await git(cwd, ['checkout', '-q', '-b', 'feature'])
+    await writeFile(join(cwd, 'feature.txt'), 'feature\n', 'utf8')
+    await git(cwd, ['add', 'feature.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'feature work'])
+    await git(cwd, ['push', '-q', 'origin', 'feature'])
+    await git(cwd, ['checkout', '-q', 'main'])
+
+    const result = await mergeBranch(cwd, 'origin/feature')
+    expect(result.merged).toBe('origin/feature')
+    expect(await git(cwd, ['rev-parse', 'HEAD'])).toBe(await git(cwd, ['rev-parse', 'feature']))
+
+    await rm(cwd, { recursive: true, force: true })
+    await rm(remote, { recursive: true, force: true })
+  })
+
+  it('rejects an empty, unknown, or self-referencing branch', async () => {
+    const cwd = await initRepoWithFeature()
+
+    await expect(mergeBranch(cwd, '  ')).rejects.toBeInstanceOf(GitError)
+    await expect(mergeBranch(cwd, 'nope')).rejects.toBeInstanceOf(GitError)
+    await expect(mergeBranch(cwd, '../escape')).rejects.toBeInstanceOf(GitError)
+    await expect(mergeBranch(cwd, 'main')).rejects.toMatchObject({ code: 'merge_self' })
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('aborts a conflicting merge and leaves the worktree at the pre-merge state', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'shared.txt'), 'base\n', 'utf8')
+    await git(cwd, ['add', 'shared.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'base'])
+    await git(cwd, ['checkout', '-q', '-b', 'feature'])
+    await writeFile(join(cwd, 'shared.txt'), 'feature\n', 'utf8')
+    await git(cwd, ['add', 'shared.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'feature edit'])
+    await git(cwd, ['checkout', '-q', 'main'])
+    await writeFile(join(cwd, 'shared.txt'), 'main\n', 'utf8')
+    await git(cwd, ['add', 'shared.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'main edit'])
+    const before = await git(cwd, ['rev-parse', 'HEAD'])
+
+    const err = await mergeBranch(cwd, 'feature').catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(GitError)
+    expect((err as GitError).code).toBe('merge_conflict')
+    expect((err as GitError).message).toContain('shared.txt')
+
+    // Rolled back: no MERGING state, no conflict markers, HEAD untouched.
+    expect(await git(cwd, ['rev-parse', 'HEAD'])).toBe(before)
+    expect(await listChanges(cwd)).toEqual([])
+    expect(await git(cwd, ['status', '--porcelain=v1'])).toBe('')
 
     await rm(cwd, { recursive: true, force: true })
   })

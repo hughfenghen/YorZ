@@ -96,6 +96,7 @@ describe('GET /git/branches and POST /git/checkout', () => {
     expect(await listed.json()).toMatchObject({
       current: 'main',
       branches: expect.arrayContaining(['main', 'feature/demo']),
+      remoteBranches: [],
     })
 
     const switched = await postJson(`${apiPrefix}/git/checkout`, { branch: 'feature/demo' })
@@ -122,6 +123,68 @@ describe('GET /git/branches and POST /git/checkout', () => {
     expect(blocked.status).toBe(400)
     const body = (await blocked.json()) as { error: string }
     expect(body.error).toBeTruthy()
+  })
+})
+
+describe('POST /git/merge', () => {
+  it('merges a selected branch into the current one', async () => {
+    const { cwd, apiPrefix } = await startInRepo()
+    await git(cwd, ['checkout', '-q', '-b', 'feature/demo'])
+    await writeFile(join(cwd, 'feature.txt'), 'feature\n', 'utf8')
+    await git(cwd, ['add', 'feature.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'feature work'])
+    await git(cwd, ['checkout', '-q', 'main'])
+
+    const res = await postJson(`${apiPrefix}/git/merge`, { branch: 'feature/demo' })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({
+      ok: true,
+      current: 'main',
+      merged: 'feature/demo',
+      alreadyUpToDate: false,
+    })
+  })
+
+  it('400s on an empty or unknown branch', async () => {
+    const { apiPrefix } = await startInRepo()
+    expect((await postJson(`${apiPrefix}/git/merge`, { branch: '' })).status).toBe(400)
+    expect((await postJson(`${apiPrefix}/git/merge`, { branch: 'nope' })).status).toBe(400)
+  })
+
+  it('400s with the conflicting files when the merge cannot be applied', async () => {
+    const { cwd, apiPrefix } = await startInRepo()
+    await git(cwd, ['checkout', '-q', '-b', 'feature/demo'])
+    await writeFile(join(cwd, 'seed.txt'), 'feature\n', 'utf8')
+    await git(cwd, ['add', 'seed.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'feature edit'])
+    await git(cwd, ['checkout', '-q', 'main'])
+    await writeFile(join(cwd, 'seed.txt'), 'main\n', 'utf8')
+    await git(cwd, ['add', 'seed.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'main edit'])
+
+    const res = await postJson(`${apiPrefix}/git/merge`, { branch: 'feature/demo' })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toContain('seed.txt')
+    // The abort ran: nothing is left half-merged for the UI to trip over.
+    expect(await git(cwd, ['status', '--porcelain=v1'])).toBe('')
+  })
+})
+
+describe('remote branches stay out of checkout', () => {
+  it('lists a remote-tracking ref but refuses to check it out', async () => {
+    const { cwd, apiPrefix } = await startInRepo()
+    // A ref under refs/remotes is all `listBranches` reads — no network needed.
+    const head = (await git(cwd, ['rev-parse', 'HEAD'])).trim()
+    await git(cwd, ['update-ref', 'refs/remotes/origin/demo', head])
+
+    const listed = await fetch(`${apiPrefix}/git/branches`)
+    const body = (await listed.json()) as { branches: string[]; remoteBranches: string[] }
+    expect(body.remoteBranches).toContain('origin/demo')
+    expect(body.branches).not.toContain('origin/demo')
+
+    expect((await postJson(`${apiPrefix}/git/checkout`, { branch: 'origin/demo' })).status).toBe(400)
+    expect((await git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()).toBe('main')
   })
 })
 
