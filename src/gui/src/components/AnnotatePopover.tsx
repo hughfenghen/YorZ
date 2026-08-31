@@ -87,12 +87,11 @@ export const AnnotatePopover: Component<Props> = (props) => {
         <form onSubmit={submit}>
           <MentionTextarea
             projectId={props.projectId}
-            rows={3}
-            autosize={false}
+            minRows={3}
+            maxRows={3}
             value={note()}
             onValueChange={setNote}
             placeholder={t('annotate.placeholder')}
-            class="resize-y min-h-[64px]"
             autofocus
           />
           {error() && <p class="text-destructive ">{error()}</p>}

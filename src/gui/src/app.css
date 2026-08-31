@@ -392,6 +392,59 @@
     cursor: col-resize;
   }
 
+  /*
+   * 滚动条：浏览器默认样式自带浅灰轨道 + thumb 外描边，滚动区贴着面板边缘时
+   * 那条轨道会被读成一根分割线，把本来连续的布局切开。这里让轨道彻底透明、
+   * 去掉描边与箭头按钮，只留一根细 thumb 浮在内容上；颜色走 --foreground
+   * 的低透明度，明暗主题自动跟随，不需要各写一套。
+   */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-track-piece,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 0;
+    border-radius: 9999px;
+    background-color: hsl(var(--foreground) / 0.16);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--foreground) / 0.3);
+  }
+
+  ::-webkit-scrollbar-thumb:active {
+    background-color: hsl(var(--foreground) / 0.42);
+  }
+
+  /* 两端的箭头按钮在这套视觉里没有位置，且会撑出额外的 6px 方块 */
+  ::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  /*
+   * Firefox 不支持上面的伪元素，只能用标准属性；反过来 Chromium 121+ 一旦看到
+   * scrollbar-width/color 就会忽略 ::-webkit-scrollbar，所以必须关在 @supports
+   * 里，避免把上面那套精确宽度覆盖掉。
+   */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: hsl(var(--foreground) / 0.16) transparent;
+    }
+  }
+
   /* UI 标签层统一等宽（长文正文仍走比例字体，见 spec 4.7 排印分工） */
   time,
   code,

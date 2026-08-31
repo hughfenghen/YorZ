@@ -19,7 +19,7 @@ export const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
   },
   appearance: {
     themeMode: 'system',
-    themeName: 'terminal',
+    themeName: 'paper',
     language: 'zh-CN',
   },
   customInstructions: [],

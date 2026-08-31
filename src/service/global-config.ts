@@ -91,7 +91,7 @@ export const DEFAULT_POWER: GlobalPowerConfig = {
 }
 export const DEFAULT_APPEARANCE: GlobalAppearanceConfig = {
   themeMode: 'system',
-  themeName: 'terminal',
+  themeName: 'paper',
   language: 'zh-CN',
 }
 export const SHORTCUT_ACTION_IDS: GlobalShortcutActionId[] = [

@@ -59,7 +59,7 @@ import {
   DialogTitle,
 } from './ui/dialog.jsx'
 import { Input } from './ui/input.jsx'
-import { Textarea } from './ui/textarea.jsx'
+import { AutoResizeTextarea } from './ui/textarea.jsx'
 import { toast } from './ui/toast.jsx'
 import { MentionTextarea, type SlashCommand } from './MentionTextarea.jsx'
 import { ChatToolBlock } from './ChatToolBlock.jsx'
@@ -175,36 +175,12 @@ function readSessionListRows(): SessionListRows {
   return readLocal(SHOW_HISTORY_KEY, '0') === '1' ? 10 : 3
 }
 
-/** Prompt textareas in the command dialog grow from 3 up to 10 lines, then scroll. */
+/**
+ * Prompt textareas in the command dialog grow from 3 up to 10 lines, then
+ * scroll — past the cap a long prompt would push the dialog's footer off screen.
+ */
 const PROMPT_MIN_ROWS = 3
 const PROMPT_MAX_ROWS = 10
-const NORMAL_LINE_HEIGHT_RATIO = 1.5
-
-/**
- * Grow a textarea with its content, clamped to [PROMPT_MIN_ROWS, PROMPT_MAX_ROWS]
- * lines — past the cap the box stops growing and scrolls instead, so a long
- * prompt cannot push the dialog's footer off screen.
- */
-function autoResizePrompt(el: HTMLTextAreaElement | undefined): void {
-  if (!el) return
-  const cs = getComputedStyle(el)
-  const fontSize = parseFloat(cs.fontSize) || 14
-  const lineHeight =
-    cs.lineHeight === 'normal'
-      ? fontSize * NORMAL_LINE_HEIGHT_RATIO
-      : parseFloat(cs.lineHeight) || fontSize * NORMAL_LINE_HEIGHT_RATIO
-  // border-box: scrollHeight excludes borders, so the bounds must include them.
-  const extra =
-    parseFloat(cs.paddingTop) +
-    parseFloat(cs.paddingBottom) +
-    parseFloat(cs.borderTopWidth) +
-    parseFloat(cs.borderBottomWidth)
-  const min = lineHeight * PROMPT_MIN_ROWS + extra
-  const max = lineHeight * PROMPT_MAX_ROWS + extra
-  el.style.height = 'auto'
-  el.style.height = `${Math.min(Math.max(el.scrollHeight, min), max)}px`
-  el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden'
-}
 
 function normalizeSlashCommandName(value: string): string {
   return value.trim().replace(/^\/+/, '')
@@ -224,8 +200,6 @@ function makeCustomSlashCommandId(): string {
 export const ChatPanel: Component = () => {
   let messagesEl: HTMLDivElement | undefined
   let fileInputEl: HTMLInputElement | undefined
-  let hiddenPromptEl: HTMLTextAreaElement | undefined
-  let prefillEl: HTMLTextAreaElement | undefined
   const { lng } = useTranslation()
 
   // Transient chat attachments — uploaded to the same draft store as NewSpec, then
@@ -1017,18 +991,6 @@ export const ChatPanel: Component = () => {
     }
   }
 
-  // The dialog mounts through a portal, so the refs only exist once it is open —
-  // resize on the next frame, which also covers the edit path prefilling values.
-  createEffect(() => {
-    if (!customCommandOpen()) return
-    customCommandHiddenPrompt()
-    customCommandPrefill()
-    requestAnimationFrame(() => {
-      autoResizePrompt(hiddenPromptEl)
-      autoResizePrompt(prefillEl)
-    })
-  })
-
   async function confirmDeleteCustomSlashCommand(): Promise<void> {
     const id = deletingCommand()?.customId
     if (!id) return
@@ -1217,7 +1179,7 @@ export const ChatPanel: Component = () => {
 
           <div
             ref={messagesEl}
-            class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto m-2 mt-0"
+            class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-2 pt-0 pr-1 mr-1 "
             onClick={onMessagesClick}
             onKeyDown={onMessagesKeyDown}
             onScroll={onMessagesScroll}
@@ -1507,17 +1469,13 @@ export const ChatPanel: Component = () => {
             </label>
             <label class="flex flex-col gap-1 font-medium" for="chat-custom-command-hidden-prompt">
               {t('chat.customSlashCommandHiddenPrompt')}
-              <Textarea
-                ref={hiddenPromptEl}
+              <AutoResizeTextarea
                 id="chat-custom-command-hidden-prompt"
                 value={customCommandHiddenPrompt()}
                 placeholder={t('chat.customSlashCommandHiddenPromptPlaceholder')}
-                rows={PROMPT_MIN_ROWS}
-                class="resize-none"
-                onInput={(e) => {
-                  setCustomCommandHiddenPrompt(e.currentTarget.value)
-                  autoResizePrompt(e.currentTarget)
-                }}
+                minRows={PROMPT_MIN_ROWS}
+                maxRows={PROMPT_MAX_ROWS}
+                onInput={(e) => setCustomCommandHiddenPrompt(e.currentTarget.value)}
               />
               <span class="text-xs font-normal text-muted-foreground">
                 {t('chat.customSlashCommandHiddenPromptHint')}
@@ -1525,17 +1483,13 @@ export const ChatPanel: Component = () => {
             </label>
             <label class="flex flex-col gap-1 font-medium" for="chat-custom-command-prefill">
               {t('chat.customSlashCommandPrefill')}
-              <Textarea
-                ref={prefillEl}
+              <AutoResizeTextarea
                 id="chat-custom-command-prefill"
                 value={customCommandPrefill()}
                 placeholder={t('chat.customSlashCommandPrefillPlaceholder')}
-                rows={PROMPT_MIN_ROWS}
-                class="resize-none"
-                onInput={(e) => {
-                  setCustomCommandPrefill(e.currentTarget.value)
-                  autoResizePrompt(e.currentTarget)
-                }}
+                minRows={PROMPT_MIN_ROWS}
+                maxRows={PROMPT_MAX_ROWS}
+                onInput={(e) => setCustomCommandPrefill(e.currentTarget.value)}
               />
               <span class="text-xs font-normal text-muted-foreground">
                 {t('chat.customSlashCommandPrefillHint')}

@@ -8,7 +8,7 @@ const DARK_QUERY = '(prefers-color-scheme: dark)'
 
 /**
  * 外观偏好的本地镜像键。真值仍在服务端 `config.json`，但那需要一次异步 GET，
- * 首屏在响应到达前只能按默认 terminal 亮色绘制，造成刷新闪烁。
+ * 首屏在响应到达前只能按默认 paper 亮色绘制，造成刷新闪烁。
  * 这里把最近一次生效的外观同步写入 localStorage 作为**首屏提示**，
  * 供 `src/gui/index.html` 的同步引导脚本读取。
  *
@@ -67,12 +67,12 @@ export function resolveTheme(mode: ThemeMode, prefersDark: boolean): ResolvedThe
   return prefersDark ? 'dark' : 'light'
 }
 
-// 用首屏提示播种初值：否则 initTheme() 的 sync() 会拿默认 system/terminal
+// 用首屏提示播种初值：否则 initTheme() 的 sync() 会拿默认 system/paper
 // 把引导脚本刚写对的属性又改回去，等于白做一次首屏引导。
 const initialHint = readAppearanceHint()
 
 const [themeMode, setThemeModeSignal] = createSignal<ThemeMode>(initialHint?.mode ?? 'system')
-const [themeName, setThemeNameSignal] = createSignal<ThemeName>(initialHint?.name ?? 'terminal')
+const [themeName, setThemeNameSignal] = createSignal<ThemeName>(initialHint?.name ?? 'paper')
 const [resolvedTheme, setResolvedTheme] = createSignal<ResolvedTheme>(
   resolveTheme(initialHint?.mode ?? 'system', systemTheme() === 'dark'),
 )

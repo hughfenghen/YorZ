@@ -5,9 +5,7 @@ import {
   createMemo,
   createResource,
   createSignal,
-  on,
   onCleanup,
-  onMount,
   type Component,
 } from 'solid-js'
 import { GitBranch, GitMerge, Loader2 } from 'lucide-solid'
@@ -15,7 +13,7 @@ import { api, type GitOpsAction, type GitChange } from '../lib/api.js'
 import { requestChatSession } from '../lib/project.js'
 import { subscribeProjectChanges, subscribeSession } from '../lib/sse.js'
 import { Button } from './ui/button.jsx'
-import { Textarea } from './ui/textarea.jsx'
+import { AutoResizeTextarea } from './ui/textarea.jsx'
 import { Input } from './ui/input.jsx'
 import { Checkbox, CheckboxControl } from './ui/checkbox.jsx'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select.jsx'
@@ -61,6 +59,10 @@ const STATUS_COLOR: Record<string, string> = {
   '??': 'text-info',
   R: 'text-primary',
 }
+
+/** The commit message box grows from 2 up to 3 lines, then scrolls. */
+const COMMIT_MIN_ROWS = 2
+const COMMIT_MAX_ROWS = 3
 
 /**
  * Shared git working-tree panel used by both the standalone Git page and the
@@ -108,30 +110,15 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
   const specId = (): string | undefined => props.specId?.()
   const hasSpec = createMemo(() => Boolean(specId()))
 
-  let commitMsgRef: HTMLTextAreaElement | undefined
   let roundUnsub: (() => void) | null = null
   onCleanup(() => roundUnsub?.())
   // Never leave a caller awaiting a dialog that unmounted with the page.
   onCleanup(() => resolveConfirm(false))
 
-  function autoResize(el: HTMLTextAreaElement | undefined): void {
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-  }
-
   createEffect(() => {
     const msg = props.initialMessage?.() ?? ''
     if (msg && !userEditedMsg()) setCommitMessage(msg)
   })
-
-  createEffect(
-    on(commitMessage, () => {
-      autoResize(commitMsgRef)
-    }),
-  )
-
-  onMount(() => autoResize(commitMsgRef))
 
   const [branchState, { refetch: refetchBranches, mutate: mutateBranchState }] = createResource(
     props.projectId,
@@ -525,9 +512,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
                         type="button"
                         class="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left font-mono text-sm disabled:opacity-50"
                         disabled={branch === branchState()?.current}
-                        title={
-                          branch === branchState()?.current ? t('git.mergeSelfHint') : branch
-                        }
+                        title={branch === branchState()?.current ? t('git.mergeSelfHint') : branch}
                         onClick={() => setMergeTarget(branch)}
                       >
                         {branch}
@@ -584,18 +569,16 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
           </Button>
         </div>
 
-        <Textarea
-          ref={commitMsgRef}
+        <AutoResizeTextarea
           placeholder={t('review.commitPlaceholder')}
           value={commitMessage()}
           onInput={(e) => {
             setUserEditedMsg(true)
             setCommitMessage(e.currentTarget.value)
-            autoResize(commitMsgRef)
           }}
           disabled={isAnyRunning()}
-          rows={2}
-          class="resize-none"
+          minRows={1}
+          maxRows={3}
         />
 
         <Show when={hasSpec()}>

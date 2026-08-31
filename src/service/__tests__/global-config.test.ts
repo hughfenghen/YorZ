@@ -73,7 +73,7 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     expect(cfg.power).toEqual({ inhibitWhenRunning: 'system-default' })
     expect(cfg.appearance).toEqual({
       themeMode: 'system',
-      themeName: 'terminal',
+      themeName: 'paper',
       language: 'zh-CN',
     })
     expect(cfg.customInstructions).toEqual([])
@@ -103,7 +103,7 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     expect(cfg.power).toEqual({ inhibitWhenRunning: 'system-default' })
     expect(cfg.appearance).toEqual({
       themeMode: 'system',
-      themeName: 'terminal',
+      themeName: 'paper',
       language: 'zh-CN',
     })
     expect(cfg.customInstructions).toEqual([])
@@ -120,7 +120,7 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     expect(cfg.power).toEqual({ inhibitWhenRunning: 'system-default' })
     expect(cfg.appearance).toEqual({
       themeMode: 'system',
-      themeName: 'terminal',
+      themeName: 'paper',
       language: 'zh-CN',
     })
   })

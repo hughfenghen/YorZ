@@ -332,7 +332,7 @@ describe('YorZ Service HTTP', () => {
       notifications: { sessionEnd: { banner: false, sound: false } },
       shortcuts: {},
       power: { inhibitWhenRunning: 'system-default' },
-      appearance: { themeMode: 'system', themeName: 'terminal', language: 'zh-CN' },
+      appearance: { themeMode: 'system', themeName: 'paper', language: 'zh-CN' },
       customInstructions: [],
     })
 

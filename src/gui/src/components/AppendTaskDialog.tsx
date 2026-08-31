@@ -151,14 +151,13 @@ export const AppendTaskDialog: Component<Props> = (props) => {
               <span>{t('appendTask.description')}</span>
               <MentionTextarea
                 projectId={props.projectId}
-                rows={5}
-                autosize={false}
+                minRows={5}
+                maxRows={5}
                 value={description()}
                 onValueChange={setDescription}
                 placeholder={t('appendTask.descPlaceholder')}
                 autofocus
                 disabled={busy()}
-                class="resize-y"
               />
             </label>
 

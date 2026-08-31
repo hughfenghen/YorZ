@@ -296,12 +296,11 @@ export const NewSpec: Component = () => {
             onValueChange={setContent}
             onPaste={att.onPaste}
             placeholder={t('newSpec.requirementPlaceholder')}
-            autosize={false}
-            rows={10}
+            minRows={10}
+            maxRows={10}
             required
             autofocus
             disabled={busy()}
-            class="resize-y"
           />
         </label>
 

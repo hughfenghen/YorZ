@@ -1,26 +1,13 @@
-import {
-  For,
-  Show,
-  createEffect,
-  createSignal,
-  on,
-  onCleanup,
-  onMount,
-  type Component,
-} from 'solid-js'
+import { For, Show, createSignal, onCleanup, type Component } from 'solid-js'
 import { Pencil, Plus, Trash2 } from 'lucide-solid'
 import { cn } from '../lib/cn.js'
 import { api } from '../lib/api.js'
 import { Button } from './ui/button.jsx'
-import { Textarea } from './ui/textarea.jsx'
+import { AutoResizeTextarea } from './ui/textarea.jsx'
 
 const SEARCH_DEBOUNCE_MS = 150
 /** Blur must outlive the候选项 mousedown, or the click never lands. */
 const BLUR_CLOSE_DELAY_MS = 150
-const DEFAULT_MIN_ROWS = 2
-const DEFAULT_MAX_ROWS = 10
-/** getComputedStyle returns `normal` for an unset line-height. */
-const NORMAL_LINE_HEIGHT_RATIO = 1.5
 const FUZZY_SCORE_MATCH = 16
 const FUZZY_SCORE_PREFIX = 48
 const FUZZY_SCORE_CONSECUTIVE = 24
@@ -71,12 +58,13 @@ export interface MentionTextareaProps {
   onValueChange: (next: string) => void
   placeholder?: string
   disabled?: boolean
-  /** Grow the box with its content between these bounds. Default on. */
-  autosize?: boolean
+  /**
+   * Height floor in lines; also the initial row count. Defaults to 2.
+   * Setting `minRows === maxRows` pins the box to a fixed row count.
+   */
   minRows?: number
+  /** Height cap in lines; past it the box scrolls. Defaults to 10. */
   maxRows?: number
-  /** Fixed row count; only meaningful with `autosize={false}`. */
-  rows?: number
   /** Static commands triggered by `/` at the beginning of the textarea. */
   slashCommands?: SlashCommand[]
   onSlashCommandAction?: (command: SlashCommand) => void
@@ -174,41 +162,10 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
   let timer: ReturnType<typeof setTimeout> | null = null
   let blurTimer: ReturnType<typeof setTimeout> | null = null
 
-  const autosize = () => props.autosize !== false
-  const minRows = () => props.minRows ?? DEFAULT_MIN_ROWS
-  const maxRows = () => props.maxRows ?? DEFAULT_MAX_ROWS
-
   onCleanup(() => {
     if (timer) clearTimeout(timer)
     if (blurTimer) clearTimeout(blurTimer)
   })
-
-  /** Grow with the content, clamped to [minRows, maxRows]; scroll past the cap. */
-  function autoResize(): void {
-    if (!el || !autosize()) return
-    const cs = getComputedStyle(el)
-    const fontSize = parseFloat(cs.fontSize) || 14
-    const lineHeight =
-      cs.lineHeight === 'normal'
-        ? fontSize * NORMAL_LINE_HEIGHT_RATIO
-        : parseFloat(cs.lineHeight) || fontSize * NORMAL_LINE_HEIGHT_RATIO
-    // border-box: scrollHeight excludes borders, so the bounds must include them.
-    const extra =
-      parseFloat(cs.paddingTop) +
-      parseFloat(cs.paddingBottom) +
-      parseFloat(cs.borderTopWidth) +
-      parseFloat(cs.borderBottomWidth)
-    const min = lineHeight * minRows() + extra
-    const max = lineHeight * maxRows() + extra
-    el.style.height = 'auto'
-    const next = Math.min(Math.max(el.scrollHeight, min), max)
-    el.style.height = `${next}px`
-    el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden'
-  }
-
-  onMount(autoResize)
-  // Covers host-driven resets too — e.g. Chat clearing the box after send().
-  createEffect(on(() => props.value, autoResize))
 
   function closeMention(): void {
     setOpen(false)
@@ -326,11 +283,11 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
     props.onValueChange(before + replacement + after)
     closeMention()
     const cursorPos = before.length + replacement.length
+    // Height follows from the new `value` — AutoResizeTextarea's own effect owns it.
     requestAnimationFrame(() => {
       if (!el) return
       el.focus()
       el.setSelectionRange(cursorPos, cursorPos)
-      autoResize()
     })
   }
 
@@ -394,19 +351,19 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
 
   return (
     <div class="relative w-full">
-      <Textarea
+      <AutoResizeTextarea
         ref={el}
-        rows={props.rows}
+        minRows={props.minRows}
+        maxRows={props.maxRows}
         value={props.value}
         placeholder={props.placeholder}
         disabled={props.disabled}
         required={props.required}
         autofocus={props.autofocus}
-        class={cn(autosize() && 'resize-none', props.class)}
+        class={props.class}
         onInput={(e) => {
           props.onValueChange(e.currentTarget.value)
           checkCompletion(e.currentTarget)
-          autoResize()
         }}
         onKeyDown={onKeyDown}
         onPaste={(e) => props.onPaste?.(e)}

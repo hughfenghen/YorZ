@@ -250,9 +250,9 @@ The far right side of the GUI header has a three-line settings entry. Open it to
 
 **Theme** has three options, freely combinable with any color mode:
 
-- `Terminal` (default): monospace, terminal-style palette.
+- `Paper` (default): warm off-white background with ink-black text, comfortable for long spec reading sessions.
+- `Terminal`: monospace, terminal-style palette.
 - `Graphite`: low-saturation neutral greys — high information density, low visual noise.
-- `Paper`: warm off-white background with ink-black text, comfortable for long spec reading sessions.
 
 Appearance and language are stored in the user-level `config.json` and apply across projects and browsers.
 
