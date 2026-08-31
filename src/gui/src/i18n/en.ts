@@ -57,6 +57,7 @@ export const en = {
     expand: 'Expand project panel',
     collapse: 'Collapse project panel',
     collapseShort: 'Collapse',
+    pin: 'Keep project panel open',
     configure: 'Configure {{name}}',
     projectConfig: 'Project Config',
     removeProject: 'Remove {{name}}',

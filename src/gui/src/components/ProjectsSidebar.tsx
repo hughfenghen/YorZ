@@ -33,6 +33,8 @@ import { t } from '../i18n/index.js'
 
 const COLLAPSED_KEY = 'yorz.projectsSidebar.collapsed'
 const WIDTH_KEY = 'yorz.projectsSidebar.width'
+/** 折叠态下鼠标悬停多久才浮出面板：太短会误触，太长会显得迟钝。 */
+const HOVER_PEEK_DELAY = 300
 const DEFAULT_WIDTH = 220
 const DEFAULT_WIDTH_RATIO = 0.2
 const MIN_WIDTH = 160
@@ -115,6 +117,58 @@ export const ProjectsSidebar: Component = () => {
   // What the user actually sees: focus mode forces the rail shut without ever
   // touching the persisted flag, so leaving it restores their real preference.
   const isCollapsed = () => collapsed() || focusMode()
+
+  // --- 折叠态悬停浮出 ---
+  const [hovering, setHovering] = createSignal(false)
+  let hoverTimer: number | null = null
+
+  function clearHoverTimer() {
+    if (hoverTimer != null) {
+      window.clearTimeout(hoverTimer)
+      hoverTimer = null
+    }
+  }
+
+  // 面板里的弹窗是 portal 渲染的，鼠标移到弹窗上就离开了 aside；此时若立刻收起，
+  // 弹窗关闭后会看到面板“凭空消失”。开着弹窗就一直保持浮出。
+  const dialogOpen = () => editing() !== null || deleting() !== null
+  const peeking = () => isCollapsed() && (hovering() || dialogOpen())
+  // 内容按“看起来是否折叠”渲染：真折叠且没浮出，才用窄轨样式。
+  const railCollapsed = () => isCollapsed() && !peeking()
+
+  function onHoverEnter() {
+    if (!isCollapsed() || hovering()) return
+    clearHoverTimer()
+    hoverTimer = window.setTimeout(() => {
+      hoverTimer = null
+      // 定时器等待期间可能已被固定展开，再确认一次折叠态。
+      if (isCollapsed()) setHovering(true)
+    }, HOVER_PEEK_DELAY)
+  }
+
+  function onHoverLeave() {
+    clearHoverTimer()
+    setHovering(false)
+  }
+
+  // 鼠标停在窄轨的「展开」按钮上，多半是奔着点击去的——浮出会把按钮顶换成
+  // 「固定展开」，点击语义在手指落下前就变了。所以按钮上不计时；移开按钮但仍在
+  // 轨内时再重新计时。mouseleave 由内向外触发，真正离开 aside 时后到的
+  // onHoverLeave 会清掉这里刚起的定时器。
+  function onExpandButtonEnter() {
+    clearHoverTimer()
+  }
+
+  onCleanup(clearHoverTimer)
+
+  /** 浮出状态下点击展开按钮：把面板固定为常驻展开。 */
+  function pinOpen() {
+    clearHoverTimer()
+    setHovering(false)
+    if (focusMode()) exitFocusMode()
+    setCollapsed(false)
+    writeCollapsed(false)
+  }
 
   function toggle() {
     // In focus mode the only affordance on screen is "expand" — honour it by
@@ -247,150 +301,170 @@ export const ProjectsSidebar: Component = () => {
     }
   }
 
+  // aside 只负责占位：浮出时它保持折叠宽度，内部面板绝对定位盖在正文之上，
+  // 这样浮出不会推挤右侧布局。
   const asideStyle = () => (isCollapsed() ? undefined : { width: `${width()}px` })
+  const panelStyle = () => (railCollapsed() ? undefined : { width: `${width()}px` })
 
   return (
     <aside
-      class={`relative flex flex-col border-r bg-background shrink-0 ${
-        isCollapsed() ? 'w-9 transition-[width] duration-150' : ''
-      }`}
+      data-testid="projects-sidebar"
+      class={`relative shrink-0 ${isCollapsed() ? 'w-9 transition-[width] duration-150' : ''}`}
       style={asideStyle()}
+      onMouseEnter={onHoverEnter}
+      onMouseLeave={onHoverLeave}
     >
-      <header
-        class={`flex items-center border-b ${
-          isCollapsed() ? 'justify-center py-2' : 'justify-between px-2.5 py-2'
+      <div
+        data-testid="projects-sidebar-panel"
+        data-peek={peeking() ? '1' : undefined}
+        class={`flex flex-col border-r bg-background ${
+          peeking()
+            ? 'absolute left-0 top-0 z-40 h-full shadow-xl animate-in fade-in-0 slide-in-from-left-2 duration-150'
+            : 'h-full w-full'
         }`}
+        style={panelStyle()}
       >
-        <Show
-          when={!isCollapsed()}
-          fallback={
-            <Button
-              variant="outline"
-              size="sm"
-              class="h-7 w-7 p-0"
-              onClick={toggle}
-              title={t('sidebar.expand')}
-            >
-              <ChevronsRight class="h-4 w-4" />
-            </Button>
-          }
+        <header
+          class={`flex items-center border-b ${
+            railCollapsed() ? 'justify-center py-2' : 'justify-between px-2.5 py-2'
+          }`}
         >
-          <span class=" font-semibold tracking-wide">{t('sidebar.title')}</span>
-          <div class="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              class="h-7 w-7 p-0"
-              onClick={toggle}
-              title={t('sidebar.collapse')}
-            >
-              <ChevronsLeft class="h-4 w-4" />
-            </Button>
-          </div>
-        </Show>
-      </header>
+          <Show
+            when={!railCollapsed()}
+            fallback={
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-7 w-7 p-0"
+                onClick={toggle}
+                onMouseEnter={onExpandButtonEnter}
+                onMouseLeave={onHoverEnter}
+                title={t('sidebar.expand')}
+              >
+                <ChevronsRight class="h-4 w-4" />
+              </Button>
+            }
+          >
+            <span class=" font-semibold tracking-wide">{t('sidebar.title')}</span>
+            <div class="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-7 w-7 p-0"
+                onClick={peeking() ? pinOpen : toggle}
+                title={peeking() ? t('sidebar.pin') : t('sidebar.collapse')}
+              >
+                <Show when={peeking()} fallback={<ChevronsLeft class="h-4 w-4" />}>
+                  <ChevronsRight class="h-4 w-4" />
+                </Show>
+              </Button>
+            </div>
+          </Show>
+        </header>
 
-      <Show
-        when={projects() !== undefined}
-        fallback={<p class="px-2.5 py-2 text-muted-foreground">{t('common.loading')}</p>}
-      >
-        <ul class="m-0 flex-1 list-none overflow-y-auto py-1.5">
-          <For each={projects() ?? []}>
-            {(p) => {
-              const isActive = () => activeProjectId() === p.id
-              return (
-                <li class="group relative flex items-center">
-                  <A
-                    href={`/${encodeURIComponent(p.id)}`}
-                    class={`flex-1 truncate px-2.5 py-1.5 no-underline ${
-                      isActive()
-                        ? 'bg-primary-soft text-foreground font-semibold'
-                        : 'hover:bg-accent'
-                    } ${isCollapsed() ? 'px-0 text-center' : ''}`}
-                    title={p.path}
-                  >
-                    <Show
-                      when={!isCollapsed()}
-                      fallback={
-                        <span class="inline-block font-semibold">
-                          {(p.name[0] ?? '?').toUpperCase()}
-                        </span>
-                      }
+        <Show
+          when={projects() !== undefined}
+          fallback={<p class="px-2.5 py-2 text-muted-foreground">{t('common.loading')}</p>}
+        >
+          <ul class="m-0 flex-1 list-none overflow-y-auto py-1.5">
+            <For each={projects() ?? []}>
+              {(p) => {
+                const isActive = () => activeProjectId() === p.id
+                return (
+                  <li class="group relative flex items-center">
+                    <A
+                      href={`/${encodeURIComponent(p.id)}`}
+                      class={`flex-1 truncate px-2.5 py-1.5 no-underline ${
+                        isActive()
+                          ? 'bg-primary-soft text-foreground font-semibold'
+                          : 'hover:bg-accent'
+                      } ${railCollapsed() ? 'px-0 text-center' : ''}`}
+                      title={p.path}
                     >
-                      <span class="block truncate">{displayProjectName(p)}</span>
-                      <Show when={p.worktree}>
-                        <span
-                          class="ml-1 inline-flex items-center gap-0.5 text-sm text-muted-foreground"
-                          title={`worktree of ${p.worktree!.mainPath}`}
-                        >
-                          <GitBranch class="h-3 w-3" />
-                          {t('sidebar.worktreeBadge')}
-                        </span>
+                      <Show
+                        when={!railCollapsed()}
+                        fallback={
+                          <span class="inline-block font-semibold">
+                            {(p.name[0] ?? '?').toUpperCase()}
+                          </span>
+                        }
+                      >
+                        <span class="block truncate">{displayProjectName(p)}</span>
+                        <Show when={p.worktree}>
+                          <span
+                            class="ml-1 inline-flex items-center gap-0.5 text-sm text-muted-foreground"
+                            title={`worktree of ${p.worktree!.mainPath}`}
+                          >
+                            <GitBranch class="h-3 w-3" />
+                            {t('sidebar.worktreeBadge')}
+                          </span>
+                        </Show>
                       </Show>
+                    </A>
+                    <Show when={!railCollapsed()}>
+                      <button
+                        type="button"
+                        class="absolute right-6 top-1/2 -translate-y-1/2 p-1 text-muted-foreground opacity-0 transition-opacity hover:text-accent-foreground group-hover:opacity-100"
+                        aria-label={t('sidebar.configure', { name: p.name })}
+                        title={t('sidebar.projectConfig')}
+                        onClick={(e) => onEdit(p, e)}
+                      >
+                        <Pencil class="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        class="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                        aria-label={t('sidebar.removeProject', { name: p.name })}
+                        title={t('sidebar.deleteProject')}
+                        onClick={(e) => void onRemove(p, e)}
+                      >
+                        <X class="h-3.5 w-3.5" />
+                      </button>
                     </Show>
-                  </A>
-                  <Show when={!isCollapsed()}>
-                    <button
-                      type="button"
-                      class="absolute right-6 top-1/2 -translate-y-1/2 p-1 text-muted-foreground opacity-0 transition-opacity hover:text-accent-foreground group-hover:opacity-100"
-                      aria-label={t('sidebar.configure', { name: p.name })}
-                      title={t('sidebar.projectConfig')}
-                      onClick={(e) => onEdit(p, e)}
-                    >
-                      <Pencil class="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      class="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-                      aria-label={t('sidebar.removeProject', { name: p.name })}
-                      title={t('sidebar.deleteProject')}
-                      onClick={(e) => void onRemove(p, e)}
-                    >
-                      <X class="h-3.5 w-3.5" />
-                    </button>
-                  </Show>
-                </li>
-              )
-            }}
-          </For>
-        </ul>
-      </Show>
-
-      <footer class={`border-t ${isCollapsed() ? 'flex justify-center py-2' : 'p-2'}`}>
-        <Show
-          when={!isCollapsed()}
-          fallback={
-            <span
-              class="flex h-5 w-5 items-center justify-center rounded bg-muted text-muted-foreground"
-              title={`${t('sidebar.addHint')}${t('sidebar.addCmd')}`}
-            >
-              <HelpCircle class="h-3.5 w-3.5" />
-            </span>
-          }
-        >
-          <p class="m-0 text-sm leading-relaxed text-muted-foreground break-words">
-            {t('sidebar.addHint')}
-            <code class="mt-0.5 inline-block rounded bg-muted px-1 py-0.5 font-mono text-[0.85em] break-all">
-              {t('sidebar.addCmd')}
-            </code>
-          </p>
+                  </li>
+                )
+              }}
+            </For>
+          </ul>
         </Show>
-        {error() && (
-          <p class="mt-1 text-sm text-destructive break-words" title={error()!}>
-            {error()}
-          </p>
-        )}
-      </footer>
 
-      <Show when={!isCollapsed()}>
-        <div
-          class="absolute right-0 top-0 z-[2] h-full w-1 cursor-col-resize bg-transparent hover:bg-accent/40"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label={t('sidebar.resizeHint')}
-          onMouseDown={beginResize}
-        />
-      </Show>
+        <footer class={`border-t ${railCollapsed() ? 'flex justify-center py-2' : 'p-2'}`}>
+          <Show
+            when={!railCollapsed()}
+            fallback={
+              <span
+                class="flex h-5 w-5 items-center justify-center rounded bg-muted text-muted-foreground"
+                title={`${t('sidebar.addHint')}${t('sidebar.addCmd')}`}
+              >
+                <HelpCircle class="h-3.5 w-3.5" />
+              </span>
+            }
+          >
+            <p class="m-0 text-sm leading-relaxed text-muted-foreground break-words">
+              {t('sidebar.addHint')}
+              <code class="mt-0.5 inline-block rounded bg-muted px-1 py-0.5 font-mono text-[0.85em] break-all">
+                {t('sidebar.addCmd')}
+              </code>
+            </p>
+          </Show>
+          {error() && (
+            <p class="mt-1 text-sm text-destructive break-words" title={error()!}>
+              {error()}
+            </p>
+          )}
+        </footer>
+
+        {/* 拖拽改宽只在常驻展开时提供：浮层是临时态，拖它会让宽度语义变得含混。 */}
+        <Show when={!isCollapsed()}>
+          <div
+            class="absolute right-0 top-0 z-[2] h-full w-1 cursor-col-resize bg-transparent hover:bg-accent/40"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t('sidebar.resizeHint')}
+            onMouseDown={beginResize}
+          />
+        </Show>
+      </div>
 
       <Show when={editing()}>
         {(p) => (
