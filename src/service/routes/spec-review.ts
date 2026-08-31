@@ -5,6 +5,7 @@ import { Hono } from 'hono'
 import { stash as gitStash, GitError } from '../git.js'
 import type { ProjectInstance } from '../project-registry.js'
 import { skillRef } from '../skill-ref.js'
+import { SPEC_BUSY_ERROR } from './specs.js'
 import { trackSpecStage } from '../telemetry/index.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
@@ -42,9 +43,12 @@ export function createSpecReviewRoutes(resolveProject: ResolveProject): Hono {
     if (!action || typeof action !== 'string' || !VALID_ACTIONS.has(action as GitOpsAction)) {
       return c.json({ error: 'action must be one of commit | discard | stash' }, 400)
     }
+    if (await p.sessions.isSpecRunning(specId)) return c.json({ error: SPEC_BUSY_ERROR }, 409)
     const specRel = `${p.specsDirRelative}/${specId}/spec.md`
     const prompt = buildGitOpsPrompt(action as GitOpsAction, specId, specRel)
-    const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
+    // git-ops takes its own evidence from `git status` / `git diff`, so a fresh
+    // session costs nothing but saves inheriting the whole spec transcript.
+    const { sessionId } = await p.sessions.createSessionForSpec(specId)
     const handle = await p.sessions.send(sessionId, prompt, undefined, {
       trigger: 'git-ops',
       specId,

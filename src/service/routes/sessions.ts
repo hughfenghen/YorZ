@@ -125,6 +125,25 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
     }
   })
 
+  /**
+   * A spec's whole conversation, stitched from every session it owns. The Chat
+   * panel shows one row per spec, so it needs the rounds merged in order —
+   * along with each session's `kind` / `createdAt` to label the divider it draws
+   * between them.
+   */
+  app.get('/projects/:projectId/specs/:id/messages', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    const specId = c.req.param('id')
+    const detail = await p.store.read(specId)
+    if (!detail) return c.json({ error: 'spec not found' }, 404)
+    try {
+      return c.json(await p.sessions.getSpecMessages(specId))
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 500)
+    }
+  })
+
   app.get('/projects/:projectId/sessions/:sid/messages', async (c) => {
     const p = await need(c)
     if (p instanceof Response) return p

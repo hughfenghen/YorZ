@@ -85,7 +85,7 @@ describe('ProjectRegistry', () => {
     const projDir = await newProjectDir()
     const { entry } = await reg.add(projDir)
     const instance = await reg.getOrCreate(entry.id)
-    const session = await instance!.sessions.ensureSessionForSpec('spec-a')
+    const session = await instance!.sessions.createSessionForSpec('spec-a')
     expect(session.kind).toBe('codex')
   })
 })

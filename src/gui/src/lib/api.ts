@@ -279,6 +279,17 @@ export interface SessionMessage {
   ts?: number
 }
 
+/**
+ * One session's slice of a spec's aggregated transcript, oldest session first.
+ * `kind` / `createdAt` label the divider drawn between two sessions.
+ */
+export interface SpecSessionMessages {
+  sessionId: string
+  kind: AgentKind
+  createdAt: number
+  messages: SessionMessage[]
+}
+
 function projectBase(pid: string): string {
   return `/api/projects/${encodeURIComponent(pid)}`
 }
@@ -355,8 +366,10 @@ export const api = {
         body: '{}',
       },
     ),
+  // `busy` means the item was saved but no round was dispatched: the spec
+  // already had a session running, and two agents must not edit one spec.md.
   appendItem: (pid: string, id: string, body: AppendItemBody) =>
-    request<{ ok: true; runId?: string; sessionId?: string }>(
+    request<{ ok: true; runId?: string; sessionId?: string; busy?: boolean }>(
       `${projectBase(pid)}/specs/${encodeURIComponent(id)}/appends`,
       {
         method: 'POST',
@@ -551,6 +564,12 @@ export const api = {
     }),
   getSessionMessages: (pid: string, sid: string) =>
     request<SessionMessage[]>(`${projectBase(pid)}/sessions/${encodeURIComponent(sid)}/messages`),
+  // Every round of a spec, merged in order — the Chat panel renders a spec's
+  // sessions as a single grouped conversation.
+  getSpecMessages: (pid: string, specId: string) =>
+    request<SpecSessionMessages[]>(
+      `${projectBase(pid)}/specs/${encodeURIComponent(specId)}/messages`,
+    ),
   sendSessionMessage: (pid: string, sid: string, prompt: string, draftId?: string) =>
     request<{ runId: string; sessionId: string }>(
       `${projectBase(pid)}/sessions/${encodeURIComponent(sid)}/messages`,

@@ -12,6 +12,14 @@ import { trackSpecStage } from '../telemetry/index.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
+/**
+ * Same-spec serialization. Rounds used to share one session, which queued a
+ * second dispatch behind the first; now that each round gets its own session,
+ * nothing would stop two agents from editing the same `spec.md` at once. Refuse
+ * instead of queueing: the user can retry once the visible round ends.
+ */
+export const SPEC_BUSY_ERROR = '该 spec 有正在执行的会话，请等待其结束后再试'
+
 export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
   const app = new Hono()
 
@@ -179,7 +187,13 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
       return c.json({ error: (err as Error).message }, 400)
     }
     if (parsed.autoRun) {
-      const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
+      // The item is already persisted, so a busy spec is NOT an error here: it
+      // only means we skip the dispatch. Reporting it as a failed request would
+      // invite the user to resubmit and duplicate the append item.
+      if (await p.sessions.isSpecRunning(specId)) return c.json({ ok: true, busy: true })
+      // Guard BEFORE minting a session, or a refused dispatch would leave an
+      // empty shell session behind in the list.
+      const { sessionId } = await p.sessions.createSessionForSpec(specId)
       // Reentry guard: an active debug.md keeps the session in Debug mode even
       // when this append didn't request it.
       const debugActive = (await readDebugMdStatus(join(p.specsDir, specId))) === 'debugging'
@@ -216,7 +230,8 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     const specId = c.req.param('id')
     const detail = await p.store.read(specId)
     if (!detail) return c.json({ error: 'spec not found' }, 404)
-    const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
+    if (await p.sessions.isSpecRunning(specId)) return c.json({ error: SPEC_BUSY_ERROR }, 409)
+    const { sessionId } = await p.sessions.createSessionForSpec(specId)
     // Reentry guard: if a debug session is still active, keep run in Debug mode.
     const debugActive = (await readDebugMdStatus(join(p.specsDir, specId))) === 'debugging'
     const prompt = debugActive
@@ -260,7 +275,10 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
       `以下为 spec 文档 ${p.specsDirRelative}/${specId}/spec.md 中的一段内容。\n` +
       `请用中文简洁解释其含义、背景与可能的实施影响。**不要**修改任何文件，只在终端输出解释文本。\n\n` +
       `引用：\n"""\n${text}\n"""\n`
-    const { sessionId } = await p.sessions.ensureSessionForSpec(specId)
+    if (await p.sessions.isSpecRunning(specId)) return c.json({ error: SPEC_BUSY_ERROR }, 409)
+    // User-driven: explain answers about the text the user is looking at, so it
+    // continues the visible conversation instead of starting a cold session.
+    const { sessionId } = await p.sessions.latestSessionForSpec(specId)
     // Explain never edits the spec, so only the dispatch cost is attributed —
     // no `spec.stage` transition to record.
     const handle = await p.sessions.send(sessionId, prompt, undefined, {

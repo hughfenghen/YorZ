@@ -342,6 +342,9 @@ export const SpecDetail: Component = () => {
   async function submitAppend(body: AppendItemBody) {
     const pid = projectId()
     const res = await api.appendItem(pid, params.id, body)
+    // Saved but not dispatched: say so, rather than letting the append look
+    // like it silently did nothing.
+    if (res.busy) setRunError(t('specDetail.appendSavedSpecBusy'))
     if (res.sessionId) {
       setRunning(true)
       setSpecSid(res.sessionId)

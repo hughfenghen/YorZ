@@ -82,6 +82,8 @@ export const en = {
     sessionsLabelPlain: 'Sessions',
     sessionTitle: '{{kind}} · {{id}}',
     sessionTitleRunning: '{{kind}} · {{id}} · Running',
+    /** Label on the rule drawn between two sessions of the same spec. */
+    sessionDivider: '{{kind}} · {{time}}',
     empty: 'Select or create a session to start chatting.',
     /** Untitled (draft) state: no session exists on the server yet. */
     draftEmpty: 'Untitled session — send a message to start.',
@@ -221,6 +223,9 @@ export const en = {
     exitFullscreen: 'Exit fullscreen (Esc)',
     copySpecPath: 'Copy spec file path',
     specPathCopied: 'Spec file path copied',
+    /** The item was written to the md, but the spec was busy so no round ran. */
+    appendSavedSpecBusy:
+      'Append saved. This spec already has a running session, so no round was dispatched — run it manually once that finishes.',
     specPathCopyFailed: 'Failed to copy spec file path',
   },
   mermaid: {

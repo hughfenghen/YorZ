@@ -39,7 +39,13 @@ import { subscribeSession, subscribeSessions, type SessionEvent } from '../lib/s
 import { activeProjectId } from '../lib/project.js'
 import { clearRequestedChatSession, requestedChatSessionId } from '../lib/chat-session-request.js'
 import { focusMode, exitFocusMode } from '../lib/layout-focus.js'
-import { groupParts, messagesToParts, type ChatPart } from '../lib/chat-blocks.js'
+import {
+  groupParts,
+  messagesToParts,
+  specMessagesToParts,
+  type ChatPart,
+} from '../lib/chat-blocks.js'
+import { findGroupBySession, groupSessions, type SessionGroup } from '../lib/session-groups.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { t, useTranslation } from '../i18n/index.js'
 import { Button } from './ui/button.jsx'
@@ -426,9 +432,23 @@ export const ChatPanel: Component = () => {
     const sid = activeSid()
     return sid ? isRunning(sid) : false
   })
-  const runningCount = createMemo(() => (sessions() ?? []).filter((s) => isRunning(s.id)).length)
-
-  const visibleSessions = createMemo(() => sessions() ?? [])
+  /**
+   * List rows. A spec's rounds each run in their own session (see
+   * `createSessionForSpec`), so they are folded back into one row here — the
+   * list reads exactly as it did when a spec owned a single session.
+   */
+  const visibleGroups = createMemo(() => groupSessions(sessions() ?? [], isRunning))
+  /** Count rows, not sessions: 3 running rounds of one spec are one busy spec. */
+  const runningCount = createMemo(() => visibleGroups().filter((g) => g.running).length)
+  /** The row the active session belongs to — drives selection highlighting. */
+  const activeGroup = createMemo(() => findGroupBySession(visibleGroups(), activeSid()))
+  /**
+   * Spec of the active row, or undefined for a plain chat. A memo (not a direct
+   * read of the group) so the history effect below only re-runs when the spec
+   * identity actually changes — the session list refetches on every SSE status
+   * edge, and each of those must not re-read the transcript.
+   */
+  const activeSpecId = createMemo(() => activeGroup()?.specId)
 
   /**
    * The single entry point for switching sessions (list click, spec-page request,
@@ -550,35 +570,62 @@ export const ChatPanel: Component = () => {
     document.body.classList.remove('is-resizing')
   })
 
-  // --- session selection → load history + subscribe to live stream ---
+  // --- session selection → load history ---
   createEffect(() => {
     const pid = activeProjectId()
     const sid = activeSid()
+    const specId = activeSpecId()
+    // Tracked for spec rows only: a spec's row spans several sessions, so when
+    // the current round settles the transcript is re-read to fold that round in
+    // (with its divider). Plain chats keep the old load-on-select behaviour.
+    const running = specId ? isRunning(sid) : false
     freshRevision()
     if (!pid || !sid) return
-    let disposed = false
-    setAutoScroll(true)
     // A locally-created session has nothing to load: the transcript is not on
     // disk yet, and `parts` already holds the optimistic user message plus
     // whatever has streamed in. Clearing + refetching here would wipe both.
     if (freshSids.has(sid)) {
+      setAutoScroll(true)
       if (displayedSid !== sid) {
         resetParts()
         displayedSid = sid
       }
-    } else {
-      displayedSid = sid
-      resetParts()
-      void api
-        .getSessionMessages(pid, sid)
-        .then((msgs) => {
-          // Flatten message → parts: tool-result keeps its payload instead of
-          // being dropped, so the transcript and the live stream now agree.
-          if (!disposed) resetParts(messagesToParts(msgs))
-        })
-        .catch(() => {})
+      return
     }
+    // A turn in flight owns the message area: its deltas live only in memory,
+    // so re-reading the transcript underneath it would wipe what the user is
+    // watching stream in.
+    const sameSession = displayedSid === sid
+    if (running && sameSession) return
 
+    let disposed = false
+    setAutoScroll(true)
+    // Only blank the area when switching away from another session — a reload of
+    // the session already on screen swaps content in on arrival instead, so it
+    // does not flash empty.
+    if (!sameSession) resetParts()
+    displayedSid = sid
+    // Flatten message → parts: tool-result keeps its payload instead of being
+    // dropped, so the transcript and the live stream now agree. A spec row reads
+    // every session it owns, dividers included.
+    const load = specId
+      ? api.getSpecMessages(pid, specId).then(specMessagesToParts)
+      : api.getSessionMessages(pid, sid).then(messagesToParts)
+    void load
+      .then((next) => {
+        if (!disposed) resetParts(next)
+      })
+      .catch(() => {})
+    onCleanup(() => {
+      disposed = true
+    })
+  })
+
+  // --- session selection → subscribe to the live stream ---
+  createEffect(() => {
+    const pid = activeProjectId()
+    const sid = activeSid()
+    if (!pid || !sid) return
     const sub = subscribeSession(pid, sid, {
       onReady: () => markSubscribed(sid),
       onEvent: (ev: SessionEvent) => {
@@ -612,7 +659,6 @@ export const ChatPanel: Component = () => {
       },
     })
     onCleanup(() => {
-      disposed = true
       readyWaiters.delete(sid)
       sub()
     })
@@ -1109,40 +1155,54 @@ export const ChatPanel: Component = () => {
                     style={{ 'max-height': `${sessionListRows() * SESSION_ROW_HEIGHT_PX + 4}px` }}
                   >
                     <Show
-                      when={visibleSessions().length > 0}
+                      when={visibleGroups().length > 0}
                       fallback={
                         <li class="px-2.5 py-1.5 text-xs text-muted-foreground">
                           {t('chat.noRunningSessions')}
                         </li>
                       }
                     >
-                      <For each={visibleSessions()}>
-                        {(s: SessionInfo) => (
+                      <For each={visibleGroups()}>
+                        {(g: SessionGroup) => (
                           <li>
                             <button
                               type="button"
                               class={`flex w-full items-center gap-1 px-2 py-1 text-left text-sm ${
-                                activeSid() === s.id
+                                activeGroup()?.key === g.key
                                   ? 'bg-primary-soft font-semibold'
                                   : 'hover:bg-accent'
                               }`}
                               title={
-                                isRunning(s.id)
-                                  ? t('chat.sessionTitleRunning', { kind: s.kind, id: s.id })
-                                  : t('chat.sessionTitle', { kind: s.kind, id: s.id })
+                                g.running
+                                  ? t('chat.sessionTitleRunning', {
+                                      kind: g.latest.kind,
+                                      id: g.latest.id,
+                                    })
+                                  : t('chat.sessionTitle', { kind: g.latest.kind, id: g.latest.id })
                               }
-                              onClick={() => selectSession(s.id)}
+                              // Clicking a spec row lands on its most recent
+                              // round; the message area then shows all of them.
+                              onClick={() => selectSession(g.latest.id)}
                             >
-                              <Show when={isRunning(s.id)}>
+                              <Show when={g.running}>
                                 <Loader2 class="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
                               </Show>
-                              <span class="shrink-0 text-xs text-muted-foreground">[{s.kind}]</span>
-                              <span class="min-w-0 flex-1 truncate">{displaySessionTitle(s)}</span>
+                              <span class="shrink-0 text-xs text-muted-foreground">
+                                [{g.latest.kind}]
+                              </span>
+                              <span class="min-w-0 flex-1 truncate">
+                                {displaySessionTitle(g.latest)}
+                              </span>
+                              <Show when={g.sessions.length > 1}>
+                                <span class="shrink-0 text-[11px] font-normal tabular-nums text-muted-foreground">
+                                  ×{g.sessions.length}
+                                </span>
+                              </Show>
                               <span
                                 class="ml-auto max-w-20 shrink-0 truncate pl-2 text-right text-[11px] font-normal tabular-nums text-muted-foreground"
-                                title={exactSessionUpdatedAt(s.updatedAt)}
+                                title={exactSessionUpdatedAt(g.updatedAt)}
                               >
-                                {formatSessionUpdatedAt(s.updatedAt)}
+                                {formatSessionUpdatedAt(g.updatedAt)}
                               </span>
                             </button>
                           </li>
@@ -1176,55 +1236,79 @@ export const ChatPanel: Component = () => {
               <For each={blocks()}>
                 {(block) => (
                   <Show
-                    when={block.kind === 'context' ? block : null}
+                    when={block.kind === 'divider' ? block : null}
                     fallback={
                       <Show
-                        when={block.kind === 'assistant' ? block : null}
+                        when={block.kind === 'context' ? block : null}
                         fallback={
-                          // User input is NOT markdown: it routinely carries `@paths`,
-                          // indentation and bare `*`/`_` that md would rewrite.
-                          //
-                          // Tinted with `primary` rather than a plain surface color —
-                          // the two bubbles were once within 2% lightness of each other
-                          // and read as one blob. What you said now separates at a
-                          // glance from what the agent replied.
-                          <div class="mb-2 whitespace-pre-wrap rounded border border-primary/20 border-l-2 border-l-primary bg-primary/10 px-2 py-1.5 font-medium text-foreground [overflow-wrap:anywhere]">
-                            {(block as { text: string }).text}
-                          </div>
+                          <Show
+                            when={block.kind === 'assistant' ? block : null}
+                            fallback={
+                              // User input is NOT markdown: it routinely carries `@paths`,
+                              // indentation and bare `*`/`_` that md would rewrite.
+                              //
+                              // Tinted with `primary` rather than a plain surface color —
+                              // the two bubbles were once within 2% lightness of each other
+                              // and read as one blob. What you said now separates at a
+                              // glance from what the agent replied.
+                              <div class="mb-2 whitespace-pre-wrap rounded border border-primary/20 border-l-2 border-l-primary bg-primary/10 px-2 py-1.5 font-medium text-foreground [overflow-wrap:anywhere]">
+                                {(block as { text: string }).text}
+                              </div>
+                            }
+                          >
+                            {(assistant) => (
+                              // `bg-card` (the panel's brightest surface) rather than
+                              // `bg-muted`, which was *darker* than the rail it sat on and
+                              // dragged body-text contrast down. The border carries the
+                              // bubble's edge now that the fill barely differs from the rail.
+                              <div class="mb-2 min-w-0 rounded border bg-card px-2 py-1.5 [overflow-wrap:anywhere]">
+                                <For each={assistant().segments}>
+                                  {(seg) => (
+                                    <Show
+                                      when={seg.kind === 'tools' ? seg : null}
+                                      fallback={
+                                        <div
+                                          class="markdown chat-md"
+                                          // eslint-disable-next-line solid/no-innerhtml -- renderMarkdown escapes all raw HTML outside a details/summary whitelist
+                                          innerHTML={renderMarkdown(
+                                            (seg as { text: string }).text,
+                                            {
+                                              mermaid: 'code',
+                                              fileLinks: 'copy',
+                                              fileLinkTitle: t('chat.copyFilePath'),
+                                            },
+                                          )}
+                                        />
+                                      }
+                                    >
+                                      {(tools) => <ChatToolBlock tools={tools().tools} />}
+                                    </Show>
+                                  )}
+                                </For>
+                              </div>
+                            )}
+                          </Show>
                         }
                       >
-                        {(assistant) => (
-                          // `bg-card` (the panel's brightest surface) rather than
-                          // `bg-muted`, which was *darker* than the rail it sat on and
-                          // dragged body-text contrast down. The border carries the
-                          // bubble's edge now that the fill barely differs from the rail.
-                          <div class="mb-2 min-w-0 rounded border bg-card px-2 py-1.5 [overflow-wrap:anywhere]">
-                            <For each={assistant().segments}>
-                              {(seg) => (
-                                <Show
-                                  when={seg.kind === 'tools' ? seg : null}
-                                  fallback={
-                                    <div
-                                      class="markdown chat-md"
-                                      // eslint-disable-next-line solid/no-innerhtml -- renderMarkdown escapes all raw HTML outside a details/summary whitelist
-                                      innerHTML={renderMarkdown((seg as { text: string }).text, {
-                                        mermaid: 'code',
-                                        fileLinks: 'copy',
-                                        fileLinkTitle: t('chat.copyFilePath'),
-                                      })}
-                                    />
-                                  }
-                                >
-                                  {(tools) => <ChatToolBlock tools={tools().tools} />}
-                                </Show>
-                              )}
-                            </For>
-                          </div>
-                        )}
+                        {(context) => <ChatContextBlock contexts={context().contexts} />}
                       </Show>
                     }
                   >
-                    {(context) => <ChatContextBlock contexts={context().contexts} />}
+                    {(divider) => (
+                      // Boundary between two rounds of the same spec. Deliberately
+                      // the lightest element in the scroll: it separates, it does
+                      // not compete with the bubbles on either side.
+                      <div class="my-3 flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span class="h-px flex-1 bg-border" />
+                        <span class="shrink-0 tabular-nums">
+                          {t('chat.sessionDivider', {
+                            kind: divider().agentKind,
+                            time: exactSessionUpdatedAt(divider().startedAt),
+                          })}
+                        </span>
+                        <span class="h-px flex-1 bg-border" />
+                      </div>
+                    )}
                   </Show>
                 )}
               </For>

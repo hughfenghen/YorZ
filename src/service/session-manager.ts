@@ -43,6 +43,14 @@ export interface DispatchMeta {
   specId?: string
 }
 
+/** One session's slice of a spec's aggregated transcript. */
+export interface SpecSessionMessages {
+  sessionId: string
+  kind: AgentKind
+  createdAt: number
+  messages: NormalizedMessage[]
+}
+
 /** Broadcast when a session starts / finishes a turn (project-level SSE topic). */
 export interface SessionStatusEvent {
   sessionId: string
@@ -145,27 +153,56 @@ export class SessionManager {
   }
 
   /**
-   * Look up the dedicated session for a spec WITHOUT creating one. Used by the
+   * Look up the spec's most recent session WITHOUT creating one. Used by the
    * read-only `GET /specs/:id/session` probe: merely opening a spec detail page
    * must not mint a session that never runs a turn (those would show up in the
    * list as "ghost" entries with permanently empty history).
    */
   async findSessionForSpec(specId: string): Promise<{ sessionId: string; kind: AgentKind } | null> {
-    const existing = await this.store.getBySpec(specId)
+    const existing = await this.store.latestBySpec(specId)
     if (!existing) return null
     return { sessionId: existing.id, kind: existing.kind }
   }
 
   /**
-   * Get (or lazily create) the dedicated session for a spec. All system-driven
-   * rounds (run / explain / review / git-ops) reuse this per-spec session so
-   * their output lands in one conversation the Chat panel can switch to.
-   * Only call this when a turn is actually about to be sent.
+   * Mint a FRESH session for a spec — one per system-driven round (run / append
+   * / git-ops / conflict).
+   *
+   * This replaces the old `ensureSessionForSpec()` reuse. That reuse existed
+   * purely so the Chat panel had one conversation to switch to, and it made
+   * every later round inherit the whole transcript of the earlier ones: measured
+   * over 11 days, a non-first `run` cost 32% more than a first one for the same
+   * number of turns. Spec state lives in the md (frontmatter / task list /
+   * 执行记录), never in session memory, so a cold session loses nothing. The
+   * one-conversation illusion is now rebuilt in the UI by grouping on `specId`.
    */
-  async ensureSessionForSpec(specId: string): Promise<{ sessionId: string; kind: AgentKind }> {
+  async createSessionForSpec(specId: string): Promise<{ sessionId: string; kind: AgentKind }> {
+    return this.createSession(undefined, specId, specId)
+  }
+
+  /**
+   * The spec's most recent session, created on demand. Used by user-driven
+   * rounds (explain, chat) whose value comes from continuing the conversation
+   * the user is looking at rather than starting cold.
+   */
+  async latestSessionForSpec(specId: string): Promise<{ sessionId: string; kind: AgentKind }> {
     const existing = await this.findSessionForSpec(specId)
     if (existing) return existing
-    return this.createSession(undefined, specId, specId)
+    return this.createSessionForSpec(specId)
+  }
+
+  /**
+   * Whether ANY session of this spec has a turn in flight.
+   *
+   * Splitting rounds into separate sessions removed an implicit serialization:
+   * they used to share one session, so a second dispatch queued behind the
+   * first. Independent sessions would instead run two agents writing the same
+   * `spec.md` concurrently. Callers use this to refuse the second dispatch.
+   */
+  async isSpecRunning(specId: string): Promise<boolean> {
+    if (this.running.size === 0) return false
+    const sessions = await this.store.listBySpec(specId)
+    return sessions.some((s) => this.running.has(s.id))
   }
 
   async bindSessionToSpec(sessionId: string, specId: string, title?: string): Promise<boolean> {
@@ -280,6 +317,28 @@ export class SessionManager {
     const adapter = this.adapters.get(kind)
     if (!adapter.capabilities().getMessages) return []
     return adapter.getMessages(sid)
+  }
+
+  /**
+   * The spec's whole conversation, stitched from every session it owns, oldest
+   * first. Ordering is decided here rather than in the GUI: the client would
+   * otherwise have to fan out N requests and re-sort them, and the divider it
+   * draws between sessions needs each session's `kind` / `createdAt` anyway.
+   *
+   * One unreadable session degrades to an empty entry instead of failing the
+   * whole transcript — an aborted round can leave a session with no transcript
+   * on disk, and losing the other rounds' history over that would be worse.
+   */
+  async getSpecMessages(specId: string): Promise<SpecSessionMessages[]> {
+    const sessions = await this.store.listBySpec(specId)
+    return Promise.all(
+      sessions.map(async (s) => ({
+        sessionId: s.id,
+        kind: s.kind,
+        createdAt: s.createdAt,
+        messages: await this.getMessages(s.id).catch(() => [] as NormalizedMessage[]),
+      })),
+    )
   }
 
   async getUsageStatus(): Promise<AgentUsageStatus> {

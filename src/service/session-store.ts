@@ -47,9 +47,26 @@ export class SessionStore {
     return items.find((s) => s.id === id)
   }
 
-  async getBySpec(specId: string): Promise<SessionInfo | undefined> {
+  /**
+   * Every session bound to a spec, oldest first. A spec now owns MANY sessions
+   * (one per system-driven round), so this — not a single lookup — is the
+   * primitive: chronological order is what the Chat panel's aggregated
+   * transcript is stitched from.
+   */
+  async listBySpec(specId: string): Promise<SessionInfo[]> {
     const items = await this.load()
-    return items.find((s) => s.specId === specId)
+    return items.filter((s) => s.specId === specId).sort((a, b) => a.createdAt - b.createdAt)
+  }
+
+  /** The spec's most recently active session — where user-driven turns land. */
+  async latestBySpec(specId: string): Promise<SessionInfo | undefined> {
+    const items = await this.load()
+    let latest: SessionInfo | undefined
+    for (const s of items) {
+      if (s.specId !== specId) continue
+      if (!latest || s.updatedAt > latest.updatedAt) latest = s
+    }
+    return latest
   }
 
   async upsert(info: SessionInfo): Promise<void> {

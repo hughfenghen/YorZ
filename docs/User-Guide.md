@@ -310,6 +310,8 @@ The Chat panel is an always-present conversation area, well suited to small task
 - The `3 rows / 5 rows / 10 rows` control adjusts the visible height; the rest scrolls inside.
 - Each row shows the Agent kind, the session title, and a relative timestamp (for example "5m ago"); hover to see the exact time. Running sessions show a spinner, and sessions with new activity move to the top automatically.
 - Click any row to switch to that session. The list merges YorZ's own session index with the native session lists of the Agent CLIs, so sessions you started outside YorZ with claude / codex / opencode also appear here and can be continued.
+- **Every dispatch of a spec (run, append task, git operation) starts its own session, but they collapse into a single row**: the `×N` after the title is how many rounds the spec has run, and the row shows a spinner while any of them is running. Each round therefore starts from a clean context — spec state lives entirely in the md, never in session memory — which saves tokens and keeps one spec from flooding the list.
+- To keep two Agents from rewriting the same `spec.md`, **only one round per spec runs at a time**: running a spec that already has a session in flight is refused with a notice. An append submitted at that moment is still written to the document, it just is not dispatched — run it once the current round finishes.
 
 **Sending messages**:
 
@@ -325,6 +327,7 @@ The Chat panel is an always-present conversation area, well suited to small task
 - Tool calls are collapsed into a single `[Tool] ×N` line; expand it to see names, arguments, and results.
 - `file/path:line` references in Agent replies are clickable and copy the path.
 - Reloading the page restores the history from the Agent transcript, rendered identically to what you saw live.
+- Selecting a spec row stitches the history of all its rounds in chronological order, separated by a rule labelled `agent kind · time`.
 
 **Remaining usage**: while Chat is in the empty draft state, a line below the placeholder shows the remaining model quota for the current Agent, for example "claude usage: 5-hour about 62% remaining (38% used, resets: …)". The line disappears once you select an existing session. Support varies by Agent: ClaudeCode and Codex can be queried directly, while OpenCode requires the `opencode-quota` plugin — the UI prints the install command for you. A failed query degrades to a short notice and never blocks sending messages.
 

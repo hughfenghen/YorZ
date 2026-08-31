@@ -80,7 +80,16 @@ export function createApp(opts: CreateAppOptions): Hono {
         })
         return
       }
-      const { sessionId } = await main.sessions.ensureSessionForSpec(specId)
+      // Same-spec serialization, without an HTTP caller to report to: skip the
+      // dispatch rather than run a second agent against the same spec.md.
+      if (await main.sessions.isSpecRunning(specId)) {
+        worktreeLog.warn('skip conflict Agent: spec already has a running session', {
+          mainProjectId,
+          specId,
+        })
+        return
+      }
+      const { sessionId } = await main.sessions.createSessionForSpec(specId)
       void main.sessions.send(
         sessionId,
         `${skillRef('yorz-spec')}，然后处理 spec：${main.specsDirRelative}/${specId}/spec.md`,

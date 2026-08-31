@@ -81,6 +81,8 @@ export const zhCN = {
     sessionsLabelPlain: '会话',
     sessionTitle: '{{kind}} · {{id}}',
     sessionTitleRunning: '{{kind}} · {{id}} · 执行中',
+    /** 同一 spec 的两个会话之间的分割标签。 */
+    sessionDivider: '{{kind}} · {{time}}',
     empty: '选择或新建一个会话开始对话。',
     /** Untitled（草稿）态：服务端尚未创建 session。 */
     draftEmpty: 'Untitled 会话 —— 发送消息即开始。',
@@ -215,6 +217,9 @@ export const zhCN = {
     exitFullscreen: '退出全屏（Esc）',
     copySpecPath: '复制 spec 文件路径',
     specPathCopied: '已复制 spec 文件路径',
+    /** 追加任务已写入 md，但该 spec 正在执行，未自动派发新一轮。 */
+    appendSavedSpecBusy:
+      '追加任务已保存；该 spec 有正在执行的会话，未自动派发，请在其结束后手动运行。',
     specPathCopyFailed: '复制 spec 文件路径失败',
   },
   mermaid: {

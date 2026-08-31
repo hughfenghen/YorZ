@@ -35,6 +35,37 @@ describe('sessions routes', () => {
   })
 })
 
+describe('sessions routes — spec transcript aggregation', () => {
+  function app(specExists: boolean, stitched: unknown = []) {
+    return createSessionsRoutes(async (id) =>
+      id === 'p1'
+        ? ({
+            store: { read: async () => (specExists ? { id: 'spec-a' } : null) },
+            sessions: { getSpecMessages: async () => stitched },
+          } as never)
+        : null,
+    )
+  }
+
+  it('returns every round of the spec, oldest first', async () => {
+    const rounds = [
+      { sessionId: 's1', kind: 'claude', createdAt: 1, messages: [] },
+      { sessionId: 's2', kind: 'claude', createdAt: 2, messages: [] },
+    ]
+
+    const res = await app(true, rounds).request('/projects/p1/specs/spec-a/messages')
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual(rounds)
+  })
+
+  it('404s for an unknown spec instead of returning an empty transcript', async () => {
+    const res = await app(false).request('/projects/p1/specs/nope/messages')
+
+    expect(res.status).toBe(404)
+  })
+})
+
 describe('sessions routes — custom instruction scopes', () => {
   let projectPath: string
   let globalHome: string

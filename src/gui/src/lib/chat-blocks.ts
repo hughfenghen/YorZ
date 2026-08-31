@@ -1,4 +1,4 @@
-import type { AgentContextKind, MessagePart, SessionMessage } from './api.js'
+import type { AgentContextKind, AgentKind, MessagePart, SessionMessage } from './api.js'
 
 /**
  * Chat's rendering model, in two layers.
@@ -35,7 +35,19 @@ export interface AgentContextPart {
   text: string
 }
 
-export type ChatPart = TextPart | ToolPart | AgentContextPart
+/**
+ * Boundary between two sessions of the same spec. A spec's rounds each run in
+ * their own session now, and the Chat panel stitches them into one scroll — the
+ * divider is what keeps that from reading as a single continuous conversation.
+ */
+export interface DividerPart {
+  kind: 'divider'
+  sessionId: string
+  agentKind: AgentKind
+  startedAt: number
+}
+
+export type ChatPart = TextPart | ToolPart | AgentContextPart | DividerPart
 
 export interface UserBlock {
   kind: 'user'
@@ -64,7 +76,14 @@ export interface AgentContextBlock {
   contexts: AgentContextPart[]
 }
 
-export type ChatBlock = UserBlock | AssistantBlock | AgentContextBlock
+export interface DividerBlock {
+  kind: 'divider'
+  sessionId: string
+  agentKind: AgentKind
+  startedAt: number
+}
+
+export type ChatBlock = UserBlock | AssistantBlock | AgentContextBlock | DividerBlock
 
 const MESSAGE_TEXT_SEPARATOR = '\n\n'
 
@@ -138,6 +157,40 @@ export function messagesToParts(messages: readonly SessionMessage[]): ChatPart[]
 }
 
 /**
+ * Stitch a spec's per-session transcripts into one part stream.
+ *
+ * A divider goes *between* sessions, never before the first one: the point is to
+ * mark where one round ended and the next began, and a lone leading rule above a
+ * single-session spec would be pure noise. Sessions with no messages (an aborted
+ * round that never got a transcript) contribute no divider either — otherwise
+ * the reader would see a boundary with nothing on the other side of it.
+ */
+export function specMessagesToParts(
+  entries: readonly {
+    sessionId: string
+    kind: AgentKind
+    createdAt: number
+    messages: readonly SessionMessage[]
+  }[],
+): ChatPart[] {
+  const out: ChatPart[] = []
+  for (const entry of entries) {
+    const parts = messagesToParts(entry.messages)
+    if (parts.length === 0) continue
+    if (out.length > 0) {
+      out.push({
+        kind: 'divider',
+        sessionId: entry.sessionId,
+        agentKind: entry.kind,
+        startedAt: entry.createdAt,
+      })
+    }
+    out.push(...parts)
+  }
+  return out
+}
+
+/**
  * Concatenate two user texts that fold into the same bubble without letting them
  * run together.
  *
@@ -194,6 +247,20 @@ export function groupParts(parts: readonly ChatPart[]): ChatBlock[] {
   }
 
   for (const part of parts) {
+    if (part.kind === 'divider') {
+      // Must close the open assistant bubble: without this, the last round's
+      // trailing text and the next round's opening text would merge into one
+      // bubble drawn *before* the divider, i.e. on the wrong side of it.
+      current = null
+      blocks.push({
+        kind: 'divider',
+        sessionId: part.sessionId,
+        agentKind: part.agentKind,
+        startedAt: part.startedAt,
+      })
+      continue
+    }
+
     if (part.kind === 'context') {
       current = null
       const lastBlock = blocks[blocks.length - 1]

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   groupParts,
   messagesToParts,
+  specMessagesToParts,
   toPart,
   type AgentContextPart,
   type AgentContextBlock,
@@ -309,6 +310,63 @@ describe('groupParts regressions', () => {
 
   it('returns no blocks for an empty stream', () => {
     expect(groupParts([])).toEqual([])
+  })
+
+  it('does not merge assistant text across a session divider', () => {
+    // Without the divider closing the open bubble, the tail of round 1 and the
+    // head of round 2 would render as one bubble — drawn before the divider,
+    // i.e. attributed to the wrong session entirely.
+    const blocks = groupParts([
+      botText('round 1 tail'),
+      { kind: 'divider', sessionId: 's2', agentKind: 'claude', startedAt: 2 },
+      botText('round 2 head'),
+    ])
+
+    expect(blocks.map((b) => b.kind)).toEqual(['assistant', 'divider', 'assistant'])
+    expect(assistantAt(blocks, 0).segments).toEqual([{ kind: 'text', text: 'round 1 tail' }])
+    expect(assistantAt(blocks, 2).segments).toEqual([{ kind: 'text', text: 'round 2 head' }])
+  })
+})
+
+describe('specMessagesToParts', () => {
+  const round = (sessionId: string, createdAt: number, text: string) => ({
+    sessionId,
+    kind: 'claude' as const,
+    createdAt,
+    messages: text ? [{ role: 'user' as const, parts: [{ type: 'text' as const, text }] }] : [],
+  })
+
+  it('puts a divider BETWEEN rounds and never before the first', () => {
+    const parts = specMessagesToParts([round('s1', 1, 'one'), round('s2', 2, 'two')])
+
+    expect(parts.map((p) => p.kind)).toEqual(['text', 'divider', 'text'])
+    expect(parts[1]).toEqual({
+      kind: 'divider',
+      sessionId: 's2',
+      agentKind: 'claude',
+      startedAt: 2,
+    })
+  })
+
+  it('draws no divider for a single-session spec', () => {
+    expect(specMessagesToParts([round('s1', 1, 'one')]).map((p) => p.kind)).toEqual(['text'])
+  })
+
+  it('skips rounds with no transcript rather than leaving a dangling divider', () => {
+    // An aborted round can leave a session with nothing on disk; a divider with
+    // no content after it would read as lost history.
+    const parts = specMessagesToParts([
+      round('s1', 1, 'one'),
+      round('s2', 2, ''),
+      round('s3', 3, 'three'),
+    ])
+
+    expect(parts.map((p) => p.kind)).toEqual(['text', 'divider', 'text'])
+    expect((parts[1] as { sessionId: string }).sessionId).toBe('s3')
+  })
+
+  it('returns an empty stream when no round has any message', () => {
+    expect(specMessagesToParts([round('s1', 1, ''), round('s2', 2, '')])).toEqual([])
   })
 
   it('keeps an empty user text as a bubble but drops an empty assistant turn', () => {

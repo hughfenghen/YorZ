@@ -31,9 +31,13 @@ function fakeAdapter(opts: {
       })(),
     abort: () => opts.onAbort?.(),
   })
+  // Unique per call, like the real adapters (claude mints a uuid, codex gets one
+  // assigned): a spec now owns several sessions, so a constant id would collapse
+  // them into one store entry and hide the very behaviour under test.
+  let created = 0
   return {
     kind: 'claude',
-    createSession: async () => makeSession('created'),
+    createSession: async () => makeSession(`created-${++created}`),
     resumeSession: async (id: string) => makeSession(id),
     listSessions: async () => opts.native ?? [],
     getMessages: async (id: string) => opts.messages?.[id] ?? [],
@@ -275,15 +279,79 @@ describe('SessionManager per-spec sessions', () => {
     expect(await store.list()).toHaveLength(0)
   })
 
-  it('ensureSessionForSpec creates once and reuses afterwards', async () => {
+  it('createSessionForSpec mints a fresh session every round', async () => {
     const { mgr, store } = await makeManager(fakeAdapter({}))
 
-    const first = await mgr.ensureSessionForSpec('spec-a')
-    const second = await mgr.ensureSessionForSpec('spec-a')
+    const first = await mgr.createSessionForSpec('spec-a')
+    const second = await mgr.createSessionForSpec('spec-a')
 
-    expect(second.sessionId).toBe(first.sessionId)
+    expect(second.sessionId).not.toBe(first.sessionId)
+    expect(await store.list()).toHaveLength(2)
+    expect(await store.listBySpec('spec-a')).toHaveLength(2)
+  })
+
+  it('latestSessionForSpec reuses the most recent session, creating one if absent', async () => {
+    const { mgr, store } = await makeManager(fakeAdapter({}))
+
+    const created = await mgr.latestSessionForSpec('spec-a')
     expect(await store.list()).toHaveLength(1)
-    expect(await mgr.findSessionForSpec('spec-a')).toEqual(first)
+
+    const second = await mgr.createSessionForSpec('spec-a')
+    await store.touch(second.sessionId)
+
+    expect(await mgr.latestSessionForSpec('spec-a')).toEqual(second)
+    expect(created.sessionId).not.toBe(second.sessionId)
+    // Reuse must not mint anything: still just the two rounds.
+    expect(await store.list()).toHaveLength(2)
+  })
+
+  it('listBySpec keeps rounds in chronological order regardless of activity', async () => {
+    const { mgr, store } = await makeManager(fakeAdapter({}))
+
+    const first = await mgr.createSessionForSpec('spec-a')
+    const second = await mgr.createSessionForSpec('spec-a')
+    await mgr.createSessionForSpec('spec-b')
+    // Touching the first round makes it the most *recent*, but not the earliest.
+    await store.touch(first.sessionId)
+
+    expect((await store.listBySpec('spec-a')).map((s) => s.id)).toEqual([
+      first.sessionId,
+      second.sessionId,
+    ])
+    expect((await store.latestBySpec('spec-a'))?.id).toBe(first.sessionId)
+  })
+
+  it('isSpecRunning reports a turn in flight on ANY session of the spec', async () => {
+    const { mgr } = await makeManager(fakeAdapter({}))
+
+    const first = await mgr.createSessionForSpec('spec-a')
+    await mgr.createSessionForSpec('spec-a')
+    await mgr.createSessionForSpec('spec-b')
+
+    expect(await mgr.isSpecRunning('spec-a')).toBe(false)
+    ;(mgr as unknown as { running: Set<string> }).running.add(first.sessionId)
+    expect(await mgr.isSpecRunning('spec-a')).toBe(true)
+    // Serialization is per spec: another spec's round must stay dispatchable.
+    expect(await mgr.isSpecRunning('spec-b')).toBe(false)
+  })
+
+  it('getSpecMessages stitches every round in chronological order', async () => {
+    const messages: Record<string, NormalizedMessage[]> = {}
+    const { mgr } = await makeManager(fakeAdapter({ messages }))
+
+    const first = await mgr.createSessionForSpec('spec-a')
+    const second = await mgr.createSessionForSpec('spec-a')
+    messages[first.sessionId] = [{ role: 'user', parts: [{ type: 'text', text: 'round 1' }] }]
+    messages[second.sessionId] = [{ role: 'user', parts: [{ type: 'text', text: 'round 2' }] }]
+
+    const stitched = await mgr.getSpecMessages('spec-a')
+
+    expect(stitched.map((s) => s.sessionId)).toEqual([first.sessionId, second.sessionId])
+    expect(stitched.map((s) => s.messages[0]?.parts[0])).toEqual([
+      { type: 'text', text: 'round 1' },
+      { type: 'text', text: 'round 2' },
+    ])
+    expect(stitched.every((s) => s.kind === 'claude' && s.createdAt > 0)).toBe(true)
   })
 
   it('bindSessionToSpec binds an existing draft session and updates title', async () => {
