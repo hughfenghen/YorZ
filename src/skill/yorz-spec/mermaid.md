@@ -28,25 +28,23 @@ flowchart TD
 
 根据信息特征选择最合适的图表类型。**优先选择最能清晰传达信息的类型**，而非最复杂的类型。每行"替代什么"列提示：该场景下应**用图替代**的低效文本形式。
 
-| 信息特征                   | 推荐图表                                                 | 替代什么               | 典型 spec 落点               |
-| -------------------------- | -------------------------------------------------------- | ---------------------- | ---------------------------- |
-| 流程、步骤、决策分支       | [**flowchart**](references/flowchart.md)                 | md 列表 + 文字描述     | 核心代码逻辑、执行流程       |
-| 组件间交互、消息传递       | [**sequenceDiagram**](references/sequenceDiagram.md)     | 编号文字描述交互过程   | 现状分析链路、技术方案交互   |
-| 状态机、阶段流转           | [**stateDiagram**](references/stateDiagram.md)           | 文字列举状态变更条件   | 关键状态关系、spec 阶段流转  |
-| 类结构、类型定义、继承关系 | [**classDiagram**](references/classDiagram.md)           | TS/代码片段            | 数据模型、模块结构、类型设计 |
-| 数据库表、实体关系         | [**erDiagram**](references/entityRelationshipDiagram.md) | 建表 SQL 或文字描述    | 数据模型设计                 |
-| 系统架构、组件依赖         | [**architecture**](references/architecture.md)           | 文字描述系统组成       | 现状分析架构、总体架构       |
-| 层级逻辑、数据结构         | [**treeView-beta**](references/treeView.md)              | ASCII 字符树、嵌套列表 | 模块层级、文件结构、AST 结构 |
-| 层级结构 + 占比分布        | [**treemap-beta**](references/treemap.md)                | ASCII 字符树、嵌套列表 | 模块层级量级、文件结构占比   |
-| 层级关系、知识结构         | [**mindmap**](references/mindmap.md)                     | 缩进列表               | 需求拆解、影响面分析         |
-| 历史事件、变更时间线       | [**timeline**](references/timeline.md)                   | 文字按日期罗列         | 执行记录、变更历史           |
-| Git 分支、合并策略         | [**gitgraph**](references/gitgraph.md)                   | 文字描述分支操作       | Git 工作流设计               |
-| 事件建模、系统信息流       | [**eventmodeling**](references/eventmodeling.md)         | 文字描述事件流         | 事件驱动架构设计、CQRS 模型  |
-| 二进制协议、数据包结构     | [**packet**](references/packet.md)                       | 文字描述协议字段       | 二进制协议分析、网络包结构   |
-| 方案候选决策、风险象限     | [**quadrantChart**](references/quadrantChart.md)         | 文字描述优劣对比       | 候选方案决策、风险评估       |
-| 多方案能力对比、权衡       | [**radar**](references/radar.md)                         | 文字描述能力对比       | 架构方案对比、技术选型权衡   |
-| 多模块职责在复杂流程中     | [**swimlane**](references/swimlanes.md)                  | 普通流程图             | 复杂业务流程、跨团队协作     |
-| 统计数据、趋势分析         | [**xyChart**](references/xyChart.md)                     | 文字描述数据           | 变更影响分析、日志统计       |
+| 信息特征                   | 推荐图表                                                 | 替代什么                       | 典型 spec 落点                                   |
+| -------------------------- | -------------------------------------------------------- | ------------------------------ | ------------------------------------------------ |
+| 流程、步骤、决策分支       | [**flowchart**](references/flowchart.md)                 | md 列表 + 文字描述             | 核心代码逻辑、执行流程                           |
+| 组件间交互、消息传递       | [**sequenceDiagram**](references/sequenceDiagram.md)     | 编号文字描述交互过程           | 现状分析链路、技术方案交互                       |
+| 状态机、阶段流转           | [**stateDiagram**](references/stateDiagram.md)           | 文字列举状态变更条件           | 关键状态关系、spec 阶段流转                      |
+| 类结构、类型定义、继承关系 | [**classDiagram**](references/classDiagram.md)           | TS/代码片段                    | 数据模型、模块结构、类型设计                     |
+| 数据库表、实体关系         | [**erDiagram**](references/entityRelationshipDiagram.md) | 建表 SQL 或文字描述            | 数据模型设计                                     |
+| 系统架构、组件依赖         | [**architecture**](references/architecture.md)           | 文字描述系统组成               | 现状分析架构、总体架构                           |
+| 多层级关系、多层级信息结构 | [**flowchart**](references/flowchart.md)                 | 多层级缩进列表，ASCII 思维导图 | 表达多层级结构信息、需求拆解、用例图、影响面分析 |
+| 层级结构 + 占比分布        | [**treemap-beta**](references/treemap.md)                | ASCII 字符树、嵌套列表         | 模块层级量级、文件结构占比                       |
+| 历史事件、变更时间线       | [**timeline**](references/timeline.md)                   | 文字按日期罗列                 | 执行记录、变更历史                               |
+| 事件建模、系统信息流       | [**eventmodeling**](references/eventmodeling.md)         | 文字描述事件流                 | 事件驱动架构设计、CQRS 模型                      |
+| 二进制协议、数据包结构     | [**packet**](references/packet.md)                       | 文字描述协议字段               | 二进制协议分析、网络包结构                       |
+| 方案候选决策、风险象限     | [**quadrantChart**](references/quadrantChart.md)         | 文字描述优劣对比               | 候选方案决策、风险评估                           |
+| 多方案能力对比、权衡       | [**radar**](references/radar.md)                         | 文字描述能力对比               | 架构方案对比、技术选型权衡                       |
+| 多模块职责在复杂流程中     | [**swimlane**](references/swimlanes.md)                  | 普通流程图                     | 复杂业务流程、跨团队协作                         |
+| 统计数据、趋势分析         | [**xyChart**](references/xyChart.md)                     | 文字描述数据                   | 变更影响分析、日志统计                           |
 
 ## 场景优先级
 
@@ -59,7 +57,6 @@ flowchart TD
 2. **核心业务流程/算法逻辑** → `flowchart`：包含分支判断、循环、并行路径的逻辑。不要用 md 列表 + 文字逐步描述——flowchart 的分支视觉远比缩进列表清晰。
    - **可判定触发词**：见到「分步/编号叙述 + 分支策略」「命令/函数的实现流程散文」「先…再…否则…」这类流程散文——必须出 flowchart，别退回有序列表。
 3. **状态机与生命周期** → `stateDiagram`：实体在不同状态间的流转与触发条件。不要用文字列举状态——状态图能展现并发状态与守卫条件。
-4. **层级逻辑与数据结构** → `treeView-beta`：模块/文件/目录的层级关系、AST 结构等。不要用 ASCII 字符树——treeView 更清晰且可渲染（mermaid fence 首行须写 `treeView-beta`，与 lint 白名单一致）。
 
 > **代码/类型全文折叠配套（强约束）**：类型定义、实现源码、伪代码在图中**只表达结构与关系**；其**全文**移入[精确信息折叠](#精确信息折叠)承载，**严禁** classDiagram 与等价 TS 代码块并列重复贴出。
 
@@ -68,19 +65,18 @@ flowchart TD
 5. **组件交互** → `sequenceDiagram`：多组件间的消息传递、API 调用时序。
 6. **数据模型** → `erDiagram`：数据库表结构与外键关系。
 7. **系统架构** → `architecture`：组件依赖与分组、部署拓扑。
-8. **需求拆解** → `mindmap`：影响面分析、需求分解为子项。
+8. **需求拆解** → `flowchart`：影响面分析、需求分解为子项。
 9. **多模块职责流程** → `swimlane`：复杂业务流程中跨模块/团队的分工与职责边界。
 
 ### 按需用图（低优先级）
 
 10. **变更历史** → `timeline`：执行记录中按时间排列关键事件。
-11. **Git 工作流** → `gitgraph`：描述分支策略与合并流程。
-12. **层级占比** → `treemap-beta`：需要同时展示层级结构与各部分量级/占比时（mermaid fence 首行须写 `treemap-beta`）。
-13. **方案候选决策** → `quadrantChart`：Review/方案选择时做象限分析。
-14. **多方案能力对比** → `radar`：架构选型时做多维度能力雷达对比。
-15. **统计数据** → `xyChart`：日志/变更影响/性能数据等统计可视化。
-16. **事件建模** → `eventmodeling`：事件驱动系统设计时描述信息流。
-17. **二进制协议** → `packet`：协议分析时展示数据包字段结构。
+11. **层级占比** → `treemap-beta`：需要同时展示层级结构与各部分量级/占比时（mermaid fence 首行须写 `treemap-beta`）。
+12. **方案候选决策** → `quadrantChart`：Review/方案选择时做象限分析。
+13. **多方案能力对比** → `radar`：架构选型时做多维度能力雷达对比。
+14. **统计数据** → `xyChart`：日志/变更影响/性能数据等统计可视化。
+15. **事件建模** → `eventmodeling`：事件驱动系统设计时描述信息流。
+16. **二进制协议** → `packet`：协议分析时展示数据包字段结构。
 
 ## 各阶段落点指导
 
