@@ -10,7 +10,19 @@ import {
   type ParentComponent,
 } from 'solid-js'
 import { A, useLocation, useNavigate } from '@solidjs/router'
-import { Check, Languages, Menu, Monitor, Moon, Palette, Plus, Settings, Sun } from 'lucide-solid'
+import {
+  Check,
+  Languages,
+  Menu,
+  MessageSquare,
+  Monitor,
+  Moon,
+  Palette,
+  PanelLeft,
+  Plus,
+  Settings,
+  Sun,
+} from 'lucide-solid'
 import { ProjectsSidebar } from './components/ProjectsSidebar.jsx'
 import { ChatPanel } from './components/ChatPanel.jsx'
 import { GlobalConfigDialog } from './components/GlobalConfigDialog.jsx'
@@ -45,6 +57,8 @@ import {
   type ThemeName,
 } from './lib/theme.js'
 import { t, useTranslation } from './i18n/index.js'
+import { createMediaQuery, MOBILE_MEDIA_QUERY } from './lib/media-query.js'
+import { createVisualViewport, ensureFocusedVisible } from './lib/visual-viewport.js'
 
 const THEME_OPTIONS: { mode: ThemeMode; labelKey: string; icon: typeof Sun }[] = [
   { mode: 'system', labelKey: 'shell.themeSystem', icon: Monitor },
@@ -63,6 +77,13 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
   const navigate = useNavigate()
   const { lng, changeLanguage } = useTranslation()
   const [globalConfigOpen, setGlobalConfigOpen] = createSignal(false)
+
+  // 移动端（< 768px）三栏横排会把 main 挤没：两侧栏改为 fixed 抽屉覆盖层，
+  // 由顶栏按钮开关；桌面端渲染路径保持完全不变。
+  const isMobile = createMediaQuery(MOBILE_MEDIA_QUERY)
+  const [mobileDrawer, setMobileDrawer] = createSignal<'none' | 'projects' | 'chat'>('none')
+  // 可视视口：软键盘弹出/收起、用户平移时更新；抽屉与聚焦滚入都按它钳制。
+  const vv = createVisualViewport()
 
   // Already on the New Spec page? A same-route navigation would be a no-op, so
   // open a fresh tab instead — that's the only way "new spec" does something here.
@@ -146,6 +167,24 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
   onMount(() => {
     void refreshGlobalConfig()
     window.addEventListener('keydown', onKeyDown)
+    // 移动端软键盘修复：聚焦输入（延迟等键盘动画）以及键盘弹起的 resize 时，
+    // 把聚焦的流内输入滚回可视视口（fixed 浮层由组件自身按 vv 重定位）。
+    const vvApi = window.visualViewport
+    let focusTimer: number | undefined
+    const revealFocused = (): void => {
+      if (vv().keyboardOpen) ensureFocusedVisible()
+    }
+    const onFocusIn = (): void => {
+      window.clearTimeout(focusTimer)
+      focusTimer = window.setTimeout(revealFocused, 300)
+    }
+    document.addEventListener('focusin', onFocusIn)
+    vvApi?.addEventListener('resize', revealFocused)
+    onCleanup(() => {
+      document.removeEventListener('focusin', onFocusIn)
+      vvApi?.removeEventListener('resize', revealFocused)
+      window.clearTimeout(focusTimer)
+    })
   })
   onCleanup(() => window.removeEventListener('keydown', onKeyDown))
 
@@ -154,9 +193,33 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
     setActiveProjectId(m && m[1] !== 'api' ? m[1]! : '')
   })
 
+  // 移动端路由跳转后自动收起抽屉，避免遮挡新页面内容。
+  createEffect(() => {
+    void location.pathname
+    if (isMobile()) setMobileDrawer('none')
+  })
+
   return (
     <div class="flex h-full flex-col">
       <header class="flex h-12 shrink-0 items-center gap-2 border-b bg-card px-4">
+        <Show when={isMobile()}>
+          <Button
+            variant="ghost"
+            size="icon"
+            title={t('shell.openProjectsDrawer')}
+            onClick={() => setMobileDrawer((d) => (d === 'projects' ? 'none' : 'projects'))}
+          >
+            <PanelLeft class="h-5 w-5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            title={t('shell.openChatDrawer')}
+            onClick={() => setMobileDrawer((d) => (d === 'chat' ? 'none' : 'chat'))}
+          >
+            <MessageSquare class="h-5 w-5" />
+          </Button>
+        </Show>
         <A href="/" class="text-lg font-bold">
           YorZ
         </A>
@@ -256,10 +319,28 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
         </div>
       </header>
       <div class="flex min-h-0 flex-1">
-        <ProjectsSidebar />
-        <ChatPanel />
+        <Show when={!isMobile()}>
+          <ProjectsSidebar />
+          <ChatPanel />
+        </Show>
         <main class="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">{props.children}</main>
       </div>
+      {/* 移动端抽屉：覆盖层 + 半透明 backdrop，点击 backdrop 关闭 */}
+      <Show when={isMobile() && mobileDrawer() !== 'none'}>
+        <div
+          class="fixed inset-0 z-40 bg-black/50"
+          aria-hidden="true"
+          onClick={() => setMobileDrawer('none')}
+        />
+        <div
+          class="fixed left-0 z-50 flex max-w-[85vw] shadow-xl"
+          style={{ top: `${vv().offsetTop}px`, height: `${vv().height}px` }}
+        >
+          <Show when={mobileDrawer() === 'projects'} fallback={<ChatPanel />}>
+            <ProjectsSidebar />
+          </Show>
+        </div>
+      </Show>
       <Toaster position="top-center" />
       <GlobalConfigDialog open={globalConfigOpen()} onClose={() => setGlobalConfigOpen(false)} />
     </div>

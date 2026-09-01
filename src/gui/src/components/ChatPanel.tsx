@@ -1037,8 +1037,9 @@ export const ChatPanel: Component = () => {
                       {(rows) => (
                         <RadioGroupItem value={String(rows)} class="flex items-center gap-1">
                           <RadioGroupItemInput />
-                          <RadioGroupItemControl class="h-3 w-3" />
-                          <RadioGroupItemLabel class="cursor-pointer text-xs text-muted-foreground">
+                          {/* h-4 控件 + py-1 标签：扩大触控目标，窄栏下 12px 控件几乎无法点中 */}
+                          <RadioGroupItemControl class="h-4 w-4" />
+                          <RadioGroupItemLabel class="cursor-pointer py-1 text-xs text-muted-foreground">
                             {sessionListRowsLabel(rows)}
                           </RadioGroupItemLabel>
                         </RadioGroupItem>

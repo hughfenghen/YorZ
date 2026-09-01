@@ -111,7 +111,8 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
   }
   function setConfirmTop(qid: string, top: ConfirmTop) {
     // 切回确认时清掉否决子选择，避免残留状态污染。
-    if (top === 'accept') patch(qid, { confirmTop: top, confirmIntent: undefined, confirmDrop: undefined })
+    if (top === 'accept')
+      patch(qid, { confirmTop: top, confirmIntent: undefined, confirmDrop: undefined })
     else patch(qid, { confirmTop: top })
   }
   function setConfirmIntent(qid: string, intent: RejectIntent) {
@@ -194,7 +195,7 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
 
   return (
     <aside
-      class="flex min-w-0 flex-[4] flex-col overflow-hidden rounded-lg border bg-card shadow-lg"
+      class="flex min-w-0 flex-[7] flex-col overflow-hidden rounded-lg border bg-card shadow-lg md:flex-[4]"
       data-testid="question-confirm-panel"
     >
       <header class="flex items-center justify-between gap-2 border-b bg-background px-3 py-2.5">

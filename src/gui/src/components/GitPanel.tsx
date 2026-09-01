@@ -399,7 +399,8 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
   )
 
   return (
-    <div class="flex min-h-0 flex-1 gap-4">
+    // 移动端纵向堆叠（控制面板在上、diff 在下），桌面端保持并排
+    <div class="flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
       <section
         data-testid="review-controls-pane"
         class="flex min-h-0 min-w-0 flex-1 flex-col gap-3"
@@ -525,9 +526,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
                         type="button"
                         class="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left font-mono text-sm disabled:opacity-50"
                         disabled={branch === branchState()?.current}
-                        title={
-                          branch === branchState()?.current ? t('git.mergeSelfHint') : branch
-                        }
+                        title={branch === branchState()?.current ? t('git.mergeSelfHint') : branch}
                         onClick={() => setMergeTarget(branch)}
                       >
                         {branch}

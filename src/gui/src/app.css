@@ -866,3 +866,25 @@
     word-break: break-word;
   }
 }
+
+/* ===== 移动端 / 触屏补偿 ===== */
+
+/* 触屏设备没有 hover：hover-only 的操作入口（卡片菜单、删除按钮、
+   mermaid 全屏按钮等）改为恒显，否则这些功能在触屏上不可见不可达。 */
+@media (hover: none) {
+  .group-hover\:opacity-100 {
+    opacity: 1 !important;
+  }
+
+  .markdown .mermaid-fullscreen-button {
+    opacity: 1 !important;
+  }
+}
+
+/* 窄屏（< 768px）下宽表格撑破布局：块级化 + 横向滚动兜底，桌面端不受影响。 */
+@media (max-width: 767px) {
+  .markdown table {
+    display: block;
+    overflow-x: auto;
+  }
+}

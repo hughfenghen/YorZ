@@ -1,5 +1,6 @@
 import { createSignal, Show, type Component } from 'solid-js'
 import type { SelectionSnapshot } from '../lib/selection.js'
+import { createVisualViewport } from '../lib/visual-viewport.js'
 import { Button } from './ui/button.jsx'
 import { MentionTextarea } from './MentionTextarea.jsx'
 import { t } from '../i18n/index.js'
@@ -15,32 +16,40 @@ interface Props {
 const POPOVER_WIDTH = 500
 const POPOVER_MARGIN = 8
 
+// 窄屏（移动端）下钳制到视口宽度，避免 500px 硬编码宽横向溢出。
+const effectiveWidth = (): number => Math.min(POPOVER_WIDTH, window.innerWidth - POPOVER_MARGIN * 2)
+
 export const AnnotatePopover: Component<Props> = (props) => {
   const [note, setNote] = createSignal('')
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
   const [measuredHeight, setMeasuredHeight] = createSignal(0)
+  // 可视视口：移动端软键盘弹出时按可视区域钳制，避免浮层被键盘遮住。
+  const vv = createVisualViewport()
 
   const position = () => {
     const snap = props.snap
     if (!snap) return { top: 0, left: 0 }
     const height = measuredHeight() || 260
-    const vh = window.innerHeight
+    const vvState = vv()
+    const vvTop = vvState.offsetTop
+    const vvBottom = vvState.offsetTop + vvState.height
     const below = snap.rect.bottom + POPOVER_MARGIN
     const above = snap.rect.top - POPOVER_MARGIN - height
     let top: number
-    if (below + height <= vh - POPOVER_MARGIN) {
+    if (below + height <= vvBottom - POPOVER_MARGIN) {
       top = below
-    } else if (above >= POPOVER_MARGIN) {
+    } else if (above >= vvTop + POPOVER_MARGIN) {
       top = above
     } else {
-      top = Math.max(POPOVER_MARGIN, vh - height - POPOVER_MARGIN)
+      top = Math.max(vvTop + POPOVER_MARGIN, vvBottom - height - POPOVER_MARGIN)
     }
+    const width = effectiveWidth()
     const left = Math.min(
       Math.max(POPOVER_MARGIN, snap.rect.left),
-      window.innerWidth - POPOVER_WIDTH - POPOVER_MARGIN,
+      window.innerWidth - width - POPOVER_MARGIN,
     )
-    return { top, left }
+    return { top, left, width }
   }
 
   async function submit(e: Event) {
@@ -73,7 +82,7 @@ export const AnnotatePopover: Component<Props> = (props) => {
         style={{
           top: `${position().top}px`,
           left: `${position().left}px`,
-          width: `${POPOVER_WIDTH}px`,
+          width: `${position().width}px`,
         }}
         onMouseDown={(e) => e.stopPropagation()}
       >

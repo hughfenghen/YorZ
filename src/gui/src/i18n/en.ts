@@ -34,6 +34,8 @@ export const en = {
     themeGraphite: 'Graphite',
     themePaper: 'Paper',
     globalConfig: 'Global Settings',
+    openProjectsDrawer: 'Projects panel',
+    openChatDrawer: 'Chat panel',
   },
   systemNotifications: {
     title: 'System Notifications',

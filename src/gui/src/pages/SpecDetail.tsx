@@ -399,7 +399,8 @@ export const SpecDetail: Component = () => {
                       {s().frontmatter.summary || t('common.pendingAgent')}
                     </p>
                   </div>
-                  <div class="flex items-center gap-2 text-muted-foreground">
+                  {/* flex-wrap：移动端窄屏下操作行允许换行，避免溢出视口 */}
+                  <div class="flex flex-wrap items-center gap-2 text-muted-foreground">
                     {/*
                       A bare <select> takes its intrinsic width from the WIDEST option
                       ("execute"), not the selected one, so "plan"/"done" left ~32px of
@@ -468,7 +469,8 @@ export const SpecDetail: Component = () => {
                   <p class="text-destructive ">{runError()}</p>
                 </Show>
 
-                <div class="flex min-h-0 flex-1 items-stretch gap-4">
+                {/* 移动端纵向堆叠（确认面板在上、正文在下），桌面端保持并排 */}
+                <div class="flex min-h-0 flex-1 flex-col items-stretch gap-4 md:flex-row">
                   <Show when={showPanel()}>
                     <QuestionConfirmPanel
                       questions={questions()}
@@ -480,7 +482,7 @@ export const SpecDetail: Component = () => {
                   </Show>
                   {/* Content is injected by the markdown+mermaid effect above. */}
                   <article
-                    class="markdown spec-main flex-[6] min-w-0 overflow-auto rounded-xl border bg-card p-4 shadow"
+                    class="markdown spec-main min-w-0 flex-[3] overflow-auto rounded-xl border bg-card p-4 shadow md:flex-[6]"
                     ref={setArticleEl}
                   />
                 </div>

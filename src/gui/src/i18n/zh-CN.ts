@@ -34,6 +34,8 @@ export const zhCN = {
     themeGraphite: '石墨',
     themePaper: '纸感',
     globalConfig: '全局配置',
+    openProjectsDrawer: '项目面板',
+    openChatDrawer: 'Chat 面板',
   },
   systemNotifications: {
     title: '系统提示',

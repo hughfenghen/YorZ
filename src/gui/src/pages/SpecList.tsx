@@ -341,7 +341,7 @@ export const SpecList: Component = () => {
                           as={Button}
                           variant="ghost"
                           size="icon"
-                          class="h-7 w-7"
+                          class="h-9 w-9"
                           title={t('home.moreActions')}
                         >
                           <MoreHorizontal class="h-4 w-4" />
