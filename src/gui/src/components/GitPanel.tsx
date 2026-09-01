@@ -146,21 +146,48 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
     return candidates.filter((branch) => branch.toLowerCase().includes(query))
   })
 
+  /** Adopt a new file list and drop any selection/preview it invalidated. */
+  function applyChanges(newChanges: GitChange[]): void {
+    setChanges(newChanges)
+    const validPaths = new Set(newChanges.map((c) => c.path))
+    setSelectedPaths((prev) => {
+      const next = new Set<string>()
+      for (const p of prev) if (validPaths.has(p)) next.add(p)
+      return next
+    })
+    const active = activePath()
+    if (active && !validPaths.has(active)) setActivePath(null)
+  }
+
   createEffect(() => {
     const pid = props.projectId()
     if (!pid) return
-    const unsub = subscribeProjectChanges(pid, (newChanges) => {
-      setChanges(newChanges)
-      const validPaths = new Set(newChanges.map((c) => c.path))
-      setSelectedPaths((prev) => {
-        const next = new Set<string>()
-        for (const p of prev) if (validPaths.has(p)) next.add(p)
-        return next
+    let disposed = false
+    // The server emits the changes snapshot ONCE, when it attaches the topic —
+    // and it skips re-attaching a topic the client is already subscribed to. A
+    // fast leave/re-enter collapses into a single debounced subscribe POST with
+    // an unchanged topic set, so the remounted panel gets no snapshot and the
+    // watcher stays silent until the working tree actually changes. Hence the
+    // initial list must be fetched here; SSE only carries updates.
+    let sawPush = false
+    void api
+      .getProjectChanges(pid)
+      .then((res) => {
+        // A push that already landed is fresher than this snapshot.
+        if (disposed || sawPush) return
+        applyChanges(res.changes)
       })
-      const active = activePath()
-      if (active && !validPaths.has(active)) setActivePath(null)
+      .catch(() => {
+        // Transient fetch failure: the next push still repairs the list.
+      })
+    const unsub = subscribeProjectChanges(pid, (newChanges) => {
+      sawPush = true
+      applyChanges(newChanges)
     })
-    onCleanup(() => unsub())
+    onCleanup(() => {
+      disposed = true
+      unsub()
+    })
   })
 
   // Re-fetch the preview whenever the file list changes: a commit or discard
