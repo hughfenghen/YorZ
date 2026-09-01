@@ -349,8 +349,6 @@ export const NewSpec: Component = () => {
           {busy() ? <Loader2 class="mr-1 h-4 w-4 animate-spin" /> : <Send class="mr-1 h-4 w-4" />}
           {busy() ? t('newSpec.creating') : t('newSpec.createAndStart')}
         </Button>
-
-        {busy() && <p class=" text-muted-foreground">{t('newSpec.creatingHint')}</p>}
       </form>
     </section>
   )

@@ -193,9 +193,7 @@ export const en = {
     attachmentsHint: '{{count}}/{{max}}, max 5 MB per file; images support Cmd/Ctrl-V paste',
     importAttachment: 'Import',
     createAndStart: 'Send',
-    creating: 'Agent creating…',
-    creatingHint:
-      'Agent is creating spec document… Watch streaming output in the Agent panel at bottom-right. Auto-navigate when ready.',
+    creating: 'Creating spec…',
     descTooShort: 'Please enter at least 5 characters',
     attachmentLimit: 'Cannot exceed {{max}} attachments',
     unsupportedType: 'Unsupported file type: {{name}}',

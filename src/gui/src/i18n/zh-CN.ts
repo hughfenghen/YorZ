@@ -187,9 +187,7 @@ export const zhCN = {
     attachmentsHint: '共 {{count}}/{{max}}，单文件 ≤ 5 MB；图片支持 Cmd/Ctrl-V 粘贴',
     importAttachment: '导入附件',
     createAndStart: '发送',
-    creating: 'Agent 创建中…',
-    creatingHint:
-      'Agent 正在创建 spec 文档…可在右下角 Agent 面板查看流式输出，文档落地后将自动跳转。',
+    creating: 'Spec 创建中…',
     descTooShort: '请至少输入 5 个字符的需求描述',
     attachmentLimit: '附件总数不能超过 {{max}} 个',
     unsupportedType: '不支持的文件类型：{{name}}',
