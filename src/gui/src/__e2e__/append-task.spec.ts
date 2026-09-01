@@ -62,11 +62,13 @@ test.describe.serial('append task popover', () => {
     await expect(dialog).toBeVisible()
 
     await dialog.locator('input[type="radio"][value="fix"]').check()
+    // fix *is* Debug mode now — the dialog says nothing extra about it: no
+    // opt-in checkbox, no notice line.
+    await expect(dialog.locator('input[type="checkbox"]')).toHaveCount(0)
     await dialog.locator('textarea').fill('e2e 追加项：按钮点击无响应的回归用例')
 
     const submitPromise = page.waitForResponse(
-      (res) =>
-        res.url().includes(`/specs/${SPEC_ID}/appends`) && res.request().method() === 'POST',
+      (res) => res.url().includes(`/specs/${SPEC_ID}/appends`) && res.request().method() === 'POST',
     )
     await dialog.locator('button[type="submit"]').click()
     const submitRes = await submitPromise

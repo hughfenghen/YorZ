@@ -12,13 +12,14 @@ description: 以资深工程师的调试纪律定位并修复疑难 bug——假
 ## 何时进入本 skill
 
 - **独立触发（无需 spec / UI）**：用户在 Agent 对话中直接点名「用 yorz-debug 调这个 bug」。此时可能没有任何 spec 上下文——按下方「无 spec 场景」处理 `debug.md` 落点。
-- **追加任务勾选 Debug**：用户在 SpecDetail 追加 `fix` 任务时勾选「Debug 模式」，后端 prompt 指向本 skill。
+- **追加 `fix` 类型任务**：用户在 SpecDetail 追加 `fix` 任务时，后端直接以 `/yorz-debug <spec path> <内容>` 指向本 skill——`fix` 即深度调试，无需额外开关。
 - **重入**：spec 目录已存在 `status: debugging` 的 `debug.md`（有未收尾记录块），run/append 路由自动切到本 skill。此时**不新建记录块**，定位活跃记录块（frontmatter `active: NNN`）续跑。
 
 ## 输入约定
 
 - `spec_dir`（**可选**）：spec 目录路径（含 `spec.md`）。给出时 `debug.md` 建在此目录，与 `spec.md` 同级。
-- 待调试 bug 的描述：来自追加任务行 / 用户 prompt。
+  - 指令形式为 `/yorz-debug <spec path> <内容>` 时，`<spec path>` 指向 `spec.md`，其所在目录即 `spec_dir`。
+- 待调试 bug 的描述：来自指令正文 / 追加任务行 / 用户 prompt。
 - 运行服务上下文（**可选**）：由 YorZ Service 注入的当前项目运行中命令服务列表，包含 `runId`、`name`、`cli`、`pid`、`startedAt`、`logFile` 等字段。
 
 ### debug.md 落点

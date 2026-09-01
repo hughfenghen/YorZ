@@ -11,14 +11,19 @@ afterEach(async () => {
   handle = null
 })
 
-async function startInTmp(): Promise<{ cwd: string; url: string; apiPrefix: string }> {
+async function startInTmp(): Promise<{
+  cwd: string
+  url: string
+  apiPrefix: string
+  projectId: string
+}> {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-spec-drafts-'))
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-spec-drafts-cfg-'))
   await mkdir(join(cwd, '.yorz'), { recursive: true })
   handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
   const list = await handle.registry.list()
   const projectId = list[0]!.id
-  return { cwd, url: handle.url, apiPrefix: `${handle.url}api/projects/${projectId}` }
+  return { cwd, url: handle.url, apiPrefix: `${handle.url}api/projects/${projectId}`, projectId }
 }
 
 function makeForm(blob: Blob, filename: string): FormData {
@@ -206,6 +211,55 @@ describe('POST /api/specs with draftId', () => {
       body: JSON.stringify({ type: 'feat', requirement: 'x', draftId: '../escape' }),
     })
     expect(res.status).toBe(400)
+  })
+
+  it('rejects a malformed draftProjectId', async () => {
+    const { apiPrefix } = await startInTmp()
+    const res = await fetch(`${apiPrefix}/specs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'feat', requirement: 'x', draftProjectId: 42 }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  // Worktree flow: the draft was uploaded to the project the user had open, but
+  // the spec is created in the freshly made worktree project, whose `.yorz/tmp`
+  // is gitignored and therefore empty.
+  it('carries the draft over when draftProjectId names another project', async () => {
+    const { url, apiPrefix, projectId } = await startInTmp()
+    const draft = await fetch(`${apiPrefix}/spec-drafts`, { method: 'POST' })
+    const { draftId } = (await draft.json()) as { draftId: string }
+    const blob = new Blob([new Uint8Array([0x68, 0x69])], { type: 'text/plain' })
+    const up = await fetch(`${apiPrefix}/spec-drafts/${draftId}/attachments`, {
+      method: 'POST',
+      body: makeForm(blob, 'note.txt'),
+    })
+    const { storedName } = (await up.json()) as { storedName: string }
+
+    const targetCwd = await mkdtemp(join(tmpdir(), 'yorz-spec-drafts-target-'))
+    const added = await fetch(`${url}api/projects`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: targetCwd }),
+    })
+    const target = (await added.json()) as { id: string }
+
+    const res = await fetch(`${url}api/projects/${target.id}/specs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'feat',
+        requirement: '在 worktree 里新建 spec',
+        draftId,
+        draftProjectId: projectId,
+      }),
+    })
+    expect(res.status).toBe(202)
+    const copied = await readFile(
+      join(targetCwd, '.yorz', 'tmp', 'drafts', draftId, 'attachments', storedName),
+    )
+    expect(copied.toString('utf8')).toBe('hi')
   })
 })
 

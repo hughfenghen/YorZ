@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { stripHiddenPrompt } from '../custom-instruction.js'
 import type { GlobalCustomInstruction } from '../global-config.js'
-import { buildChatSpecPrompt, isSlashCommand, resolveChatPrompt } from '../slash-command.js'
+import {
+  buildSpecDispatch,
+  buildSpecPrompt,
+  isSlashCommand,
+  resolveChatPrompt,
+} from '../slash-command.js'
 
 function instruction(over: Partial<GlobalCustomInstruction> = {}): GlobalCustomInstruction {
   return {
@@ -85,16 +90,60 @@ describe('resolveChatPrompt', () => {
   })
 })
 
-describe('buildChatSpecPrompt', () => {
-  it('references the skill and the project spec dir', () => {
-    const out = buildChatSpecPrompt('/yorz-spec 加个夜间模式', 'docs/specs')
+describe('buildSpecPrompt', () => {
+  it('references the skill and the project spec dir when no spec was named', () => {
+    const out = buildSpecPrompt('/yorz-spec 加个夜间模式', 'docs/specs')
     expect(out).toContain('yorz-spec')
     expect(out).toContain('docs/specs/')
     expect(stripHiddenPrompt(out)).toBe('/yorz-spec 加个夜间模式')
   })
 
   it('asks the Agent to recover intent from context when no body was given', () => {
-    const out = buildChatSpecPrompt('/yorz-spec', '.yorz/specs')
+    const out = buildSpecPrompt('/yorz-spec', '.yorz/specs')
     expect(out).toContain('请先根据对话上下文确认')
+  })
+
+  it('points straight at the spec when the command carries a path', () => {
+    const line = '/yorz-spec .yorz/specs/260901.refct.x/spec.md 顺带改下文案'
+    const out = buildSpecPrompt(line, '.yorz/specs')
+    expect(out).toContain('.yorz/specs/260901.refct.x/spec.md')
+    // The spec-less fallback text must not leak into a targeted dispatch.
+    expect(out).not.toContain('未指定 spec_path')
+    expect(stripHiddenPrompt(out)).toBe(line)
+  })
+})
+
+describe('buildSpecDispatch', () => {
+  const base = { specsDirRelative: '.yorz/specs', specId: '260901.refct.x' }
+  const specPath = '.yorz/specs/260901.refct.x/spec.md'
+
+  it('routes a non-debug dispatch to /yorz-spec', () => {
+    const out = buildSpecDispatch({ ...base, debug: false, body: '加个开关' })
+    expect(out.commandLine).toBe(`/yorz-spec ${specPath} 加个开关`)
+    expect(out.prompt).toContain('yorz-spec')
+  })
+
+  it('routes a debug dispatch to /yorz-debug and carries runtime context', () => {
+    const out = buildSpecDispatch({
+      ...base,
+      debug: true,
+      body: '点击崩溃',
+      runtimeContext: '当前项目运行服务上下文：dev 服务运行中',
+    })
+    expect(out.commandLine).toBe(`/yorz-debug ${specPath} 点击崩溃`)
+    expect(out.prompt).toContain('dev 服务运行中')
+  })
+
+  it('omits the body for run / conflict dispatches', () => {
+    expect(buildSpecDispatch({ ...base, debug: false }).commandLine).toBe(`/yorz-spec ${specPath}`)
+    expect(buildSpecDispatch({ ...base, debug: true }).commandLine).toBe(`/yorz-debug ${specPath}`)
+  })
+
+  it('never hands the Agent a leading slash, but keeps the line recoverable', () => {
+    for (const debug of [false, true]) {
+      const out = buildSpecDispatch({ ...base, debug, body: '内容' })
+      expect(out.prompt.startsWith('/')).toBe(false)
+      expect(stripHiddenPrompt(out.prompt)).toBe(out.commandLine)
+    }
   })
 })

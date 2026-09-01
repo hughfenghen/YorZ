@@ -205,7 +205,13 @@ export const NewSpec: Component = () => {
 
       const body: CreateSpecBody = { type: type(), requirement: text }
       const did = att.draftId()
-      if (did) body.draftId = did
+      if (did) {
+        body.draftId = did
+        // Attachments were uploaded to the project the form was opened in; with
+        // a worktree the spec lands in a different project, so name the source
+        // and let the service carry the draft over before dispatching.
+        if (pid !== sourcePid) body.draftProjectId = sourcePid
+      }
 
       const resp = await api.createSpec(pid, body)
       if ('draft' in resp && resp.draft) {

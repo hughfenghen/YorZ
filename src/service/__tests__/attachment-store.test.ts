@@ -289,4 +289,29 @@ describe('AttachmentStore', () => {
     const onDisk = await readFile(join(store.draftAttachmentsDir(draftId), meta.storedName))
     expect(onDisk.toString('utf8')).toBe('hi')
   })
+
+  // The worktree flow: uploads land in the main project, the spec is created in
+  // a worktree that `.gitignore`s `.yorz/tmp` and therefore has no draft dir.
+  it('importDraftFrom copies a draft into another project store', async () => {
+    const source = new AttachmentStore({ cwd: await tmp() })
+    const target = new AttachmentStore({ cwd: await tmp() })
+    const draftId = await source.createDraft()
+    const meta = await source.addAttachment(draftId, {
+      name: 'note.txt',
+      mime: 'text/plain',
+      data: new Uint8Array([0x68, 0x69]),
+    })
+
+    expect(await target.importDraftFrom(source, draftId)).toBe(true)
+    expect(await target.draftExists(draftId)).toBe(true)
+    const copied = await readFile(join(target.draftAttachmentsDir(draftId), meta.storedName))
+    expect(copied.toString('utf8')).toBe('hi')
+  })
+
+  it('importDraftFrom reports a missing source draft instead of throwing', async () => {
+    const source = new AttachmentStore({ cwd: await tmp() })
+    const target = new AttachmentStore({ cwd: await tmp() })
+    expect(await target.importDraftFrom(source, 'gone-1234')).toBe(false)
+    expect(await target.draftExists('gone-1234')).toBe(false)
+  })
 })

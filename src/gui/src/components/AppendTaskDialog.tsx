@@ -2,7 +2,6 @@ import { createEffect, createSignal, onCleanup, Show, type Component } from 'sol
 import { Send, X } from 'lucide-solid'
 import type { AppendItemBody, AppendItemKind } from '../lib/api.js'
 import { Button } from './ui/button.jsx'
-import { Checkbox, CheckboxControl, CheckboxLabel } from './ui/checkbox.jsx'
 import { MentionTextarea } from './MentionTextarea.jsx'
 import {
   RadioGroup,
@@ -32,7 +31,6 @@ const KIND_KEY: Record<AppendItemKind, string> = {
 
 export const AppendTaskDialog: Component<Props> = (props) => {
   const [kind, setKind] = createSignal<AppendItemKind>('fix')
-  const [debug, setDebug] = createSignal(false)
   const [description, setDescription] = createSignal('')
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
@@ -66,7 +64,6 @@ export const AppendTaskDialog: Component<Props> = (props) => {
 
   function reset() {
     setKind('fix')
-    setDebug(false)
     setDescription('')
     setError(null)
   }
@@ -86,7 +83,6 @@ export const AppendTaskDialog: Component<Props> = (props) => {
         description: desc,
         sectionPath: props.sectionPath,
         quote: props.quote,
-        debug: kind() === 'fix' ? debug() : undefined,
       })
       reset()
       props.onCancel()
@@ -131,21 +127,6 @@ export const AppendTaskDialog: Component<Props> = (props) => {
                 </RadioGroupItem>
               ))}
             </RadioGroup>
-
-            <Show when={kind() === 'fix'}>
-              <Checkbox
-                class="ml-5 flex items-start gap-1.5"
-                checked={debug()}
-                onChange={setDebug}
-                disabled={busy()}
-              >
-                <CheckboxControl class="mt-1" />
-                <CheckboxLabel class="flex cursor-pointer flex-col">
-                  <span class="font-medium">{t('appendTask.debugMode')}</span>
-                  <span class="text-sm text-muted-foreground">{t('appendTask.debugModeHint')}</span>
-                </CheckboxLabel>
-              </Checkbox>
-            </Show>
 
             <label class="flex flex-col gap-1 ">
               <span>{t('appendTask.description')}</span>

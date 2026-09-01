@@ -31,6 +31,12 @@ export interface CreateSpecBody {
   summary?: string
   requirement?: string
   draftId?: string
+  /**
+   * Project holding the draft attachments when it differs from the project
+   * receiving the spec — i.e. the worktree flow, where the upload happened in
+   * the main project before the worktree existed.
+   */
+  draftProjectId?: string
 }
 
 export type AttachmentKind = 'image' | 'pdf' | 'text'
@@ -69,8 +75,6 @@ export interface AppendItemBody {
   sectionPath?: string
   quote?: string
   autoRun?: boolean
-  /** Only meaningful when kind === 'fix': enter Debug mode (yorz-debug skill). */
-  debug?: boolean
 }
 
 export type GitOpsAction = 'commit' | 'discard' | 'stash'

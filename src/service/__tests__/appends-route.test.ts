@@ -72,6 +72,19 @@ describe('POST /api/specs/:id/appends', () => {
     expect(body.runId).toBeUndefined()
   })
 
+  // The Debug checkbox is gone (fix implies it), but a cached GUI bundle may
+  // still post the old field. Ignoring beats 400-ing every append it sends.
+  it('200 ignoring a stale `debug` field from an old GUI bundle', async () => {
+    const { apiPrefix } = await startInTmp()
+    const id = await createSpec(apiPrefix)
+    const res = await fetch(`${apiPrefix}/specs/${id}/appends`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind: 'fix', description: 'x', debug: true, autoRun: false }),
+    })
+    expect(res.status).toBe(200)
+  })
+
   it('400 when kind is not feat/refct/fix', async () => {
     const { apiPrefix } = await startInTmp()
     const id = await createSpec(apiPrefix)

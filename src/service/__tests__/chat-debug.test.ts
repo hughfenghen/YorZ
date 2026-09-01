@@ -3,17 +3,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  buildChatDebugPrompt,
+  buildDebugPrompt,
   cleanupExpiredChatDebugFiles,
   isYorzDebugCommand,
 } from '../chat-debug.js'
 
 describe('chat debug prompt', () => {
-  it('wraps /yorz-debug into a temp debug file path with timestamp', () => {
-    const prompt = buildChatDebugPrompt(
-      '/yorz-debug 修复 chat debug 写入根目录的问题',
-      new Date(2026, 7, 3, 9, 8, 7),
-    )
+  it('wraps a spec-less /yorz-debug into a temp debug file path with timestamp', () => {
+    const prompt = buildDebugPrompt('/yorz-debug 修复 chat debug 写入根目录的问题', {
+      now: new Date(2026, 7, 3, 9, 8, 7),
+    })
 
     expect(prompt).toContain('/skills/yorz-debug/SKILL.md')
     expect(prompt).not.toContain('请使用 yorz-debug skill')
@@ -21,6 +20,24 @@ describe('chat debug prompt', () => {
     expect(prompt).toContain('Debug 活文档必须写入临时文件')
     expect(prompt).toContain('该目录属于临时目录，会由 YorZ 定时清理')
     expect(prompt).toContain('修复 chat debug 写入根目录的问题')
+  })
+
+  it('puts debug.md next to spec.md when the command names a spec', () => {
+    const line = '/yorz-debug .yorz/specs/260901.refct.x/spec.md 点击后崩溃'
+    const prompt = buildDebugPrompt(line)
+
+    expect(prompt).toContain('.yorz/specs/260901.refct.x/debug.md')
+    expect(prompt).not.toContain('.yorz/tmp/debug/')
+    // One paragraph now covers both create and reentry — no new/resume modes.
+    expect(prompt).toContain('重入')
+    expect(prompt).toContain('点击后崩溃')
+  })
+
+  it('appends the running-services context when given', () => {
+    const prompt = buildDebugPrompt('/yorz-debug .yorz/specs/x/spec.md 崩溃', {
+      runtimeContext: '当前项目运行服务上下文：dev 服务运行中',
+    })
+    expect(prompt).toContain('dev 服务运行中')
   })
 
   it('only treats the slash command as debug mode', () => {

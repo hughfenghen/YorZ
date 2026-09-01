@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildDebugPrompt, formatDebugRuntimeContext } from '../routes/specs.js'
+import { formatDebugRuntimeContext } from '../routes/specs.js'
+import { buildSpecDispatch } from '../slash-command.js'
 import type { CommandRun } from '../command-types.js'
 
 function run(overrides: Partial<CommandRun>): CommandRun {
@@ -41,26 +42,29 @@ describe('debug runtime context', () => {
     expect(text).toContain('暂无运行中的命令服务')
   })
 
-  it('appends runtime context to new and resume debug prompts', () => {
+  it('appends runtime context to a spec-side debug dispatch', () => {
     const context = formatDebugRuntimeContext([
       run({ runId: 'run-ctx', logFile: '.yorz/tmp/commands/run-ctx.log' }),
     ])
 
-    expect(buildDebugPrompt('.yorz/specs', '260801.feat.x', 'new', context)).toContain(
-      '.yorz/tmp/commands/run-ctx.log',
-    )
-    expect(buildDebugPrompt('.yorz/specs', '260801.feat.x', 'resume', context)).toContain(
-      '.yorz/tmp/commands/run-ctx.log',
-    )
+    const out = buildSpecDispatch({
+      specsDirRelative: '.yorz/specs',
+      specId: '260801.feat.x',
+      debug: true,
+      runtimeContext: context,
+    })
+    expect(out.prompt).toContain('.yorz/tmp/commands/run-ctx.log')
   })
 
   it('references the shared skill by absolute SKILL.md path, not by name', () => {
-    for (const mode of ['new', 'resume'] as const) {
-      const prompt = buildDebugPrompt('.yorz/specs', '260801.feat.x', mode)
-      expect(prompt).toContain('/skills/yorz-debug/SKILL.md')
-      expect(prompt).not.toContain('请使用 yorz-debug skill')
-      // Spec-relative paths stay relative to the project cwd.
-      expect(prompt).toContain('.yorz/specs/260801.feat.x/spec.md')
-    }
+    const { prompt } = buildSpecDispatch({
+      specsDirRelative: '.yorz/specs',
+      specId: '260801.feat.x',
+      debug: true,
+    })
+    expect(prompt).toContain('/skills/yorz-debug/SKILL.md')
+    expect(prompt).not.toContain('请使用 yorz-debug skill')
+    // Spec-relative paths stay relative to the project cwd.
+    expect(prompt).toContain('.yorz/specs/260801.feat.x/spec.md')
   })
 })

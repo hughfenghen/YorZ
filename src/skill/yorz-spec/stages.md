@@ -177,12 +177,12 @@ _暂无_
 
 ### 步骤
 
-1. **提炼摘要**：从用户输入提炼 kebab-case `summary-name`（≤ 40 字符，不以数字开头，必须语义化）。中文为主难以提炼时使用 `untitled-<NNN>` 占位。
+1. **提炼摘要**：从用户输入提炼 kebab-case `summary-name`（≤ 40 字符，不以数字开头，必须语义化）：只使用对需求有语义代表性的英文/数字字符；中文为主难以提炼出可读 slug 时直接使用 `untitled-<NNN>`（3 位日期内自增编号）占位，**禁止把中文挤压为零散英文片段**（例如禁止出现 `spec-agent-spec-agent` 之类的拼接）。
 2. **判定 type**：`feat` / `refct` / `fix`；prompt 中已显式给出时直接使用；不确定时询问用户，兜底取 `feat`。
 3. **生成 id**：`YYMMDD.<type>.<summary-name>`（如 `260614.feat.spec-frontmatter`）。
 4. **生成路径**：`<specsDir>/<id>/spec.md`。id 冲突时追加 `-2`、`-3` 后缀。
-5. **初始化文档**：写入 frontmatter（`stage: plan`、`last_action: 新建 spec`、`updated_at` 本地秒级字符串、`summary` ≤ 200 字符）；建议创建全部章节（背景 / 需求 / 现状分析 / 技术实现方案 / 待确认项 / 任务清单 / 执行记录），将用户原始需求写入背景或需求。
-6. **进入 plan**：初始化后在同一轮继续推进 plan，不要因为"文档已创建"就退出。
+5. **初始化文档**：写入 frontmatter（`stage: plan`、`last_action: 新建 spec`、`updated_at` 本地秒级字符串、`summary` 为对需求的**真实概述**且 ≤ 200 字符，不要原样照搬整段需求）；建议创建全部章节（背景 / 需求 / 现状分析 / 技术实现方案 / 待确认项 / 任务清单 / 执行记录），将用户原始需求写入背景或需求。
+6. **进入 plan**：初始化后在同一轮继续推进 plan，按 SKILL 规则补齐 `现状分析` / `技术实现方案` / `待确认项`，再视需要进入 tasks/execute；不要因为"文档已创建"就退出。
 
 ### CLI 触发模式
 

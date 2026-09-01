@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 
 export type AttachmentKind = 'image' | 'pdf' | 'text'
@@ -128,6 +128,28 @@ export class AttachmentStore {
 
   async draftExists(draftId: string): Promise<boolean> {
     return existsSync(this.draftDir(draftId))
+  }
+
+  /**
+   * Copy a draft in from another project's store, keeping its id.
+   *
+   * Needed by "new spec in a fresh worktree": the user uploads attachments from
+   * the main project while typing, but the worktree only exists from the moment
+   * they hit create — and `.yorz/tmp` is gitignored, so `git worktree add`
+   * cannot carry the draft over. Copying keeps every downstream path relative,
+   * so the prompt needs no worktree-specific branch.
+   *
+   * Returns `false` when the source draft is gone (TTL sweep, manual cleanup):
+   * that is "nothing to carry over", not a failure.
+   */
+  async importDraftFrom(source: AttachmentStore, draftId: string): Promise<boolean> {
+    const from = source.draftDir(draftId)
+    const to = this.draftDir(draftId)
+    if (from === to || !existsSync(from)) return false
+    if (existsSync(to)) return true
+    await this.ensureRoot()
+    await cp(from, to, { recursive: true })
+    return true
   }
 
   /**

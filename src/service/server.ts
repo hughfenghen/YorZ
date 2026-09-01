@@ -18,7 +18,7 @@ import { RegistryEventBus } from './registry-events.js'
 import { WorktreeManager } from './worktree-manager.js'
 import { getLogger } from './logger.js'
 import type { SystemNotificationCenter } from './system-notifications.js'
-import { skillRef } from './skill-ref.js'
+import { buildSpecDispatch } from './slash-command.js'
 
 export interface CreateAppOptions {
   registry: ProjectRegistry
@@ -90,12 +90,12 @@ export function createApp(opts: CreateAppOptions): Hono {
         return
       }
       const { sessionId } = await main.sessions.createSessionForSpec(specId)
-      void main.sessions.send(
-        sessionId,
-        `${skillRef('yorz-spec')}，然后处理 spec：${main.specsDirRelative}/${specId}/spec.md`,
-        undefined,
-        { trigger: 'conflict', specId },
-      )
+      const { commandLine, prompt } = buildSpecDispatch({
+        specsDirRelative: main.specsDirRelative,
+        specId,
+        debug: false,
+      })
+      void main.sessions.send(sessionId, prompt, commandLine, { trigger: 'conflict', specId })
     },
   })
 
