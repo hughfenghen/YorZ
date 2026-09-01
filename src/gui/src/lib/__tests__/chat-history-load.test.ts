@@ -20,8 +20,32 @@ describe('planHistoryLoad', () => {
     expect(planHistoryLoad(input({ sid: '' }))).toEqual({ action: 'idle' })
   })
 
-  it('never reads the transcript of a locally created session', () => {
-    expect(planHistoryLoad(input({ fresh: true, specId: 'spec-1' }))).toEqual({ action: 'fresh' })
+  it('never reads the transcript of a locally created session on screen', () => {
+    expect(
+      planHistoryLoad(input({ displayedSid: 'sid-b', fresh: true, specId: 'spec-1' })),
+    ).toEqual({ action: 'fresh' })
+  })
+
+  // Regression: `fresh` used to win outright, whatever was on screen. But
+  // `parts` is one global list, not a per-session cache — switching away clears
+  // it, and `fresh` only lifts when the first turn completes, so returning to a
+  // still-running new session cleared the area a second time and then refused
+  // to load it. Blank until the turn ended or the page was reloaded, with no
+  // message request in the network tab to explain it.
+  it('reads back a locally created session we have switched away from', () => {
+    expect(planHistoryLoad(input({ fresh: true }))).toEqual({
+      action: 'load',
+      clear: true,
+      specId: undefined,
+    })
+  })
+
+  it('reads the whole spec row when returning to a locally created round', () => {
+    expect(planHistoryLoad(input({ fresh: true, specId: 'spec-1', running: true }))).toEqual({
+      action: 'load',
+      clear: true,
+      specId: 'spec-1',
+    })
   })
 
   it('loads a plain chat and blanks the area when switching sessions', () => {
@@ -142,8 +166,10 @@ describe('planHistoryLoad', () => {
   it('prefers the fresh branch over holding for a locally created session', () => {
     // A just-sent draft is also missing from the list, but it has an optimistic
     // user message on screen that must not be held hostage to a refetch.
-    expect(planHistoryLoad(input({ fresh: true, known: false, listPending: true }))).toEqual({
-      action: 'fresh',
-    })
+    expect(
+      planHistoryLoad(
+        input({ sid: 'sid-b', displayedSid: 'sid-b', fresh: true, known: false, listPending: true }),
+      ),
+    ).toEqual({ action: 'fresh' })
   })
 })

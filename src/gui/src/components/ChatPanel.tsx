@@ -403,7 +403,7 @@ export const ChatPanel: Component = () => {
         setRunningSids((prev) => ({ ...prev, [ev.sessionId]: ev.running }))
         // 两个边沿都要重拉列表：running=true 时服务端已刷新该会话的活动时间并让它
         // 上浮，只在结束时重拉会让顺序在整个执行期间都停留在旧位置；running=false
-        // 时重拉则是因为首轮跑完后会话才有 transcript，需要正式进入列表。
+        // 时重拉则是为了把该会话的最终状态（标题、活动时间）落到列表上。
         void refetchSessions()
       },
     })
@@ -602,16 +602,14 @@ export const ChatPanel: Component = () => {
     })
     freshRevision()
     if (!pid || plan.action === 'idle' || plan.action === 'hold' || plan.action === 'keep') return
-    // A locally-created session has nothing to load: the transcript is not on
-    // disk yet, and `parts` already holds the optimistic user message plus
-    // whatever has streamed in. Clearing + refetching here would wipe both.
+    // A locally-created session that is still the content on screen: `parts`
+    // already holds the optimistic user message plus whatever has streamed in,
+    // and it is strictly ahead of the transcript. Reading would only risk
+    // overwriting it. `planHistoryLoad` only returns this while
+    // `displayedSid === sid` — a fresh session we have switched away from has
+    // lost those parts and is read back from the transcript like any other.
     if (plan.action === 'fresh') {
       setAutoScroll(true)
-      if (displayedSid !== sid) {
-        resetParts()
-        displayedSid = sid
-        displayedSpecId = undefined
-      }
       return
     }
 

@@ -33,7 +33,13 @@ export interface HistoryLoadInput {
    * actually IS, as opposed to `specId` below, which is what it should be.
    */
   displayedSpecId?: string
-  /** Created locally by this tab — no transcript on disk to read yet. */
+  /**
+   * Created locally by this tab, and its first turn has not completed yet.
+   * NOT a promise that the transcript is unreadable — the agent appends to it
+   * from the opening prompt onward — only that this tab's in-memory parts are
+   * at least as complete as it. See the `fresh` branch below for why that
+   * distinction decides whether reading is allowed.
+   */
   fresh: boolean
   /**
    * A session-list request is in flight. Combined with `known` below this is
@@ -53,7 +59,7 @@ export interface HistoryLoadInput {
 export type HistoryLoadPlan =
   /** Nothing selected — leave the area alone. */
   | { action: 'idle' }
-  /** Local draft: clear once on arrival, never read the transcript. */
+  /** Local draft already on screen: leave its in-memory parts alone. */
   | { action: 'fresh' }
   /** The list still owes an answer about this session; hold the current view. */
   | { action: 'hold' }
@@ -65,12 +71,22 @@ export type HistoryLoadPlan =
 export function planHistoryLoad(input: HistoryLoadInput): HistoryLoadPlan {
   const { sid, displayedSid, displayedSpecId, fresh, listPending, known, specId, running } = input
   if (!sid) return { action: 'idle' }
-  if (fresh) return { action: 'fresh' }
+  const sameSession = displayedSid === sid
+  // Invariant 3. `fresh` licenses skipping the read only while the in-memory
+  // parts it protects are still the thing on screen. `parts` is one global
+  // list, not a per-session cache, so switching away already cleared them —
+  // and `fresh` cannot be shed until the first turn completes, so coming back
+  // mid-run used to clear a second time and then refuse to load, leaving the
+  // area blank until the turn ended or the page was reloaded.
+  //
+  // Reading here is never worse than that blank: the transcript is appended to
+  // from the opening prompt onward, and a session with no file yet answers
+  // `200 []` — exactly the state the old branch produced unconditionally.
+  if (fresh && sameSession) return { action: 'fresh' }
   // Invariant 1. Must come before the running guard below: while the list is
   // behind, `specId` is not merely unknown but actively misleading, and acting
   // on it here is what poisons `displayedSid` for the rest of the round.
   if (!known && listPending) return { action: 'hold' }
-  const sameSession = displayedSid === sid
   // Invariant 2. A guessed single-session load leaves `displayedSpecId`
   // undefined while `specId` is now known, so the scopes differ and the guard
   // below lets the correction through even mid-turn.

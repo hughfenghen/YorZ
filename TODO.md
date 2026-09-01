@@ -5,11 +5,6 @@
 - loop：
   - agent 自主获取后端日志、前端日志
   - 前端流程，脚本化
-- 移除 parsed.autoRun 相关逻辑，无用字段
-- 快速切换 session，正在执行中的 session 有几率出现历史消息加载不出来，显示“选择或新建一个会话开始对话。”的空状态;
-  停留在该页面，会显示 Agent 新输出的消息
-
-- 移除 mindmap、gitgraph、treeview-beta
 
 ## P1
 
