@@ -45,6 +45,7 @@ import {
   specMessagesToParts,
   type ChatPart,
 } from '../lib/chat-blocks.js'
+import { planHistoryLoad } from '../lib/chat-history-load.js'
 import { findGroupBySession, groupSessions, type SessionGroup } from '../lib/session-groups.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { t, useTranslation } from '../i18n/index.js'
@@ -305,6 +306,13 @@ export const ChatPanel: Component = () => {
   const freshSids = new Set<string>()
   const [freshRevision, setFreshRevision] = createSignal(0)
   let displayedSid = ''
+  /**
+   * Spec whose aggregate transcript the message area currently holds, or
+   * undefined when it holds a single session. Tracked alongside `displayedSid`
+   * because "same session" alone cannot tell a spec row's full history apart
+   * from the single round that was loaded before the list knew about the spec.
+   */
+  let displayedSpecId: string | undefined
   /** sid → deferred resolved by the session topic's `ready` event. */
   const readyWaiters = new Map<string, { promise: Promise<void>; resolve: () => void }>()
 
@@ -376,6 +384,7 @@ export const ChatPanel: Component = () => {
       setRunningSids({})
       resetParts()
       displayedSid = ''
+      displayedSpecId = undefined
       setStarting(false)
       freshSids.clear()
       setFreshRevision((v) => v + 1)
@@ -423,6 +432,29 @@ export const ChatPanel: Component = () => {
    * edge, and each of those must not re-read the transcript.
    */
   const activeSpecId = createMemo(() => activeGroup()?.specId)
+  /**
+   * Whether the list already knows the active session — i.e. whether
+   * `activeSpecId` above can be trusted. `selectSession()` sets `activeSid`
+   * synchronously but refetches the list asynchronously, so a session the server
+   * just created (every run / append / git-ops round gets its own now) is
+   * briefly missing from the list, where it is indistinguishable from a plain
+   * chat. Boolean memos, so the history effect re-runs on the transition rather
+   * than on every rebuild of the group objects.
+   */
+  const activeSessionKnown = createMemo(() => Boolean(activeGroup()))
+  /**
+   * The list still owes an answer about the active session: it does not know
+   * it yet AND a request is in flight, so it may still turn out to belong to a
+   * spec. Once that request settles, `known === false` is the final answer (the
+   * session was truncated past `SESSION_LIST_LIMIT`, or the request failed) and
+   * the panel falls back to a single-session load rather than waiting forever.
+   *
+   * Folding `known` in here (rather than passing raw `loading`) keeps this
+   * false — and therefore stable — for the whole time a known session is
+   * selected, so the list refetch that fires on every SSE status edge does not
+   * re-run the history effect twice per edge.
+   */
+  const activeSessionPending = createMemo(() => !activeSessionKnown() && sessions.loading)
 
   /**
    * The single entry point for switching sessions (list click, spec-page request,
@@ -432,8 +464,13 @@ export const ChatPanel: Component = () => {
    */
   function selectSession(sid: string): void {
     if (!sid || sid === activeSid()) return
-    setActiveSid(sid)
+    // Refetch BEFORE flipping the id. The history effect runs synchronously on
+    // `setActiveSid`, and `sessions.loading` is what tells it the list still
+    // owes an answer about this session; ordering it the other way makes the
+    // effect see a settled list, conclude the session is a plain chat, and load
+    // a single round over the spec row's history.
     void refetchSessions()
+    setActiveSid(sid)
   }
 
   // A spec page requested that Chat switch to a specific (per-spec) session.
@@ -553,37 +590,41 @@ export const ChatPanel: Component = () => {
     // the current round settles the transcript is re-read to fold that round in
     // (with its divider). Plain chats keep the old load-on-select behaviour.
     const running = specId ? isRunning(sid) : false
+    const plan = planHistoryLoad({
+      sid,
+      displayedSid,
+      displayedSpecId,
+      fresh: freshSids.has(sid),
+      listPending: activeSessionPending(),
+      known: activeSessionKnown(),
+      specId,
+      running,
+    })
     freshRevision()
-    if (!pid || !sid) return
+    if (!pid || plan.action === 'idle' || plan.action === 'hold' || plan.action === 'keep') return
     // A locally-created session has nothing to load: the transcript is not on
     // disk yet, and `parts` already holds the optimistic user message plus
     // whatever has streamed in. Clearing + refetching here would wipe both.
-    if (freshSids.has(sid)) {
+    if (plan.action === 'fresh') {
       setAutoScroll(true)
       if (displayedSid !== sid) {
         resetParts()
         displayedSid = sid
+        displayedSpecId = undefined
       }
       return
     }
-    // A turn in flight owns the message area: its deltas live only in memory,
-    // so re-reading the transcript underneath it would wipe what the user is
-    // watching stream in.
-    const sameSession = displayedSid === sid
-    if (running && sameSession) return
 
     let disposed = false
     setAutoScroll(true)
-    // Only blank the area when switching away from another session — a reload of
-    // the session already on screen swaps content in on arrival instead, so it
-    // does not flash empty.
-    if (!sameSession) resetParts()
+    if (plan.clear) resetParts()
     displayedSid = sid
+    displayedSpecId = plan.specId
     // Flatten message → parts: tool-result keeps its payload instead of being
     // dropped, so the transcript and the live stream now agree. A spec row reads
     // every session it owns, dividers included.
-    const load = specId
-      ? api.getSpecMessages(pid, specId).then(specMessagesToParts)
+    const load = plan.specId
+      ? api.getSpecMessages(pid, plan.specId).then(specMessagesToParts)
       : api.getSessionMessages(pid, sid).then(messagesToParts)
     void load
       .then((next) => {
@@ -627,8 +668,10 @@ export const ChatPanel: Component = () => {
           if (freshSids.has(sid)) freshSids.add(ev.sessionId)
           if (displayedSid === sid) displayedSid = ev.sessionId
           setRunningSids((prev) => ({ ...prev, [sid]: false, [ev.sessionId]: true }))
-          setActiveSid(ev.sessionId)
+          // Same ordering rule as selectSession(): the list must already be
+          // in flight when the new id goes live.
           void refetchSessions()
+          setActiveSid(ev.sessionId)
         }
       },
     })
@@ -808,6 +851,7 @@ export const ChatPanel: Component = () => {
     setActiveSid('')
     resetParts()
     displayedSid = ''
+    displayedSpecId = undefined
     setAutoScroll(true)
     attachments.reset()
   }
@@ -859,6 +903,7 @@ export const ChatPanel: Component = () => {
       const ready = waitForSubscription(sid)
       resetParts([{ kind: 'text', role: 'user', text: prompt }])
       displayedSid = sid
+      displayedSpecId = undefined
       setRunningSids((prev) => ({ ...prev, [sid]: true }))
       setActiveSid(sid)
       await Promise.race([ready, delay(SUBSCRIBE_READY_TIMEOUT_MS)])

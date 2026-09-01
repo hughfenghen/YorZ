@@ -6,6 +6,9 @@
   - agent 自主获取后端日志、前端日志
   - 前端流程，脚本化
 - 移除 parsed.autoRun 相关逻辑，无用字段
+- 优化 mermaid token 消耗，移除 git graph
+  - 降低生成消耗
+  - 生成图形输出不携带到上下文，完全独立
 
 ## P1
 

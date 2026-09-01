@@ -1,7 +1,7 @@
 ---
 stage: done
-last_action: 任务全部完成，标记 done
-updated_at: '2026-08-31 22:58:00'
+last_action: 追加任务全部收敛，标记 done
+updated_at: '2026-09-01 15:38:20'
 summary: 拆分 spec 驱动轮次的会话复用：run/append/git-ops 各自新开 session 以切断历史继承，Chat 面板按 specId 聚合为单行、跨 session 消息用分割元素区分，用户消息追加到最近 session。
 ---
 
@@ -362,7 +362,20 @@ _暂无_
 - [x] 更新 `docs/User-Guide-CN.md` 与 `docs/User-Guide.md` 的会话列表章节：说明同一 spec 的多次派发聚合为一行、历史按 session 分割（验收：两语言文档描述一致）
 - [x] 运行 `pnpm typecheck` 与 `pnpm test` 全量校验（验收：两者均无失败）
 
-## 7. 执行记录
+## 7. 追加任务
+
+- [fixed] [fix] 2026-09-01 10:55:29 | 新建 spec 创建 session，plan 阶段提交批注问题 创建 第二个 session 时；
+  - 描述：新建 spec 创建 session，plan 阶段提交批注问题 创建 第二个 session 时；
+    chat 面板的内容被清空，只显示第二个 session的内容；
+    切换到其他 session 再切回来，才能正确加载整个 session 组的消息内容。
+- [fixed] [fix] 2026-09-01 15:06:30 | 推动 spec 状态、追加任务而创建session时，会清空 session 组内的消息，只显示最新session内容；
+  - 描述：推动 spec 状态、追加任务而创建session时，会清空 session 组内的消息，只显示最新session内容；
+    刷新页面，或切换其他session在切换来，才能获取 session 组完整消息；
+- [fixed] [fix] 2026-09-01 15:37:00 | 测试追加任务，session 组是否能增量更新消息；
+  - 描述：测试追加任务，session 组是否能增量更新消息；
+    无需改动任何代码
+
+## 8. 执行记录
 
 - 2026-08-31 22:24 —— 新建 spec 并完成 plan 阶段：基于 `telemetry.jsonl` 11.2 天实测数据确立成本基线（非首次 run 比首次贵 32%，可省 35%）；核实会话复用的唯一动机是 UI（`session-manager.ts:161-162` 注释自证）；核实 spec 状态全部落在文件中、会话历史架构冗余（skill 契约 + run prompt 自包含 + debug resume 按 active 指针定位 + git-ops 自行取证四处证据）；确立「系统驱动新开 / 用户驱动复用」的分工方案与 UI 聚合形态。发现一处方案引入的新风险（并发写 spec.md），已作为 `### 5.1` 待确认项，等待人工批注。
 - 2026-08-31 22:52 —— 消费用户批注完成 tasks 阶段：待确认项 5.1 采纳「服务端同 spec 串行守卫」，落为 `### 4.6` 与三条决策记录；核对五处派发调用点（`routes/specs.ts` run/append/explain、`routes/spec-review.ts` git-ops、`server.ts` conflict）与 GUI 侧四处 `requestChatSession` 调用点，确认守卫与聚合改造的最小影响面；修正影响面清单中的文档目标（`docs/Architecture.md` 无会话列表描述，实为 `docs/User-Guide-CN.md:308-330`）；拆出 18 项可执行任务。
@@ -370,3 +383,6 @@ _暂无_
 - 2026-08-31 22:56 —— 执行 GUI 改造：`lib/api.ts` 新增 `SpecSessionMessages` 与 `getSpecMessages()`，`appendItem` 返回类型补 `busy?`；`lib/chat-blocks.ts` 新增 `DividerPart`/`DividerBlock`，`groupParts()` 中 divider 打断 assistant 合并，新增 `specMessagesToParts()`（分割线只插在两轮之间、跳过空轮次）；新建 `lib/session-groups.ts`（`groupSessions()` / `findGroupBySession()`）；`ChatPanel.tsx` 列表改为按组渲染（`×N` 计数、组内任一 running 显示 spinner、`runningCount()` 按组计数、选中态按组判定），并把原「选择 → 加载历史 + 订阅」单一 effect **拆成两个**：历史 effect 依赖 `activeSpecId` 与运行态（spec 组在本轮结束后重读拼接历史，运行中不覆盖内存里的流式内容），订阅 effect 只依赖 `pid`/`sid`，避免列表刷新导致 SSE 反复重订阅。验证：`session-groups.test.ts`（6 例）与 `chat-blocks.test.ts`（30 例）全绿，`pnpm build:gui` 构建通过。
 - 2026-08-31 22:57 —— 执行文档与文案：`i18n/zh-CN.ts` 与 `en.ts` 各新增 `chat.sessionDivider`（分割线标签）与 `specDetail.appendSavedSpecBusy`（追加已保存但未派发）；`docs/User-Guide-CN.md` 与 `docs/User-Guide.md` 的会话列表 / 阅读体验两节补充「同一 spec 多轮聚合为一行（`×N`）」「同 spec 同时只允许一轮执行」「跨轮次分割线」三条说明。
 - 2026-08-31 22:58 —— 收尾：全量校验通过（`pnpm typecheck` 无错；`pnpm test` 72 文件 / 678 通过 + 2 skipped；`pnpm build:gui` 构建成功），改动文件按 prettier 格式化。任务清单 18 项全部完成，无待确认项 / 批注 / `[open]` 条目，标记 `done`。
+- 2026-09-01 15:24 —— 追加任务 `[fix] 10:55:29` 经 Debug 1 收敛（详见 `debug.md#Debug 1`）：根因是 `ChatPanel.tsx` 历史加载 effect 存在**未被识别的第三态**——`selectSession()` 中 `setActiveSid()` 同步而 `refetchSessions()` 异步，服务端刚新建的 session 必然先经历「列表还不认识它」的窗口，effect 在该窗口按普通 chat 加载单 session 并写脏 `displayedSid`，随后被 `running && sameSession` 守卫吞掉唯一的纠正机会。修复：新增 `src/gui/src/lib/chat-history-load.ts` 把加载决策抽为纯函数 `planHistoryLoad()`（`idle | fresh | hold | keep | load` 五态），`hold` 即缺失的第三态（不清空、不加载、不写 `displayedSid`）。顺带修复 E4：`session-store.ts` 新增单调 `stamp()`（`Math.max(Date.now(), last + 1)`），消除同毫秒并列导致 `latestBySpec()` 取到最旧一轮的缺陷。
+- 2026-09-01 15:33 —— 追加任务 `[fix] 15:06:30` 经 Debug 2 收敛（详见 `debug.md#Debug 2`）：Debug 1 的 `hold` 只覆盖 `listLoaded && !known`，而 `GET /sessions` 实测 1.1s（比 spec session 探针慢约 750 倍）留下 ~1.1s 的 `listLoaded === false` 窗口，同一条中毒路径从另一扇门复现（冷路径 R2 / 整页加载时该 spec 正在跑 R5）。修复围绕不变量「确认归属前绝不写 `displayedSid`，已写下的必须留有纠正余地」：判据改为 `!known && listPending`；`listPending` 落地仍 `known=false` 时退回单 session 加载（修掉 `hold` 因 `SESSION_LIST_LIMIT=30` 截断而永久卡死的 R6）；新增 `displayedSpecId`，守卫收紧为 `running && sameSession && sameScope` 使猜测加载的内容可被自愈重读；`selectSession()` 中 `refetchSessions()` 调整到 `setActiveSid()` 之前。回归：`chat-history-load.test.ts` 由 11 例增至 14 例。
+- 2026-09-01 15:38 —— 追加任务 `[fix] 15:37:00` 为用户侧验证项（无需代码改动）：以真实追加任务派发验证 session 组消息可增量更新，用户确认**测试通过**。收尾全量校验通过（`pnpm typecheck` 无错；`pnpm test` 73 文件 / 693 通过 + 2 skipped；`pnpm build:gui` 构建成功）。三条 `[open]` 条目全部标记 `[fixed]`，任务清单 18 项完成，无待确认项 / 批注 / `[open]` 条目，重新标记 `done`。

@@ -11,9 +11,26 @@ export class SessionStore {
   private readonly file: string
   private cache: SessionInfo[] | null = null
   private writeChain: Promise<void> = Promise.resolve()
+  private lastStamp = 0
 
   constructor(projectPath: string) {
     this.file = join(projectPath, '.yorz', 'tmp', 'sessions', 'index.json')
+  }
+
+  /**
+   * Wall-clock time, forced to strictly increase within this process.
+   *
+   * `updatedAt` is not just a display value — it is the sort key that decides
+   * which round is "the latest" (`latestBySpec`, and the list order the Chat
+   * panel renders). A spec now owns one session per round, and consecutive
+   * rounds are routinely created inside the same millisecond, where raw
+   * `Date.now()` produces ties that resolve to an arbitrary — in practice the
+   * *oldest* — session. Bumping by 1ms on a tie keeps every ordering total.
+   */
+  private stamp(): number {
+    const now = Math.max(Date.now(), this.lastStamp + 1)
+    this.lastStamp = now
+    return now
   }
 
   private async load(): Promise<SessionInfo[]> {
@@ -64,6 +81,9 @@ export class SessionStore {
     let latest: SessionInfo | undefined
     for (const s of items) {
       if (s.specId !== specId) continue
+      // Safe as a strict `>` only because `stamp()` keeps `updatedAt` totally
+      // ordered: with raw `Date.now()`, same-millisecond rounds tie and the
+      // tie resolves to the oldest — the opposite of what this returns.
       if (!latest || s.updatedAt > latest.updatedAt) latest = s
     }
     return latest
@@ -78,7 +98,7 @@ export class SessionStore {
   }
 
   async create(kind: AgentKind, id: string, title: string, specId?: string): Promise<SessionInfo> {
-    const now = Date.now()
+    const now = this.stamp()
     const info: SessionInfo = { id, title, kind, createdAt: now, updatedAt: now }
     if (specId) info.specId = specId
     await this.upsert(info)
@@ -92,7 +112,7 @@ export class SessionStore {
     const entry = items.find((s) => s.id === oldId)
     if (!entry) return
     entry.id = newId
-    entry.updatedAt = Date.now()
+    entry.updatedAt = this.stamp()
     await this.persist()
   }
 
@@ -101,7 +121,7 @@ export class SessionStore {
     const entry = items.find((s) => s.id === id)
     if (!entry) return
     entry.title = title
-    entry.updatedAt = Date.now()
+    entry.updatedAt = this.stamp()
     await this.persist()
   }
 
@@ -110,7 +130,7 @@ export class SessionStore {
     const entry = items.find((s) => s.id === id)
     if (!entry) return false
     entry.specId = specId
-    entry.updatedAt = Date.now()
+    entry.updatedAt = this.stamp()
     await this.persist()
     return true
   }
@@ -119,7 +139,7 @@ export class SessionStore {
     const items = await this.load()
     const entry = items.find((s) => s.id === id)
     if (!entry) return
-    entry.updatedAt = Date.now()
+    entry.updatedAt = this.stamp()
     await this.persist()
   }
 }

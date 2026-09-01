@@ -321,6 +321,25 @@ describe('SessionManager per-spec sessions', () => {
     expect((await store.latestBySpec('spec-a'))?.id).toBe(first.sessionId)
   })
 
+  // Regression: rounds of one spec are created back-to-back and land inside the
+  // same millisecond, where raw `Date.now()` ties. `latestBySpec` resolved the
+  // tie to the *oldest* round, so explain/chat continued a conversation the
+  // user had already moved on from. `stamp()` makes the order total instead.
+  it('orders same-millisecond rounds by creation, not by tie', async () => {
+    const { mgr, store } = await makeManager(fakeAdapter({}))
+
+    const rounds = []
+    for (let i = 0; i < 5; i++) rounds.push(await mgr.createSessionForSpec('spec-a'))
+
+    const stamps = (await store.listBySpec('spec-a')).map((s) => s.updatedAt)
+    expect(new Set(stamps).size).toBe(stamps.length)
+    expect([...stamps].sort((a, b) => a - b)).toEqual(stamps)
+    expect((await store.latestBySpec('spec-a'))?.id).toBe(rounds[rounds.length - 1]?.sessionId)
+    expect((await store.listBySpec('spec-a')).map((s) => s.id)).toEqual(
+      rounds.map((r) => r.sessionId),
+    )
+  })
+
   it('isSpecRunning reports a turn in flight on ANY session of the spec', async () => {
     const { mgr } = await makeManager(fakeAdapter({}))
 
