@@ -33,6 +33,7 @@ export {
   TELEMETRY_SCHEMA_VERSION,
   type CompactMetrics,
   type ModelUsageMap,
+  type PhaseUsageSnapshot,
   type ProjectMetricsMeta,
   type ProjectsIndex,
   type TelemetryEnvelope,

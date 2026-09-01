@@ -49,6 +49,22 @@ export interface UsageSnapshot {
 /** Per-model usage buckets, kept verbatim from the agent that produced them. */
 export type ModelUsageMap = Record<string, unknown>
 
+/**
+ * Usage accumulated up to some point inside a single turn.
+ *
+ * A turn reports one lump sum at the end, which cannot answer "how much of this
+ * dispatch was the planning phase?". Accumulating per-request usage as the
+ * stream arrives and snapshotting it at a phase boundary can.
+ */
+export interface PhaseUsageSnapshot {
+  /** Normalized tokens summed over every request counted so far. */
+  usage: UsageSnapshot
+  /** Requests counted so far — one per assistant message, subagents included. */
+  requests: number
+  /** Wall-clock milliseconds from the start of the turn to this snapshot. */
+  durationMs: number
+}
+
 /** Metrics carried by a completed turn, produced at the adapter boundary. */
 export interface TurnMetrics {
   usage?: UsageSnapshot
@@ -58,6 +74,20 @@ export interface TurnMetrics {
   model?: string
   durationMs?: number
   apiDurationMs?: number
+  /**
+   * Usage up to the first write of a `spec.md` — the plan→execute handover.
+   * Absent when the dispatch never touched a spec (git ops, explain, chat).
+   */
+  planPhase?: PhaseUsageSnapshot
+  /**
+   * The same accumulator read at the end of the turn.
+   *
+   * `usage` above comes from the agent's own end-of-turn report, so dividing
+   * `planPhase` by it would mix two accounting bases and dress the difference
+   * up as a phase split. This field gives the ratio a matching denominator;
+   * `usage.costUsd` then converts that ratio into money.
+   */
+  observedTotal?: PhaseUsageSnapshot
 }
 
 /** Metrics carried by an auto/manual context-compaction boundary. */

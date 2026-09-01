@@ -434,6 +434,11 @@ export class SessionManager {
               model: m.model,
               durMs: m.durationMs,
               apiDurMs: m.apiDurationMs,
+              // Splits one dispatch at the plan→execute handover. Absent when
+              // the run never wrote a spec (git ops, explain, plain chat), so
+              // existing lines keep their exact shape.
+              planPhase: m.planPhase,
+              observedTotal: m.observedTotal,
             })
           } else if (ev.type === 'compact') {
             telemetry.record('agent.compact', {
