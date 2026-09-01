@@ -74,7 +74,6 @@ export interface AppendItemBody {
   description: string
   sectionPath?: string
   quote?: string
-  autoRun?: boolean
 }
 
 export type GitOpsAction = 'commit' | 'discard' | 'stash'

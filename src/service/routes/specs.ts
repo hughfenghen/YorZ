@@ -207,40 +207,37 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
     }
-    if (parsed.autoRun) {
-      // The item is already persisted, so a busy spec is NOT an error here: it
-      // only means we skip the dispatch. Reporting it as a failed request would
-      // invite the user to resubmit and duplicate the append item.
-      if (await p.sessions.isSpecRunning(specId)) return c.json({ ok: true, busy: true })
-      // Guard BEFORE minting a session, or a refused dispatch would leave an
-      // empty shell session behind in the list.
-      const { sessionId } = await p.sessions.createSessionForSpec(specId)
-      // A `fix` append *is* Debug mode. The reentry guard widens that: an active
-      // debug.md keeps the session in Debug mode whatever this append's kind.
-      const debugActive = (await readDebugMdStatus(join(p.specsDir, specId))) === 'debugging'
-      const debug = parsed.kind === 'fix' || debugActive
-      const { commandLine, prompt } = buildSpecDispatch({
-        specsDirRelative: p.specsDirRelative,
-        specId,
-        debug,
-        body: parsed.description,
-        runtimeContext: debug ? await buildDebugRuntimeContext(p) : undefined,
-      })
-      const handle = await p.sessions.send(sessionId, prompt, commandLine, {
-        trigger: 'append',
-        specId,
-      })
-      trackSpecStage({
-        projectRoot: p.path,
-        store: p.store,
-        specId,
-        handle,
-        before: detail,
-        trigger: 'append',
-      })
-      return c.json({ ok: true, runId: handle.runId, sessionId })
-    }
-    return c.json({ ok: true })
+    // The item is already persisted, so a busy spec is NOT an error here: it
+    // only means we skip the dispatch. Reporting it as a failed request would
+    // invite the user to resubmit and duplicate the append item.
+    if (await p.sessions.isSpecRunning(specId)) return c.json({ ok: true, busy: true })
+    // Guard BEFORE minting a session, or a refused dispatch would leave an
+    // empty shell session behind in the list.
+    const { sessionId } = await p.sessions.createSessionForSpec(specId)
+    // A `fix` append *is* Debug mode. The reentry guard widens that: an active
+    // debug.md keeps the session in Debug mode whatever this append's kind.
+    const debugActive = (await readDebugMdStatus(join(p.specsDir, specId))) === 'debugging'
+    const debug = parsed.kind === 'fix' || debugActive
+    const { commandLine, prompt } = buildSpecDispatch({
+      specsDirRelative: p.specsDirRelative,
+      specId,
+      debug,
+      body: parsed.description,
+      runtimeContext: debug ? await buildDebugRuntimeContext(p) : undefined,
+    })
+    const handle = await p.sessions.send(sessionId, prompt, commandLine, {
+      trigger: 'append',
+      specId,
+    })
+    trackSpecStage({
+      projectRoot: p.path,
+      store: p.store,
+      specId,
+      handle,
+      before: detail,
+      trigger: 'append',
+    })
+    return c.json({ ok: true, runId: handle.runId, sessionId })
   })
 
   app.post('/projects/:projectId/specs/:id/run', async (c) => {
@@ -543,7 +540,6 @@ interface AppendInput {
   description: string
   sectionPath?: string
   quote?: string
-  autoRun: boolean
 }
 
 function parseAppendBody(body: unknown): AppendInput | { error: string } {
@@ -557,7 +553,7 @@ function parseAppendBody(body: unknown): AppendInput | { error: string } {
     return { error: 'description required' }
   }
 
-  const out: AppendInput = { kind, description: obj.description, autoRun: true }
+  const out: AppendInput = { kind, description: obj.description }
   if (obj.sectionPath !== undefined) {
     if (typeof obj.sectionPath !== 'string') return { error: 'sectionPath must be a string' }
     if (obj.sectionPath.length > 200) return { error: 'sectionPath too long (max 200)' }
@@ -567,10 +563,6 @@ function parseAppendBody(body: unknown): AppendInput | { error: string } {
     if (typeof obj.quote !== 'string') return { error: 'quote must be a string' }
     if (obj.quote.length > 500) return { error: 'quote too long (max 500)' }
     if (obj.quote.trim()) out.quote = obj.quote
-  }
-  if (obj.autoRun !== undefined) {
-    if (typeof obj.autoRun !== 'boolean') return { error: 'autoRun must be a boolean' }
-    out.autoRun = obj.autoRun
   }
   // `debug` used to be an explicit opt-in checkbox; `kind === 'fix'` now implies
   // it. A stale GUI bundle may still send the field — ignore it rather than

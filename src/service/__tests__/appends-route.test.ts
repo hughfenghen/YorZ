@@ -39,7 +39,7 @@ async function createSpec(apiPrefix: string): Promise<string> {
 }
 
 describe('POST /api/specs/:id/appends', () => {
-  it('200 writes `## 追加任务` entry and returns runId when autoRun=true (default)', async () => {
+  it('200 writes `## 追加任务` entry and returns runId', async () => {
     const { cwd, apiPrefix } = await startInTmp({ fakeAgent: true })
     const id = await createSpec(apiPrefix)
     const res = await fetch(`${apiPrefix}/specs/${id}/appends`, {
@@ -58,29 +58,15 @@ describe('POST /api/specs/:id/appends', () => {
     expect(raw).toContain('last_action: 追加任务（fix）')
   })
 
-  it('200 with autoRun=false does not return runId', async () => {
-    const { apiPrefix } = await startInTmp()
-    const id = await createSpec(apiPrefix)
-    const res = await fetch(`${apiPrefix}/specs/${id}/appends`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ kind: 'feat', description: 'x', autoRun: false }),
-    })
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { ok: boolean; runId?: string }
-    expect(body.ok).toBe(true)
-    expect(body.runId).toBeUndefined()
-  })
-
   // The Debug checkbox is gone (fix implies it), but a cached GUI bundle may
   // still post the old field. Ignoring beats 400-ing every append it sends.
   it('200 ignoring a stale `debug` field from an old GUI bundle', async () => {
-    const { apiPrefix } = await startInTmp()
+    const { apiPrefix } = await startInTmp({ fakeAgent: true })
     const id = await createSpec(apiPrefix)
     const res = await fetch(`${apiPrefix}/specs/${id}/appends`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ kind: 'fix', description: 'x', debug: true, autoRun: false }),
+      body: JSON.stringify({ kind: 'fix', description: 'x', debug: true }),
     })
     expect(res.status).toBe(200)
   })
