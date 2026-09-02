@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { planHistoryLoad, type HistoryLoadInput } from '../chat-history-load.js'
+import {
+  createHistoryLoadGate,
+  planHistoryLoad,
+  type HistoryLoadInput,
+} from '../chat-history-load.js'
 
 function input(over: Partial<HistoryLoadInput> = {}): HistoryLoadInput {
   return {
@@ -168,8 +172,53 @@ describe('planHistoryLoad', () => {
     // user message on screen that must not be held hostage to a refetch.
     expect(
       planHistoryLoad(
-        input({ sid: 'sid-b', displayedSid: 'sid-b', fresh: true, known: false, listPending: true }),
+        input({
+          sid: 'sid-b',
+          displayedSid: 'sid-b',
+          fresh: true,
+          known: false,
+          listPending: true,
+        }),
       ),
     ).toEqual({ action: 'fresh' })
+  })
+})
+
+describe('createHistoryLoadGate', () => {
+  // Regression (Debug 3): the history effect used to cancel its in-flight read
+  // from `onCleanup`, which fires on EVERY re-run — including the ones that
+  // decide to change nothing. A `clear: true` load blanked the area, a list
+  // response re-ran the effect mid-read, the read was cancelled, and the plan
+  // that followed was `keep`, which starts nothing. Blank for the rest of the
+  // round, with no pending request to explain it.
+  it('keeps a read alive across a re-run that starts no replacement', () => {
+    const gate = createHistoryLoadGate()
+    const isCurrent = gate.begin()
+    // …effect re-runs and returns `keep` / `hold`: nothing takes the area over…
+    expect(isCurrent()).toBe(true)
+  })
+
+  it('drops a read once a newer one claims the area', () => {
+    const gate = createHistoryLoadGate()
+    const first = gate.begin()
+    const second = gate.begin()
+    expect(first()).toBe(false)
+    expect(second()).toBe(true)
+  })
+
+  it('drops a read when the area is taken over without loading', () => {
+    const gate = createHistoryLoadGate()
+    const inFlight = gate.begin()
+    // Project switch / "new session" / a draft's optimistic user message.
+    gate.invalidate()
+    expect(inFlight()).toBe(false)
+  })
+
+  it('lets a later read win after an invalidate', () => {
+    const gate = createHistoryLoadGate()
+    gate.begin()
+    gate.invalidate()
+    const next = gate.begin()
+    expect(next()).toBe(true)
   })
 })

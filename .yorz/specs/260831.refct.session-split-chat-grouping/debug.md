@@ -1,7 +1,7 @@
 ---
 status: resolved
 active:
-updated_at: '2026-09-01 15:24:30'
+updated_at: '2026-09-02 20:05:12'
 ---
 
 ## Debug 1 · 新建第二个 spec session 时 Chat 面板被清空、只显示新 session 内容
@@ -369,3 +369,227 @@ effect 多跑两次、多发两次 `getSpecMessages`。
    是本次两扇门的时间成因；本次以「不在窗口内乱猜」规避，未优化端点本身。
 3. `spec.md` `## 7. 追加任务` 中该 `[fix] 2026-09-01 15:06:30` 条目仍为 `[open]`，
    与 Debug 1 同理，交由 yorz-spec 状态机在收敛到 `done` 时处理。
+
+## Debug 3 · 追加任务新建 session 执行中，来回切换 session 时正在执行的 session 有几率空白
+
+- 状态：resolved
+- 快照：a9f506fcc422bd6f8240b0827e4ea703e6b51282
+- 进入时间：'2026-09-02 19:45:04'
+
+### 3.1 Bug 现象与复现
+
+来源：spec 追加任务 `[fix] 2026-09-02 19:44:47`。
+
+> spec 追加任务创建 session 重新执行时，来回切换 session，当前正在执行的 session
+> 有几率显示空页面，无法加载该 session 组中的历史消息。
+> 类似问题修复了好几次，需要用日志作为判断依据。
+
+与 Debug 1 / 2 的区别：这次带**概率性**（"有几率"），且明确绑定「当前正在执行的 session」
+与「来回切换」——指向竞态而非固定的状态判定错误。
+
+### 3.2 Debug 基线
+
+- 快照 SHA：`a9f506fcc422bd6f8240b0827e4ea703e6b51282`（`git stash create`；进入时工作区含
+  `spec.md` / `TODO.md` 既有未提交改动，Debug 1/2 的修复已提交进 HEAD `84f29b5`）
+- 进入时间：`2026-09-02 19:45:04`
+- 退出闸门基准：`git diff a9f506f`
+
+### 3.3 关联链路分析
+
+```
+selectSession(sid)                                   ChatPanel.tsx:465-474
+  → void refetchSessions()        GET /sessions              实测 ~250ms–1.1s
+  → setActiveSid(sid)             历史 effect 同步执行
+历史 effect                                          ChatPanel.tsx:585-635
+  → planHistoryLoad(...) = load(clear:true, specId)
+  → resetParts()                  ★ 消息区立即被清空
+  → api.getSpecMessages(...)      GET /specs/:id/messages    实测 ~17ms
+  → .then(next => { if (!disposed) resetParts(next) })
+  → onCleanup(() => disposed = true)   ★ effect 每次重跑都会执行
+```
+
+两条互相独立的时间线在这里交叉：
+
+1. **加载线**：`resetParts()` 先把消息区清空，内容要等 `GET /specs/:id/messages` 回来才补上。
+2. **重跑线**：`GET /sessions` 的响应落地 → `createEffect`（ChatPanel.tsx:363-378）把
+   `runningSids` **整体重建成一个新对象** → 历史 effect 读了 `isRunning(sid)`，跟着重跑。
+
+重跑落到 `keep` 分支时（`running && sameSession && sameScope`）不发起任何新加载，
+但 `onCleanup` 已经把加载线作废了——**清空生效、内容被丢弃、没人接手**。
+
+### 3.4 假设看板
+
+| # | 假设 | 成立会看到 | 不成立会看到 | 结论 |
+| - | ---- | ---------- | ------------ | ---- |
+| H1 | `planHistoryLoad` 又漏了一个状态，把整组读成了单 session | 日志出现 `getSessionMessages` 而非 `getSpecMessages` | 日志里就是 `getSpecMessages(spec-…)` | **已排除**（E2）：真实浏览器日志显示计划正确、请求正确、URL 正确 |
+| H2 | 服务端聚合端点返回空 | `load-done parts=0` | `load-done parts=891` | **已排除**（E2）：服务端返回 891/898/925 条，数据完好 |
+| H3 | 历史 effect 的 `onCleanup` 在「重跑但不重新加载」时也会作废 in-flight 加载，导致清空后无人补内容 | `CLEANUP dispose` → `plan=keep parts=0` → `load-done … disposed=true` | `load-done … disposed=false` | **成立**（E1 / E2） |
+| H4 | 触发重跑的是 `runningSids` 整对象 signal（每个列表响应/SSE 边沿都换引用） | 重跑前紧邻一条 `REBUILD runningSids (list response landed)` | 重跑与列表响应无关 | **成立**（E1 / E3） |
+| H5 | 「有几率」= `GET /sessions`（慢）与 `GET /specs/:id/messages`（快）的响应赛跑 | 同一次会话里，先落地者不同则结果不同 | 每次都空白 / 每次都正常 | **成立**（E3）：同一次运行中，首次点击 `disposed=false` 正常，切走再切回 `disposed=true` 空白 |
+
+### 3.5 证据
+
+**E1 — 复现（脚手架 S1，真实 solid-js 运行时 + 真实 `planHistoryLoad` / `groupSessions` 回放）**
+
+按「停在普通 chat 行 → 切到正在执行的 spec 行 → 列表响应落地」回放，实测调用日志：
+
+```
+--- selectSession(sid-B) ---
+REQ list#2
+plan=load(sid=sid-B,spec=spec-1,run=true)
+resetParts(EMPTY)                                              ← 现象：消息区被清空
+REQ getSpecMessages(spec-1)
+REBUILD runningSids (deps: sessions + activeSid=sid-B) -> NEW object   ← 触发器
+plan=keep(sid=sid-B,spec=spec-1,run=true)                      ← 重跑落到 keep，不发起加载
+RES spec:spec-1
+DROPPED spec:spec-1                                            ← 根因：加载结果被 onCleanup 作废
+R1 PARTS = ""                                                  ← 空页面
+```
+
+**E2 — 真实浏览器 / 真实服务端取证（脚手架 S2 + S3，`node dist/cli/index.js serve --port 7431`）**
+
+在真实 GUI 里加 `[dbg3]` 探针（S2），用 Playwright 驱动真实 Chromium 点击真实会话行（S3），
+唯一被 stub 的只有 `GET /sessions` 响应里那一个 `running` 标记（本机没有真在跑的 agent）。
+
+> 第一版探针在 effect 内直接读了 `parts()`，把探针自己变成了 effect 的依赖、制造出被测的重跑。
+> 已改为 `untrack(() => parts().length)` 后重新取证；下方日志是**未被污染**的版本。
+
+```
+===== 3) 切回正在执行的 spec 行 =====
+REQ  /api/projects/yorz-6f1f9f/sessions
+[dbg3] plan=load sid=2a674da8… spec=260831.refct.session-split-chat-grouping run=true
+       dispSid=5e2157c2… dispSpec=- known=true pending=false parts=81
+[dbg3] load-start spec:260831.refct.session-split-chat-grouping clear=true      ← 清空
+[dbg3] REBUILD runningSids (list response landed) n=30 sid=2a674da8…            ← 触发器
+REQ  /api/projects/yorz-6f1f9f/specs/260831.refct.session-split-chat-grouping/messages
+[dbg3] CLEANUP dispose spec:260831.refct.session-split-chat-grouping            ← 作废加载
+[dbg3] plan=keep … parts=0                                                     ← 空页面，且不再加载
+RES  /api/projects/yorz-6f1f9f/specs/260831.refct.session-split-chat-grouping/messages
+[dbg3] load-done spec:260831.…/messages parts=898 disposed=true                ← 898 条到货被丢弃
+[dbg3] plan=keep … parts=0                                                     ← 此后恒为 keep
+```
+
+`parts=0` 与 `load-done parts=898 disposed=true` 同时出现，是这条根因的**决定性证据**：
+内容拿到了、URL 对了、服务端没问题，纯粹是被 GUI 自己扔掉的。
+
+**E3 — 为什么「有几率」（同一次运行内的对照）**
+
+同一次浏览器会话里，两次点击同一个 spec 行结果相反：
+
+```
+===== 1) 点击正在执行的 spec 行 =====            ← 正常
+[dbg3] load-start spec:… clear=true
+RES  /specs/…/messages
+[dbg3] load-done spec:… parts=891 disposed=false   ← 加载先到货，之后的 CLEANUP 无害
+[dbg3] plan=keep … parts=891
+
+===== 3) 切回正在执行的 spec 行 =====            ← 空白
+[dbg3] load-start spec:… clear=true
+[dbg3] CLEANUP dispose spec:…                      ← 列表响应先到货
+[dbg3] plan=keep … parts=0
+[dbg3] load-done spec:… parts=898 disposed=true
+```
+
+差别只在 `GET /sessions`（Debug 2 实测 ~1.1s）与 `GET /specs/:id/messages`（~17ms）
+**谁先落地**。「来回切换」恰好制造这种交错：每次切换都会补发一个 `/sessions`，
+上一次切换的响应就很容易落在这一次的读取窗口里——这就是「有几率」的来源。
+
+**根因定论**
+
+历史 effect 用 `onCleanup` 作废 in-flight 加载，等价于假设「effect 重跑 ⇒ 要换内容」。
+这个假设不成立：effect 会因为**与内容无关**的原因频繁重跑（列表在每个 SSE 状态边沿刷新，
+每个响应都把 `runningSids` 重建为新对象）。当这样的重跑落到 `keep` / `hold` 这些
+**不发起新加载**的分支时，被作废的加载没有任何人接手；而消息区已经被 `clear: true` 清空。
+
+于是三件事同时成立，就是用户看到的空页面：
+
+1. `clear: true` 已经清空了消息区；
+2. `onCleanup` 丢掉了唯一在飞的加载；
+3. 之后每次重跑都返回 `keep`（本轮一直 running），永远不会再发起加载。
+
+Debug 1 / 2 修的都是**同步的"该读什么"**（`planHistoryLoad` 的状态判定），
+这次是**异步的"读回来的东西还要不要"**——同一个 effect 的另一半，此前从未被检视。
+
+### 3.6 脚手架清单
+
+| # | 文件 / 位置 | 类型 | 状态 |
+| - | ----------- | ---- | ---- |
+| S1 | `src/gui/src/lib/__tests__/tmp-repro-round3.test.ts` + `tmp-vitest-debug3.config.ts` | 临时复现用例 + 临时 vitest 配置（`resolve.conditions` 指向浏览器构建） | ✅ 已删除 |
+| S2 | `ChatPanel.tsx` 内 5 处 `// TMP-DBG3` `console.log`（历史 effect 的 plan / load-start / load-done / CLEANUP，以及 runningSids 重建）与随之引入的 `untrack` import | ✅ 已还原 |
+| S3 | `tmp-dbg3-drive.mjs`（仓库根） | 临时 Playwright 驱动脚本（真实浏览器取证；stub 了 `GET /sessions` 里的一个 `running` 标记） | ✅ 已删除 |
+| S4 | `/tmp/ChatPanel.fixed.tsx` | 修复版备份（做「修复前 / 只有 gate / 两者齐全」三组对照时来回切换代码） | ✅ 已删除（仓库外） |
+
+> 无临时短路 / Mock 业务逻辑 / 注释掉的生产代码；S3 唯一的 Mock 是把某个 session 的
+> `running` 置真（本机没有真在执行的 agent），不改变任何被调查的代码路径。
+
+
+### 3.7 最终修复
+
+修复围绕一条新的不变量：**「effect 重跑」不等于「要换内容」——只有真正接管消息区的动作
+才有权作废在飞的加载。**
+
+**修复 1 —— 用令牌取代 `onCleanup` 作废（对应根因，`chat-history-load.ts` + `ChatPanel.tsx`）**
+
+新增 `createHistoryLoadGate()`：`begin()` 领取一个令牌并返回「我是否仍然拥有消息区」的判定，
+`invalidate()` 用于「接管消息区但不加载」的场合。历史 effect 改为
+`const isCurrent = historyGate.begin()` + `.then(next => { if (isCurrent()) resetParts(next) })`，
+删掉 `onCleanup(() => disposed = true)`。
+
+于是作废只发生在**真的有人接手**的时候：
+
+- 新的一次 `load`（`begin()` 抢走令牌，旧结果自然作废——原来的取消语义完整保留）；
+- `historyGate.invalidate()` 的四个接管点：切换项目、`newSession()` 回到草稿、
+  `sendFromDraft()` 写入乐观用户消息、组件卸载。
+
+而 `keep` / `hold` / `fresh` / `idle` 这些**不发起加载**的重跑，不再动在飞的加载。
+
+**修复 2 —— 消除与内容无关的重跑（对应触发器 H4，也顺带清掉 Debug 2 的残留 1）**
+
+历史 effect 里 `isRunning(sid)` 改为读已有的布尔 memo `activeRunning()`。
+`runningSids` 是整对象 signal，每个列表响应都把它换成新引用；直接读它等于让 effect
+跟着每个 SSE 状态边沿重跑。改成布尔 memo 后只有「运行态真的翻转」才重跑。
+
+实测（真实浏览器日志）：修复前一次「切回」要跑 3 次历史 effect，修复后只跑 1 次；
+Debug 2 记录的「本轮结束后重复发两次 `getSpecMessages`」也随之消失。
+
+> 单独验证过：**只有修复 1** 时新增的 e2e 回归用例即可通过——修复 1 是充分且必要的那一条，
+> 修复 2 是把竞态窗口本身关掉的加固。
+
+### 3.8 收尾核对
+
+| 项 | 结果 |
+| -- | ---- |
+| 脚手架还原 | ✅ S1–S4 全部清理，`grep TMP-DBG3` 无残留，无临时短路 / Mock / 注释掉的业务代码 |
+| 退出闸门 `git diff a9f506f` | ✅ 仅剩 3 个已跟踪文件的合法修复（`ChatPanel.tsx` +19/−7、`chat-history-load.ts` +42、`chat-history-load.test.ts` +45/−1）+ 1 个新增 e2e 用例；`spec.md` / `TODO.md` 是进入前就有的既有改动 |
+| `pnpm typecheck` | ✅ 无错 |
+| `pnpm test` | ✅ 74 文件 / 724 通过 + 2 skipped（Debug 2 收尾时为 73 文件 / 693 通过） |
+| `pnpm build` | ✅ CLI + GUI 均构建成功 |
+| `playwright test` | ✅ 41 例；新增用例通过。`sidebar-hover-peek` 有一次抖动（折叠宽度 34.45 vs 36，CSS 过渡计时），单独重跑 3/3 通过，与本次改动无关 |
+| prettier | ✅ 改动文件已格式化 |
+| 回归测试 | ✅ `chat-history-load.test.ts` 由 14 例增至 **20 例**（新增 `createHistoryLoadGate` 4 例）；新增 e2e `chat-spec-group-switch.spec.ts` |
+| 复现步骤重跑 | ✅ 见下表 |
+
+**修复前后对照（真实浏览器 `[dbg3]` 日志，同一操作序列）**
+
+| 阶段 | 修复前 | 修复后 |
+| ---- | ------ | ------ |
+| 1) 点击正在执行的 spec 行 | `load-start clear=true` → `load-done parts=891 disposed=false` ✅（加载侥幸先到） | 同左 ✅ |
+| 2) 切走到普通 chat 行 | `load-done parts=81` ✅ | 同左 ✅ |
+| **3) 切回正在执行的 spec 行** | `load-start clear=true` → `CLEANUP dispose` → `plan=keep parts=0` → `load-done parts=898 disposed=true` → 此后恒为 `keep` ❌ **永久空白** | `load-start clear=true` → `load-done parts=925 current=true` ✅ **内容落地**，且 `REBUILD runningSids` 后不再有多余重跑 |
+
+**e2e 回归用例的有效性验证**（`chat-spec-group-switch.spec.ts`，把 `/sessions` 压到 250ms、
+`/specs/:id/messages` 压到 700ms 让竞态必现）：
+
+| 代码版本 | 结果 |
+| -------- | ---- |
+| 修复前（`onCleanup` 作废 + `isRunning(sid)`） | ❌ failed —— `ROUND-A-CONTENT` 从未出现 |
+| 只有修复 1（gate，保留 `isRunning(sid)`） | ✅ passed |
+| 修复 1 + 修复 2 | ✅ passed |
+
+**残留（不属于本次根因，未扩大改动面）**：
+
+1. `GET /sessions` 依旧慢（e2e 那个只有 1 个 spec 的空项目上，服务端自己都打了
+   `slow request … durationMs=1239` 的 warn）。它是本次竞态的时间成因；本次以
+   「不作废无人接手的加载」化解，未优化端点本身。
+2. `spec.md` `## 7. 追加任务` 中该 `[fix] 2026-09-02 19:44:47` 条目仍为 `[open]`，
+   与 Debug 1 / 2 同理，交由 yorz-spec 状态机在收敛到 `done` 时处理。

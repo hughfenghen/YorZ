@@ -1,7 +1,7 @@
 ---
-stage: done
-last_action: 追加任务全部收敛，标记 done
-updated_at: '2026-09-01 15:38:20'
+stage: plan
+last_action: 追加任务（fix）
+updated_at: '2026-09-02 19:44:47'
 summary: 拆分 spec 驱动轮次的会话复用：run/append/git-ops 各自新开 session 以切断历史继承，Chat 面板按 specId 聚合为单行、跨 session 消息用分割元素区分，用户消息追加到最近 session。
 ---
 
@@ -374,6 +374,9 @@ _暂无_
 - [fixed] [fix] 2026-09-01 15:37:00 | 测试追加任务，session 组是否能增量更新消息；
   - 描述：测试追加任务，session 组是否能增量更新消息；
     无需改动任何代码
+- [open] [fix] 2026-09-02 19:44:47 | spec 追加任务创建session重新执行时，来回切换 session，当前正在执行的 session 有几率显示空页面，无法加载该 session 组中的历
+  - 描述：spec 追加任务创建session重新执行时，来回切换 session，当前正在执行的 session 有几率显示空页面，无法加载该 session 组中的历史消息；
+类似问题修复了好几次，你需要使用日志作为判断依据，不要瞎猜。
 
 ## 8. 执行记录
 

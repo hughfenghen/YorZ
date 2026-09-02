@@ -45,7 +45,7 @@ import {
   specMessagesToParts,
   type ChatPart,
 } from '../lib/chat-blocks.js'
-import { planHistoryLoad } from '../lib/chat-history-load.js'
+import { createHistoryLoadGate, planHistoryLoad } from '../lib/chat-history-load.js'
 import { findGroupBySession, groupSessions, type SessionGroup } from '../lib/session-groups.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { t, useTranslation } from '../i18n/index.js'
@@ -313,6 +313,14 @@ export const ChatPanel: Component = () => {
    * from the single round that was loaded before the list knew about the spec.
    */
   let displayedSpecId: string | undefined
+  /**
+   * Owns the async half of a history read. Every path that takes the message
+   * area over — a new load, a project switch, dropping back to the draft —
+   * invalidates the read in flight, and ONLY those paths do: a re-run of the
+   * history effect that decides to change nothing must leave the pending read
+   * alone, or a `clear: true` load gets blanked and then orphaned.
+   */
+  const historyGate = createHistoryLoadGate()
   /** sid → deferred resolved by the session topic's `ready` event. */
   const readyWaiters = new Map<string, { promise: Promise<void>; resolve: () => void }>()
 
@@ -383,6 +391,7 @@ export const ChatPanel: Component = () => {
       setActiveSid('')
       setRunningSids({})
       resetParts()
+      historyGate.invalidate()
       displayedSid = ''
       displayedSpecId = undefined
       setStarting(false)
@@ -589,7 +598,10 @@ export const ChatPanel: Component = () => {
     // Tracked for spec rows only: a spec's row spans several sessions, so when
     // the current round settles the transcript is re-read to fold that round in
     // (with its divider). Plain chats keep the old load-on-select behaviour.
-    const running = specId ? isRunning(sid) : false
+    // A boolean memo, not `isRunning(sid)`: `runningSids` is replaced wholesale
+    // by every list response, so reading it here re-ran this effect on each SSE
+    // status edge even though nothing about the content had changed.
+    const running = specId ? activeRunning() : false
     const plan = planHistoryLoad({
       sid,
       displayedSid,
@@ -613,11 +625,11 @@ export const ChatPanel: Component = () => {
       return
     }
 
-    let disposed = false
     setAutoScroll(true)
     if (plan.clear) resetParts()
     displayedSid = sid
     displayedSpecId = plan.specId
+    const isCurrent = historyGate.begin()
     // Flatten message → parts: tool-result keeps its payload instead of being
     // dropped, so the transcript and the live stream now agree. A spec row reads
     // every session it owns, dividers included.
@@ -626,12 +638,12 @@ export const ChatPanel: Component = () => {
       : api.getSessionMessages(pid, sid).then(messagesToParts)
     void load
       .then((next) => {
-        if (!disposed) resetParts(next)
+        // Not `onCleanup`: the effect re-runs for reasons that have nothing to do
+        // with the content, and cancelling there dropped this transcript on the
+        // floor after `clear` had already blanked the area. See the gate's docs.
+        if (isCurrent()) resetParts(next)
       })
       .catch(() => {})
-    onCleanup(() => {
-      disposed = true
-    })
   })
 
   // --- session selection → subscribe to the live stream ---
@@ -836,6 +848,8 @@ export const ChatPanel: Component = () => {
 
   onCleanup(() => {
     if (flushTimer != null) clearTimeout(flushTimer)
+    // The panel is gone; a read still in flight must not write to it.
+    historyGate.invalidate()
   })
 
   /**
@@ -848,6 +862,7 @@ export const ChatPanel: Component = () => {
     if (!activeProjectId() || !activeSid()) return
     setActiveSid('')
     resetParts()
+    historyGate.invalidate()
     displayedSid = ''
     displayedSpecId = undefined
     setAutoScroll(true)
@@ -900,6 +915,7 @@ export const ChatPanel: Component = () => {
       // `ready` event cannot land between subscribe and await.
       const ready = waitForSubscription(sid)
       resetParts([{ kind: 'text', role: 'user', text: prompt }])
+      historyGate.invalidate()
       displayedSid = sid
       displayedSpecId = undefined
       setRunningSids((prev) => ({ ...prev, [sid]: true }))

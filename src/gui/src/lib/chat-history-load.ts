@@ -97,3 +97,45 @@ export function planHistoryLoad(input: HistoryLoadInput): HistoryLoadPlan {
   // which is what keeps the mid-turn scope correction invisible to the user.
   return { action: 'load', clear: !sameSession, specId }
 }
+
+/**
+ * Guards the async half of a load: whether the transcript that just arrived is
+ * still the one the message area is waiting for.
+ *
+ * Invariant 4, and the reason this is not just `onCleanup`. The effect used to
+ * cancel its in-flight read from its own cleanup, which conflates two very
+ * different re-runs:
+ *
+ *   - one that starts a REPLACEMENT load — the old result is genuinely unwanted;
+ *   - one that returns `keep` / `hold` — nobody takes over.
+ *
+ * The effect re-runs constantly for reasons that have nothing to do with the
+ * content (the list refetches on every SSE status edge, and each response
+ * rebuilds `runningSids` into a fresh object). When such a re-run landed inside
+ * the read window of a `clear: true` load, the cleanup dropped the arriving
+ * transcript and the very next plan was `keep` — which starts nothing. The area
+ * stayed blank for the rest of the round, with no pending request left to
+ * explain it.
+ *
+ * A token is the right shape: only a new load, or an explicit takeover of the
+ * message area (project switch, new draft), invalidates the previous read.
+ */
+export interface HistoryLoadGate {
+  /** Claim the message area for a load; the returned fn reports if it still owns it. */
+  begin(): () => boolean
+  /** Take the area over without loading — drops whatever read is in flight. */
+  invalidate(): void
+}
+
+export function createHistoryLoadGate(): HistoryLoadGate {
+  let token = 0
+  return {
+    begin() {
+      const mine = ++token
+      return () => mine === token
+    },
+    invalidate() {
+      token += 1
+    },
+  }
+}
