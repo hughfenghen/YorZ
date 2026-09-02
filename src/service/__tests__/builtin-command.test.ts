@@ -27,6 +27,20 @@ describe('parseBuiltinCommand', () => {
     })
   })
 
+  it('strips the @ file-reference marker off the spec path', () => {
+    // What the composer's @-autocomplete inserts, and what YorZ now synthesises.
+    expect(parseBuiltinCommand('/yorz-spec @.yorz/specs/x/spec.md 继续')).toEqual({
+      name: 'yorz-spec',
+      specPath: '.yorz/specs/x/spec.md',
+      specType: '',
+      body: '继续',
+    })
+    // Regression: with the @ left in, specDirOf() aimed debug.md at "@.yorz/specs/x".
+    expect(specDirOf(parseBuiltinCommand('/yorz-debug @.yorz/specs/x/spec.md 崩溃')!.specPath)).toBe(
+      '.yorz/specs/x',
+    )
+  })
+
   it('splits a <type>: body prefix, with either colon', () => {
     expect(parseBuiltinCommand('/yorz-spec feat: 加个夜间模式')).toMatchObject({
       specType: 'feat',
@@ -76,10 +90,16 @@ describe('parseBuiltinCommand', () => {
 })
 
 describe('formatBuiltinCommand', () => {
-  it('round-trips with the parser', () => {
+  it('marks the spec path with @ and round-trips with the parser', () => {
     const line = formatBuiltinCommand('yorz-spec', '.yorz/specs/x/spec.md', '继续')
-    expect(line).toBe('/yorz-spec .yorz/specs/x/spec.md 继续')
+    expect(line).toBe('/yorz-spec @.yorz/specs/x/spec.md 继续')
     expect(parseBuiltinCommand(line)).toMatchObject({ specPath: '.yorz/specs/x/spec.md' })
+  })
+
+  it('does not double the @ when the caller already prefixed the path', () => {
+    expect(formatBuiltinCommand('yorz-debug', '@.yorz/specs/x/spec.md')).toBe(
+      '/yorz-debug @.yorz/specs/x/spec.md',
+    )
   })
 
   it('renders a typed command and round-trips with the parser', () => {

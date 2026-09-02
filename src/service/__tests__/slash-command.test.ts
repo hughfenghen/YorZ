@@ -104,12 +104,23 @@ describe('buildSpecPrompt', () => {
   })
 
   it('points straight at the spec when the command carries a path', () => {
-    const line = '/yorz-spec .yorz/specs/260901.refct.x/spec.md 顺带改下文案'
+    const line = '/yorz-spec @.yorz/specs/260901.refct.x/spec.md 顺带改下文案'
     const out = buildSpecPrompt(line, '.yorz/specs')
-    expect(out).toContain('.yorz/specs/260901.refct.x/spec.md')
+    // The @ is a reference marker only — the guidance quotes the bare path.
+    expect(out).toContain('`.yorz/specs/260901.refct.x/spec.md`')
+    // Anchored, or the neighbouring absolute skill path drags it to ~/.
+    expect(out).toContain('项目根目录')
+    expect(out).toContain('当前工作目录')
     // The spec-less fallback text must not leak into a targeted dispatch.
     expect(out).not.toContain('未指定 spec_path')
     expect(stripHiddenPrompt(out)).toBe(line)
+  })
+
+  it('leaves the path-less branches free of the anchor note', () => {
+    expect(buildSpecPrompt('/yorz-spec 加个夜间模式', '.yorz/specs')).not.toContain('项目根目录')
+    expect(buildSpecPrompt('/yorz-spec feat: 加个夜间模式', '.yorz/specs')).not.toContain(
+      '项目根目录',
+    )
   })
 })
 
@@ -119,7 +130,7 @@ describe('buildSpecDispatch', () => {
 
   it('routes a non-debug dispatch to /yorz-spec', () => {
     const out = buildSpecDispatch({ ...base, debug: false, body: '加个开关' })
-    expect(out.commandLine).toBe(`/yorz-spec ${specPath} 加个开关`)
+    expect(out.commandLine).toBe(`/yorz-spec @${specPath} 加个开关`)
     expect(out.prompt).toContain('yorz-spec')
   })
 
@@ -130,13 +141,13 @@ describe('buildSpecDispatch', () => {
       body: '点击崩溃',
       runtimeContext: '当前项目运行服务上下文：dev 服务运行中',
     })
-    expect(out.commandLine).toBe(`/yorz-debug ${specPath} 点击崩溃`)
+    expect(out.commandLine).toBe(`/yorz-debug @${specPath} 点击崩溃`)
     expect(out.prompt).toContain('dev 服务运行中')
   })
 
   it('omits the body for run / conflict dispatches', () => {
-    expect(buildSpecDispatch({ ...base, debug: false }).commandLine).toBe(`/yorz-spec ${specPath}`)
-    expect(buildSpecDispatch({ ...base, debug: true }).commandLine).toBe(`/yorz-debug ${specPath}`)
+    expect(buildSpecDispatch({ ...base, debug: false }).commandLine).toBe(`/yorz-spec @${specPath}`)
+    expect(buildSpecDispatch({ ...base, debug: true }).commandLine).toBe(`/yorz-debug @${specPath}`)
   })
 
   it('never hands the Agent a leading slash, but keeps the line recoverable', () => {

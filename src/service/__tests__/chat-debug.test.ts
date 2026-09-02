@@ -23,10 +23,13 @@ describe('chat debug prompt', () => {
   })
 
   it('puts debug.md next to spec.md when the command names a spec', () => {
-    const line = '/yorz-debug .yorz/specs/260901.refct.x/spec.md 点击后崩溃'
+    const line = '/yorz-debug @.yorz/specs/260901.refct.x/spec.md 点击后崩溃'
     const prompt = buildDebugPrompt(line)
 
-    expect(prompt).toContain('.yorz/specs/260901.refct.x/debug.md')
+    expect(prompt).toContain('`.yorz/specs/260901.refct.x/debug.md`')
+    // The @ must never survive into a path the agent is told to write.
+    expect(prompt).not.toContain('@.yorz/specs/260901.refct.x/debug.md')
+    expect(prompt).toContain('项目根目录')
     expect(prompt).not.toContain('.yorz/tmp/debug/')
     // One paragraph now covers both create and reentry — no new/resume modes.
     expect(prompt).toContain('重入')

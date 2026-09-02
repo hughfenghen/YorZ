@@ -17,11 +17,29 @@
 const COMMAND_RE = /^\/([\w-]+)(?:\s+([\s\S]*))?$/
 
 /**
- * A bare token ending in `.md`. Deliberately narrow: chat bodies start with
+ * A bare token ending in `.md`, optionally carrying the `@` file-reference
+ * marker YorZ's composer inserts. Deliberately narrow: chat bodies start with
  * prose ("加个夜间模式"), never with a lone markdown path, so this cannot
  * swallow the first word of a real bug description.
+ *
+ * The `@` is stripped on parse so every consumer downstream (notably
+ * {@link specDirOf}, which derives `debug.md`'s home) sees a plain
+ * project-relative path.
  */
-const SPEC_PATH_RE = /^\S+\.md$/
+const SPEC_PATH_RE = /^@?\S+\.md$/
+
+/**
+ * Anchors the spec path for the Agent. The prompt that carries it also names an
+ * absolute skill path under the user's home directory, and without this line
+ * agents resolve the neighbouring relative path against *that* directory (or
+ * against `~`) and report the spec as missing.
+ *
+ * Defined here rather than in either prompt builder so `/yorz-spec` and
+ * `/yorz-debug` state it identically.
+ */
+export const SPEC_PATH_ANCHOR_NOTE =
+  '该 spec 路径是**项目根目录**（即你的当前工作目录）下的相对路径，' +
+  '不要相对 skill 文件所在目录或用户主目录解析；命令行中的 `@` 只是文件引用标记，不属于路径本身。'
 
 /**
  * `feat: …` / `fix：…` opening a body. Both colons are accepted because the
@@ -54,7 +72,12 @@ export function parseBuiltinCommand(prompt: string): ParsedBuiltinCommand | null
   if (head && SPEC_PATH_RE.test(head[1])) {
     // Body kept verbatim: with a path the type prefix carries no meaning, and
     // an append description may legitimately open with "fix: …".
-    return { name: matched[1], specPath: head[1], specType: '', body: (head[2] ?? '').trim() }
+    return {
+      name: matched[1],
+      specPath: stripMention(head[1]),
+      specType: '',
+      body: (head[2] ?? '').trim(),
+    }
   }
   return { name: matched[1], specPath: '', ...splitSpecType(rest) }
 }
@@ -75,9 +98,22 @@ export function specDirOf(specPath: string): string {
   return cut > 0 ? specPath.slice(0, cut) : '.'
 }
 
-/** Join a command name, optional spec path and optional body into one line. */
+/** Drop the `@` file-reference marker, if present. Idempotent. */
+function stripMention(specPath: string): string {
+  return specPath.startsWith('@') ? specPath.slice(1) : specPath
+}
+
+/**
+ * Join a command name, optional spec path and optional body into one line.
+ *
+ * The path goes out as `@<path>`, matching the composer's file-reference syntax
+ * so a synthesised dispatch reads exactly like a line the user could have typed
+ * with `@` autocomplete — and so the bubble marks it as a file of *this*
+ * project. Idempotent for callers that already prefixed it.
+ */
 export function formatBuiltinCommand(name: string, specPath: string, body = ''): string {
-  return [`/${name}`, specPath, body.trim()].filter(Boolean).join(' ')
+  const mention = specPath ? `@${stripMention(specPath)}` : ''
+  return [`/${name}`, mention, body.trim()].filter(Boolean).join(' ')
 }
 
 /** `/<name> <type>: <body>` — the form used when the spec does not exist yet. */

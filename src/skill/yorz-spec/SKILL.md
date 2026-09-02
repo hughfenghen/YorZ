@@ -20,6 +20,7 @@ description: Drive YorZ spec docs through plan / tasks / execute stages with det
 
 - `spec_path`：**可选**，目标 spec 文档路径。
   - 显式给出时：典型位置 `docs/specs/*.md` 或 `.yorz/specs/<id>/spec.md`，直接更新该 spec。
+  - 指令形式 `/yorz-spec @<spec path> <内容>` 中的 `@` 只是 YorZ 的文件引用标记，**不属于路径本身**；去掉 `@` 后是**项目根目录**（即当前工作目录）下的相对路径，不要相对本 skill 文件所在目录或用户主目录解析。
   - 缺省时按以下顺序解析：
     1. **从 session 上下文恢复**：扫描当前会话历史中已出现/已读写过的 spec 文档路径；存在多个时优先选取最近一次被读写的；若仍有歧义，向用户确认。
     2. **从当前 prompt 创建**：若上下文中没有任何 spec 文档，按 [新建 spec 流程](./stages.md#new-spec) 生成路径与骨架。

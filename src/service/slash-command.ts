@@ -2,6 +2,7 @@ import {
   formatBuiltinCommand,
   formatTypedBuiltinCommand,
   parseBuiltinCommand,
+  SPEC_PATH_ANCHOR_NOTE,
   type BuiltinSpecType,
 } from './builtin-command.js'
 import { buildDebugPrompt, isYorzDebugCommand } from './chat-debug.js'
@@ -70,7 +71,10 @@ export function buildSpecPrompt(
   const specType = parsed?.specType ?? ''
 
   const head = specPath
-    ? [`${skillRef('yorz-spec')}，然后按其自动模式判定推进 spec：\`${specPath}\`。`]
+    ? [
+        `${skillRef('yorz-spec')}，然后按其自动模式判定推进 spec：\`${specPath}\`。`,
+        SPEC_PATH_ANCHOR_NOTE,
+      ]
     : specType
       ? [
           `${skillRef('yorz-spec')}，然后按其「新建 spec」流程创建新的 spec 文档，并立即按 plan 阶段继续推进直至阻塞。`,

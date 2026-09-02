@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { parseBuiltinCommand, specDirOf } from './builtin-command.js'
+import { parseBuiltinCommand, specDirOf, SPEC_PATH_ANCHOR_NOTE } from './builtin-command.js'
 import { skillRef } from './skill-ref.js'
 import { wrapHiddenPrompt } from './custom-instruction.js'
 
@@ -43,6 +43,7 @@ export function buildDebugPrompt(prompt: string, opts: DebugPromptOptions = {}):
         `Debug 活文档为 \`${specDirOf(specPath)}/debug.md\`：不存在则创建；已存在则按 skill 的「重入」规则处理` +
           `——frontmatter \`status: debugging\` 时定位 \`active\` 指向的 \`## Debug NNN\` 记录块续跑、勿新建，否则在文末追加新的记录块。`,
         `新建记录块时立即 \`git stash create\` 打快照写入 Debug 基线；续跑已有记录块则沿用其中已记录的基线。`,
+        SPEC_PATH_ANCHOR_NOTE,
       ]
     : [
         `${skillRef('yorz-debug')}，然后进入 Debug 模式。`,
