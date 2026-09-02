@@ -271,7 +271,7 @@ export async function runRestartServe(opts: RestartServeOptions = {}): Promise<v
 
   const entry = process.argv[1]
   if (!entry) throw new Error('Cannot resolve CLI entrypoint for restart')
-  const child = spawn(process.execPath, [entry, ...restartWorkerArgs(opts)], {
+  const child = spawnWithoutWindow(process.execPath, [entry, ...restartWorkerArgs(opts)], {
     detached: true,
     stdio: 'ignore',
   })

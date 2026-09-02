@@ -1,6 +1,6 @@
-import { spawn } from 'node:child_process'
 import pkg from '../../package.json' with { type: 'json' }
 import { getLogger } from './logger.js'
+import { spawnWithoutWindow } from './process.js'
 
 export type SystemNotificationKind = 'version-update'
 export type SystemNotificationAction = 'none' | 'update-available' | 'updating' | 'restart-ready'
@@ -243,9 +243,12 @@ function defaultRunUpdate(): Promise<void> {
 
 function defaultRunRestart(): Promise<void> {
   const restart = resolveRestartCommand()
-  const child = spawn(restart.cmd, restart.args, {
+  // win32 下 yorz.cmd 是 .cmd shim，必须经 shell 解析（新版 Node 对无 shell 的
+  // .cmd spawn 直接 EINVAL）；spawnWithoutWindow 会附带 windowsHide 避免闪控制台。
+  const child = spawnWithoutWindow(restart.cmd, restart.args, {
     detached: true,
     stdio: 'ignore',
+    ...(process.platform === 'win32' ? { shell: true } : {}),
   })
   child.unref()
   return Promise.resolve()
@@ -253,7 +256,7 @@ function defaultRunRestart(): Promise<void> {
 
 function runProcess(cmd: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: 'ignore' })
+    const child = spawnWithoutWindow(cmd, args, { stdio: 'ignore' })
     child.on('error', reject)
     child.on('exit', (code, signal) => {
       if (code === 0) resolve()
