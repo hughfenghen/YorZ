@@ -67,7 +67,6 @@ export const zhCN = {
     resizeHint: '拖动调整项目面板宽度',
     addHint: '添加项目请在终端执行：',
     addCmd: 'yorz add <path>',
-    worktreeBadge: 'main',
   },
   chat: {
     title: 'Chat',

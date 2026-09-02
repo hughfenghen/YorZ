@@ -11,7 +11,7 @@ import {
   type Component,
 } from 'solid-js'
 import { A, useLocation, useNavigate } from '@solidjs/router'
-import { ChevronsRight, ChevronsLeft, Pencil, X, GitBranch, HelpCircle } from 'lucide-solid'
+import { ChevronsRight, ChevronsLeft, Pencil, X, HelpCircle } from 'lucide-solid'
 import { api } from '../lib/api.js'
 import { focusMode, exitFocusMode } from '../lib/layout-focus.js'
 import type { ProjectListItem } from '../lib/project.js'
@@ -379,7 +379,7 @@ export const ProjectsSidebar: Component = () => {
                           ? 'bg-primary-soft text-foreground font-semibold'
                           : 'hover:bg-accent'
                       } ${railCollapsed() ? 'px-0 text-center' : ''}`}
-                      title={p.path}
+                      title={p.worktree ? `${p.path}\nworktree of ${p.worktree.mainPath}` : p.path}
                     >
                       <Show
                         when={!railCollapsed()}
@@ -390,15 +390,6 @@ export const ProjectsSidebar: Component = () => {
                         }
                       >
                         <span class="block truncate">{displayProjectName(p)}</span>
-                        <Show when={p.worktree}>
-                          <span
-                            class="ml-1 inline-flex items-center gap-0.5 text-sm text-muted-foreground"
-                            title={`worktree of ${p.worktree!.mainPath}`}
-                          >
-                            <GitBranch class="h-3 w-3" />
-                            {t('sidebar.worktreeBadge')}
-                          </span>
-                        </Show>
                       </Show>
                     </A>
                     <Show when={!railCollapsed()}>

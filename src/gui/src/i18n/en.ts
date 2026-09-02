@@ -68,7 +68,6 @@ export const en = {
     resizeHint: 'Drag to resize project panel width',
     addHint: 'To add a project, run in terminal:',
     addCmd: 'yorz add <path>',
-    worktreeBadge: 'main',
   },
   chat: {
     title: 'Chat',
