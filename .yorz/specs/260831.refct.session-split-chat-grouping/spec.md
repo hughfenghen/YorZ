@@ -1,7 +1,7 @@
 ---
-stage: plan
-last_action: 追加任务（fix）
-updated_at: '2026-09-02 19:44:47'
+stage: done
+last_action: 用户手动置为 done
+updated_at: '2026-09-02 20:47:22'
 summary: 拆分 spec 驱动轮次的会话复用：run/append/git-ops 各自新开 session 以切断历史继承，Chat 面板按 specId 聚合为单行、跨 session 消息用分割元素区分，用户消息追加到最近 session。
 ---
 
