@@ -18,6 +18,7 @@ import { projectHref, useCurrentProjectId } from '../lib/project.js'
 import { useFocusModePage } from '../lib/layout-focus.js'
 import { subscribeProjectsList, subscribeSpecsList } from '../lib/sse.js'
 import { formatSpecUpdatedAt } from '../lib/time.js'
+import { copySpecPath } from '../lib/spec-path.js'
 import { createWorktreeMergeGuard } from '../lib/worktree-merge.js'
 import { Button } from '../components/ui/button.jsx'
 import { Badge } from '../components/ui/badge.jsx'
@@ -225,7 +226,7 @@ export const SpecList: Component = () => {
     <section class="overflow-y-auto p-2">
       <header class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <h1 class="m-0 text-xl">{t('home.specList')}</h1>
+          <h1 class="mr-2 text-xl">{t('home.specList')}</h1>
           <CommandMenu
             projectId={projectId}
             onRunStarted={() => setCommandRevision((n) => n + 1)}
@@ -347,6 +348,9 @@ export const SpecList: Component = () => {
                           <MoreHorizontal class="h-4 w-4" />
                         </DropdownMenuTrigger>
                         <DropdownMenuContent>
+                          <DropdownMenuItem onSelect={() => void copySpecPath(spec.id)}>
+                            {t('home.copySpecPath')}
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             class="text-destructive focus:text-destructive"
                             onSelect={() => setConfirmDeleteId(spec.id)}

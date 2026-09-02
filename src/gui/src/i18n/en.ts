@@ -169,6 +169,7 @@ export const en = {
     noSpecs: 'No specs yet.',
     createFirst: 'Create first spec',
     moreActions: 'More actions',
+    copySpecPath: 'Copy path',
     confirmDeleteSpec: 'Delete this spec?',
     newSpec: '+ New Spec',
   },

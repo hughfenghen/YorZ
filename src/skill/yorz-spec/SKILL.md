@@ -34,9 +34,9 @@ description: Drive YorZ spec docs through plan / tasks / execute stages with det
 ```yaml
 ---
 stage: plan # plan | tasks | execute | done
-last_action: 简述上一次动作
+last_action: '简述上一次动作'
 updated_at: '2026-06-14 15:42:07' # 本地秒级字符串
-summary: 一句话概要，≤ 200 字符
+summary: '一句话概要，≤ 200 字符'
 ---
 ```
 

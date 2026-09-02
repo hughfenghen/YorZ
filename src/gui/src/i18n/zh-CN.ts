@@ -164,6 +164,7 @@ export const zhCN = {
     noSpecs: '还没有 spec。',
     createFirst: '新建第一个 spec',
     moreActions: '更多操作',
+    copySpecPath: '复制路径',
     confirmDeleteSpec: '确定删除此 spec？',
     newSpec: '＋ 新建 spec',
   },

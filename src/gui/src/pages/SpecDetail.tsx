@@ -19,6 +19,7 @@ import {
 } from '../lib/api.js'
 import { Copy, GitBranch } from 'lucide-solid'
 import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/project.js'
+import { copySpecPath } from '../lib/spec-path.js'
 import { useFocusModePage } from '../lib/layout-focus.js'
 import morphdom from 'morphdom'
 import { renderMarkdown } from '../lib/markdown.js'
@@ -35,7 +36,6 @@ import { Breadcrumb } from '../components/Breadcrumb.jsx'
 import { FocusModeButton } from '../components/FocusModeButton.jsx'
 import { Button } from '../components/ui/button.jsx'
 import { Badge } from '../components/ui/badge.jsx'
-import { toast } from '../components/ui/toast.jsx'
 import { t } from '../i18n/index.js'
 
 /* Soft 徽章形态，与 SpecList 保持一致 —— 说明见 SpecList.tsx */
@@ -115,7 +115,6 @@ export const SpecDetail: Component = () => {
     if (!s) return []
     return parseConfirmQuestions(s.body)
   })
-  const specFilePath = createMemo(() => `@.yorz/specs/${params.id}/spec.md`)
 
   // Annotations are drafted at any stage, so the panel is gated on having
   // something to submit — but NEVER while the spec's agent is running: a visible
@@ -291,16 +290,6 @@ export const SpecDetail: Component = () => {
     }
   }
 
-  async function copySpecPath() {
-    try {
-      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable')
-      await navigator.clipboard.writeText(specFilePath())
-      toast.success(t('specDetail.specPathCopied'))
-    } catch {
-      toast.error(t('specDetail.specPathCopyFailed'))
-    }
-  }
-
   function openAnnotate(s: SelectionSnapshot) {
     setPopoverSnap(s)
     setPopoverOpen(true)
@@ -390,7 +379,7 @@ export const SpecDetail: Component = () => {
                         class="h-7 w-7 shrink-0"
                         title={t('specDetail.copySpecPath')}
                         aria-label={t('specDetail.copySpecPath')}
-                        onClick={() => void copySpecPath()}
+                        onClick={() => void copySpecPath(params.id)}
                       >
                         <Copy class="h-3.5 w-3.5" />
                       </Button>
@@ -446,13 +435,6 @@ export const SpecDetail: Component = () => {
                     >
                       {t('specDetail.appendTask')}
                     </Button>
-                    <A
-                      class="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
-                      href={projectHref(`specs/${s().id}/review`)}
-                      title={t('git.title')}
-                    >
-                      <GitBranch class="h-4 w-4" />
-                    </A>
                     <Show when={debugDoc()?.exists}>
                       <A
                         class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 font-medium hover:bg-accent hover:text-accent-foreground"
@@ -461,6 +443,13 @@ export const SpecDetail: Component = () => {
                         {t('specDetail.debug')}
                       </A>
                     </Show>
+                    <A
+                      class="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
+                      href={projectHref(`specs/${s().id}/review`)}
+                      title={t('git.title')}
+                    >
+                      <GitBranch class="h-4 w-4" />
+                    </A>
                     <Show when={running()}>
                       <Badge variant="secondary">{t('specDetail.running')}</Badge>
                     </Show>
