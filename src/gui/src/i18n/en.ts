@@ -113,6 +113,8 @@ export const en = {
     send: 'Send',
     agentContextCollapsed: 'Agent context ×{{count}}',
     toolCollapsed: '[Tool] ×{{count}}',
+    toolTextExpand: 'Show all {{count}} chars',
+    toolTextCollapse: 'Collapse',
     errorMessage: '[Error] {{message}}',
     copyFilePath: 'Copy file path',
     filePathCopied: 'File path copied',

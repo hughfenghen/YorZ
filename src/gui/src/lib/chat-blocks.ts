@@ -61,6 +61,20 @@ export interface TextSegment {
 
 export interface ToolsSegment {
   kind: 'tools'
+  /**
+   * Stable identity for this run of tool calls, assigned by `groupParts` as a
+   * monotonic counter over the part stream (`t0`, `t1`, …).
+   *
+   * `groupParts` allocates brand-new objects on every call, and the panel
+   * recomputes it on every stream tick — so *nothing* about a segment's object
+   * identity survives a re-render, and neither did the expand state that used
+   * to live inside the component. The counter is stable because the part stream
+   * only ever grows at the tail: a segment already emitted keeps its number,
+   * whether the stream came from live SSE or from a re-read transcript that
+   * prepends earlier sessions' blocks. That is what lets the expand state be
+   * held outside the component and keyed by something real.
+   */
+  id: string
   tools: ToolPart[]
 }
 
@@ -234,9 +248,23 @@ function absorbResult(tools: ToolPart[], result: string): void {
  * and collapsible `[Tool]` runs. This is what removes the bubble-per-message
  * fragmentation: a long agent turn is one bubble, not a dozen.
  */
+/**
+ * Key under which a single tool's `input` / `result` text holds its own
+ * expand state — the second-level collapse nested inside a `[Tool] ×N` run.
+ *
+ * Derived rather than stored: the index is the tool's position within its
+ * segment, which is as stable as the segment id itself (tools are appended,
+ * and a pending `tool-use` is filled in place by `absorbResult`).
+ */
+export function toolTextKey(segmentId: string, index: number, field: 'input' | 'result'): string {
+  return `${segmentId}#${index}:${field}`
+}
+
 export function groupParts(parts: readonly ChatPart[]): ChatBlock[] {
   const blocks: ChatBlock[] = []
   let current: AssistantBlock | null = null
+  let toolsSeq = 0
+  const nextToolsId = (): string => `t${toolsSeq++}`
 
   const assistant = (): AssistantBlock => {
     if (!current) {
@@ -294,7 +322,7 @@ export function groupParts(parts: readonly ChatPart[]): ChatBlock[] {
         absorbResult(last.tools, part.result)
       else last.tools.push({ ...part })
     } else {
-      block.segments.push({ kind: 'tools', tools: [{ ...part }] })
+      block.segments.push({ kind: 'tools', id: nextToolsId(), tools: [{ ...part }] })
     }
   }
 

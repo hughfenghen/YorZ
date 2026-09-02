@@ -110,6 +110,8 @@ export const zhCN = {
     send: '发送',
     agentContextCollapsed: 'Agent 上下文 ×{{count}}',
     toolCollapsed: '[工具] ×{{count}}',
+    toolTextExpand: '展开全部 {{count}} 字符',
+    toolTextCollapse: '收起',
     errorMessage: '[错误] {{message}}',
     copyFilePath: '复制文件路径',
     filePathCopied: '已复制文件路径',

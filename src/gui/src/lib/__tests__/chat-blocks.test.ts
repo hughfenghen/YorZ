@@ -3,6 +3,7 @@ import {
   groupParts,
   messagesToParts,
   specMessagesToParts,
+  toolTextKey,
   toPart,
   type AgentContextPart,
   type AgentContextBlock,
@@ -31,6 +32,13 @@ const toolsOf = (block: AssistantBlock, i: number): ToolPart[] => {
   if (!seg || seg.kind !== 'tools') throw new Error(`segment ${i} is not a tools segment`)
   return seg.tools
 }
+
+const toolsIdsOf = (blocks: ReturnType<typeof groupParts>): string[] =>
+  blocks.flatMap((b) =>
+    b.kind === 'assistant'
+      ? b.segments.flatMap((s) => (s.kind === 'tools' ? [s.id] : []))
+      : ([] as string[]),
+  )
 
 const contextAt = (blocks: ReturnType<typeof groupParts>, i: number): AgentContextBlock => {
   const b = blocks[i]
@@ -289,6 +297,58 @@ describe('groupParts tool segments', () => {
     const blocks = groupParts([use('Read'), botText('thinking'), use('Edit')])
     const block = assistantAt(blocks, 0)
     expect(block.segments.map((s) => s.kind)).toEqual(['tools', 'text', 'tools'])
+  })
+})
+
+describe('groupParts tool segment ids', () => {
+  it('numbers tools segments in stream order, across bubbles', () => {
+    const blocks = groupParts([
+      use('Read'),
+      botText('thinking'),
+      use('Edit'),
+      userText('next'),
+      use('Bash'),
+    ])
+    expect(toolsIdsOf(blocks)).toEqual(['t0', 't1', 't2'])
+  })
+
+  it('keeps ids of already-emitted segments stable as the stream grows', () => {
+    // The panel re-runs groupParts on every stream tick. If a segment's id
+    // shifted when new parts arrived, the expand state keyed by it would jump
+    // to a different tool run mid-render.
+    const head: ChatPart[] = [use('Read'), botText('thinking'), use('Edit')]
+    const before = toolsIdsOf(groupParts(head))
+    const after = toolsIdsOf(groupParts([...head, botText('more'), use('Bash'), result('r')]))
+    expect(after.slice(0, before.length)).toEqual(before)
+  })
+
+  it('gives every segment a distinct id when history is prepended', () => {
+    // A spec row re-reads its transcript mid-run, which prepends earlier
+    // sessions' blocks. Ids must stay unique (they renumber; that is fine —
+    // nothing outside a single render depends on a specific number).
+    const blocks = groupParts([
+      use('Read'),
+      { kind: 'divider', sessionId: 's2', agentKind: 'claude', startedAt: 2 },
+      use('Edit'),
+      { kind: 'divider', sessionId: 's3', agentKind: 'claude', startedAt: 3 },
+      use('Bash'),
+    ])
+    const ids = toolsIdsOf(blocks)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+})
+
+describe('toolTextKey', () => {
+  it('separates a tool run, its position and the field being expanded', () => {
+    expect(toolTextKey('t3', 0, 'input')).toBe('t3#0:input')
+    expect(toolTextKey('t3', 0, 'result')).toBe('t3#0:result')
+  })
+
+  it('never collides across segments, positions or fields', () => {
+    const keys = ['t0', 't1'].flatMap((id) =>
+      [0, 1].flatMap((i) => (['input', 'result'] as const).map((f) => toolTextKey(id, i, f))),
+    )
+    expect(new Set(keys).size).toBe(keys.length)
   })
 })
 

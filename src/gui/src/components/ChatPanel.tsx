@@ -1,5 +1,6 @@
 import {
   For,
+  Index,
   Show,
   createEffect,
   createMemo,
@@ -43,7 +44,14 @@ import {
   groupParts,
   messagesToParts,
   specMessagesToParts,
+  type AgentContextBlock,
+  type AssistantBlock,
+  type ChatBlock,
   type ChatPart,
+  type DividerBlock,
+  type Segment,
+  type ToolsSegment,
+  type UserBlock,
 } from '../lib/chat-blocks.js'
 import { createHistoryLoadGate, planHistoryLoad } from '../lib/chat-history-load.js'
 import { findGroupBySession, groupSessions, type SessionGroup } from '../lib/session-groups.js'
@@ -63,7 +71,7 @@ import { Input } from './ui/input.jsx'
 import { AutoResizeTextarea } from './ui/textarea.jsx'
 import { toast } from './ui/toast.jsx'
 import { MentionTextarea, type SlashCommand } from './MentionTextarea.jsx'
-import { ChatToolBlock } from './ChatToolBlock.jsx'
+import { ChatToolBlock, type ToolExpandState } from './ChatToolBlock.jsx'
 import { ChatContextBlock } from './ChatContextBlock.jsx'
 import { Collapsible, CollapsibleContent } from './ui/collapsible.jsx'
 import {
@@ -109,6 +117,22 @@ const STREAM_FLUSH_MS = 80
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
+
+/**
+ * Narrowing helpers for the message list.
+ *
+ * `<Index>` hands the item over as an accessor, and TypeScript cannot narrow a
+ * union across two separate `block()` calls (`block().kind === 'x' ? block() : …`
+ * stays the full union). Routing the value through a function parameter restores
+ * the narrowing without a cast — and without breaking reactivity, since the call
+ * still happens inside `Show`'s tracked `when`.
+ */
+const asDivider = (b: ChatBlock): DividerBlock | null => (b.kind === 'divider' ? b : null)
+const asContext = (b: ChatBlock): AgentContextBlock | null => (b.kind === 'context' ? b : null)
+const asAssistant = (b: ChatBlock): AssistantBlock | null => (b.kind === 'assistant' ? b : null)
+const asUser = (b: ChatBlock): UserBlock | null => (b.kind === 'user' ? b : null)
+const asTools = (s: Segment): ToolsSegment | null => (s.kind === 'tools' ? s : null)
+const segmentText = (s: Segment): string => (s.kind === 'text' ? s.text : '')
 
 // Abbreviated English ("5m ago") — the stock en_US pack overflows the list column.
 registerTimeago('en', enShort)
@@ -296,6 +320,32 @@ export const ChatPanel: Component = () => {
   // Live run status per session id, seeded from the list response and kept in
   // sync by the project-level `sessions` SSE topic.
   const [runningSids, setRunningSids] = createSignal<Record<string, boolean>>({})
+  /**
+   * Which tool collapsibles the reader has opened — both the `[Tool] ×N` runs
+   * and the per-payload second level, keyed by `ToolsSegment.id` / `toolTextKey`.
+   *
+   * Owned here rather than by `ChatToolBlock` because that component does not
+   * survive a stream tick: `groupParts` rebuilds every block object, so the
+   * message list's reconciliation disposes and remounts the whole tool tree
+   * ~12×/s during a run, and an instance-local signal went back to `false` each
+   * time. Held out here, an opened result stays open while the agent keeps
+   * talking — which is the entire point of being able to open it mid-run.
+   *
+   * Deliberately NOT cleared when a transcript is re-read for the session
+   * already on screen (`resetParts(next)` below): that path fires precisely when
+   * a running spec's round settles, and clearing there would reintroduce the bug.
+   * Only a genuine change of subject clears it — see `resetExpanded` callers.
+   */
+  const [expandedKeys, setExpandedKeys] = createSignal<Record<string, boolean>>({})
+  const toolExpand: ToolExpandState = {
+    isExpanded: (key) => expandedKeys()[key] === true,
+    set: (key, value) =>
+      setExpandedKeys((prev) => (prev[key] === value ? prev : { ...prev, [key]: value })),
+  }
+  /** Drop every open/closed mark — only when the panel changes subject. */
+  function resetExpanded(): void {
+    setExpandedKeys((prev) => (Object.keys(prev).length === 0 ? prev : {}))
+  }
 
   /**
    * Sessions created locally in this tab that have no transcript on disk yet:
@@ -391,6 +441,7 @@ export const ChatPanel: Component = () => {
       setActiveSid('')
       setRunningSids({})
       resetParts()
+      resetExpanded()
       historyGate.invalidate()
       displayedSid = ''
       displayedSpecId = undefined
@@ -626,7 +677,13 @@ export const ChatPanel: Component = () => {
     }
 
     setAutoScroll(true)
-    if (plan.clear) resetParts()
+    // `plan.clear` means the area is about to hold a *different* conversation,
+    // so the open/closed marks from the old one are meaningless. The re-read
+    // below (same session, fresher transcript) deliberately keeps them.
+    if (plan.clear) {
+      resetParts()
+      resetExpanded()
+    }
     displayedSid = sid
     displayedSpecId = plan.specId
     const isCurrent = historyGate.begin()
@@ -862,6 +919,7 @@ export const ChatPanel: Component = () => {
     if (!activeProjectId() || !activeSid()) return
     setActiveSid('')
     resetParts()
+    resetExpanded()
     historyGate.invalidate()
     displayedSid = ''
     displayedSpecId = undefined
@@ -915,6 +973,7 @@ export const ChatPanel: Component = () => {
       // `ready` event cannot land between subscribe and await.
       const ready = waitForSubscription(sid)
       resetParts([{ kind: 'text', role: 'user', text: prompt }])
+      resetExpanded()
       historyGate.invalidate()
       displayedSid = sid
       displayedSpecId = undefined
@@ -1254,16 +1313,26 @@ export const ChatPanel: Component = () => {
                 </div>
               }
             >
-              <For each={blocks()}>
+              {/* `Index`, not `For`, for both this list and the segments inside
+                  it. `groupParts` is a pure function that allocates every block
+                  and segment afresh on each recompute, so reference-keyed
+                  reconciliation sees a wholly new list on every stream tick and
+                  tears the entire message area down ~12×/s during a run —
+                  taking with it each tool block's scroll position. Positional
+                  keying reuses the nodes and just updates their contents; the
+                  list only ever grows at the tail, so positions are stable.
+                  (Expand state does NOT ride on position — it is keyed by
+                  segment id, see `expandedKeys`.) */}
+              <Index each={blocks()}>
                 {(block) => (
                   <Show
-                    when={block.kind === 'divider' ? block : null}
+                    when={asDivider(block())}
                     fallback={
                       <Show
-                        when={block.kind === 'context' ? block : null}
+                        when={asContext(block())}
                         fallback={
                           <Show
-                            when={block.kind === 'assistant' ? block : null}
+                            when={asAssistant(block())}
                             fallback={
                               // User input is NOT markdown: it routinely carries `@paths`,
                               // indentation and bare `*`/`_` that md would rewrite.
@@ -1273,7 +1342,7 @@ export const ChatPanel: Component = () => {
                               // and read as one blob. What you said now separates at a
                               // glance from what the agent replied.
                               <div class="mb-2 whitespace-pre-wrap rounded border border-primary/20 border-l-2 border-l-primary bg-primary/10 px-2 py-1.5 font-medium text-foreground [overflow-wrap:anywhere]">
-                                {(block as { text: string }).text}
+                                {asUser(block())?.text}
                               </div>
                             }
                           >
@@ -1283,29 +1352,28 @@ export const ChatPanel: Component = () => {
                               // dragged body-text contrast down. The border carries the
                               // bubble's edge now that the fill barely differs from the rail.
                               <div class="mb-2 min-w-0 rounded border bg-card px-2 py-1.5 [overflow-wrap:anywhere]">
-                                <For each={assistant().segments}>
+                                <Index each={assistant().segments}>
                                   {(seg) => (
                                     <Show
-                                      when={seg.kind === 'tools' ? seg : null}
+                                      when={asTools(seg())}
                                       fallback={
                                         <div
                                           class="markdown chat-md"
                                           // eslint-disable-next-line solid/no-innerhtml -- renderMarkdown escapes all raw HTML outside a details/summary whitelist
-                                          innerHTML={renderMarkdown(
-                                            (seg as { text: string }).text,
-                                            {
-                                              mermaid: 'code',
-                                              fileLinks: 'copy',
-                                              fileLinkTitle: t('chat.copyFilePath'),
-                                            },
-                                          )}
+                                          innerHTML={renderMarkdown(segmentText(seg()), {
+                                            mermaid: 'code',
+                                            fileLinks: 'copy',
+                                            fileLinkTitle: t('chat.copyFilePath'),
+                                          })}
                                         />
                                       }
                                     >
-                                      {(tools) => <ChatToolBlock tools={tools().tools} />}
+                                      {(tools) => (
+                                        <ChatToolBlock segment={tools()} expand={toolExpand} />
+                                      )}
                                     </Show>
                                   )}
-                                </For>
+                                </Index>
                               </div>
                             )}
                           </Show>
@@ -1332,7 +1400,7 @@ export const ChatPanel: Component = () => {
                     )}
                   </Show>
                 )}
-              </For>
+              </Index>
             </Show>
           </div>
 
