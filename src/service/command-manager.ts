@@ -1,4 +1,4 @@
-import { execFile, execFileSync, spawn } from 'node:child_process'
+import { execFile, execFileSync, spawn, type SpawnOptions } from 'node:child_process'
 import { closeSync, openSync, readSync, statSync } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -14,6 +14,7 @@ import {
   type CommandRun,
 } from './command-types.js'
 import { loadProjectConfig, saveProjectConfig } from './project-config.js'
+import { withHiddenWindowsConsole } from './process.js'
 import { getLogger } from './logger.js'
 import { getTelemetry } from './telemetry/index.js'
 
@@ -250,18 +251,22 @@ export class CommandManager {
     }
 
     try {
-      const child = spawn(def.cli, {
-        shell: true,
-        cwd: this.projectPath,
-        env: process.env,
-        // POSIX 依赖独立进程组发送负 PID 信号；Windows 使用 taskkill /T，且 detached
-        // 会导致继承的日志文件描述符失效，所以 Windows 必须保持 attached。
-        detached: process.platform !== 'win32',
-        // No pipes: the child writes straight into the log fd. Keeps a chatty
-        // dev server from buffering through this process, and lets the REST
-        // first paint and the SSE tail read from one single source.
-        stdio: ['ignore', fd, fd],
-      })
+      const child = spawn(
+        def.cli,
+        // 显式传泛型，保留 stdio 元组在 SpawnOptions 上下文下的推断，避免重载解析失败。
+        withHiddenWindowsConsole<SpawnOptions>({
+          shell: true,
+          cwd: this.projectPath,
+          env: process.env,
+          // POSIX 依赖独立进程组发送负 PID 信号；Windows 使用 taskkill /T，且 detached
+          // 会导致继承的日志文件描述符失效，所以 Windows 必须保持 attached。
+          detached: process.platform !== 'win32',
+          // No pipes: the child writes straight into the log fd. Keeps a chatty
+          // dev server from buffering through this process, and lets the REST
+          // first paint and the SSE tail read from one single source.
+          stdio: ['ignore', fd, fd],
+        }),
+      )
       // Do not let a long-running child hold this process's event loop open;
       // lifetime is enforced explicitly by stopAll()/exit hooks instead.
       child.unref()

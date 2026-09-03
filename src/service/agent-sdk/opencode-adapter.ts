@@ -1,11 +1,10 @@
-import { execFile } from 'node:child_process'
 import { access } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { promisify } from 'node:util'
 import { createOpencode } from '@opencode-ai/sdk'
 import type { OpencodeClient, Message, Part } from '@opencode-ai/sdk'
 import { normalizeUsage } from '../telemetry/index.js'
+import { execFileWithoutWindow } from '../process.js'
 import type {
   AgentEvent,
   AgentSdkAdapter,
@@ -20,7 +19,6 @@ import type {
 } from './types.js'
 
 type Server = { url: string; close(): void }
-const execFileP = promisify(execFile)
 const OPENCODE_QUOTA_INSTALL = 'npx @slkiser/opencode-quota@latest init'
 const OPENCODE_QUOTA_PLUGIN_BIN = join(
   homedir(),
@@ -315,8 +313,9 @@ export class OpenCodeAdapter implements AgentSdkAdapter {
     let lastError: unknown
     for (const command of await opencodeQuotaCommands()) {
       try {
-        const { stdout } = await execFileP(command.cmd, command.args, {
+        const { stdout } = await execFileWithoutWindow(command.cmd, command.args, {
           cwd: this.cwd,
+          encoding: 'utf8',
           timeout: 10_000,
           maxBuffer: 1024 * 1024,
         })

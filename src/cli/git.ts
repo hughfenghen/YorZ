@@ -1,6 +1,7 @@
-import { spawn } from 'node:child_process'
+import { spawn, type SpawnOptions } from 'node:child_process'
 import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { withHiddenWindowsConsole } from '../service/process.js'
 
 export async function isGitRepo(cwd: string): Promise<boolean> {
   try {
@@ -13,7 +14,11 @@ export async function isGitRepo(cwd: string): Promise<boolean> {
 
 export async function runGitInit(cwd: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawn('git', ['init'], { cwd, stdio: 'inherit' })
+    const child = spawn(
+      'git',
+      ['init'],
+      withHiddenWindowsConsole<SpawnOptions>({ cwd, stdio: 'inherit' }),
+    )
     child.on('error', reject)
     child.on('exit', (code) => {
       if (code === 0) resolve()

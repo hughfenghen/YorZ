@@ -6,6 +6,7 @@ import {
   type PowerInhibitMode,
 } from './global-config.js'
 import { getLogger } from './logger.js'
+import { withHiddenWindowsConsole } from './process.js'
 
 export interface PowerInhibitProcess {
   kill(signal?: NodeJS.Signals | number): boolean
@@ -43,7 +44,9 @@ export class PowerInhibitController {
     this.platform = opts.platform ?? osPlatform()
     this.spawnCommand =
       opts.spawnCommand ??
-      ((command, args, options) => spawn(command, args, options) as ChildProcess)
+      // win32 下经 withHiddenWindowsConsole 附加 windowsHide，避免 PowerShell 弹出可见控制台。
+      ((command, args, options) =>
+        spawn(command, args, withHiddenWindowsConsole(options, this.platform)) as ChildProcess)
   }
 
   setSessionRunning(sessionId: string, running: boolean): void {
