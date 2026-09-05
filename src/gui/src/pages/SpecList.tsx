@@ -67,6 +67,9 @@ function splitSpecId(id: string): { prefix: string; type: string; suffix: string
   return { prefix, type, suffix: rest.join('.') }
 }
 
+/** 每次向列表追加的卡片数量。 */
+const PAGE_SIZE = 40
+
 export const SpecList: Component = () => {
   const navigate = useNavigate()
   const projectId = useCurrentProjectId()
@@ -102,6 +105,52 @@ export const SpecList: Component = () => {
   const [deleteError, setDeleteError] = createSignal<string | null>(null)
   const mergeGuard = createWorktreeMergeGuard(api, setCheckingMergeTasks)
   useFocusModePage(() => mergeDialogOpen() || confirmDeleteId() !== null)
+
+  /*
+   * 服务端一次返回全量 spec，卡片渲染成本（徽章 + 下拉菜单）随条数线性增长，
+   * 项目上千条时首屏会明显卡顿。这里只做视图层分页：切项目时归零，
+   * 触底哨兵进入可视区就再放开 40 条。SSE 刷新不重置计数，
+   * 否则用户滚到一半会被拽回顶部。
+   */
+  const [visibleCount, setVisibleCount] = createSignal(PAGE_SIZE)
+  const visibleSpecs = createMemo(() => (specs() ?? []).slice(0, visibleCount()))
+  const hasMore = createMemo(() => visibleCount() < (specs() ?? []).length)
+
+  const [sentinel, setSentinel] = createSignal<HTMLElement | null>(null)
+
+  createEffect(() => {
+    projectId()
+    setVisibleCount(PAGE_SIZE)
+  })
+
+  onMount(() => {
+    /*
+     * root 留空用视口而非本页 section：视口相交本来就会被中间滚动容器裁剪，
+     * 所以不必关心 AppShell 里究竟哪一层在滚（当前是 section，但这依赖
+     * 它父链上的 min-h-0/flex-1，布局一改就会换人）。
+     */
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return
+        const total = (specs() ?? []).length
+        setVisibleCount((n) => (n >= total ? n : Math.min(n + PAGE_SIZE, total)))
+      },
+      { rootMargin: '300px' },
+    )
+    createEffect(() => {
+      const el = sentinel()
+      /*
+       * 依赖 visibleCount：IO 只在相交状态「翻转」时回调，若新一批仍填不满屏，
+       * 哨兵持续相交就再也不会触发。重新 observe 会立刻投递一次当前状态，
+       * 直到哨兵被推出视口（或加载完、哨兵卸载）为止。
+       */
+      visibleCount()
+      if (!el) return
+      io.observe(el)
+      onCleanup(() => io.unobserve(el))
+    })
+    onCleanup(() => io.disconnect())
+  })
 
   let cleanupSpecsList: (() => void) | null = null
 
@@ -289,7 +338,7 @@ export const SpecList: Component = () => {
           }
         >
           <ul class="mt-4 grid list-none gap-3 p-0 [grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr))]">
-            <For each={specs() ?? []}>
+            <For each={visibleSpecs()}>
               {(spec) => {
                 const idParts = splitSpecId(spec.id)
                 return (
@@ -365,6 +414,14 @@ export const SpecList: Component = () => {
               }}
             </For>
           </ul>
+          <Show when={hasMore()}>
+            <div
+              ref={(el) => setSentinel(el)}
+              class="py-6 text-center text-sm text-muted-foreground"
+            >
+              {t('common.loading')}
+            </div>
+          </Show>
         </Show>
       </Suspense>
 
