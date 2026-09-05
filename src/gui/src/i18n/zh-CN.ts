@@ -34,6 +34,7 @@ export const zhCN = {
     themeGraphite: '石墨',
     themePaper: '纸感',
     globalConfig: '全局配置',
+    userGuide: '使用指南',
   },
   systemNotifications: {
     title: '系统提示',

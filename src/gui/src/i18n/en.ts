@@ -34,6 +34,7 @@ export const en = {
     themeGraphite: 'Graphite',
     themePaper: 'Paper',
     globalConfig: 'Global Settings',
+    userGuide: 'User Guide',
   },
   systemNotifications: {
     title: 'System Notifications',

@@ -10,7 +10,18 @@ import {
   type ParentComponent,
 } from 'solid-js'
 import { A, useLocation, useNavigate } from '@solidjs/router'
-import { Check, Languages, Menu, Monitor, Moon, Palette, Plus, Settings, Sun } from 'lucide-solid'
+import {
+  BookOpen,
+  Check,
+  Languages,
+  Menu,
+  Monitor,
+  Moon,
+  Palette,
+  Plus,
+  Settings,
+  Sun,
+} from 'lucide-solid'
 import { ProjectsSidebar } from './components/ProjectsSidebar.jsx'
 import { ChatPanel } from './components/ChatPanel.jsx'
 import { GlobalConfigDialog } from './components/GlobalConfigDialog.jsx'
@@ -58,6 +69,9 @@ const THEME_NAME_OPTIONS: { name: ThemeName; labelKey: string }[] = [
   { name: 'paper', labelKey: 'shell.themePaper' },
 ]
 
+// docs/ isn't shipped in the npm package, so the guide has to point at GitHub.
+const USER_GUIDE_BASE = 'https://github.com/hughfenghen/YorZ/blob/main/docs'
+
 export const AppShell: ParentComponent = (props): JSX.Element => {
   const location = useLocation()
   const navigate = useNavigate()
@@ -67,6 +81,11 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
   // Already on the New Spec page? A same-route navigation would be a no-op, so
   // open a fresh tab instead — that's the only way "new spec" does something here.
   const onNewSpecPage = createMemo(() => location.pathname === projectHref('specs/new'))
+
+  const userGuideUrl = createMemo(
+    // Anything that isn't English falls back to zh-CN copy, so mirror that here.
+    () => `${USER_GUIDE_BASE}/${lng().startsWith('en') ? 'User-Guide.md' : 'User-Guide-CN.md'}`,
+  )
 
   function selectLanguage(l: 'zh-CN' | 'en'): void {
     if (l === lng()) return
@@ -250,6 +269,16 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
               <DropdownMenuItem onSelect={() => setGlobalConfigOpen(true)}>
                 <Settings class="mr-2 h-4 w-4" />
                 {t('shell.globalConfig')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                as="a"
+                data-menu-item="user-guide"
+                href={userGuideUrl()}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <BookOpen class="mr-2 h-4 w-4" />
+                {t('shell.userGuide')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
