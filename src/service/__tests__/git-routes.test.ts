@@ -183,7 +183,9 @@ describe('remote branches stay out of checkout', () => {
     expect(body.remoteBranches).toContain('origin/demo')
     expect(body.branches).not.toContain('origin/demo')
 
-    expect((await postJson(`${apiPrefix}/git/checkout`, { branch: 'origin/demo' })).status).toBe(400)
+    expect((await postJson(`${apiPrefix}/git/checkout`, { branch: 'origin/demo' })).status).toBe(
+      400,
+    )
     expect((await git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()).toBe('main')
   })
 })
@@ -198,6 +200,31 @@ describe('POST /git/commit', () => {
     const body = (await res.json()) as { commit: string }
     expect(body.commit).toMatch(/^[0-9a-f]{40}$/)
     expect((await git(cwd, ['log', '-1', '--pretty=%s'])).trim()).toBe('add a')
+  })
+
+  it('reports a stale selection instead of an opaque git failure', async () => {
+    const { cwd, apiPrefix } = await startInRepo()
+    await writeFile(join(cwd, 'a.txt'), 'a\n', 'utf8')
+    expect(
+      (await postJson(`${apiPrefix}/git/commit`, { message: 'add a', paths: ['a.txt'] })).status,
+    ).toBe(200)
+
+    // The panel's file list is a 1s poll snapshot, so the same paths can be
+    // re-submitted after they were already committed. git exits 1 there; the
+    // client must get a diagnosable reason, not a bare "git commit failed".
+    const stale = await postJson(`${apiPrefix}/git/commit`, { message: 'add a', paths: ['a.txt'] })
+    expect(stale.status).toBe(400)
+    const body = (await stale.json()) as { error: string; code: string }
+    expect(body.code).toBe('nothing_to_commit')
+    expect(body.error).toMatch(/nothing to commit/i)
+  })
+
+  it('surfaces the underlying git stderr on failure', async () => {
+    const { apiPrefix } = await startInRepo()
+    const res = await postJson(`${apiPrefix}/git/commit`, { message: 'm', paths: ['ghost.txt'] })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toMatch(/did not match any files/)
   })
 
   it('400s on empty message or empty paths', async () => {

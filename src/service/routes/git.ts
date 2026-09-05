@@ -12,6 +12,12 @@ import {
   GitError,
 } from '../git.js'
 import type { ProjectInstance } from '../project-registry.js'
+import { getLogger } from '../logger.js'
+
+/** Hook output can run long; keep the response readable and let the log hold the rest. */
+const MAX_STDERR_LINES = 6
+
+const gitLog = () => getLogger().child('git')
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
@@ -44,13 +50,34 @@ export function createGitRoutes(resolveProject: ResolveProject): Hono {
   const toPaths = (value: unknown): string[] =>
     Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []
 
+  /**
+   * Git puts the real reason for a failure on stderr; `err.message` is only a
+   * template like "git commit failed". Returning the message alone left both the
+   * GUI and the request log with no way to tell a stale file selection from a
+   * failing pre-commit hook — a 400 was unactionable and unreproducible after
+   * the fact. Surface a trimmed stderr and log the full one.
+   */
+  const gitFail = (c: import('hono').Context, err: GitError): Response => {
+    const detail = err.stderr.trim().split('\n').slice(0, MAX_STDERR_LINES).join('\n')
+    gitLog().warn('git command failed', {
+      path: c.req.path,
+      code: err.code,
+      message: err.message,
+      stderr: err.stderr.trim(),
+    })
+    return c.json(
+      { error: detail ? `${err.message}: ${detail}` : err.message, code: err.code },
+      400,
+    )
+  }
+
   app.get('/projects/:projectId/git/changes', async (c) => {
     const p = await need(c)
     if (p instanceof Response) return p
     try {
       return c.json({ changes: await listChanges(p.path) })
     } catch (err) {
-      if (err instanceof GitError) return c.json({ error: err.message }, 400)
+      if (err instanceof GitError) return gitFail(c, err)
       throw err
     }
   })
@@ -63,7 +90,7 @@ export function createGitRoutes(resolveProject: ResolveProject): Hono {
     try {
       return c.json(await fileDiff(p.path, path))
     } catch (err) {
-      if (err instanceof GitError) return c.json({ error: err.message }, 400)
+      if (err instanceof GitError) return gitFail(c, err)
       throw err
     }
   })
@@ -74,7 +101,7 @@ export function createGitRoutes(resolveProject: ResolveProject): Hono {
     try {
       return c.json(await listBranches(p.path))
     } catch (err) {
-      if (err instanceof GitError) return c.json({ error: err.message }, 400)
+      if (err instanceof GitError) return gitFail(c, err)
       throw err
     }
   })
@@ -90,7 +117,7 @@ export function createGitRoutes(resolveProject: ResolveProject): Hono {
       const result = await checkoutBranch(p.path, branch)
       return c.json({ ok: true, ...result })
     } catch (err) {
-      if (err instanceof GitError) return c.json({ error: err.message }, 400)
+      if (err instanceof GitError) return gitFail(c, err)
       throw err
     }
   })
@@ -106,7 +133,7 @@ export function createGitRoutes(resolveProject: ResolveProject): Hono {
       const result = await mergeBranch(p.path, branch)
       return c.json({ ok: true, ...result })
     } catch (err) {
-      if (err instanceof GitError) return c.json({ error: err.message }, 400)
+      if (err instanceof GitError) return gitFail(c, err)
       throw err
     }
   })
@@ -123,7 +150,7 @@ export function createGitRoutes(resolveProject: ResolveProject): Hono {
     try {
       return c.json(await gitCommit(p.path, { message, paths }))
     } catch (err) {
-      if (err instanceof GitError) return c.json({ error: err.message }, 400)
+      if (err instanceof GitError) return gitFail(c, err)
       throw err
     }
   })
@@ -139,7 +166,7 @@ export function createGitRoutes(resolveProject: ResolveProject): Hono {
       await gitDiscard(p.path, { paths })
       return c.json({ ok: true })
     } catch (err) {
-      if (err instanceof GitError) return c.json({ error: err.message }, 400)
+      if (err instanceof GitError) return gitFail(c, err)
       throw err
     }
   })
@@ -151,7 +178,7 @@ export function createGitRoutes(resolveProject: ResolveProject): Hono {
       const result = await gitPush(p.path)
       return c.json({ ok: true, ...result })
     } catch (err) {
-      if (err instanceof GitError) return c.json({ error: err.message }, 400)
+      if (err instanceof GitError) return gitFail(c, err)
       throw err
     }
   })
@@ -163,7 +190,7 @@ export function createGitRoutes(resolveProject: ResolveProject): Hono {
       const result = await gitPull(p.path)
       return c.json({ ok: true, ...result })
     } catch (err) {
-      if (err instanceof GitError) return c.json({ error: err.message }, 400)
+      if (err instanceof GitError) return gitFail(c, err)
       throw err
     }
   })

@@ -258,6 +258,14 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
       } else {
         await api.projectDiscard(props.projectId(), { paths })
       }
+      // The changes list is a 1s server-side poll, so right after a commit the
+      // panel still shows the files it just consumed — still checked. Clicking
+      // again in that window sends paths with nothing staged and git exits 1,
+      // surfacing as an opaque 400. Refresh eagerly instead of waiting for SSE.
+      setSelectedPaths(new Set<string>())
+      setActivePath(null)
+      const refreshed = await api.getProjectChanges(props.projectId())
+      applyChanges(refreshed.changes)
     } catch (err) {
       setError((err as Error).message)
     } finally {

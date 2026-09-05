@@ -222,7 +222,23 @@ export async function commit(cwd: string, opts: CommitOptions): Promise<{ commit
   // after the commit the real index and the worktree disagree and the same file
   // shows up as both staged and unstaged with opposite diffs.
   await runGit(cwd, ['add', '--', ...allPaths])
-  await runGit(cwd, ['commit', '-m', message])
+  // `git commit` exits 1 when the staged set turns out to be empty. That is not
+  // an infrastructure failure but an ordinary stale-selection race: the panel's
+  // file list is a 1s poll snapshot, so a path can be committed or reverted by
+  // an agent (or by a previous click) between the snapshot and this call. Give
+  // it its own code and an actionable message instead of "git commit failed".
+  const committed = await runGitRaw(cwd, ['commit', '-m', message])
+  if (committed.code !== 0) {
+    const detail = `${committed.stdout}\n${committed.stderr}`.trim()
+    if (/nothing (added )?to commit|no changes added to commit/i.test(detail)) {
+      throw new GitError(
+        'nothing_to_commit',
+        'selected paths have no staged changes — the file list is out of date, refresh and retry',
+        detail,
+      )
+    }
+    throw new GitError('git_failed', 'git commit failed', detail)
+  }
   const { stdout } = await runGit(cwd, ['rev-parse', 'HEAD'])
   return { commit: stdout.trim() }
 }
@@ -361,9 +377,7 @@ export async function listBranches(cwd: string): Promise<GitBranchState> {
   ])
   const branches = parseRefLines(branchesResult.stdout)
   // `origin/HEAD` is a symbolic alias, not a branch anyone can merge meaningfully.
-  const remoteBranches = parseRefLines(remotesResult.stdout).filter(
-    (ref) => !ref.endsWith('/HEAD'),
-  )
+  const remoteBranches = parseRefLines(remotesResult.stdout).filter((ref) => !ref.endsWith('/HEAD'))
   return { current, branches, remoteBranches }
 }
 
