@@ -247,7 +247,7 @@ export const en = {
     discard: 'Discard',
     committing: 'Committing…',
     discarding: 'Discarding…',
-    commitPlaceholder: 'commit message…',
+    commitPlaceholder: 'commit message… ({{shortcut}} to commit)',
     manualSelect: 'Manual select',
     agentSelect: 'Agent smart select',
     selectAll: 'Select all',

@@ -241,7 +241,7 @@ export const zhCN = {
     discard: '丢弃',
     committing: '提交中…',
     discarding: '丢弃中…',
-    commitPlaceholder: 'commit message…',
+    commitPlaceholder: 'commit message…（{{shortcut}} 提交）',
     manualSelect: '手动选择',
     agentSelect: 'Agent 智能判定',
     selectAll: '全选',

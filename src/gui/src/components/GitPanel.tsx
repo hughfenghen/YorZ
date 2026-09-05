@@ -64,6 +64,14 @@ const STATUS_COLOR: Record<string, string> = {
 const COMMIT_MIN_ROWS = 2
 const COMMIT_MAX_ROWS = 3
 
+// `navigator.platform` is deprecated but still the most reliable mac signal in
+// Electron/browsers; the userAgent fallback covers where it is absent.
+const IS_MAC =
+  typeof navigator !== 'undefined' &&
+  /mac|iphone|ipad|ipod/i.test(navigator.platform || navigator.userAgent)
+/** Submit hint shown in the commit box placeholder. */
+const COMMIT_SHORTCUT = IS_MAC ? '⌘ + Enter' : 'Ctrl + Enter'
+
 /**
  * Shared git working-tree panel used by both the standalone Git page and the
  * spec Review page. Without a `specId` the Agent-dispatch mode is not rendered
@@ -605,11 +613,19 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
         </div>
 
         <AutoResizeTextarea
-          placeholder={t('review.commitPlaceholder')}
+          placeholder={t('review.commitPlaceholder', { shortcut: COMMIT_SHORTCUT })}
           value={commitMessage()}
           onInput={(e) => {
             setUserEditedMsg(true)
             setCommitMessage(e.currentTarget.value)
+          }}
+          // Cmd/Ctrl+Enter commits — same guard as the Commit button, so the
+          // shortcut can never fire an action the button would refuse.
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey)) return
+            e.preventDefault()
+            if (commitDisabled()) return
+            void triggerGit('commit')
           }}
           disabled={isAnyRunning()}
           minRows={1}
