@@ -33,11 +33,14 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pnpm run build:cli && pnpm run build:gui",
+    "build": "pnpm run build:cli && pnpm run build:gui && pnpm run build:gui-mobile",
     "build:cli": "vite build",
     "build:gui": "vite build --config vite.gui.config.ts",
+    "build:gui-mobile": "vite build --config vite.gui-mobile.config.ts",
     "dev:cli": "pnpm run build:cli && node dist/cli/index.js serve --port 7424 --foreground",
     "dev:gui": "vite --config vite.gui.config.ts",
+    "dev:gui-mobile": "vite --config vite.gui-mobile.config.ts",
+    "gen:mobile-icons": "node scripts/gen-mobile-icons.mjs",
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:agent": "node scripts/test-agent.mjs",
@@ -87,7 +90,9 @@
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
+    "vite-plugin-pwa": "^1.3.0",
     "vite-plugin-solid": "^2.11.12",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "workbox-window": "^7.4.1"
   }
 }

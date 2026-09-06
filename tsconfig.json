@@ -3,9 +3,13 @@
   // projects together. Editors use these references to pick the right compiler
   // options per file; `pnpm typecheck` (tsc -b) checks both.
   //
-  // The split exists because the two halves run in different places: src/gui is
-  // browser code bundled by Vite, everything else is Node. See each config for
-  // what that changes.
+  // The split exists because the halves run in different places: src/gui and
+  // src/gui-mobile are browser code bundled by Vite, everything else is Node.
+  // See each config for what that changes.
   "files": [],
-  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.gui.json" }]
+  "references": [
+    { "path": "./tsconfig.node.json" },
+    { "path": "./tsconfig.gui.json" },
+    { "path": "./tsconfig.gui-mobile.json" }
+  ]
 }

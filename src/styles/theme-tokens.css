@@ -1,0 +1,345 @@
+/*
+ * 设计令牌（design tokens）：三套主题族 × 亮/暗 的 CSS 变量，外加字体轴。
+ * 桌面端 @src/gui 与移动端 @src/gui-mobile 共用这一份，改配色只改这里，
+ * 两端不会各走各的。
+ *
+ * 只放变量，不放组件样式：任何 .markdown / .chat-md 这类跟具体界面绑定的规则
+ * 都留在各自应用的 app.css 里，否则共享文件会慢慢长成第二个 app.css。
+ *
+ * 引入方在 @tailwind 指令之前 @import 本文件（CSS 要求 @import 靠前）；
+ * 内部的 @layer base 由 Tailwind 收拢后注入到 base 层，与直接写在引入方文件里等价。
+ */
+
+/* 自托管等宽字体（latin 子集），不依赖外网 CDN —— YorZ 需离线可用 */
+@import '@fontsource/jetbrains-mono/latin-400.css';
+@import '@fontsource/jetbrains-mono/latin-500.css';
+@import '@fontsource/jetbrains-mono/latin-700.css';
+
+/*
+ * 视觉风格：Terminal —— 亮色为「磷光纸」，暗色为「磷光屏」。
+ * 约定：--accent 是中性 hover 底色（shadcn 语义），不承载强调色；
+ *       黄色只存在于 --warning 与 --stage-tasks。
+ */
+@layer base {
+  :root {
+    --background: 60 23.1% 94.9%;
+    /*
+     * 正文色去绿、压暗：原 150 23.1% 10.2% 的绿相在长段中文里读起来发暗绿。
+     * 保留一丝色相与品牌同源，但饱和度压到 10%，对比度 15.34 → 16.97。
+     */
+    --foreground: 150 10% 7%;
+
+    --card: 60 38.5% 97.5%;
+    --card-foreground: 150 10% 7%;
+
+    --popover: 60 38.5% 97.5%;
+    --popover-foreground: 150 10% 7%;
+
+    --primary: 148 67.2% 23.9%;
+    --primary-foreground: 120 33.3% 97.6%;
+    /*
+     * 选中态专用底色（设计稿 --primary-soft #d8ead9）。与 --accent 分工明确：
+     * accent = 悬浮反馈，primary-soft = 「这一项当前被选中」的持续状态。
+     * 二者混用会让 hover 和 active 在视觉上无法区分。
+     */
+    --primary-soft: 123 30% 88.2%;
+
+    --secondary: 60 19% 91.8%;
+    --secondary-foreground: 150 10% 7%;
+
+    --muted: 60 19% 91.8%;
+    /* 次要文字：中性灰而非灰绿（S 7.6% → 3%），对比度 5.22 → 7.05 */
+    --muted-foreground: 150 3% 32%;
+
+    /* 中性悬浮底色，不是强调色 */
+    --accent: 60 19.1% 90.8%;
+    --accent-foreground: 150 10% 7%;
+
+    --destructive: 5 72.3% 38.2%;
+    --destructive-foreground: 120 33.3% 97.6%;
+
+    --success: 148 67.2% 23.9%;
+    --success-foreground: 120 33.3% 97.6%;
+
+    --warning: 41 79.2% 30.2%;
+    --warning-foreground: 120 33.3% 97.6%;
+
+    --info: 203 48.8% 32.2%;
+    --info-foreground: 120 33.3% 97.6%;
+
+    --border: 60 15.7% 83.7%;
+    --input: 60 11.3% 70.4%;
+    --ring: 148 67.2% 23.9%;
+
+    /*
+     * 阶段轴：四色按 CIELAB ΔE2000 拉开到最小 23.4（设计稿原配色只有 8.7，
+     * execute 与 done 同属绿系、肉眼几乎无法区分）。done 因此离开绿系改用紫，
+     * 沿用 GitHub「已合并 / 已归档」的紫色惯例——绿留给「正在跑」的 execute。
+     *
+     * 亮色下明度被 AA 锁死（soft 徽章的文字落在 15% 同色 tint 上，需 ≥4.5），
+     * 所以「更鲜艳」只能靠彩度而非亮度：C* 由 23/46/39/27 提到 61/52/47/95。
+     */
+    --stage-plan: 214 88% 39%;
+    --stage-tasks: 32 92% 29%;
+    --stage-execute: 146 90% 22%;
+    --stage-done: 280 80% 43%;
+
+    --radius: 0.25rem;
+
+    --font-sans:
+      -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+      'Microsoft YaHei', sans-serif;
+    --font-mono:
+      'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'PingFang SC', monospace;
+
+    /*
+     * 原生控件兜底：<input type=radio|checkbox> 由浏览器绘制，不吃 CSS token，
+     * 选中色默认回落到系统蓝。业务侧的 radio/checkbox 已全部组件化，但 markdown
+     * 渲染出的任务列表复选框够不着组件树，只能靠这里跟随主题。
+     */
+    accent-color: hsl(var(--primary));
+  }
+
+  [data-kb-theme='dark'] {
+    --background: 135 8% 10%;
+    --foreground: 120 8% 80%;
+
+    --card: 132 14.3% 6.9%;
+    --card-foreground: 120 8% 91%;
+
+    --popover: 132 14.3% 6.9%;
+    --popover-foreground: 120 8% 91%;
+
+    --primary: 142 69.2% 58%;
+    --primary-foreground: 141 58.6% 5.7%;
+    /* 设计稿 --primary-soft #0f2c19：暗色下的选中态底色 */
+    --primary-soft: 141 49% 11.6%;
+
+    --secondary: 130 13% 9%;
+    --secondary-foreground: 120 8% 91%;
+
+    --muted: 130 13% 9%;
+    /* 次要文字：中性灰而非灰绿（S 9.8% → 4%），对比度 5.71 → 7.36 */
+    --muted-foreground: 120 4% 62%;
+
+    --accent: 144 18.5% 10.6%;
+    --accent-foreground: 120 8% 91%;
+
+    --destructive: 4 81.7% 67.8%;
+    --destructive-foreground: 141 58.6% 5.7%;
+
+    --success: 142 69.2% 58%;
+    --success-foreground: 141 58.6% 5.7%;
+
+    --warning: 42 74.3% 57.3%;
+    --warning-foreground: 141 58.6% 5.7%;
+
+    --info: 212 100% 73.7%;
+    --info-foreground: 141 58.6% 5.7%;
+
+    --border: 126 14.3% 13.7%;
+    --input: 125 12.6% 20.2%;
+    --ring: 142 69.2% 58%;
+
+    /* 与亮色同构：done 移出绿系改紫，最小 ΔE 11.8 → 27.2 */
+    --stage-plan: 212 100% 72%;
+    --stage-tasks: 38 95% 60%;
+    --stage-execute: 142 76% 58%;
+    --stage-done: 275 95% 78%;
+  }
+
+  :root[data-kb-theme-name='graphite'] {
+    --background: 210 11% 96%;
+    --foreground: 220 12% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 12% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 12% 10%;
+
+    --primary: 220 10% 15%;
+    --primary-foreground: 0 0% 98%;
+    --primary-soft: 220 12% 90%;
+
+    --secondary: 220 10% 92%;
+    --secondary-foreground: 220 12% 10%;
+
+    --muted: 220 10% 92%;
+    --muted-foreground: 220 7% 35%;
+
+    --accent: 220 10% 90%;
+    --accent-foreground: 220 12% 10%;
+
+    --destructive: 2 68% 40%;
+    --destructive-foreground: 0 0% 98%;
+
+    --success: 151 48% 28%;
+    --success-foreground: 0 0% 98%;
+
+    --warning: 35 74% 33%;
+    --warning-foreground: 0 0% 98%;
+
+    --info: 209 48% 34%;
+    --info-foreground: 0 0% 98%;
+
+    --border: 220 10% 80%;
+    --input: 220 8% 63%;
+    --ring: 220 10% 15%;
+
+    --stage-plan: 225 45% 40%;
+    --stage-tasks: 34 80% 31%;
+    --stage-execute: 150 56% 26%;
+    --stage-done: 270 48% 42%;
+
+    --radius: 0.375rem;
+
+    --font-sans:
+      -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+      'Microsoft YaHei', sans-serif;
+    --font-mono:
+      'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'PingFang SC', monospace;
+  }
+
+  :root[data-kb-theme-name='graphite'][data-kb-theme='dark'] {
+    --background: 220 9% 13%;
+    --foreground: 220 8% 84%;
+
+    --card: 220 9% 9%;
+    --card-foreground: 220 8% 90%;
+
+    --popover: 220 9% 9%;
+    --popover-foreground: 220 8% 90%;
+
+    --primary: 220 8% 88%;
+    --primary-foreground: 220 12% 8%;
+    --primary-soft: 220 10% 22%;
+
+    --secondary: 220 8% 17%;
+    --secondary-foreground: 220 8% 90%;
+
+    --muted: 220 8% 17%;
+    --muted-foreground: 220 6% 64%;
+
+    --accent: 220 8% 20%;
+    --accent-foreground: 220 8% 90%;
+
+    --destructive: 4 78% 68%;
+    --destructive-foreground: 220 12% 8%;
+
+    --success: 150 56% 60%;
+    --success-foreground: 220 12% 8%;
+
+    --warning: 38 84% 63%;
+    --warning-foreground: 220 12% 8%;
+
+    --info: 211 78% 73%;
+    --info-foreground: 220 12% 8%;
+
+    --border: 220 8% 25%;
+    --input: 220 7% 34%;
+    --ring: 220 8% 82%;
+
+    --stage-plan: 224 75% 74%;
+    --stage-tasks: 38 88% 63%;
+    --stage-execute: 150 64% 61%;
+    --stage-done: 272 82% 77%;
+  }
+
+  :root[data-kb-theme-name='paper'] {
+    --background: 44 42% 94%;
+    --foreground: 24 18% 13%;
+
+    --card: 48 52% 98%;
+    --card-foreground: 24 18% 13%;
+
+    --popover: 48 52% 98%;
+    --popover-foreground: 24 18% 13%;
+
+    --primary: 8 58% 36%;
+    --primary-foreground: 48 52% 98%;
+    --primary-soft: 12 52% 90%;
+
+    --secondary: 41 35% 88%;
+    --secondary-foreground: 24 18% 13%;
+
+    --muted: 41 35% 88%;
+    --muted-foreground: 24 10% 36%;
+
+    --accent: 39 32% 86%;
+    --accent-foreground: 24 18% 13%;
+
+    --destructive: 3 64% 39%;
+    --destructive-foreground: 48 52% 98%;
+
+    --success: 142 38% 30%;
+    --success-foreground: 48 52% 98%;
+
+    --warning: 34 78% 32%;
+    --warning-foreground: 48 52% 98%;
+
+    --info: 202 43% 33%;
+    --info-foreground: 48 52% 98%;
+
+    --border: 38 27% 76%;
+    --input: 34 20% 58%;
+    --ring: 8 58% 36%;
+
+    --stage-plan: 218 58% 38%;
+    --stage-tasks: 28 78% 33%;
+    --stage-execute: 141 48% 27%;
+    --stage-done: 283 46% 38%;
+
+    --radius: 0.5rem;
+
+    --font-sans:
+      Georgia, 'Times New Roman', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', serif;
+    --font-mono:
+      'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'PingFang SC', monospace;
+  }
+
+  :root[data-kb-theme-name='paper'][data-kb-theme='dark'] {
+    --background: 32 17% 14%;
+    --foreground: 40 24% 82%;
+
+    --card: 34 20% 10%;
+    --card-foreground: 40 24% 88%;
+
+    --popover: 34 20% 10%;
+    --popover-foreground: 40 24% 88%;
+
+    --primary: 12 76% 68%;
+    --primary-foreground: 32 20% 9%;
+    --primary-soft: 12 38% 21%;
+
+    --secondary: 31 17% 18%;
+    --secondary-foreground: 40 24% 88%;
+
+    --muted: 31 17% 18%;
+    --muted-foreground: 39 14% 63%;
+
+    --accent: 31 18% 21%;
+    --accent-foreground: 40 24% 88%;
+
+    --destructive: 4 80% 68%;
+    --destructive-foreground: 32 20% 9%;
+
+    --success: 142 45% 60%;
+    --success-foreground: 32 20% 9%;
+
+    --warning: 38 84% 64%;
+    --warning-foreground: 32 20% 9%;
+
+    --info: 204 75% 74%;
+    --info-foreground: 32 20% 9%;
+
+    --border: 32 16% 26%;
+    --input: 32 13% 36%;
+    --ring: 12 76% 68%;
+
+    --stage-plan: 214 82% 74%;
+    --stage-tasks: 37 88% 64%;
+    --stage-execute: 142 60% 61%;
+    --stage-done: 282 72% 78%;
+  }
+}

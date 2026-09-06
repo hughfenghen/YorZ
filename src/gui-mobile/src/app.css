@@ -1,0 +1,115 @@
+/*
+ * 移动端样式入口。设计令牌与桌面端共用（src/styles/theme-tokens.css），
+ * 这里只放**移动端特有**的基础层：安全区、触摸手感、视口高度。
+ * 桌面端 app.css 里的 .markdown / .chat-md / mermaid 等组件样式一概不引进来——
+ * 那些是随业务功能一起搬过来的事，现在搬只会带一堆用不上的选择器。
+ */
+@import '../../styles/theme-tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body {
+    @apply h-full bg-background text-foreground font-sans;
+    margin: 0;
+    padding: 0;
+    font-size: 16px;
+    line-height: 1.55;
+  }
+
+  body {
+    /*
+     * 移动端整页不滚动，滚动交给内部容器：否则 iOS 会把整页橡皮筋和内部滚动叠加，
+     * 出现「页面被拽下来露出白边、顶栏跟着飘」的经典问题。
+     */
+    overflow: hidden;
+    overscroll-behavior: none;
+    /* 横屏旋转后 iOS 会自动放大字号，破坏排版比例 */
+    -webkit-text-size-adjust: 100%;
+    /* 点击时的灰色高亮块是 Android WebView 遗产，交互反馈由组件自己给 */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #app {
+    /*
+     * 视口高度用 100dvh：移动浏览器的地址栏会伸缩，100vh 取的是「地址栏收起时」
+     * 的高度，底部导航因此会被顶出屏幕。dvh 跟随可视区域变化。
+     * 先写 100vh 兜底不支持 dvh 的旧内核。
+     */
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /*
+   * 可滚动区域统一带惯性滚动与滚动链隔断。用类而不是 `*`：
+   * 全局设置 overscroll-behavior 会连带影响弹层内部的滚动语义。
+   */
+  .scroll-y {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  a {
+    @apply text-inherit no-underline;
+  }
+
+  :where(button, a, input, textarea, select, [tabindex], [role='button']):focus-visible {
+    outline: 1.5px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* UI 标签层统一等宽（与桌面端一致的排印分工） */
+  time,
+  code,
+  kbd,
+  samp {
+    @apply font-mono;
+  }
+}
+
+@layer utilities {
+  /*
+   * 安全区工具类：刘海屏与手势条区域。用 max() 保证在没有安全区的设备上
+   * 仍有一个最小内边距，不必在组件里写两套。
+   */
+  .pt-safe {
+    padding-top: max(env(safe-area-inset-top), 0px);
+  }
+  .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  }
+  .px-safe {
+    padding-left: max(env(safe-area-inset-left), 0px);
+    padding-right: max(env(safe-area-inset-right), 0px);
+  }
+
+  /*
+   * 触摸目标下限：WCAG 2.5.8 要求 24px，iOS HIG 建议 44px。
+   * 图标按钮在移动端一律套这个类，视觉尺寸可以更小，命中区不缩水。
+   */
+  .tap-target {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+}

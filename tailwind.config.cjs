@@ -1,7 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ['class', '[data-kb-theme="dark"]'],
-  content: ['./src/gui/src/**/*.{ts,tsx}'],
+  // 两个前端共用这份配置（设计令牌同源，见 src/styles/theme-tokens.css）。
+  // 代价是各自的产物里会含少量对方用到的工具类，换来的是配色/圆角/字体只有一处定义。
+  content: ['./src/gui/src/**/*.{ts,tsx}', './src/gui-mobile/src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {

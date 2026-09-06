@@ -1,0 +1,32 @@
+{
+  // 移动端 Solid 应用（vite.gui-mobile.config.ts）。编译选项刻意与 tsconfig.gui.json
+  // 一致——同一套技术栈、同样由 Vite 打包给浏览器跑，理由见那份配置里的说明。
+  //
+  // 差别只有两处：
+  //   - include 指向 src/gui-mobile；
+  //   - types 里多了 vite-plugin-pwa/client，用来给 `virtual:pwa-register` 这个
+  //     虚拟模块提供声明（见 src/gui-mobile/src/lib/pwa.ts）。
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "types": ["vite/client", "vite-plugin-pwa/client"],
+    // 与 vite.gui-mobile.config.ts 的 alias 一一对应。
+    "paths": {
+      "@/*": ["./src/gui-mobile/src/*"]
+    },
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.gui-mobile.tsbuildinfo"
+  },
+  "include": ["src/gui-mobile/**/*.ts", "src/gui-mobile/**/*.tsx"]
+}

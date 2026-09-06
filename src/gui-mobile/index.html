@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN" data-kb-theme="light" data-kb-theme-name="paper">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      viewport-fit=cover：把页面铺到刘海/圆角之下，配合 app.css 里的 env(safe-area-inset-*)
+      自己控制留白。不写 user-scalable=no —— 禁用缩放是无障碍倒退，
+      真正会误触发缩放的双击行为已由 touch-action / 目标尺寸约束掉。
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- 地址栏/状态栏底色跟随亮暗，避免站点内容与系统 UI 之间出现一条异色带 -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2e9" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0d1210" />
+    <!-- iOS 独立窗口模式：Safari 至今不读 manifest 的 display/icons，只认这几个私有 meta -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="YorZ" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+    <title>YorZ</title>
+    <!--
+      主题引导：与 src/gui/index.html 是同一套逻辑（同源，共用 localStorage 的
+      yorz.appearanceHint），必须同步执行且早于样式表，否则首屏会先按默认 paper 亮色
+      绘制再跳到目标主题。键名与校验逻辑跟 src/gui-mobile/src/lib/theme.ts 是两份，
+      改动需同步。
+    -->
+    <script>
+      ;(function () {
+        try {
+          var THEME_NAMES = ['terminal', 'graphite', 'paper']
+          var THEME_MODES = ['system', 'light', 'dark']
+          var hint = null
+          try {
+            hint = JSON.parse(window.localStorage.getItem('yorz.appearanceHint') || 'null')
+          } catch (e) {}
+          if (!hint || typeof hint !== 'object') hint = {}
+
+          var name = THEME_NAMES.indexOf(hint.name) >= 0 ? hint.name : 'paper'
+          var mode = THEME_MODES.indexOf(hint.mode) >= 0 ? hint.mode : 'system'
+          var resolved =
+            mode === 'light' || mode === 'dark'
+              ? mode
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+
+          document.documentElement.setAttribute('data-kb-theme', resolved)
+          document.documentElement.setAttribute('data-kb-theme-name', name)
+          document.documentElement.style.colorScheme = resolved
+        } catch (e) {}
+      })()
+    </script>
+    <link rel="stylesheet" href="./src/app.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>
