@@ -27,13 +27,37 @@ export function createLongPress(options: LongPressOptions) {
   let origin: { x: number; y: number } | null = null
   let fired = false
 
+  let guardTimer: ReturnType<typeof setTimeout> | undefined
+
+  const suppressContextMenu = (e: Event) => e.preventDefault()
+
+  const disarmGuard = () => {
+    if (guardTimer) clearTimeout(guardTimer)
+    guardTimer = undefined
+    document.removeEventListener('contextmenu', suppressContextMenu, true)
+  }
+
+  /**
+   * 长按判定成立后系统菜单还会晚一拍才到，而那时命中的多半是刚渲染出来的面板/遮罩——
+   * 元素自己的 onContextMenu 已经够不着它。于是在 document 上以捕获方式挂一个短命拦截器，
+   * 只盖住这一拍：常驻禁用 contextmenu 会把输入框等处的正常长按行为一并废掉。
+   */
+  const armGuard = () => {
+    disarmGuard()
+    document.addEventListener('contextmenu', suppressContextMenu, true)
+    guardTimer = setTimeout(disarmGuard, 700)
+  }
+
   const cancel = () => {
     if (timer) clearTimeout(timer)
     timer = undefined
     origin = null
   }
 
-  onCleanup(cancel)
+  onCleanup(() => {
+    cancel()
+    disarmGuard()
+  })
 
   return {
     onPointerDown: (e: PointerEvent) => {
@@ -46,6 +70,7 @@ export function createLongPress(options: LongPressOptions) {
         timer = undefined
         origin = null
         fired = true
+        armGuard()
         options.onLongPress()
       }, options.ms ?? 500)
     },

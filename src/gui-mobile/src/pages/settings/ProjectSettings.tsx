@@ -26,13 +26,23 @@ type AgentKindOption = 'inherit' | 'claude' | 'codex' | 'opencode' | 'custom'
 
 // 写成函数而不是模块级常量：t() 在模块求值时 i18n 还没 init 完，
 // 且切语言后常量不会重算，标签会卡在初始语言上。
-const kindOptions = (): readonly { value: AgentKindOption; label: string }[] => [
-  { value: 'inherit', label: t('projectSettings.inherit') },
-  { value: 'claude', label: 'Claude' },
-  { value: 'codex', label: 'Codex' },
-  { value: 'opencode', label: 'opencode' },
-  { value: 'custom', label: t('projectSettings.custom') },
-]
+//
+// 「自定义命令」默认不出现在手机上：这一档要现填命令与参数，手机没有补全、
+// 填错了会让整个项目跑不起来，属于该在桌面端做的事。但如果当前配置本来就是
+// custom（在桌面端设过），仍要把这一档补回来——否则分段控件没有任何一档高亮，
+// 用户既看不出当前用的是什么，也改不回去。
+const kindOptions = (
+  current: AgentKindOption,
+): readonly { value: AgentKindOption; label: string }[] => {
+  const base: { value: AgentKindOption; label: string }[] = [
+    { value: 'inherit', label: t('projectSettings.inherit') },
+    { value: 'claude', label: 'Claude' },
+    { value: 'codex', label: 'Codex' },
+    { value: 'opencode', label: 'opencode' },
+  ]
+  if (current === 'custom') base.push({ value: 'custom', label: t('projectSettings.custom') })
+  return base
+}
 
 export const ProjectSettings: Component = () => {
   const navigate = useNavigate()
@@ -85,7 +95,7 @@ export const ProjectSettings: Component = () => {
                 <Group title={t('projectSettings.agent')}>
                   <Segmented
                     label={t('projectSettings.kind')}
-                    options={kindOptions()}
+                    options={kindOptions(cfg().agent.kind)}
                     value={() => cfg().agent.kind}
                     onChange={onKindChange}
                   />

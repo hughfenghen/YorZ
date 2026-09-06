@@ -26,10 +26,13 @@ export function Segmented<T extends string>(props: {
   onChange: (value: T) => void
 }): JSX.Element {
   return (
-    <div class="flex items-center justify-between gap-3 px-4 py-3">
+    // 允许折行：选项一多（项目设置的 Agent 类型就有四档）一行放不下，
+    // 不折行的话整组被裁在屏幕外，只剩前两档可点。先让整组落到第二行，
+    // 第二行仍放不下时组内自己再折一次——宁可占两行，也不截断选项。
+    <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3">
       <span class="shrink-0 text-sm">{props.label}</span>
       <div
-        class="flex shrink-0 overflow-hidden rounded-md border border-border"
+        class="flex max-w-full shrink-0 flex-wrap overflow-hidden rounded-md border border-border"
         role="group"
         aria-label={props.label}
       >

@@ -197,6 +197,14 @@ export type SessionEvent =
   | { type: 'tool-use'; name: string; input: unknown }
   | { type: 'tool-result'; text: string }
   | { type: 'turn-completed'; usage?: unknown }
+  /**
+   * Context was compacted mid-turn (auto or manual). The server has always
+   * emitted this (`agent-sdk/types.ts`, passed through by the events hub) but
+   * the client union omitted it, so every consumer's if-else chain dropped it
+   * silently. Declared here so that stays a rendering choice, not an accident;
+   * `metrics` is the adapter's `CompactMetrics`, kept opaque on this side.
+   */
+  | { type: 'compact'; metrics: unknown }
   | { type: 'error'; message: string }
 
 export interface SessionReadyEvent {

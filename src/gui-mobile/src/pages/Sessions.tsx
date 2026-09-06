@@ -1,5 +1,6 @@
 import { For, Show, createEffect, createMemo, createResource, onCleanup } from 'solid-js'
 import type { Component } from 'solid-js'
+import { useNavigate } from '@solidjs/router'
 import { Plus } from 'lucide-solid'
 import { format as formatTimeago, register as registerTimeago } from 'timeago.js'
 import zhCNTimeago from 'timeago.js/lib/lang/zh_CN.js'
@@ -8,13 +9,7 @@ import { subscribeSessions } from '@shared/api/sse.js'
 import { groupSessions } from '@shared/lib/session-groups.js'
 import { enShort } from '@shared/lib/timeago-locale.js'
 import { Page } from '@/components/Page.jsx'
-import {
-  ErrorNotice,
-  LoadingNotice,
-  NoProjectNotice,
-  Notice,
-  comingSoon,
-} from '@/components/ListStates.jsx'
+import { ErrorNotice, LoadingNotice, NoProjectNotice, Notice } from '@/components/ListStates.jsx'
 import { activeProjectId } from '@/lib/active-project.js'
 import { cn } from '@/lib/cn'
 import { t, useTranslation } from '@/i18n/index.js'
@@ -33,6 +28,7 @@ registerTimeago('zh-CN', zhCNTimeago)
  */
 export const Sessions: Component = () => {
   const { lng } = useTranslation()
+  const navigate = useNavigate()
   const [sessions, { refetch, mutate }] = createResource<SessionInfo[], string>(
     () => activeProjectId() ?? undefined,
     (pid) => api.listSessions(pid),
@@ -69,7 +65,7 @@ export const Sessions: Component = () => {
           type="button"
           class="tap-target -mr-2 flex items-center justify-center rounded-md text-muted-foreground active:bg-accent"
           aria-label={t('sessions.new')}
-          onClick={comingSoon}
+          onClick={() => navigate('/sessions/new')}
         >
           <Plus size={20} aria-hidden="true" />
         </button>
@@ -89,7 +85,9 @@ export const Sessions: Component = () => {
                       <button
                         type="button"
                         class="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-accent"
-                        onClick={comingSoon}
+                        // 组里最新的一轮就是「这条 spec 现在在跑的那次对话」；
+                        // 会话详情自己会按 specId 把整组历史聚合出来。
+                        onClick={() => navigate(`/sessions/${encodeURIComponent(group.latest.id)}`)}
                       >
                         {/* 运行状态点占固定槽位：不运行时也留位，否则标题会左右跳动 */}
                         <span

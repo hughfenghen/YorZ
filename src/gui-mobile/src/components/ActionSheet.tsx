@@ -45,9 +45,12 @@ export const ActionSheet: Component<ActionSheetProps> = (props) => {
       <div
         // z 比 Toast（z-50）高一档：上一条还没消失的提示会浮在底部，
         // 同层的话会正好盖住面板最下面那个动作项
-        class="fixed inset-0 z-[60] flex flex-col justify-end px-safe pb-safe"
+        class="no-callout fixed inset-0 z-[60] flex select-none flex-col justify-end px-safe pb-safe"
         role="dialog"
         aria-modal="true"
+        // 长按弹出面板的那一刻，系统上下文菜单的事件往往才姗姗来迟：它落在的已经是
+        // 这层遮罩而不是被按住的那一行，行上的 preventDefault 够不着，面板得自己再挡一道
+        onContextMenu={(e) => e.preventDefault()}
       >
         <button
           type="button"

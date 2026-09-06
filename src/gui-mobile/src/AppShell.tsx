@@ -1,8 +1,10 @@
-import type { ParentComponent } from 'solid-js'
+import { Show, type ParentComponent } from 'solid-js'
+import { useLocation } from '@solidjs/router'
 import { StatusBanner } from './components/StatusBanner.jsx'
 import { TabBar } from './components/TabBar.jsx'
 import { Toaster } from './components/Toast.jsx'
 import { watchNetwork } from './lib/network.js'
+import { isTabRoute } from './lib/routes.js'
 
 /**
  * 应用外壳：状态横幅 / 路由内容 / 底部导航三段式。
@@ -15,11 +17,20 @@ export const AppShell: ParentComponent = (props) => {
   // 但没有必要——注册本身不碰 DOM 布局。
   watchNetwork()
 
+  const location = useLocation()
+
   return (
     <>
       <StatusBanner />
       <main class="flex min-h-0 flex-1 flex-col">{props.children}</main>
-      <TabBar />
+      {/*
+        二级页面不出底部导航：它们都带返回键，再留一条 tab 栏既抢走 56px 高度，
+        又与「返回」的层级语义打架；会话详情底部本来就是输入栏，两条底栏叠在
+        小屏上不可接受。两个设置页同属二级页，一并按此口径处理。
+      */}
+      <Show when={isTabRoute(location.pathname)}>
+        <TabBar />
+      </Show>
       {/* 单例 toast，fixed 定位浮在导航之上，不参与上面的高度链条 */}
       <Toaster />
     </>

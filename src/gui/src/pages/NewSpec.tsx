@@ -2,7 +2,7 @@ import { Show, createEffect, createSignal, on, onCleanup, type Component } from 
 import { useNavigate } from '@solidjs/router'
 import { Upload, Loader2, Send } from 'lucide-solid'
 import { api, type CreateSpecBody } from '../lib/api.js'
-import { ACCEPT_MIME, MAX_COUNT, createAttachments } from '../lib/attachments.js'
+import { ACCEPT_MIME, MAX_COUNT, attachmentLabels, createAttachments } from '../lib/attachments.js'
 import { projectHref, requestChatSession, useCurrentProjectId } from '../lib/project.js'
 import { subscribeSpecsList, subscribeSession } from '../lib/sse.js'
 import { Button } from '../components/ui/button.jsx'
@@ -17,75 +17,23 @@ import {
   RadioGroupLabel,
 } from '../components/ui/radio-group.jsx'
 import { Breadcrumb } from '../components/Breadcrumb.jsx'
+import {
+  clearDraft,
+  createNewSpecPoller,
+  deriveSlug,
+  persistDraft,
+  readDraft,
+  serializeDraft,
+  type NewSpecDraft,
+} from '@shared/lib/spec-draft.js'
 import { t } from '../i18n/index.js'
 
 type Phase = 'idle' | 'creating' | 'failed'
-type NewSpecDraft = {
-  content?: string
-  type?: CreateSpecBody['type']
-  useWorktree?: boolean
-}
-
 const TYPES: { value: CreateSpecBody['type']; labelKey: string; hintKey: string }[] = [
   { value: 'feat', labelKey: 'newSpec.typeFeat', hintKey: 'newSpec.typeFeatHint' },
   { value: 'refct', labelKey: 'newSpec.typeRefct', hintKey: 'newSpec.typeRefctHint' },
   { value: 'fix', labelKey: 'newSpec.typeFix', hintKey: 'newSpec.typeFixHint' },
 ]
-const DRAFT_STORAGE_PREFIX = 'yorz:new-spec-draft:'
-
-function isSpecType(value: unknown): value is CreateSpecBody['type'] {
-  return value === 'feat' || value === 'refct' || value === 'fix'
-}
-
-function draftStorageKey(pid: string): string {
-  return `${DRAFT_STORAGE_PREFIX}${pid}`
-}
-
-function readDraft(pid: string): NewSpecDraft {
-  if (!pid || typeof window === 'undefined') return {}
-  try {
-    const raw = window.localStorage.getItem(draftStorageKey(pid))
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as NewSpecDraft
-    return {
-      content: typeof parsed.content === 'string' ? parsed.content : undefined,
-      type: isSpecType(parsed.type) ? parsed.type : undefined,
-      useWorktree: typeof parsed.useWorktree === 'boolean' ? parsed.useWorktree : undefined,
-    }
-  } catch {
-    return {}
-  }
-}
-
-function persistDraft(pid: string, draft: Required<NewSpecDraft>): void {
-  if (!pid || typeof window === 'undefined') return
-  try {
-    const hasDraft =
-      draft.content.trim().length > 0 || draft.type !== 'feat' || draft.useWorktree !== false
-    const key = draftStorageKey(pid)
-    if (!hasDraft) {
-      window.localStorage.removeItem(key)
-      return
-    }
-    window.localStorage.setItem(key, JSON.stringify(draft))
-  } catch {
-    // Storage is best-effort; form input must remain usable when unavailable.
-  }
-}
-
-function serializeDraft(draft: Required<NewSpecDraft>): string {
-  return JSON.stringify(draft)
-}
-
-function clearDraft(pid: string): void {
-  if (!pid || typeof window === 'undefined') return
-  try {
-    window.localStorage.removeItem(draftStorageKey(pid))
-  } catch {
-    // ignore
-  }
-}
-
 export const NewSpec: Component = () => {
   const navigate = useNavigate()
   const projectId = useCurrentProjectId()
@@ -95,16 +43,14 @@ export const NewSpec: Component = () => {
   const [useWorktree, setUseWorktree] = createSignal(false)
   const busy = () => phase() === 'creating'
 
-  const att = createAttachments({ projectId })
+  const att = createAttachments({ projectId, labels: attachmentLabels })
   const error = att.error
   const setError = att.setError
 
   let cleanupList: (() => void) | null = null
   let sessionUnsub: (() => void) | null = null
-  let baselineIds: Set<string> = new Set()
   let targetProjectId: string = ''
   let pendingSessionId: string = ''
-  let navigated = false
   let fileInputEl: HTMLInputElement | undefined
   let restoringDraft = false
   let suppressedDraftSnapshot = ''
@@ -127,7 +73,7 @@ export const NewSpec: Component = () => {
 
   createEffect(() => {
     if (restoringDraft || busy()) return
-    const draft = {
+    const draft: NewSpecDraft = {
       content: content(),
       type: type(),
       useWorktree: useWorktree(),
@@ -138,31 +84,24 @@ export const NewSpec: Component = () => {
     persistDraft(projectId(), draft)
   })
 
-  async function pollForNewSpec() {
-    if (navigated) return
-    const pid = targetProjectId || projectId()
-    try {
-      const list = await api.listSpecs(pid)
-      const fresh = list.find((s) => !baselineIds.has(s.id))
-      if (fresh) {
-        navigated = true
-        cleanupList?.()
-        cleanupList = null
-        sessionUnsub?.()
-        sessionUnsub = null
-        const target = pid
-          ? `/${pid}/specs/${encodeURIComponent(fresh.id)}`
-          : projectHref(`specs/${encodeURIComponent(fresh.id)}`)
-        navigate(target)
-        if (pendingSessionId) {
-          requestChatSession(pendingSessionId)
-          pendingSessionId = ''
-        }
+  const poller = createNewSpecPoller({
+    listSpecs: () => api.listSpecs(targetProjectId || projectId()),
+    onFound: (id) => {
+      const pid = targetProjectId || projectId()
+      cleanupList?.()
+      cleanupList = null
+      sessionUnsub?.()
+      sessionUnsub = null
+      const target = pid
+        ? `/${pid}/specs/${encodeURIComponent(id)}`
+        : projectHref(`specs/${encodeURIComponent(id)}`)
+      navigate(target)
+      if (pendingSessionId) {
+        requestChatSession(pendingSessionId)
+        pendingSessionId = ''
       }
-    } catch {
-      // ignore; will retry on next list-updated event
-    }
-  }
+    },
+  })
 
   async function submit(e: Event) {
     e.preventDefault()
@@ -183,7 +122,6 @@ export const NewSpec: Component = () => {
       return
     }
     setPhase('creating')
-    navigated = false
     try {
       const sourcePid = projectId()
       suppressedDraftSnapshot = serializeDraft({
@@ -201,7 +139,7 @@ export const NewSpec: Component = () => {
       }
       targetProjectId = pid
       const before = await api.listSpecs(pid)
-      baselineIds = new Set(before.map((s) => s.id))
+      poller.setBaseline(before.map((s) => s.id))
 
       const body: CreateSpecBody = { type: type(), requirement: text }
       const did = att.draftId()
@@ -227,9 +165,9 @@ export const NewSpec: Component = () => {
           },
         })
         cleanupList = subscribeSpecsList(pid, () => {
-          void pollForNewSpec()
+          void poller.poll()
         })
-        void pollForNewSpec()
+        void poller.poll()
       } else if ('id' in resp) {
         navigate(`/${pid}/specs/${encodeURIComponent(resp.id)}`)
       }
@@ -352,15 +290,4 @@ export const NewSpec: Component = () => {
       </form>
     </section>
   )
-}
-
-function deriveSlug(requirement: string): string {
-  const firstLine = requirement.split(/\r?\n/)[0] ?? ''
-  const ascii = firstLine
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40)
-  if (ascii && !/^[0-9]+$/.test(ascii)) return ascii
-  return `spec-${Date.now().toString(36)}`
 }

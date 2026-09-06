@@ -13,6 +13,7 @@ import { api, type CommandRun } from '@shared/api/index.js'
 import { subscribeCommandRuns } from '@shared/api/sse.js'
 import { formatDuration } from '@shared/lib/duration.js'
 import { Page } from '@/components/Page.jsx'
+import { ActionSheet, type ActionSheetItem } from '@/components/ActionSheet.jsx'
 import {
   ErrorNotice,
   LoadingNotice,
@@ -92,8 +93,13 @@ export const Extensions: Component = () => {
     }
   }
 
+  // 终止是不可逆动作（脚本进程直接被杀），复用 spec 长按菜单那套底部面板做二次确认。
+  // 与 Specs 一样只留一个页面级单例：每行各挂一个面板会凭空多出一堆 fixed 节点。
+  const [confirmRun, setConfirmRun] = createSignal<CommandRun | null>(null)
+
   const stop = async (run: CommandRun) => {
     const pid = activeProjectId()
+    setConfirmRun(null)
     if (!pid) return
     try {
       await api.stopCommandRun(pid, run.runId)
@@ -101,6 +107,12 @@ export const Extensions: Component = () => {
     } catch (e) {
       showToast(e instanceof Error ? e.message : String(e), 'error')
     }
+  }
+
+  const confirmItems = (): ActionSheetItem[] => {
+    const run = confirmRun()
+    if (!run) return []
+    return [{ label: t('ext.stopConfirm'), tone: 'destructive', onSelect: () => void stop(run) }]
   }
 
   return (
@@ -143,22 +155,28 @@ export const Extensions: Component = () => {
                             <span class="truncate">{run.cli}</span>
                           </span>
                         </span>
-                        <button
-                          type="button"
-                          class="tap-target flex shrink-0 items-center justify-center rounded-md text-muted-foreground active:bg-accent"
-                          aria-label={t('ext.restart')}
-                          onClick={() => void restart(run)}
-                        >
-                          <RotateCcw size={18} aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          class="tap-target flex shrink-0 items-center justify-center rounded-md text-muted-foreground active:bg-accent"
-                          aria-label={t('ext.stop')}
-                          onClick={() => void stop(run)}
-                        >
-                          <X size={18} aria-hidden="true" />
-                        </button>
+                        {/* 图标按钮组：组内不留 gap（命中区相邻即可，视觉间距由 tap-target
+                            自带的内缩给出），组整体左移 13px —— 44px 命中区里居中的 18px 图标
+                            两侧各有 (44-18)/2 = 13px 空白，抵消掉之后 X 的右边界才和入口行
+                            那个 ChevronRight 一样落在距容器右 16px 处 */}
+                        <span class="-mr-[13px] flex shrink-0 items-center">
+                          <button
+                            type="button"
+                            class="tap-target flex items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+                            aria-label={t('ext.restart')}
+                            onClick={() => void restart(run)}
+                          >
+                            <RotateCcw size={18} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            class="tap-target flex items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+                            aria-label={t('ext.stop')}
+                            onClick={() => setConfirmRun(run)}
+                          >
+                            <X size={18} aria-hidden="true" />
+                          </button>
+                        </span>
                       </div>
                     )}
                   </For>
@@ -177,6 +195,14 @@ export const Extensions: Component = () => {
           />
         </Group>
       </div>
+
+      <ActionSheet
+        open={confirmRun() !== null}
+        title={confirmRun()?.name}
+        description={t('ext.stopHint')}
+        items={confirmItems()}
+        onClose={() => setConfirmRun(null)}
+      />
     </Page>
   )
 }

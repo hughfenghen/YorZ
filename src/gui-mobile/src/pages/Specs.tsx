@@ -7,6 +7,7 @@ import {
   onCleanup,
   type Component,
 } from 'solid-js'
+import { useNavigate } from '@solidjs/router'
 import { Plus } from 'lucide-solid'
 import { api, type SpecListItem } from '@shared/api/index.js'
 import { subscribeSpecsList } from '@shared/api/sse.js'
@@ -15,13 +16,7 @@ import { specFilePath } from '@shared/lib/spec-path.js'
 import { formatSpecUpdatedAt } from '@shared/lib/time.js'
 import { Page } from '@/components/Page.jsx'
 import { ActionSheet, type ActionSheetItem } from '@/components/ActionSheet.jsx'
-import {
-  ErrorNotice,
-  LoadingNotice,
-  NoProjectNotice,
-  Notice,
-  comingSoon,
-} from '@/components/ListStates.jsx'
+import { ErrorNotice, LoadingNotice, NoProjectNotice, Notice } from '@/components/ListStates.jsx'
 import { showToast } from '@/components/Toast.jsx'
 import { activeProjectId } from '@/lib/active-project.js'
 import { copyText } from '@/lib/clipboard.js'
@@ -39,6 +34,7 @@ import { t } from '@/i18n/index.js'
  * 是因为它是这个列表里唯一能让人不点进去就判断「这条要不要管」的信息。
  */
 export const Specs: Component = () => {
+  const navigate = useNavigate()
   const [specs, { refetch }] = createResource<SpecListItem[], string>(
     () => activeProjectId() ?? undefined,
     (pid) => api.listSpecs(pid),
@@ -112,7 +108,7 @@ export const Specs: Component = () => {
           type="button"
           class="tap-target -mr-2 flex items-center justify-center rounded-md text-muted-foreground active:bg-accent"
           aria-label={t('specs.new')}
-          onClick={comingSoon}
+          onClick={() => navigate('/specs/new')}
         >
           <Plus size={20} aria-hidden="true" />
         </button>
@@ -131,7 +127,7 @@ export const Specs: Component = () => {
                     const parts = splitSpecId(spec.id)
                     const press = createLongPress({
                       onLongPress: () => openMenu(spec),
-                      onClick: comingSoon,
+                      onClick: () => navigate(`/specs/${encodeURIComponent(spec.id)}`),
                     })
                     return (
                       <li>

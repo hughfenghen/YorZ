@@ -1,12 +1,17 @@
 import { For, Show, createMemo, createSignal, type Component } from 'solid-js'
 import type { ConfirmQuestion } from '../lib/question-parse.js'
-import type { AnnotationBody, QuestionAnswerBody, QuestionAnswersBody } from '../lib/api.js'
+import type { AnnotationBody, QuestionAnswersBody } from '../lib/api.js'
+import { FREEFORM_SENTINEL } from '../lib/answer-payload.js'
 import {
-  buildAnswerItem,
-  buildConfirmAnswerItem,
-  FREEFORM_SENTINEL,
-  type ConfirmDecisionKey,
-} from '../lib/answer-payload.js'
+  buildAnswerItems,
+  countUnanswered,
+  impactAccent,
+  initialAnswers,
+  type AnswerDraft,
+  type ConfirmTop,
+  type DropTarget,
+  type RejectIntent,
+} from '@shared/lib/question-draft.js'
 import { Button } from './ui/button.jsx'
 import {
   RadioGroup,
@@ -34,69 +39,10 @@ interface Props {
   onSubmit: (payload: QuestionAnswersBody) => Promise<void>
 }
 
-// confirm 型的三级否决意图状态。
-type ConfirmTop = 'accept' | 'reject'
-type RejectIntent = 'alternative' | 'constraint' | 'dropGoal'
-type DropTarget = 'current' | 'spec'
-
-interface AnswerDraft {
-  // choice / freeform
-  selectedOptionLabel?: string
-  note: string
-  // confirm
-  confirmTop?: ConfirmTop
-  confirmIntent?: RejectIntent
-  confirmDrop?: DropTarget
-}
-
-/** 把三级 confirm 选择折叠为规范决策 key；未选全返回 null。 */
-function resolveConfirmKey(d: AnswerDraft): ConfirmDecisionKey | null {
-  if (d.confirmTop === 'accept') return 'accept'
-  if (d.confirmTop !== 'reject') return null
-  if (d.confirmIntent === 'alternative') return 'rejectAlternative'
-  if (d.confirmIntent === 'constraint') return 'rejectConstraint'
-  if (d.confirmIntent === 'dropGoal') {
-    if (d.confirmDrop === 'current') return 'rejectDropGoal'
-    if (d.confirmDrop === 'spec') return 'rejectDropSpec'
-  }
-  return null
-}
-
-/** confirm 草稿是否完整可提交（已选决策；若否决则理由非空）。 */
-function isConfirmComplete(d: AnswerDraft): boolean {
-  const key = resolveConfirmKey(d)
-  if (!key) return false
-  if (key === 'accept') return true
-  return d.note.trim().length > 0
-}
-
-/** 影响文本含 🔴 → 高危红边，🟡 → 中危黄边。 */
-function impactAccent(impact: string | undefined): string {
-  if (!impact) return 'border-border'
-  if (impact.includes('🔴')) return 'border-l-2 border-l-destructive'
-  if (impact.includes('🟡')) return 'border-l-2 border-l-warning'
-  return 'border-border'
-}
-
 export const QuestionConfirmPanel: Component<Props> = (props) => {
-  const initialAnswers = (): Record<string, AnswerDraft> => {
-    const out: Record<string, AnswerDraft> = {}
-    for (const q of props.questions) {
-      if (q.kind === 'confirm') {
-        // 确认型默认「确认，按此推进」——它是知会 + 急停语义，放行是常态。
-        out[q.id] = { note: '', confirmTop: 'accept' }
-        continue
-      }
-      const recommended = q.options.find((o) => o.recommended)
-      out[q.id] = {
-        selectedOptionLabel: recommended?.label ?? q.options[0]?.label,
-        note: '',
-      }
-    }
-    return out
-  }
-
-  const [answers, setAnswers] = createSignal<Record<string, AnswerDraft>>(initialAnswers())
+  const [answers, setAnswers] = createSignal<Record<string, AnswerDraft>>(
+    initialAnswers(props.questions),
+  )
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
 
@@ -111,7 +57,8 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
   }
   function setConfirmTop(qid: string, top: ConfirmTop) {
     // 切回确认时清掉否决子选择，避免残留状态污染。
-    if (top === 'accept') patch(qid, { confirmTop: top, confirmIntent: undefined, confirmDrop: undefined })
+    if (top === 'accept')
+      patch(qid, { confirmTop: top, confirmIntent: undefined, confirmDrop: undefined })
     else patch(qid, { confirmTop: top })
   }
   function setConfirmIntent(qid: string, intent: RejectIntent) {
@@ -122,56 +69,19 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
     patch(qid, { confirmDrop: drop })
   }
 
-  const unanswered = createMemo(() => {
-    const a = answers()
-    let count = 0
-    for (const q of props.questions) {
-      const draft = a[q.id]
-      if (!draft) {
-        count += 1
-        continue
-      }
-      if (q.kind === 'confirm') {
-        if (!isConfirmComplete(draft)) count += 1
-        continue
-      }
-      const note = draft.note ?? ''
-      if (q.isFreeform) {
-        if (!note.trim()) count += 1
-      } else if (draft.selectedOptionLabel === FREEFORM_SENTINEL) {
-        if (!note.trim()) count += 1
-      } else if (!draft.selectedOptionLabel) {
-        count += 1
-      }
-    }
-    return count
-  })
+  const unanswered = createMemo(() => countUnanswered(props.questions, answers()))
 
   async function submit() {
     setBusy(true)
     setError(null)
     try {
-      const a = answers()
-      const items: QuestionAnswerBody[] = []
-      for (const q of props.questions) {
-        const draft = a[q.id] ?? { note: '' }
-        if (q.kind === 'confirm') {
-          const key = resolveConfirmKey(draft)
-          if (!key) continue // 未选决策：视作未答，跳过
-          // 否决必须携带理由，否则阻塞整次提交。
-          const item = buildConfirmAnswerItem(q, key, draft.note)
-          if (!item) {
-            setError(t('questionConfirm.reasonRequired'))
-            return
-          }
-          items.push(item)
-          continue
-        }
-        const item = buildAnswerItem(q, draft)
-        if (item) items.push(item)
+      const built = buildAnswerItems(props.questions, answers())
+      if (!built.ok) {
+        setError(t('questionConfirm.reasonRequired'))
+        return
       }
       const payload: QuestionAnswersBody = {
-        answers: items,
+        answers: built.items,
         freeformAnnotations: props.freeforms.map(
           (f): AnnotationBody => ({
             sectionPath: f.sectionPath,

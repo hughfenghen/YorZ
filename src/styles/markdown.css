@@ -1,0 +1,379 @@
+/*
+ * Rendered-markdown typography, shared by the desktop and mobile clients.
+ *
+ * These rules are the counterpart of `renderMarkdown()`'s output structure —
+ * task lists, `<details>`, hljs token classes, mermaid placeholders — so they
+ * belong with it rather than being copied per app, where they would drift from
+ * the HTML they style. Both apps `@import` this from their own `app.css`.
+ *
+ * Platform-specific chrome stays out: the desktop mermaid fullscreen button and
+ * its overlay live in the desktop `app.css`, and mobile brings its own viewer.
+ */
+
+@layer base {
+  .markdown {
+    line-height: 1.6;
+  }
+  .markdown h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin: 1.6rem 0 0.8rem;
+    line-height: 1.25;
+  }
+  .markdown h2 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin: 1.4rem 0 0.7rem;
+    line-height: 1.3;
+  }
+  .markdown h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 1.2rem 0 0.6rem;
+  }
+  .markdown h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 1rem 0 0.5rem;
+  }
+  .markdown p {
+    margin: 0.6rem 0;
+  }
+  .markdown ul,
+  .markdown ol {
+    margin: 0.6rem 0;
+    padding-left: 1.5rem;
+  }
+  .markdown ul {
+    list-style: disc;
+  }
+  .markdown ol {
+    list-style: decimal;
+  }
+  .markdown li {
+    margin: 0.25rem 0;
+  }
+  .markdown a {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+  }
+  .markdown hr {
+    margin: 1.25rem 0;
+    border: 0;
+    border-top: 1px solid hsl(var(--border));
+  }
+  .markdown blockquote {
+    border-left: 3px solid hsl(var(--accent));
+    margin: 1rem 0;
+    padding: 0.25rem 1rem;
+    color: hsl(var(--muted-foreground));
+  }
+  .markdown code {
+    background: hsl(var(--muted));
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 0.92em;
+  }
+  .markdown pre {
+    background: hsl(var(--muted));
+    padding: 1rem;
+    border-radius: var(--radius);
+    overflow-x: auto;
+    margin: 0.8rem 0;
+  }
+  .markdown pre code {
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+    font-size: 0.88em;
+  }
+  .markdown table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+  }
+  .markdown th,
+  .markdown td {
+    border: 1px solid hsl(var(--border));
+    padding: 0.45rem 0.6rem;
+    text-align: left;
+  }
+  .markdown th {
+    background: hsl(var(--muted));
+    font-weight: 600;
+  }
+  .markdown .task-list-item {
+    list-style: none;
+  }
+  .markdown .task-list-item-checkbox {
+    margin-right: 0.4em;
+    vertical-align: middle;
+  }
+  .markdown ul:has(> .task-list-item) {
+    padding-left: 0.2em;
+  }
+
+  /* highlight.js token colors. Scoped to the two containers that render hljs
+     output — markdown bodies and the git diff pane (.code-highlight) — rather
+     than left global, so the palette can never leak onto unrelated markup.
+     Block background stays with .markdown pre. */
+  :is(.markdown, .code-highlight) .hljs {
+    color: #24292e;
+    background: transparent;
+  }
+  :is(.markdown, .code-highlight) .hljs-doctag,
+  :is(.markdown, .code-highlight) .hljs-keyword,
+  :is(.markdown, .code-highlight) .hljs-meta .hljs-keyword,
+  :is(.markdown, .code-highlight) .hljs-template-tag,
+  :is(.markdown, .code-highlight) .hljs-template-variable,
+  :is(.markdown, .code-highlight) .hljs-type,
+  :is(.markdown, .code-highlight) .hljs-variable.language_ {
+    color: #d73a49;
+  }
+  :is(.markdown, .code-highlight) .hljs-title,
+  :is(.markdown, .code-highlight) .hljs-title.class_,
+  :is(.markdown, .code-highlight) .hljs-title.class_.inherited__,
+  :is(.markdown, .code-highlight) .hljs-title.function_ {
+    color: #6f42c1;
+  }
+  :is(.markdown, .code-highlight) .hljs-attr,
+  :is(.markdown, .code-highlight) .hljs-attribute,
+  :is(.markdown, .code-highlight) .hljs-literal,
+  :is(.markdown, .code-highlight) .hljs-meta,
+  :is(.markdown, .code-highlight) .hljs-number,
+  :is(.markdown, .code-highlight) .hljs-operator,
+  :is(.markdown, .code-highlight) .hljs-variable,
+  :is(.markdown, .code-highlight) .hljs-selector-attr,
+  :is(.markdown, .code-highlight) .hljs-selector-class,
+  :is(.markdown, .code-highlight) .hljs-selector-id {
+    color: #005cc5;
+  }
+  :is(.markdown, .code-highlight) .hljs-regexp,
+  :is(.markdown, .code-highlight) .hljs-string,
+  :is(.markdown, .code-highlight) .hljs-meta .hljs-string {
+    color: #032f62;
+  }
+  :is(.markdown, .code-highlight) .hljs-built_in,
+  :is(.markdown, .code-highlight) .hljs-symbol {
+    color: #e36209;
+  }
+  :is(.markdown, .code-highlight) .hljs-comment,
+  :is(.markdown, .code-highlight) .hljs-code,
+  :is(.markdown, .code-highlight) .hljs-formula {
+    color: #6a737d;
+  }
+  :is(.markdown, .code-highlight) .hljs-name,
+  :is(.markdown, .code-highlight) .hljs-quote,
+  :is(.markdown, .code-highlight) .hljs-selector-tag,
+  :is(.markdown, .code-highlight) .hljs-selector-pseudo {
+    color: #22863a;
+  }
+  :is(.markdown, .code-highlight) .hljs-subst {
+    color: #24292e;
+  }
+  :is(.markdown, .code-highlight) .hljs-section {
+    color: #005cc5;
+    font-weight: bold;
+  }
+  :is(.markdown, .code-highlight) .hljs-bullet {
+    color: #735c0f;
+  }
+  :is(.markdown, .code-highlight) .hljs-emphasis {
+    color: #24292e;
+    font-style: italic;
+  }
+  :is(.markdown, .code-highlight) .hljs-strong {
+    color: #24292e;
+    font-weight: bold;
+  }
+  :is(.markdown, .code-highlight) .hljs-addition {
+    color: #22863a;
+    background-color: #f0fff4;
+  }
+  :is(.markdown, .code-highlight) .hljs-deletion {
+    color: #b31d28;
+    background-color: #ffeef0;
+  }
+
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs {
+    color: #c9d1d9;
+  }
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-doctag,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-keyword,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-meta .hljs-keyword,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-template-tag,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-template-variable,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-type,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-variable.language_ {
+    color: #ff7b72;
+  }
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-title,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-title.class_,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-title.class_.inherited__,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-title.function_ {
+    color: #d2a8ff;
+  }
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-attr,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-attribute,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-literal,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-meta,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-number,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-operator,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-variable,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-selector-attr,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-selector-class,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-selector-id {
+    color: #79c0ff;
+  }
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-regexp,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-string,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-meta .hljs-string {
+    color: #a5d6ff;
+  }
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-built_in,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-symbol {
+    color: #ffa657;
+  }
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-comment,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-code,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-formula {
+    color: #8b949e;
+  }
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-name,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-quote,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-selector-tag,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-selector-pseudo {
+    color: #7ee787;
+  }
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-subst {
+    color: #c9d1d9;
+  }
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-section {
+    color: #1f6feb;
+  }
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-bullet {
+    color: #f2cc60;
+  }
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-emphasis,
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-strong {
+    color: #c9d1d9;
+  }
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-addition {
+    color: #aff5b4;
+    background-color: #033a16;
+  }
+  [data-kb-theme='dark'] :is(.markdown, .code-highlight) .hljs-deletion {
+    color: #ffdcd7;
+    background-color: #67060c;
+  }
+
+  .markdown .mermaid {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    margin: 1rem 0;
+    padding: 1rem;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    overflow-x: auto;
+  }
+}
+
+@layer base {
+  /*
+   * Chat modifier for `.markdown`. The chat column is a fraction of the width of
+   * the spec view the base styles were tuned for, so headings and vertical
+   * rhythm stay compact while the body text keeps the app's default 16px size.
+   * Chat also wraps long generated tokens aggressively so a single path, URL or
+   * unbroken blob cannot create a panel-wide horizontal scrollbar.
+   */
+  .chat-md {
+    font-size: 1rem;
+    line-height: 1.55;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .chat-md > :first-child {
+    margin-top: 0;
+  }
+  .chat-md > :last-child {
+    margin-bottom: 0;
+  }
+  .chat-md h1 {
+    font-size: 1.25rem;
+    margin: 0.9rem 0 0.5rem;
+  }
+  .chat-md h2 {
+    font-size: 1.15rem;
+    margin: 0.8rem 0 0.45rem;
+  }
+  .chat-md h3 {
+    font-size: 1.05rem;
+    margin: 0.7rem 0 0.4rem;
+  }
+  .chat-md h4 {
+    font-size: 1rem;
+    margin: 0.6rem 0 0.35rem;
+  }
+  .chat-md p {
+    margin: 0.45rem 0;
+  }
+  .chat-md ul,
+  .chat-md ol {
+    margin: 0.45rem 0;
+    padding-left: 1.15rem;
+  }
+  .chat-md li {
+    margin: 0.15rem 0;
+  }
+  .chat-md pre {
+    padding: 0.5rem 0.6rem;
+    margin: 0.5rem 0;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    overflow-x: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .chat-md code {
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .chat-md pre code {
+    white-space: pre-wrap;
+  }
+  .chat-md [data-file-link='true'] {
+    display: inline;
+    border: 1px solid hsl(var(--border));
+    border-radius: 4px;
+    background: hsl(var(--muted));
+    padding: 0.05rem 0.25rem;
+    /* 曾被硬编码的 #1f6feb 覆盖，导致文件链接在暗色下仍是亮蓝 */
+    color: hsl(var(--primary));
+    text-decoration: none;
+    cursor: copy;
+    overflow-wrap: anywhere;
+  }
+  .chat-md [data-file-link='true']:hover,
+  .chat-md [data-file-link='true']:focus-visible {
+    outline: none;
+  }
+  .chat-md blockquote {
+    margin: 0.5rem 0;
+    padding-left: 0.6rem;
+  }
+  .chat-md table {
+    font-size: 0.8rem;
+    table-layout: fixed;
+  }
+  .chat-md th,
+  .chat-md td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}

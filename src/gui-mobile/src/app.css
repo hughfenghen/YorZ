@@ -1,10 +1,11 @@
 /*
  * 移动端样式入口。设计令牌与桌面端共用（src/styles/theme-tokens.css），
- * 这里只放**移动端特有**的基础层：安全区、触摸手感、视口高度。
- * 桌面端 app.css 里的 .markdown / .chat-md / mermaid 等组件样式一概不引进来——
- * 那些是随业务功能一起搬过来的事，现在搬只会带一堆用不上的选择器。
+ * 渲染后 markdown 的排版与 hljs 配色共用 src/styles/markdown.css——
+ * 那份规则是 renderMarkdown() 产出的 HTML 结构的对应物，复制一份必然漂移。
+ * 除此之外这里只放**移动端特有**的基础层：安全区、触摸手感、视口高度、软键盘。
  */
 @import '../../styles/theme-tokens.css';
+@import '../../styles/markdown.css';
 
 @tailwind base;
 @tailwind components;
@@ -135,5 +136,25 @@
   .tap-target {
     min-width: 2.75rem;
     min-height: 2.75rem;
+  }
+
+  /*
+   * 软键盘占位。Android/Chrome 走 index.html 里的
+   * `interactive-widget=resizes-content`，浏览器直接压缩 100dvh，这个变量恒为 0；
+   * iOS Safari 不认该属性，由 lib/keyboard.ts 监听 visualViewport 写入差值。
+   */
+  .kb-inset {
+    padding-bottom: var(--kb-inset, 0px);
+  }
+
+  /*
+   * 触屏没有 hover，图表宽于屏幕时只能横向滚动看；
+   * 桌面那套滚轮缩放 + 指针拖拽的全屏 overlay 在这里没有对应语义，
+   * 点击改为打开 MermaidViewer，靠系统双指缩放。
+   */
+  .markdown .mermaid {
+    padding: 0.75rem;
+    margin: 0.75rem 0;
+    overflow-x: auto;
   }
 }

@@ -1,25 +1,9 @@
 import { Index, Show, type Component } from 'solid-js'
 import { ChevronDown } from 'lucide-solid'
-import { toolTextKey, type ToolsSegment } from '../lib/chat-blocks.js'
+import { toolTextKey, type ToolExpandState, type ToolsSegment } from '../lib/chat-blocks.js'
 import { toolTextView } from '../lib/chat-tool-text.js'
 import { t } from '../i18n/index.js'
 import { Collapsible, CollapsibleContent } from './ui/collapsible.jsx'
-
-/**
- * Expand state for every collapsible in the tool tree, owned by `ChatPanel`.
- *
- * It cannot live inside this component. `groupParts` allocates new objects on
- * every stream tick, so the panel's list reconciliation tears these instances
- * down and rebuilds them several times a second while a session runs — an
- * instance-local signal was reset to `false` under the reader's cursor. Keyed
- * by the segment's stable id (see `ToolsSegment.id`), the state now outlives
- * both the re-render and a mid-run transcript re-read.
- */
-export interface ToolExpandState {
-  isExpanded: (key: string) => boolean
-  /** Idempotent by design: the same value may be written twice per click. */
-  set: (key: string, value: boolean) => void
-}
 
 /**
  * A run of consecutive tool calls, collapsed to a single line.

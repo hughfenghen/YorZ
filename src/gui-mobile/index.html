@@ -6,8 +6,15 @@
       viewport-fit=cover：把页面铺到刘海/圆角之下，配合 app.css 里的 env(safe-area-inset-*)
       自己控制留白。不写 user-scalable=no —— 禁用缩放是无障碍倒退，
       真正会误触发缩放的双击行为已由 touch-action / 目标尺寸约束掉。
+
+      interactive-widget=resizes-content：软键盘弹出时让浏览器压缩视口而不是
+      平移页面，100dvh 随之变小，输入栏零 JS 就留在键盘之上。未知属性会被旧
+      浏览器忽略；iOS Safari 至今不认，那条路由 lib/keyboard.ts 兜底。
     -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <meta name="color-scheme" content="light dark" />
     <!-- 地址栏/状态栏底色跟随亮暗，避免站点内容与系统 UI 之间出现一条异色带 -->
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2e9" />

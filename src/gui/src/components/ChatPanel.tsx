@@ -36,24 +36,20 @@ import {
   mergeScopedInstructions,
   type SlashCommandScope,
 } from '../lib/slash-commands.js'
-import { subscribeSession, subscribeSessions, type SessionEvent } from '../lib/sse.js'
+import { subscribeSessions } from '../lib/sse.js'
 import { activeProjectId } from '../lib/project.js'
 import { clearRequestedChatSession, requestedChatSessionId } from '../lib/chat-session-request.js'
 import { focusMode, exitFocusMode } from '../lib/layout-focus.js'
 import {
-  groupParts,
-  messagesToParts,
-  specMessagesToParts,
   type AgentContextBlock,
   type AssistantBlock,
   type ChatBlock,
-  type ChatPart,
   type DividerBlock,
   type Segment,
   type ToolsSegment,
   type UserBlock,
 } from '../lib/chat-blocks.js'
-import { createHistoryLoadGate, planHistoryLoad } from '../lib/chat-history-load.js'
+import { createChatTranscript } from '@shared/lib/chat-transcript.js'
 import { findGroupBySession, groupSessions, type SessionGroup } from '../lib/session-groups.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { t, useTranslation } from '../i18n/index.js'
@@ -71,7 +67,7 @@ import { Input } from './ui/input.jsx'
 import { AutoResizeTextarea } from './ui/textarea.jsx'
 import { toast } from './ui/toast.jsx'
 import { MentionTextarea, type SlashCommand } from './MentionTextarea.jsx'
-import { ChatToolBlock, type ToolExpandState } from './ChatToolBlock.jsx'
+import { ChatToolBlock } from './ChatToolBlock.jsx'
 import { ChatContextBlock } from './ChatContextBlock.jsx'
 import { Collapsible, CollapsibleContent } from './ui/collapsible.jsx'
 import {
@@ -82,7 +78,7 @@ import {
   RadioGroupItemLabel,
 } from './ui/radio-group.jsx'
 import { AttachmentList } from './AttachmentList.jsx'
-import { ACCEPT_MIME, MAX_COUNT, createAttachments } from '../lib/attachments.js'
+import { ACCEPT_MIME, MAX_COUNT, attachmentLabels, createAttachments } from '../lib/attachments.js'
 
 const COLLAPSED_KEY = 'yorz.layout.col2.collapsed'
 const WIDTH_KEY = 'yorz.layout.col2.width'
@@ -101,22 +97,6 @@ const FALLBACK_MAX_WIDTH = 960
 const MAX_WIDTH_RATIO = 0.8
 const AUTO_SCROLL_THRESHOLD = 96
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-/**
- * How long a draft's first send waits for its session subscription to attach.
- * On timeout we POST anyway: losing a few early deltas (they are still in the
- * transcript) beats wedging Send behind a dropped `ready` event.
- */
-const SUBSCRIBE_READY_TIMEOUT_MS = 1500
-/**
- * Streaming deltas arrive far faster than a human reads, and every flush re-parses
- * the whole markdown of the block being streamed. Batching them on a short timer
- * keeps that cost off the hot path without a visible lag.
- */
-const STREAM_FLUSH_MS = 80
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
 
 /**
  * Narrowing helpers for the message list.
@@ -230,7 +210,10 @@ export const ChatPanel: Component = () => {
   // Transient chat attachments — uploaded to the same draft store as NewSpec, then
   // referenced by path in the outgoing prompt. Reset after each send and whenever
   // the active session / project changes.
-  const attachments = createAttachments({ projectId: () => activeProjectId() || '' })
+  const attachments = createAttachments({
+    projectId: () => activeProjectId() || '',
+    labels: attachmentLabels,
+  })
   // Both scopes in one list, project first and shadowing same-named global
   // commands — the server merges identically, so the picker cannot offer a
   // command that resolves to a different one on send.
@@ -305,98 +288,12 @@ export const ChatPanel: Component = () => {
    * is keyed off the project, not off this id.
    */
   const [activeSid, setActiveSid] = createSignal<string>('')
-  /**
-   * The structured part stream — the single source of truth for the message area.
-   * Both the transcript API and the live SSE stream translate into these, so a
-   * reloaded session renders identically to one you watched stream in.
-   */
-  const [parts, setParts] = createSignal<ChatPart[]>([])
-  const blocks = createMemo(() => groupParts(parts()))
   const [input, setInput] = createSignal('')
   const [autoScroll, setAutoScroll] = createSignal(true)
   const [timeTick, setTimeTick] = createSignal(Date.now())
-  /** A draft's create→subscribe→send handshake is in flight; blocks double-create. */
-  const [starting, setStarting] = createSignal(false)
   // Live run status per session id, seeded from the list response and kept in
   // sync by the project-level `sessions` SSE topic.
   const [runningSids, setRunningSids] = createSignal<Record<string, boolean>>({})
-  /**
-   * Which tool collapsibles the reader has opened — both the `[Tool] ×N` runs
-   * and the per-payload second level, keyed by `ToolsSegment.id` / `toolTextKey`.
-   *
-   * Owned here rather than by `ChatToolBlock` because that component does not
-   * survive a stream tick: `groupParts` rebuilds every block object, so the
-   * message list's reconciliation disposes and remounts the whole tool tree
-   * ~12×/s during a run, and an instance-local signal went back to `false` each
-   * time. Held out here, an opened result stays open while the agent keeps
-   * talking — which is the entire point of being able to open it mid-run.
-   *
-   * Deliberately NOT cleared when a transcript is re-read for the session
-   * already on screen (`resetParts(next)` below): that path fires precisely when
-   * a running spec's round settles, and clearing there would reintroduce the bug.
-   * Only a genuine change of subject clears it — see `resetExpanded` callers.
-   */
-  const [expandedKeys, setExpandedKeys] = createSignal<Record<string, boolean>>({})
-  const toolExpand: ToolExpandState = {
-    isExpanded: (key) => expandedKeys()[key] === true,
-    set: (key, value) =>
-      setExpandedKeys((prev) => (prev[key] === value ? prev : { ...prev, [key]: value })),
-  }
-  /** Drop every open/closed mark — only when the panel changes subject. */
-  function resetExpanded(): void {
-    setExpandedKeys((prev) => (Object.keys(prev).length === 0 ? prev : {}))
-  }
-
-  /**
-   * Sessions created locally in this tab that have no transcript on disk yet:
-   * their `entries` live only in memory (optimistic user message + live deltas),
-   * so the selection effect must NOT clear them and refetch an empty transcript.
-   * An id leaves the set once its first turn completes and gets persisted.
-   */
-  const freshSids = new Set<string>()
-  const [freshRevision, setFreshRevision] = createSignal(0)
-  let displayedSid = ''
-  /**
-   * Spec whose aggregate transcript the message area currently holds, or
-   * undefined when it holds a single session. Tracked alongside `displayedSid`
-   * because "same session" alone cannot tell a spec row's full history apart
-   * from the single round that was loaded before the list knew about the spec.
-   */
-  let displayedSpecId: string | undefined
-  /**
-   * Owns the async half of a history read. Every path that takes the message
-   * area over — a new load, a project switch, dropping back to the draft —
-   * invalidates the read in flight, and ONLY those paths do: a re-run of the
-   * history effect that decides to change nothing must leave the pending read
-   * alone, or a `clear: true` load gets blanked and then orphaned.
-   */
-  const historyGate = createHistoryLoadGate()
-  /** sid → deferred resolved by the session topic's `ready` event. */
-  const readyWaiters = new Map<string, { promise: Promise<void>; resolve: () => void }>()
-
-  function waitForSubscription(sid: string): Promise<void> {
-    let entry = readyWaiters.get(sid)
-    if (!entry) {
-      let resolve: () => void = () => {}
-      const promise = new Promise<void>((r) => {
-        resolve = r
-      })
-      entry = { promise, resolve }
-      readyWaiters.set(sid, entry)
-    }
-    return entry.promise
-  }
-
-  function markSubscribed(sid: string): void {
-    void waitForSubscription(sid)
-    readyWaiters.get(sid)?.resolve()
-  }
-
-  function markFreshPersisted(sid: string): void {
-    if (!freshSids.delete(sid)) return
-    setFreshRevision((v) => v + 1)
-  }
-
   const [sessions, { refetch: refetchSessions }] = createResource(
     () => activeProjectId() || undefined,
     (pid) => api.listSessions(pid),
@@ -422,11 +319,9 @@ export const ChatPanel: Component = () => {
     const list = sessions()
     if (!list) return
     const sid = activeSid()
-    let activeFreshChanged = false
     for (const s of list) {
-      if (!s.running && freshSids.delete(s.id) && s.id === sid) activeFreshChanged = true
+      if (!s.running) tx.markPersisted(s.id)
     }
-    if (activeFreshChanged) setFreshRevision((v) => v + 1)
     setRunningSids((prev) => {
       const next: Record<string, boolean> = {}
       for (const s of list) next[s.id] = Boolean(s.running)
@@ -440,15 +335,7 @@ export const ChatPanel: Component = () => {
     on(activeProjectId, () => {
       setActiveSid('')
       setRunningSids({})
-      resetParts()
-      resetExpanded()
-      historyGate.invalidate()
-      displayedSid = ''
-      displayedSpecId = undefined
-      setStarting(false)
-      freshSids.clear()
-      setFreshRevision((v) => v + 1)
-      readyWaiters.clear()
+      tx.resetAll()
       attachments.reset()
     }),
   )
@@ -515,6 +402,27 @@ export const ChatPanel: Component = () => {
    * re-run the history effect twice per edge.
    */
   const activeSessionPending = createMemo(() => !activeSessionKnown() && sessions.loading)
+
+  /**
+   * The message area's orchestration — history reads, the session stream, the
+   * delta buffer, tool expansion, send/abort — lives in `gui-shared` so mobile's
+   * chat page runs the exact same invariants. What stays here is the desktop
+   * shell around it: the session list, `runningSids` (a LIST-level projection
+   * the server's list response owns), and the composer.
+   */
+  const tx = createChatTranscript({
+    projectId: () => activeProjectId() || '',
+    sessionId: activeSid,
+    specId: activeSpecId,
+    running: activeRunning,
+    listPending: activeSessionPending,
+    known: activeSessionKnown,
+    onSessionIdChange: setActiveSid,
+    onRunningChange: (sid, running) => setRunningSids((prev) => ({ ...prev, [sid]: running })),
+    onSessionsChanged: () => void refetchSessions(),
+    onSubjectChange: () => setAutoScroll(true),
+    errorLabel: (message) => t('chat.errorMessage', { message }),
+  })
 
   /**
    * The single entry point for switching sessions (list click, spec-page request,
@@ -641,115 +549,8 @@ export const ChatPanel: Component = () => {
     document.body.classList.remove('is-resizing')
   })
 
-  // --- session selection → load history ---
   createEffect(() => {
-    const pid = activeProjectId()
-    const sid = activeSid()
-    const specId = activeSpecId()
-    // Tracked for spec rows only: a spec's row spans several sessions, so when
-    // the current round settles the transcript is re-read to fold that round in
-    // (with its divider). Plain chats keep the old load-on-select behaviour.
-    // A boolean memo, not `isRunning(sid)`: `runningSids` is replaced wholesale
-    // by every list response, so reading it here re-ran this effect on each SSE
-    // status edge even though nothing about the content had changed.
-    const running = specId ? activeRunning() : false
-    const plan = planHistoryLoad({
-      sid,
-      displayedSid,
-      displayedSpecId,
-      fresh: freshSids.has(sid),
-      listPending: activeSessionPending(),
-      known: activeSessionKnown(),
-      specId,
-      running,
-    })
-    freshRevision()
-    if (!pid || plan.action === 'idle' || plan.action === 'hold' || plan.action === 'keep') return
-    // A locally-created session that is still the content on screen: `parts`
-    // already holds the optimistic user message plus whatever has streamed in,
-    // and it is strictly ahead of the transcript. Reading would only risk
-    // overwriting it. `planHistoryLoad` only returns this while
-    // `displayedSid === sid` — a fresh session we have switched away from has
-    // lost those parts and is read back from the transcript like any other.
-    if (plan.action === 'fresh') {
-      setAutoScroll(true)
-      return
-    }
-
-    setAutoScroll(true)
-    // `plan.clear` means the area is about to hold a *different* conversation,
-    // so the open/closed marks from the old one are meaningless. The re-read
-    // below (same session, fresher transcript) deliberately keeps them.
-    if (plan.clear) {
-      resetParts()
-      resetExpanded()
-    }
-    displayedSid = sid
-    displayedSpecId = plan.specId
-    const isCurrent = historyGate.begin()
-    // Flatten message → parts: tool-result keeps its payload instead of being
-    // dropped, so the transcript and the live stream now agree. A spec row reads
-    // every session it owns, dividers included.
-    const load = plan.specId
-      ? api.getSpecMessages(pid, plan.specId).then(specMessagesToParts)
-      : api.getSessionMessages(pid, sid).then(messagesToParts)
-    void load
-      .then((next) => {
-        // Not `onCleanup`: the effect re-runs for reasons that have nothing to do
-        // with the content, and cancelling there dropped this transcript on the
-        // floor after `clear` had already blanked the area. See the gate's docs.
-        if (isCurrent()) resetParts(next)
-      })
-      .catch(() => {})
-  })
-
-  // --- session selection → subscribe to the live stream ---
-  createEffect(() => {
-    const pid = activeProjectId()
-    const sid = activeSid()
-    if (!pid || !sid) return
-    const sub = subscribeSession(pid, sid, {
-      onReady: () => markSubscribed(sid),
-      onEvent: (ev: SessionEvent) => {
-        if (ev.type === 'text') appendAssistantDelta(ev.delta)
-        else if (ev.type === 'tool-use') {
-          pushPart({ kind: 'tool', name: ev.name, input: ev.input })
-        } else if (ev.type === 'tool-result') {
-          // Previously unhandled: the result was silently dropped live, yet came
-          // back as an empty bubble after a reload. Both paths agree now.
-          pushPart({ kind: 'tool', result: ev.text })
-        } else if (ev.type === 'turn-completed') {
-          // The turn is persisted now — a later re-select should read the
-          // transcript rather than trust this tab's in-memory parts. Drain the
-          // buffer first, or the tail of the last delta is lost.
-          flushDeltas()
-          markFreshPersisted(sid)
-          setRunningSids((prev) => ({ ...prev, [sid]: false }))
-        } else if (ev.type === 'error') {
-          appendAssistant(`\n${t('chat.errorMessage', { message: ev.message })}\n`)
-          setRunningSids((prev) => ({ ...prev, [sid]: false }))
-        } else if (ev.type === 'session-started' && ev.sessionId !== sid) {
-          // codex swaps in its own id mid-turn. The new id has no transcript
-          // either, so inherit `fresh` — otherwise re-subscribing under the new
-          // id would clear the deltas already on screen.
-          if (freshSids.has(sid)) freshSids.add(ev.sessionId)
-          if (displayedSid === sid) displayedSid = ev.sessionId
-          setRunningSids((prev) => ({ ...prev, [sid]: false, [ev.sessionId]: true }))
-          // Same ordering rule as selectSession(): the list must already be
-          // in flight when the new id goes live.
-          void refetchSessions()
-          setActiveSid(ev.sessionId)
-        }
-      },
-    })
-    onCleanup(() => {
-      readyWaiters.delete(sid)
-      sub()
-    })
-  })
-
-  createEffect(() => {
-    parts()
+    tx.blocks()
     if (!autoScroll()) return
     requestAnimationFrame(scrollMessagesToBottom)
   })
@@ -847,68 +648,6 @@ export const ChatPanel: Component = () => {
     void copyFilePath(path)
   }
 
-  // --- streaming delta buffer -------------------------------------------------
-  /** Deltas seen since the last flush. Never read outside flushDeltas(). */
-  let pendingDelta = ''
-  let flushTimer: number | null = null
-
-  function withAssistantText(prev: ChatPart[], text: string): ChatPart[] {
-    const last = prev[prev.length - 1]
-    if (last && last.kind === 'text' && last.role === 'assistant') {
-      return [...prev.slice(0, -1), { ...last, text: last.text + text }]
-    }
-    return [...prev, { kind: 'text', role: 'assistant', text }]
-  }
-
-  function flushDeltas(): void {
-    if (flushTimer != null) {
-      clearTimeout(flushTimer)
-      flushTimer = null
-    }
-    const delta = pendingDelta
-    pendingDelta = ''
-    if (!delta) return
-    setParts((prev) => withAssistantText(prev, delta))
-  }
-
-  /** Buffered append for high-frequency stream deltas. */
-  function appendAssistantDelta(delta: string): void {
-    pendingDelta += delta
-    if (flushTimer != null) return
-    flushTimer = window.setTimeout(flushDeltas, STREAM_FLUSH_MS)
-  }
-
-  /**
-   * Immediate append for one-off assistant text (errors). Flushing first is what
-   * preserves arrival order — buffered deltas must land before this text does.
-   */
-  function appendAssistant(text: string): void {
-    flushDeltas()
-    setParts((prev) => withAssistantText(prev, text))
-  }
-
-  /** Append a non-text part (or a user message), after draining the buffer. */
-  function pushPart(part: ChatPart): void {
-    flushDeltas()
-    setParts((prev) => [...prev, part])
-  }
-
-  /** Drop everything on screen, buffer included — a stale delta must not resurface. */
-  function resetParts(next: ChatPart[] = []): void {
-    if (flushTimer != null) {
-      clearTimeout(flushTimer)
-      flushTimer = null
-    }
-    pendingDelta = ''
-    setParts((prev) => (next.length === 0 && prev.length === 0 ? prev : next))
-  }
-
-  onCleanup(() => {
-    if (flushTimer != null) clearTimeout(flushTimer)
-    // The panel is gone; a read still in flight must not write to it.
-    historyGate.invalidate()
-  })
-
   /**
    * "New session" no longer hits the server — it drops the panel back to the
    * Untitled draft, and the session is created by the first send. This is what
@@ -918,87 +657,21 @@ export const ChatPanel: Component = () => {
   function newSession(): void {
     if (!activeProjectId() || !activeSid()) return
     setActiveSid('')
-    resetParts()
-    resetExpanded()
-    historyGate.invalidate()
-    displayedSid = ''
-    displayedSpecId = undefined
-    setAutoScroll(true)
+    tx.reset()
     attachments.reset()
   }
 
   async function send() {
-    const pid = activeProjectId()
-    const sid = activeSid()
     const prompt = input().trim()
-    if (!pid || !prompt || starting() || activeRunning() || attachments.hasPending()) return
+    if (!activeProjectId() || !prompt || tx.starting() || activeRunning()) return
+    if (attachments.hasPending()) return
     setInput('')
-    setAutoScroll(true)
-    if (!sid) {
-      await sendFromDraft(pid, prompt)
-      return
-    }
-    const did = attachments.draftId() ?? undefined
-    pushPart({ kind: 'text', role: 'user', text: prompt })
-    setRunningSids((prev) => ({ ...prev, [sid]: true }))
-    try {
-      await api.sendSessionMessage(pid, sid, prompt, did)
-      attachments.reset()
-    } catch (err) {
-      appendAssistant(`\n${t('chat.errorMessage', { message: (err as Error).message })}\n`)
-      setRunningSids((prev) => ({ ...prev, [sid]: false }))
-    }
-  }
-
-  /**
-   * Untitled → live session, in one click. Create and POST race the session
-   * subscription: the event stream has no replay buffer, so any delta emitted
-   * before our topic attaches is gone. Gate the POST on the server's `ready`
-   * event, with a timeout so a lost `ready` degrades gracefully.
-   */
-  async function sendFromDraft(pid: string, prompt: string): Promise<void> {
-    setStarting(true)
-    try {
-      let sid: string
-      try {
-        sid = (await api.createSession(pid, {})).sessionId
-      } catch (err) {
-        setInput(prompt)
-        appendAssistant(`\n${t('chat.errorMessage', { message: (err as Error).message })}\n`)
-        return
-      }
-      freshSids.add(sid)
-      const did = attachments.draftId() ?? undefined
-      // Register the deferred BEFORE the selection effect subscribes, so the
-      // `ready` event cannot land between subscribe and await.
-      const ready = waitForSubscription(sid)
-      resetParts([{ kind: 'text', role: 'user', text: prompt }])
-      resetExpanded()
-      historyGate.invalidate()
-      displayedSid = sid
-      displayedSpecId = undefined
-      setRunningSids((prev) => ({ ...prev, [sid]: true }))
-      setActiveSid(sid)
-      await Promise.race([ready, delay(SUBSCRIBE_READY_TIMEOUT_MS)])
-      try {
-        await api.sendSessionMessage(pid, sid, prompt, did)
-        attachments.reset()
-      } catch (err) {
-        appendAssistant(`\n${t('chat.errorMessage', { message: (err as Error).message })}\n`)
-        setRunningSids((prev) => ({ ...prev, [sid]: false }))
-      }
-      void refetchSessions()
-    } finally {
-      setStarting(false)
-    }
-  }
-
-  async function abort() {
-    const pid = activeProjectId()
-    const sid = activeSid()
-    if (!pid || !sid) return
-    await api.abortSession(pid, sid).catch(() => {})
-    setRunningSids((prev) => ({ ...prev, [sid]: false }))
+    const outcome = await tx.send(prompt, attachments.draftId() ?? undefined)
+    if (outcome === 'sent') attachments.reset()
+    // Only a failed create is worth handing the text back: once the session
+    // exists the message is on screen as a user bubble, and restoring the input
+    // would leave the reader looking at it twice.
+    else if (outcome === 'not-started') setInput(prompt)
   }
 
   /**
@@ -1303,7 +976,7 @@ export const ChatPanel: Component = () => {
             onScroll={onMessagesScroll}
           >
             <Show
-              when={blocks().length > 0}
+              when={tx.blocks().length > 0}
               fallback={
                 <div class="text-muted-foreground">
                   <p class="m-0">{activeSid() ? t('chat.empty') : t('chat.draftEmpty')}</p>
@@ -1323,7 +996,7 @@ export const ChatPanel: Component = () => {
                   list only ever grows at the tail, so positions are stable.
                   (Expand state does NOT ride on position — it is keyed by
                   segment id, see `expandedKeys`.) */}
-              <Index each={blocks()}>
+              <Index each={tx.blocks()}>
                 {(block) => (
                   <Show
                     when={asDivider(block())}
@@ -1369,7 +1042,7 @@ export const ChatPanel: Component = () => {
                                       }
                                     >
                                       {(tools) => (
-                                        <ChatToolBlock segment={tools()} expand={toolExpand} />
+                                        <ChatToolBlock segment={tools()} expand={tx.toolExpand} />
                                       )}
                                     </Show>
                                   )}
@@ -1479,7 +1152,7 @@ export const ChatPanel: Component = () => {
                     disabled={
                       !activeProjectId() ||
                       !input().trim() ||
-                      starting() ||
+                      tx.starting() ||
                       attachments.hasPending()
                     }
                   >
@@ -1491,7 +1164,7 @@ export const ChatPanel: Component = () => {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => void abort()}
+                  onClick={() => void tx.abort()}
                   title={t('chat.abort')}
                 >
                   <Square class="mr-1 h-3.5 w-3.5" />
