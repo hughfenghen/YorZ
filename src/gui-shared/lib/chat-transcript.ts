@@ -10,6 +10,7 @@ import {
   type ToolExpandState,
 } from './chat-blocks.js'
 import { createHistoryLoadGate, planHistoryLoad } from './chat-history-load.js'
+import { samePartTail, transcriptCacheKey, type TranscriptCache } from './transcript-cache.js'
 
 /** Deltas are batched at this cadence; sub-frame flushes only cost re-renders. */
 export const STREAM_FLUSH_MS = 80
@@ -54,6 +55,17 @@ export interface ChatTranscriptOptions {
   onSubjectChange?: () => void
   /** `[Error] …` copy; each app injects its own i18n. */
   errorLabel: (message: string) => string
+  /**
+   * Transcripts already read in this tab, so re-entering a session can paint
+   * before the network answers. Opt-in: omit it and every cache branch below is
+   * dead code, which is how desktop keeps its exact previous behaviour.
+   *
+   * Mobile needs it because its detail view is unmounted on every navigation —
+   * `parts` does not survive, and the two reads that must complete before
+   * anything can be drawn (the session list, then the transcript) are both slow.
+   * Desktop switches sessions inside one live instance and never pays that.
+   */
+  transcriptCache?: TranscriptCache
 }
 
 /** What `send()` did, so the host can decide what to do with its own draft state. */
@@ -71,6 +83,17 @@ export interface ChatTranscript {
   running: Accessor<boolean>
   /** A draft's create→subscribe→send handshake is in flight; blocks double-create. */
   starting: Accessor<boolean>
+  /**
+   * The message area is empty but still owes content: either the transcript read
+   * is in flight, or the session list has not yet said which spec this session
+   * belongs to (`hold`) so the read is not even allowed to start.
+   *
+   * Exists because "no blocks" alone cannot tell "still loading" from "genuinely
+   * empty", and only this module can tell them apart — the host sees neither
+   * `planHistoryLoad`'s action nor the read's lifetime. Optional to read: a host
+   * that ignores it behaves exactly as before.
+   */
+  historyLoading: Accessor<boolean>
   toolExpand: ToolExpandState
   send: (prompt: string, draftId?: string) => Promise<SendOutcome>
   abort: () => Promise<void>
@@ -113,6 +136,8 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
   const [parts, setParts] = createSignal<ChatPart[]>([])
   const blocks = createMemo(() => groupParts(parts()))
   const [starting, setStarting] = createSignal(false)
+  /** See `ChatTranscript.historyLoading`. Written only by the history effect and the resets. */
+  const [historyLoading, setHistoryLoading] = createSignal(false)
 
   /**
    * Which tool collapsibles the reader has opened, keyed by `ToolsSegment.id` /
@@ -151,7 +176,39 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
    * round loaded before the list knew about the spec.
    */
   let displayedSpecId: string | undefined
+  /**
+   * Session whose CACHED transcript is currently standing in on screen, waiting
+   * for the authoritative read to confirm or replace it.
+   *
+   * Deliberately separate from `displayedSid`: an optimistic paint is pixels
+   * only, never bookkeeping. Writing `displayedSid` from it would break the
+   * invariant that the displayed scope is never set from a guess, and the
+   * correcting load would then be swallowed. What this variable does buy is the
+   * right to skip the blanking `resetParts()` on a `clear` load — clearing the
+   * cached copy of the very session we are about to load hands the blank screen
+   * straight back.
+   */
+  let paintedFromCache = ''
   const historyGate = createHistoryLoadGate()
+
+  /**
+   * Draw the cached transcript for `sid`, if there is one. Returns whether the
+   * area now holds content, which is also the answer to "may the spinner stay
+   * off while the read is in flight".
+   *
+   * The cached scope is not required to match the one about to be read: during
+   * `hold` the scope is not even known yet, and a single-session copy of a spec
+   * row is a subset of the right answer — visibly better than blank, and the
+   * read that follows always gets the last word.
+   */
+  function paintCached(pid: string, sid: string): boolean {
+    if (paintedFromCache === sid) return true
+    const cached = o.transcriptCache?.get(transcriptCacheKey(pid, sid))
+    if (!cached || cached.parts.length === 0) return false
+    resetParts(cached.parts)
+    paintedFromCache = sid
+    return true
+  }
   /** sid → deferred resolved by the session topic's `ready` event. */
   const readyWaiters = new Map<string, { promise: Promise<void>; resolve: () => void }>()
 
@@ -267,11 +324,32 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
       running,
     })
     freshRevision()
-    if (!pid || plan.action === 'idle' || plan.action === 'hold' || plan.action === 'keep') return
+    // `hold` is the one early return that still owes content: the list has not
+    // said which spec this session belongs to, so the read may not start yet and
+    // the area stays (correctly) blank until it settles. Reporting "not loading"
+    // here is what made the empty state flash before the transcript arrived.
+    // No project: nothing can be read, so nothing is pending either.
+    if (!pid) {
+      setHistoryLoading(false)
+      return
+    }
+    if (plan.action === 'hold') {
+      // The one place the cache pays off twice: this wait is the session-list
+      // request, which is the slower of the two and produces no content at all.
+      setHistoryLoading(!paintCached(pid, sid))
+      return
+    }
+    // `idle` (draft) and `keep` (a live turn already owns the right content) are
+    // steady states: whatever is on screen is what there is.
+    if (plan.action === 'idle' || plan.action === 'keep') {
+      setHistoryLoading(false)
+      return
+    }
     // A locally-created session that is still the content on screen: `parts`
     // already holds the optimistic user message plus whatever has streamed in,
     // and it is strictly ahead of the transcript.
     if (plan.action === 'fresh') {
+      setHistoryLoading(false)
       o.onSubjectChange?.()
       return
     }
@@ -280,13 +358,18 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     // `plan.clear` means the area is about to hold a *different* conversation,
     // so the open/closed marks from the old one are meaningless. The re-read
     // below (same session, fresher transcript) deliberately keeps them.
-    if (plan.clear) {
+    //
+    // Unless what is on screen is this same session's cached transcript: that is
+    // not the old conversation, it is an early draw of this one, so blanking it
+    // would undo the whole point and its expand marks are still meaningful.
+    if (plan.clear && paintedFromCache !== sid) {
       resetParts()
       resetExpanded()
     }
     displayedSid = sid
     displayedSpecId = plan.specId
     const isCurrent = historyGate.begin()
+    setHistoryLoading(!paintCached(pid, sid))
     // Flatten message → parts: tool-result keeps its payload instead of being
     // dropped, so the transcript and the live stream agree. A spec row reads
     // every session it owns, dividers included.
@@ -298,9 +381,27 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
         // Not `onCleanup`: the effect re-runs for reasons that have nothing to
         // do with the content, and cancelling there dropped this transcript on
         // the floor after `clear` had already blanked the area.
-        if (isCurrent()) resetParts(next)
+        if (!isCurrent()) return
+        paintedFromCache = ''
+        // Same tail at the same length means this is what is already drawn (the
+        // cached copy was current). Swapping it in anyway would rebuild every
+        // block object and remount the message tree for no change at all.
+        if (!samePartTail(parts(), next)) resetParts(next)
+        setHistoryLoading(false)
+        // An empty transcript is not worth a slot: a hit on it would render the
+        // "no messages yet" state, which is exactly the flash to avoid.
+        if (next.length > 0) {
+          o.transcriptCache?.set(transcriptCacheKey(pid, sid), {
+            specId: plan.specId,
+            parts: next,
+          })
+        }
       })
-      .catch(() => {})
+      .catch(() => {
+        // Same gate as the success path: a superseded read must not clear the
+        // flag out from under the load that took the area over.
+        if (isCurrent()) setHistoryLoading(false)
+      })
   })
 
   // --- session selection → subscribe to the live stream ------------------------
@@ -351,6 +452,18 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     if (flushTimer != null) clearTimeout(flushTimer)
     // The host is gone; a read still in flight must not write to it.
     historyGate.invalidate()
+    // Hand the area's final state to the cache before it is dropped. This copy
+    // is strictly better than the one the read stored: it also contains whatever
+    // streamed in afterwards, so coming back to a session that just finished a
+    // turn shows that turn immediately instead of the state before it.
+    const pid = o.projectId()
+    const current = parts()
+    if (pid && displayedSid && current.length > 0) {
+      o.transcriptCache?.set(transcriptCacheKey(pid, displayedSid), {
+        specId: displayedSpecId,
+        parts: current,
+      })
+    }
   })
 
   /**
@@ -361,8 +474,12 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     resetParts()
     resetExpanded()
     historyGate.invalidate()
+    // The read this would have been waiting on is now disowned; leaving the flag
+    // set would pin the fresh draft on a spinner that nothing can ever clear.
+    setHistoryLoading(false)
     displayedSid = ''
     displayedSpecId = undefined
+    paintedFromCache = ''
     o.onSubjectChange?.()
   }
 
@@ -421,6 +538,7 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
       historyGate.invalidate()
       displayedSid = sid
       displayedSpecId = undefined
+      paintedFromCache = ''
       o.onRunningChange(sid, true)
       o.onSessionIdChange(sid)
       await Promise.race([ready, delay(SUBSCRIBE_READY_TIMEOUT_MS)])
@@ -452,6 +570,7 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     blocks,
     running: o.running,
     starting,
+    historyLoading,
     toolExpand,
     send,
     abort,
