@@ -1,10 +1,20 @@
-import { For, Show, createEffect, createResource, onCleanup, type Component } from 'solid-js'
+import {
+  For,
+  Show,
+  createEffect,
+  createResource,
+  createSignal,
+  onCleanup,
+  type Component,
+} from 'solid-js'
 import { Plus } from 'lucide-solid'
 import { api, type SpecListItem } from '@shared/api/index.js'
 import { subscribeSpecsList } from '@shared/api/sse.js'
 import { SPEC_TYPE_TEXT, splitSpecId, stageBadgeClass } from '@shared/lib/spec-meta.js'
+import { specFilePath } from '@shared/lib/spec-path.js'
 import { formatSpecUpdatedAt } from '@shared/lib/time.js'
 import { Page } from '@/components/Page.jsx'
+import { ActionSheet, type ActionSheetItem } from '@/components/ActionSheet.jsx'
 import {
   ErrorNotice,
   LoadingNotice,
@@ -12,7 +22,10 @@ import {
   Notice,
   comingSoon,
 } from '@/components/ListStates.jsx'
+import { showToast } from '@/components/Toast.jsx'
 import { activeProjectId } from '@/lib/active-project.js'
+import { copyText } from '@/lib/clipboard.js'
+import { createLongPress } from '@/lib/long-press.js'
 import { cn } from '@/lib/cn'
 import { t } from '@/i18n/index.js'
 
@@ -37,6 +50,58 @@ export const Specs: Component = () => {
     const unsub = subscribeSpecsList(id, () => void refetch())
     onCleanup(() => unsub())
   })
+
+  // 长按菜单：菜单本身是页面级单例，只记「当前是哪一条」与「处在哪一段」。
+  // 每行各挂一个面板会在长列表上凭空多出几十个 fixed 节点。
+  const [menuSpec, setMenuSpec] = createSignal<SpecListItem | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = createSignal(false)
+
+  const closeMenu = () => {
+    setMenuSpec(null)
+    setConfirmingDelete(false)
+  }
+
+  const openMenu = (spec: SpecListItem) => {
+    setConfirmingDelete(false)
+    setMenuSpec(spec)
+  }
+
+  const copyPath = async (spec: SpecListItem) => {
+    closeMenu()
+    const ok = await copyText(specFilePath(spec.id))
+    showToast(ok ? t('specs.pathCopied') : t('specs.copyFailed'), ok ? 'default' : 'error')
+  }
+
+  const remove = async (spec: SpecListItem) => {
+    const pid = activeProjectId()
+    if (!pid) return
+    closeMenu()
+    try {
+      await api.deleteSpec(pid, spec.id)
+      showToast(t('specs.deleted'))
+      // SSE 的 list-updated 也会到，但弱网下会晚一拍，先本地刷一次，
+      // 免得菜单都关了、被删的那条还留在列表里。
+      await refetch()
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e), 'error')
+    }
+  }
+
+  const menuItems = (): ActionSheetItem[] => {
+    const spec = menuSpec()
+    if (!spec) return []
+    // 删除不可逆，长按菜单里直接删一次误触就没了，所以拆成两段：
+    // 第一段选「删除」只是把面板换成确认段，真正打接口在第二段。
+    if (confirmingDelete()) {
+      return [
+        { label: t('specs.deleteConfirm'), tone: 'destructive', onSelect: () => void remove(spec) },
+      ]
+    }
+    return [
+      { label: t('specs.copyPath'), onSelect: () => void copyPath(spec) },
+      { label: t('specs.delete'), tone: 'destructive', onSelect: () => setConfirmingDelete(true) },
+    ]
+  }
 
   return (
     <Page
@@ -64,12 +129,18 @@ export const Specs: Component = () => {
                 <For each={specs()}>
                   {(spec) => {
                     const parts = splitSpecId(spec.id)
+                    const press = createLongPress({
+                      onLongPress: () => openMenu(spec),
+                      onClick: comingSoon,
+                    })
                     return (
                       <li>
                         <button
                           type="button"
-                          class="flex w-full flex-col gap-1 px-4 py-3 text-left active:bg-accent"
-                          onClick={comingSoon}
+                          // no-callout + select-none：光拦 contextmenu 拦不住 iOS 的
+                          // 长按放大镜与「拷贝/查询」callout
+                          class="no-callout flex w-full select-none flex-col gap-1 px-4 py-3 text-left active:bg-accent"
+                          {...press}
                         >
                           <span class="flex items-center gap-2">
                             <span
@@ -113,6 +184,14 @@ export const Specs: Component = () => {
           </Show>
         </Show>
       </Show>
+
+      <ActionSheet
+        open={menuSpec() !== null}
+        title={menuSpec()?.title || menuSpec()?.id}
+        description={confirmingDelete() ? t('specs.deleteHint') : undefined}
+        items={menuItems()}
+        onClose={closeMenu}
+      />
     </Page>
   )
 }

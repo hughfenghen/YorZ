@@ -106,6 +106,9 @@ export const Extensions: Component = () => {
   return (
     <Page title={t('ext.title')} padded={false}>
       <div class="py-4">
+        {/* 运行中的脚本没有自己的组标题，直接作为「脚本管理」入口行的兄弟行留在同一张卡里：
+            共享的分隔线本身就在说「正在跑的这些，就是上面那个入口管的东西」，
+            另起一组标题反而把两件本来是一件事的东西推开了 24px */}
         <Group title={t('ext.scripts')}>
           <EntryRow
             icon={Terminal}
@@ -113,20 +116,18 @@ export const Extensions: Component = () => {
             desc={t('ext.scriptsDesc')}
             onClick={comingSoon}
           />
-        </Group>
 
-        <Group title={t('ext.running')}>
           <Show when={activeProjectId()} fallback={<NoProjectNotice />}>
             <Show when={!runs.loading} fallback={<LoadingNotice />}>
               <Show
                 when={!runs.error}
                 fallback={<ErrorNotice error={runs.error} onRetry={() => void refetch()} />}
               >
-                {/* 空态保留分组标题与容器，不整组隐藏——否则脚本一停一起，页面会跳一下 */}
+                {/* 空态保留一行占位，不整段隐藏——否则最后一个脚本停掉时卡片会缩一下 */}
                 <Show
                   when={running().length > 0}
                   fallback={
-                    <p class="px-4 py-6 text-center text-sm text-muted-foreground">
+                    <p class="px-4 py-4 text-center text-sm text-muted-foreground">
                       {t('ext.runningEmpty')}
                     </p>
                   }

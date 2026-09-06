@@ -120,6 +120,15 @@
   }
 
   /*
+   * 关掉 iOS 的长按 callout（「拷贝 / 查询」气泡与放大镜）。
+   * 长按被我们用作「更多操作」手势的元素必须加这个类：光在 JS 里
+   * preventDefault contextmenu 只挡得住 Android，iOS 的 callout 归它管。
+   */
+  .no-callout {
+    -webkit-touch-callout: none;
+  }
+
+  /*
    * 触摸目标下限：WCAG 2.5.8 要求 24px，iOS HIG 建议 44px。
    * 图标按钮在移动端一律套这个类，视觉尺寸可以更小，命中区不缩水。
    */

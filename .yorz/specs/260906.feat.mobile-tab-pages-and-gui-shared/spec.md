@@ -1,7 +1,7 @@
 ---
 stage: done
 last_action: 任务全部完成，标记 done
-updated_at: '2026-09-06 12:31:40'
+updated_at: '2026-09-06 14:41:05'
 summary: 移动端底部导航改为 Sessions/Specs/扩展/项目 四个一级页面并接入真实项目数据，设置降为二级页面，同时抽出 src/gui-shared 复用非 UI 逻辑。
 ---
 
@@ -211,6 +211,45 @@ flowchart TB
 
 - 全局设置：默认 Agent、会话结束提示（横幅 / 声音）、外观（亮暗模式 / 主题风格 / 语言）、关于（版本 / 安装状态）
 - 项目设置：Agent 覆写（kind + 自定义 cmd/args）
+
+### 3.6 追加调整（第二轮）的现状定位
+
+第二轮 5 条调整全部落在移动端已交付的页面上，后端与 gui-shared 的既有结论不受影响；其中只有第 5 条（spec 长按菜单）是新增能力，其余 4 条是布局口径修正。
+
+```mermaid
+flowchart TB
+    subgraph NOW["当前实现"]
+      A1["TopBar h1 flex-1 左对齐 标题贴着返回键"]
+      A2["Projects 行尾按钮 mr-1 与顶栏 -mr-2 差 4px"]
+      A3["Projects ul 仅 divide-y 末行无下边框"]
+      A4["Extensions 三张独立卡 各带组标题与 mb-6"]
+      A5["Specs 行只有 click 走 comingSoon 无长按"]
+    end
+    subgraph ASSET["可复用的既有资产"]
+      B1["api deleteSpec 已存在 无需后端改动"]
+      B2["specFilePath 埋在 gui src lib spec-path ts 与桌面 toast 耦合"]
+      B3["Toast 与 tap-target 与 px-safe 已就绪"]
+    end
+    A5 --> B1
+    A5 --> B2
+    A5 --> B3
+
+    classDef breaking fill:#ffdddd,stroke:#e03131,color:#c92a2a
+    classDef affected fill:#fff3bf,stroke:#f08c00,color:#e67700
+    class A5 breaking
+    class A1,A2,A3,A4,B2 affected
+```
+
+<details>
+<summary>五处现状的精确定位（文件 + 行号 + 数值）</summary>
+
+1. **标题左对齐**：`src/gui-mobile/src/components/TopBar.tsx:30` 是 `<h1 class="min-w-0 flex-1 truncate ...">`——`flex-1` 让标题吃掉返回键与动作区之间的全部剩余宽度，视觉上永远贴左。四个一级页与两个设置二级页共用这一个组件。
+2. **两个 icon 未对齐**：`TopBar.tsx:19` 容器 `px-4` + `Projects.tsx:40` 顶栏按钮 `-mr-2` → 44px 按钮右边缘距屏右 8px、图标中心距屏右 **30px**；而 `Projects.tsx:85` 行尾按钮是 `mr-1`、li 无 `pr` → 图标中心距屏右 **26px**。差 4px，两枚省略号肉眼可见地错开。
+3. **末行无下边框**：`Projects.tsx:59` 的 `<ul class="divide-y divide-border">` 只画行间线。项目通常只有 3–5 条，末行下方是整屏空白，列表看起来像被裁断。
+4. **扩展页被切成三张卡**：`Extensions.tsx:31` 的 `Group` 是 `<section class="mb-6">` + 组标题 + `divide-y border-y bg-card`；`Extensions.tsx:109/118/170` 三次调用，`ext.scripts` 与 `ext.running` 各自成卡，中间隔着 24px 外边距 + 一行标题，读起来是两件不相干的事。
+5. **Specs 行无长按**：`Specs.tsx:69-73` 行只有一个 `onClick={comingSoon}`。`api.deleteSpec(pid, id)` 在 `src/gui-shared/api/index.ts:324` 已存在（桌面端 `SpecList.tsx:242` 在用）；`specFilePath(specId)` 在 `src/gui/src/lib/spec-path.ts:5`，但同文件的 `copySpecPath` 直接 import 了桌面端 Kobalte toast，移动端不能整体复用。
+
+</details>
 
 ## 4. 技术实现方案
 
@@ -454,6 +493,79 @@ flowchart TB
 - `pnpm dev:cli` + `pnpm dev:gui-mobile`，浏览器 DevTools 移动模拟下逐页验证四个 tab 的真实数据、SSE 实时更新、项目切换联动
 - `pnpm test:e2e`（Playwright 覆盖桌面端，确认 shim 未破坏既有行为）
 
+### 4.10 追加调整（第二轮）实现方案
+
+```mermaid
+flowchart LR
+    subgraph FIX["布局口径修正 无新增依赖"]
+      F1["TopBar 三槽等宽 左右 flex-1 basis-0 标题居中"]
+      F2["行尾按钮改 -mr-2 加 li pr-4 与顶栏同一负边距口径"]
+      F3["Projects ul 追加 border-b"]
+      F4["删除 ext running 组标题 运行中列表并入脚本管理同一张卡"]
+    end
+    subgraph NEW["新增能力 spec 长按菜单"]
+      N1["lib long-press ts 500ms 阈值 10px 抑制后续 click"]
+      N2["components ActionSheet tsx 底部动作面板 两段式"]
+      N3["shared lib spec-path ts 上移 specFilePath"]
+      N4["lib clipboard ts writeText 回退 execCommand"]
+      N5["Specs 长按 到 复制路径 与 删除二次确认"]
+    end
+    N1 --> N5
+    N2 --> N5
+    N3 --> N5
+    N4 --> N5
+    N3 -.->|"re-export 桌面端零改动"| GUI["gui src lib spec-path ts"]
+
+    classDef breaking fill:#ffdddd,stroke:#e03131,color:#c92a2a
+    classDef affected fill:#fff3bf,stroke:#f08c00,color:#e67700
+    class N1,N2,N4,N5 breaking
+    class F1,F2,F3,F4,N3,GUI affected
+```
+
+> 决策：**标题居中用「左右槽位等宽 + 标题居中」的三槽 flex，而不是绝对定位**。左右槽位都写 `min-w-0 flex-1`（`flex-basis:0` + `grow:1`），两侧永远分到相同宽度，标题自然落在几何中心且仍能 `truncate`。被否决的备选是 `absolute left-1/2 -translate-x-1/2`：绝对定位后标题脱离流，最大宽度必须靠硬编码 `px-14` 猜测两侧按钮个数，多一个动作按钮就会重叠。
+
+> 决策：**右对齐口径统一为「容器 `px-4` + 按钮 `-mr-2`」**，行尾按钮从 `mr-1` 改为 `-mr-2` 并给 `li` 补 `pr-4`，让两枚省略号图标中心都落在距屏右 30px。被否决的备选是"把顶栏按钮改成 `mr-1` 去迁就行"——那会让顶栏图标离屏幕边缘更远，与列表行 16px 的左留白失衡。
+
+> 决策：**末行下边框只加在项目页**。需求点名的是项目列表；Sessions / Specs 是可滚动长列表，末行通常压在视口外，补下边框收益为零。项目页条目少（3–5 条）且末行下方留白大，缺一条线会被读成"内容被截断"。实现是 `ul` 追加 `border-b border-border`，不改 `divide-y`。
+
+> 决策：**扩展页合并为「脚本」一张卡**：删除 `ext.running` 组标题，把运行中脚本的行直接放进「脚本管理」那张 `divide-y` 卡片里，成为入口行下方的兄弟行——共享容器的分隔线本身就在表达"这些正在跑的，就是上面那个入口管的东西"。空态文案保留（不整段隐藏，避免最后一个脚本停掉时页面跳一下），但内边距从 `py-6` 收到 `py-4`。`ext.running` 这个 i18n 键随之删除（zh-CN / en 同步），`ext.runningEmpty` 保留。
+
+<details>
+<summary>spec 长按菜单的精确实现（手势 / 面板 / 剪贴板 / 删除）</summary>
+
+**手势 `src/gui-mobile/src/lib/long-press.ts`**
+
+导出 `createLongPress({ onLongPress, ms?, moveTolerance? })`，返回可直接展开到元素上的 handler 对象（`onPointerDown` / `onPointerMove` / `onPointerUp` / `onPointerCancel` / `onContextMenu` / `onClick`）：
+
+- `ms` 默认 500，`moveTolerance` 默认 10px——超过阈值判定为滚动意图，取消计时。
+- 触发后置 `suppressClick` 标志；`onClick` 读到该标志就 `preventDefault + stopPropagation` 并复位。少了这一步，长按松手会连带触发行本身的 `comingSoon` toast，菜单和 toast 一起弹。
+- `onContextMenu` 一律 `preventDefault()`：Android Chrome 长按会弹系统菜单（"复制链接/搜索"），iOS Safari 会弹 callout。
+- 行元素另加 `select-none` 与新的 `.no-callout` 工具类（`-webkit-touch-callout: none`），iOS 上只靠 `contextmenu` 拦不住 callout。
+
+**面板 `src/gui-mobile/src/components/ActionSheet.tsx`**
+
+底部动作面板：全屏半透明遮罩（点击关闭）+ 贴底卡片 + `pb-safe`。props 为 `{ open, title?, description?, items: { label, tone?: 'default' | 'destructive', onSelect }[], onClose }`，末尾固定一条「取消」。同一个组件承担两段：第一段是 `复制路径 / 删除`，选「删除」后不直接调 API，而是把 `items` 换成 `确认删除`（destructive）并把 `description` 设为 spec 标题，形成二次确认。
+
+> 决策：**删除走自绘的二段式面板，不用原生 `confirm()`**。原生弹窗在 PWA 里样式不可控、文案不受 i18n 管，且 iOS 独立模式下的呈现与浏览器内不一致；而删除 spec 是不可逆操作，必须有一次明确的确认。被否决的备选是"长按菜单里直接删"——单次误触就能删掉整个 spec 目录。
+
+**剪贴板 `src/gui-mobile/src/lib/clipboard.ts`**
+
+`copyText(text): Promise<boolean>`：优先 `navigator.clipboard.writeText`，抛错或 API 不存在时回退到隐藏 `<textarea>` + `document.execCommand('copy')`。
+
+> 决策：**必须带 `execCommand` 回退**。`navigator.clipboard` 只在 secure context 暴露，而移动端真机验证走的是 `http://<局域网 IP>:5174`（见 3.4 的运行环境注意），那里 `navigator.clipboard` 直接是 `undefined`——只用 Clipboard API 的话，复制路径在唯一的真机使用场景下 100% 失败。
+
+**路径来源 `src/gui-shared/lib/spec-path.ts`**
+
+把 `specFilePath(specId)`（返回 `@.yorz/specs/<id>/spec.md`）上移到 gui-shared，桌面端 `src/gui/src/lib/spec-path.ts` 改为 `export { specFilePath } from '@shared/lib/spec-path.js'` 并保留与桌面 toast 耦合的 `copySpecPath`——桌面端 30+ 引用点与 e2e 用例零改动，与 4.1 的 shim 策略同构。两端复制出的字符串保持一致（含 `@` 前缀，便于直接粘进 agent 对话引用文件）。
+
+**删除动作**
+
+`api.deleteSpec(pid, spec.id)` → 成功弹 `specs.deleted` toast 并 `refetch()`（SSE 的 `list-updated` 也会到，但本地先刷一次，避免弱网下菜单关了列表还留着已删条目）；失败弹 error toast，不关列表。
+
+**i18n 新增键**：`specs.copyPath` / `specs.pathCopied` / `specs.copyFailed` / `specs.delete` / `specs.deleteConfirm` / `specs.deleted` / `specs.deleteFailed` / `specs.actions`（面板 aria-label）、`common.cancel`；删除 `ext.running`。`en.ts` 由 `Translation` 类型约束同步补齐。
+
+</details>
+
 ## 5. 待确认项
 
 _暂无_
@@ -486,8 +598,30 @@ _暂无_
 - [x] 全量验证：`pnpm typecheck`、`pnpm test`、`pnpm build:gui`、`pnpm build:gui-mobile`（验收：四条命令全部通过）
 - [x] 桌面端回归验证 `pnpm test:e2e`，确认 shim 过渡未破坏既有行为（验收：Playwright 全绿；环境不可用时在执行记录说明原因）
 - [ ] [manual] 真机 / DevTools 移动模拟下逐页人工验收四个 tab 的真实数据、SSE 实时更新与项目切换联动（验收：人工回复确认）
+- [x] `TopBar.tsx` 改为三槽布局：左右槽位 `min-w-0 flex-1`、标题居中且保留 `truncate`（验收：四个一级页标题水平居中，设置二级页带返回键时标题仍居中）
+- [x] `Projects.tsx` 行尾省略号改 `-mr-2`、`li` 补 `pr-4`，与顶栏省略号同一负边距口径（验收：两枚图标中心距屏右均为 30px，肉眼在同一竖线上）
+- [x] `Projects.tsx` 的 `ul` 追加 `border-b border-border`（验收：最后一个项目行下方有边框）
+- [x] `Extensions.tsx` 删除「运行中的脚本」组标题，把运行中列表并入「脚本管理」同一张 `divide-y` 卡片，空态内边距收到 `py-4`，并从 zh-CN / en 词典删除 `ext.running` 键（验收：扩展页只剩「脚本」「Git」两张卡，`rg "ext.running\b"` 无命中）
+- [x] 新建 `src/gui-shared/lib/spec-path.ts` 导出 `specFilePath`，桌面端 `src/gui/src/lib/spec-path.ts` 改为 re-export 并保留 `copySpecPath`（验收：桌面端引用点零改动，`pnpm test:e2e` 的 toast 用例不受影响）
+- [x] 新建 `src/gui-mobile/src/lib/clipboard.ts` 的 `copyText()`：`navigator.clipboard` 优先、`execCommand('copy')` 回退（验收：非 secure context 下仍返回 true）
+- [x] 新建 `src/gui-mobile/src/lib/long-press.ts` 的 `createLongPress()`：500ms、10px 移动阈值、`pointercancel` 取消、抑制后续 `click`、拦截 `contextmenu`（验收：长按后不再触发行的「即将支持」toast）
+- [x] 新建 `src/gui-mobile/src/components/ActionSheet.tsx`：遮罩 + 贴底卡片 + `pb-safe`，支持 `destructive` 条目与固定的「取消」（验收：点遮罩或取消可关闭）
+- [x] `Specs.tsx` 接入长按菜单：复制路径（`copyText(specFilePath(id))` + 成功/失败 toast）、删除（二段式确认 → `api.deleteSpec` → toast + `refetch`），行加 `select-none no-callout`，`app.css` 新增 `.no-callout` 工具类（验收：长按弹面板，删除需二次确认，删除后列表少一条）
+- [x] 移动端词典新增 `specs.copyPath` / `pathCopied` / `copyFailed` / `delete` / `deleteConfirm` / `deleteHint` / `deleted` 与 `common.cancel`，`en.ts` 同步（验收：`pnpm typecheck` 无缺键报错）
+- [x] 第二轮全量验证：`pnpm typecheck`、`pnpm test`、`pnpm build:gui-mobile`、`pnpm build:gui`（验收：四条命令全部通过）
 
-## 7. 执行记录
+## 7. 追加任务
+
+- [fixed] [refct] 2026-09-06 13:58:16 | 需要对以下部分功能做调整优化：
+  - 描述：需要对以下部分功能做调整优化：
+
+1. 四个页面顶部导航标题文字应该水平居中
+2. 项目列表，全局设置与项目设置入口 icon 的应该保持右对齐
+3. 项目列表最后一个列表项应该也需要底部边框
+4. 移除扩展页列表组标题“运行中的脚本”，减少与脚本管理的距离，表是两者的联系
+5. spec 列表项，长按出现菜单项：复制路径、删除
+
+## 8. 执行记录
 
 - 建立 `src/gui-shared/`：`api/index.ts`（原 `gui/src/lib/api.ts`，632 行）、`api/sse.ts`、`api/project.ts`（新建，仅两个类型）、`lib/{time,timeago-locale,session-groups,command-output,cn,theme,spec-meta,duration}.ts`、`i18n/create.ts`。桌面端原路径全部改为 `export * from '@shared/...'` 的 shim；`gui/src/lib/project.ts` 保留 Router 相关逻辑并 re-export 两个类型。
 - `theme.ts` 两端合并：`initTheme(options?: { persistHint?: boolean })`，`sync()` 内按 `persistHint` 决定是否 `writeAppearanceHint`。桌面端 `main.tsx` 传 `false`（真值在服务端 config.json），移动端传 `true`。`THEME_MODES` / `THEME_NAMES` / `applyAppearance` 一并导出。
@@ -506,3 +640,15 @@ _暂无_
 - `pnpm test:e2e`：42 passed / 1 failed，失败的是 `sidebar-hover-peek.spec.ts`（折叠宽度 36 vs 37.5）。已在 `HEAD` 干净 worktree 上复现同一失败，确认是该 spec 自身的既有 flake（`toBeLessThan(40)` 的 poll 阈值会取到 150ms 过渡的中间值），与本次 shim 改造无关。
 - 收尾：`prettier --write` 误格式化的 14 个无关桌面端文件已 `git checkout` 还原，最终 `src/gui` 改动仅剩 shim、`SpecList` / `RunningCommands` / `ProjectsSidebar` 的常量抽取、i18n 工厂接入与 `main.tsx` 的 `initTheme` 参数六处。
 - 收尾：任务清单中 25 项非 manual 任务全部完成，待确认项为 `_暂无_`、无 `！！！` 批注、无 `[open]` 追加任务；余下 1 项 `[manual]` 真机人工验收按 done 判定规则忽略。stage 置为 `done`。
+
+### 8.1 第二轮（追加任务 refct）
+
+- **标题居中**：`TopBar.tsx` 改三槽布局（左右 `min-w-0 flex-1` + 中间 `truncate` 标题）；返回键的 `-ml-3` 一并改为 `-ml-2`，与动作按钮 `-mr-2` 同口径，两侧图标距屏幕边缘等距。Playwright 实测四个一级页与「全局设置」二级页标题中心均为 195.0px、视口中心 195px，**偏差 0.0px**。
+- **两枚省略号右对齐**：`Projects.tsx` 的 `li` 补 `pr-4`、行尾按钮 `mr-1` → `-mr-2`。实测顶栏与行内图标中心距屏右均为 **30.0px**（改前为 30 / 26）。
+- **末行下边框**：`Projects.tsx` 的 `ul` 追加 `border-b border-border`，实测 `border-bottom: 1px solid`；只改项目页，Sessions / Specs 是长列表、末行常在视口外，不跟改。
+- **扩展页合并**：删掉 `Group title={t('ext.running')}` 这一层，运行中脚本的行成为「脚本管理」入口行在同一张 `divide-y` 卡里的兄弟行，空态内边距 `py-6` → `py-4`；`ext.running` 键从 zh-CN / en 一并删除。实测组标题只剩 `["Scripts", "Git"]`，首张卡内两行。
+- **spec 长按菜单**：新增 `lib/long-press.ts`（500ms / 10px 位移取消 / `pointercancel` 取消 / 抑制后续 click / 拦 `contextmenu`）、`components/ActionSheet.tsx`（遮罩 + 贴底卡 + 固定「取消」，同一组件承担二次确认）、`lib/clipboard.ts`（`navigator.clipboard` 优先 + `execCommand` 回退）；`specFilePath` 上移到 `src/gui-shared/lib/spec-path.ts`，桌面端原文件改为 re-export + 保留 `copySpecPath`。`app.css` 新增 `.no-callout`（`-webkit-touch-callout:none`），行另加 `select-none`。
+- **长按链路实跑验证**（`dev:cli` + `dev:gui-mobile`，Playwright iPhone 13 视口）：长按弹出 `["Copy path", "Delete", "Cancel"]` 且**未误弹**行自身的「即将支持」；复制路径 toast = `Path copied`、剪贴板读回 `@.yorz/specs/260906.feat.mobile-tab-pages-and-gui-shared/spec.md`；为验证删除专门造了一条临时 spec，两段式确认（确认段显示 spec 标题 + `This cannot be undone`）后列表由 127 → 126 条、临时 spec 目录在磁盘上消失；「取消」正常关闭；普通点击仍是 `Coming soon`。全程 console / pageerror 均为 0。
+- **叠放顺序修正**：截图复核时发现上一条未消失的 toast（`z-50`）会盖住面板最下方的动作项，`ActionSheet` 提到 `z-[60]` 后复验，`Delete` 完整可见。
+- 验证：`pnpm typecheck` 通过；`pnpm test` 750 passed / 1 failed，失败的是 `src/service/__tests__/git-routes.test.ts`（断言 git stderr 含 `did not match any files`，本机 git 输出的是 `selected paths have no staged changes`）——已 `git stash` 到干净 HEAD 复现同一失败，属本机 git 版本导致的既有失败，与本轮前端改动无关；`pnpm build:gui-mobile` 与 `pnpm build:gui` 均通过。
+- 收尾：第二轮 11 项任务全部完成，`## 追加任务` 的 refct 条目标记为 `[fixed]`；待确认项 `_暂无_`、无 `！！！` 批注、无 `[open]` 条目，stage 重新置为 `done`。

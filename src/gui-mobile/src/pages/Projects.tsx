@@ -56,10 +56,12 @@ export const Projects: Component = () => {
               <Notice title={t('common.emptyProjects')} hint={t('common.emptyProjectsHint')} />
             }
           >
-            <ul class="divide-y divide-border">
+            {/* border-b 补最后一行的下边框：项目通常只有几条，末行下方是整屏空白，
+                只靠 divide-y 会让列表看起来像被裁断 */}
+            <ul class="divide-y divide-border border-b border-border">
               <For each={projects()}>
                 {(p) => (
-                  <li class="flex items-center active:bg-accent">
+                  <li class="flex items-center pr-4 active:bg-accent">
                     <button
                       type="button"
                       class="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 text-left"
@@ -82,7 +84,9 @@ export const Projects: Component = () => {
                     </button>
                     <button
                       type="button"
-                      class="tap-target mr-1 flex shrink-0 items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+                      // -mr-2 与顶栏省略号同一负边距口径（容器 px-4 / pr-4 + 按钮 -mr-2），
+                      // 两枚图标中心因此都落在距屏幕右缘 30px，肉眼在同一竖线上
+                      class="tap-target -mr-2 flex shrink-0 items-center justify-center rounded-md text-muted-foreground active:bg-accent"
                       aria-label={t('projects.projectSettings')}
                       onClick={(e) => {
                         // 不阻止冒泡的话，点设置会顺带把活动项目切成这一行
