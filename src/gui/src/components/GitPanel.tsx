@@ -10,6 +10,7 @@ import {
 } from 'solid-js'
 import { GitBranch, GitMerge, Loader2 } from 'lucide-solid'
 import { api, type GitOpsAction, type GitChange } from '../lib/api.js'
+import { diffRevision, reconcileSelection, statusTone } from '@shared/lib/git-changes.js'
 import { requestChatSession } from '../lib/project.js'
 import { subscribeProjectChanges, subscribeSession } from '../lib/sse.js'
 import { Button } from './ui/button.jsx'
@@ -49,15 +50,6 @@ export interface GitPanelProps {
   specId?: () => string | undefined
   /** Prefilled commit message (spec entry passes `${type}: ${summary}`). */
   initialMessage?: () => string
-}
-
-// git 文件状态 → 语义 token。裸调色板类在暗色下几乎不可读，必须走语义色。
-const STATUS_COLOR: Record<string, string> = {
-  M: 'text-warning',
-  A: 'text-success',
-  D: 'text-destructive',
-  '??': 'text-info',
-  R: 'text-primary',
 }
 
 /** The commit message box grows from 2 up to 3 lines, then scrolls. */
@@ -157,14 +149,9 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
   /** Adopt a new file list and drop any selection/preview it invalidated. */
   function applyChanges(newChanges: GitChange[]): void {
     setChanges(newChanges)
-    const validPaths = new Set(newChanges.map((c) => c.path))
-    setSelectedPaths((prev) => {
-      const next = new Set<string>()
-      for (const p of prev) if (validPaths.has(p)) next.add(p)
-      return next
-    })
-    const active = activePath()
-    if (active && !validPaths.has(active)) setActivePath(null)
+    const next = reconcileSelection(selectedPaths(), activePath(), newChanges)
+    setSelectedPaths(next.selected)
+    setActivePath(next.active)
   }
 
   createEffect(() => {
@@ -206,7 +193,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
       const pid = props.projectId()
       if (!path || !pid) return null
       const entry = changes().find((c) => c.path === path)
-      return { pid, path, revision: `${entry?.index ?? ''}${entry?.worktree ?? ''}` }
+      return { pid, path, revision: diffRevision(entry) }
     },
     (key) => api.getFileDiff(key.pid, key.path),
   )
@@ -691,7 +678,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
                     title={change.path}
                   >
                     <span
-                      class={`inline-block w-6 text-center text-sm font-bold ${STATUS_COLOR[change.status] ?? ''}`}
+                      class={`inline-block w-6 text-center text-sm font-bold ${statusTone(change.status)}`}
                     >
                       {change.status}
                     </span>

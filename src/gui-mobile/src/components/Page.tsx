@@ -1,4 +1,4 @@
-import type { JSX, ParentComponent } from 'solid-js'
+import { Show, type JSX, type ParentComponent } from 'solid-js'
 import { TopBar } from './TopBar.jsx'
 
 interface PageProps {
@@ -18,6 +18,14 @@ interface PageProps {
    * 左右留白由行自己给，否则分隔线两端会缺一块。
    */
   padded?: boolean
+  /**
+   * 内容区改为「不滚动的 flex 列」，由页面自己安排滚动区。
+   *
+   * Git 状态页是唯一的用例：它要把变更列表与 diff 预览上下切分成两个各自
+   * 独立滚动的区域，外层再套一个滚动容器会让两层滚动互相打架。给了 fill 之后
+   * `scrollRef` / `onScroll` / `padded` 都失去意义——滚动归页面自己管。
+   */
+  fill?: boolean
   /** 二级页面的返回动作，透传给 TopBar。 */
   onBack?: () => void
   /**
@@ -43,9 +51,14 @@ export const Page: ParentComponent<PageProps> = (props) => (
       leading={props.leading}
       onBack={props.onBack}
     />
-    <div class="scroll-y min-h-0 flex-1 px-safe" ref={props.scrollRef} onScroll={props.onScroll}>
-      <div class={props.padded === false ? '' : 'px-4 py-4'}>{props.children}</div>
-    </div>
+    <Show
+      when={!props.fill}
+      fallback={<div class="flex min-h-0 flex-1 flex-col px-safe">{props.children}</div>}
+    >
+      <div class="scroll-y min-h-0 flex-1 px-safe" ref={props.scrollRef} onScroll={props.onScroll}>
+        <div class={props.padded === false ? '' : 'px-4 py-4'}>{props.children}</div>
+      </div>
+    </Show>
     {props.footer}
   </>
 )

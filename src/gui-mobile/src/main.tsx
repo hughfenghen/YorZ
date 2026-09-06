@@ -12,6 +12,9 @@ import { ChatDetail } from './pages/ChatDetail.jsx'
 import { SpecDetail } from './pages/SpecDetail.jsx'
 import { NewSpec } from './pages/NewSpec.jsx'
 import { Extensions } from './pages/Extensions.jsx'
+import { Scripts } from './pages/ext/Scripts.jsx'
+import { RunOutput } from './pages/ext/RunOutput.jsx'
+import { GitStatus } from './pages/ext/GitStatus.jsx'
 import { Projects } from './pages/Projects.jsx'
 import { GlobalSettings } from './pages/settings/GlobalSettings.jsx'
 import { ProjectSettings } from './pages/settings/ProjectSettings.jsx'
@@ -47,6 +50,10 @@ render(
       <Route path="/sessions/:id" component={ChatDetail} />
       <Route path="/specs/new" component={NewSpec} />
       <Route path="/specs/:id" component={SpecDetail} />
+      {/* 同理，两条静态的扩展二级页排在 /ext/runs/:runId 之前。 */}
+      <Route path="/ext/scripts" component={Scripts} />
+      <Route path="/ext/git" component={GitStatus} />
+      <Route path="/ext/runs/:runId" component={RunOutput} />
       <Route path="/settings/global" component={GlobalSettings} />
       <Route path="/settings/project" component={ProjectSettings} />
       <Route path="*" component={NotFound} />

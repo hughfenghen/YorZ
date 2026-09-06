@@ -12,21 +12,17 @@ import { ChevronRight, GitBranch, RotateCcw, Terminal, X } from 'lucide-solid'
 import { api, type CommandRun } from '@shared/api/index.js'
 import { subscribeCommandRuns } from '@shared/api/sse.js'
 import { formatDuration } from '@shared/lib/duration.js'
+import { useNavigate } from '@solidjs/router'
 import { Page } from '@/components/Page.jsx'
 import { ActionSheet, type ActionSheetItem } from '@/components/ActionSheet.jsx'
-import {
-  ErrorNotice,
-  LoadingNotice,
-  NoProjectNotice,
-  comingSoon,
-} from '@/components/ListStates.jsx'
+import { ErrorNotice, LoadingNotice, NoProjectNotice } from '@/components/ListStates.jsx'
 import { showToast } from '@/components/Toast.jsx'
 import { activeProjectId } from '@/lib/active-project.js'
 import { t } from '@/i18n/index.js'
 
 /**
  * Tab3 扩展。三组结构对齐线框图：脚本管理入口 / 运行中的脚本 / Git 入口。
- * 两个入口行的二级页本次不实现，点击弹「即将支持」；中间那组是本页唯一的真实数据。
+ * 三条链路各自有二级页：/ext/scripts、/ext/runs/:runId、/ext/git。
  */
 
 const Group: Component<{ title: string; children: import('solid-js').JSX.Element }> = (props) => (
@@ -59,6 +55,7 @@ const EntryRow: Component<{
 )
 
 export const Extensions: Component = () => {
+  const navigate = useNavigate()
   const [runs, { refetch, mutate }] = createResource<CommandRun[], string>(
     () => activeProjectId() ?? undefined,
     (pid) => api.listCommandRuns(pid),
@@ -126,7 +123,7 @@ export const Extensions: Component = () => {
             icon={Terminal}
             label={t('ext.scripts')}
             desc={t('ext.scriptsDesc')}
-            onClick={comingSoon}
+            onClick={() => navigate('/ext/scripts')}
           />
 
           <Show when={activeProjectId()} fallback={<NoProjectNotice />}>
@@ -147,14 +144,21 @@ export const Extensions: Component = () => {
                   <For each={running()}>
                     {(run) => (
                       <div class="flex items-center gap-2 px-4 py-2.5">
-                        <span class="min-w-0 flex-1">
+                        {/* 行主体点进输出页；行尾两个图标各有自己的命中区，不会被这层吃掉 */}
+                        <button
+                          type="button"
+                          class="min-w-0 flex-1 text-left active:opacity-60"
+                          onClick={() =>
+                            navigate(`/ext/runs/${encodeURIComponent(run.runId)}`)
+                          }
+                        >
                           <span class="block truncate text-sm">{run.name}</span>
                           <span class="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                             <time>{formatDuration(run.startedAt, run.endedAt, now())}</time>
                             <span>·</span>
                             <span class="truncate">{run.cli}</span>
                           </span>
-                        </span>
+                        </button>
                         {/* 图标按钮组：组内不留 gap（命中区相邻即可，视觉间距由 tap-target
                             自带的内缩给出），组整体左移 13px —— 44px 命中区里居中的 18px 图标
                             两侧各有 (44-18)/2 = 13px 空白，抵消掉之后 X 的右边界才和入口行
@@ -191,7 +195,7 @@ export const Extensions: Component = () => {
             icon={GitBranch}
             label={t('ext.git')}
             desc={t('ext.gitDesc')}
-            onClick={comingSoon}
+            onClick={() => navigate('/ext/git')}
           />
         </Group>
       </div>
