@@ -27,10 +27,13 @@
     // Mirrors the `@` alias in vite.gui.config.ts. Scoped to this project because
     // it only makes sense for browser code Vite resolves.
     "paths": {
-      "@/*": ["./src/gui/src/*"]
+      "@/*": ["./src/gui/src/*"],
+      // 平台无关的共享逻辑层，两个前端工程各自 include（不建 project reference，
+      // 因为两端都是 composite + noEmit，被引用工程必须产出 .d.ts）。
+      "@shared/*": ["./src/gui-shared/*"]
     },
     "composite": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.gui.tsbuildinfo"
   },
-  "include": ["src/gui/**/*.ts", "src/gui/**/*.tsx"]
+  "include": ["src/gui/**/*.ts", "src/gui/**/*.tsx", "src/gui-shared/**/*.ts"]
 }

@@ -17,20 +17,10 @@ import { CommandStatusText } from './CommandStatusText.jsx'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.jsx'
 import { toast } from './ui/toast.jsx'
 import { t } from '../i18n/index.js'
+// 时长格式化已迁至共享层（移动端「扩展」页共用）；此处 re-export 保持既有引用可用。
+import { formatDuration } from '@shared/lib/duration.js'
 
-export function formatDuration(
-  startedAt: number,
-  endedAt: number | undefined,
-  now: number,
-): string {
-  const ms = Math.max(0, (endedAt ?? now) - startedAt)
-  const total = Math.floor(ms / 1000)
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  const s = total % 60
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`
-}
+export { formatDuration }
 
 export interface RunningCommandsProps {
   projectId: () => string

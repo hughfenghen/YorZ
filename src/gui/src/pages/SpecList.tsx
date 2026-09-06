@@ -18,6 +18,8 @@ import { projectHref, useCurrentProjectId } from '../lib/project.js'
 import { useFocusModePage } from '../lib/layout-focus.js'
 import { subscribeProjectsList, subscribeSpecsList } from '../lib/sse.js'
 import { formatSpecUpdatedAt } from '../lib/time.js'
+// 展示元数据已迁至共享层，移动端 Specs 页共用同一套语义
+import { SPEC_TYPE_TEXT, STAGE_BADGE, splitSpecId } from '@shared/lib/spec-meta.js'
 import { copySpecPath } from '../lib/spec-path.js'
 import { createWorktreeMergeGuard } from '../lib/worktree-merge.js'
 import { Button } from '../components/ui/button.jsx'
@@ -42,30 +44,6 @@ import {
 import { Input } from '../components/ui/input.jsx'
 import { toast } from '../components/ui/toast.jsx'
 import { t } from '../i18n/index.js'
-
-/*
- * Soft 徽章（设计稿「状态」形态）：15% 同色 tint 打底、文字用 stage 原色、
- * 30% 同色描边。相比实心填充，四个阶段在列表里靠色相区分而非靠色块抢注意，
- * 长列表扫读时噪音低得多。类名必须写成完整字面量，Tailwind JIT 才扫得到。
- */
-const STAGE_BADGE: Record<string, string> = {
-  plan: 'bg-stage-plan/15 text-stage-plan border-stage-plan/30',
-  tasks: 'bg-stage-tasks/15 text-stage-tasks border-stage-tasks/30',
-  execute: 'bg-stage-execute/15 text-stage-execute border-stage-execute/30',
-  done: 'bg-stage-done/15 text-stage-done border-stage-done/30',
-}
-
-const SPEC_TYPE_TEXT: Record<string, string> = {
-  feat: 'text-success',
-  refct: 'text-info',
-  fix: 'text-destructive',
-}
-
-function splitSpecId(id: string): { prefix: string; type: string; suffix: string } | null {
-  const [prefix, type, ...rest] = id.split('.')
-  if (!prefix || !type || rest.length === 0) return null
-  return { prefix, type, suffix: rest.join('.') }
-}
 
 /** 每次向列表追加的卡片数量。 */
 const PAGE_SIZE = 40

@@ -52,6 +52,14 @@ export default defineConfig({
       },
     },
   ],
+  // 单测里 src/gui/src/lib/*.ts 已改为指向 @shared 的 re-export shim，
+  // vitest 需要同样的别名才能解析。
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src/gui/src'),
+      '@shared': resolve(__dirname, 'src/gui-shared'),
+    },
+  },
   test: {
     environment: 'node',
     setupFiles: ['./vitest.setup.ts'],

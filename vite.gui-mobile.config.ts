@@ -77,9 +77,10 @@ export default defineConfig({
     alias: {
       // 刻意没有指向 src/gui 的别名：两个前端是各自独立的 TS composite 工程，
       // 跨工程直引源码会让文件同时归属两个 project，破坏增量构建。
-      // 需要共享逻辑时抽成独立模块、两边各自 include（样式已按此办法共享，
-      // 见 src/styles/theme-tokens.css）。
+      // 需要共享逻辑时抽成独立模块、两边各自 include —— 样式走
+      // src/styles/theme-tokens.css，TS 逻辑走下面的 @shared。
       '@': resolve(__dirname, 'src/gui-mobile/src'),
+      '@shared': resolve(__dirname, 'src/gui-shared'),
     },
   },
   // 版本号来自 package.json，避免设置页里再手抄一份

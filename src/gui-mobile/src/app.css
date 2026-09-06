@@ -105,6 +105,21 @@
   }
 
   /*
+   * 从头部截断的单行文本，用于文件路径：尾部目录名比 /Users/xxx 前缀有用得多。
+   * direction:rtl 让省略号落在左边，unicode-bidi:plaintext 让串内顺序仍按
+   * 首个强方向字符（这里是拉丁字母）判定——只写 direction:rtl 的话，
+   * 开头那个中性的 "/" 会被 bidi 算法甩到行尾，显示成 "Users/x/YorZ/"。
+   */
+  .truncate-start {
+    direction: rtl;
+    unicode-bidi: plaintext;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /*
    * 触摸目标下限：WCAG 2.5.8 要求 24px，iOS HIG 建议 44px。
    * 图标按钮在移动端一律套这个类，视觉尺寸可以更小，命中区不缩水。
    */

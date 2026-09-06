@@ -33,19 +33,5 @@ export function projectHref(sub: string = '', projectId?: string): string {
   return `/${pid}${tail}`
 }
 
-export interface WorktreeMeta {
-  mainProjectId: string
-  mainPath: string
-  branch: string
-  specId: string
-  createdAt: string
-  cleanSlug?: string
-}
-
-export interface ProjectListItem {
-  id: string
-  name: string
-  path: string
-  lastActivityAt: string | null
-  worktree?: WorktreeMeta
-}
+// 类型已迁至 src/gui-shared/api/project.ts（两端共用），此处 re-export 保持既有引用可用。
+export type { ProjectListItem, WorktreeMeta } from '@shared/api/project.js'

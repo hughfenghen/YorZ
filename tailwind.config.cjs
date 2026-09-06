@@ -3,7 +3,13 @@ module.exports = {
   darkMode: ['class', '[data-kb-theme="dark"]'],
   // 两个前端共用这份配置（设计令牌同源，见 src/styles/theme-tokens.css）。
   // 代价是各自的产物里会含少量对方用到的工具类，换来的是配色/圆角/字体只有一处定义。
-  content: ['./src/gui/src/**/*.{ts,tsx}', './src/gui-mobile/src/**/*.{ts,tsx}'],
+  // gui-shared 里有硬编码的 Tailwind 类名字符串（如 lib/spec-meta.ts 的 stage 徽章），
+  // 不扫描会被 purge 掉。
+  content: [
+    './src/gui/src/**/*.{ts,tsx}',
+    './src/gui-mobile/src/**/*.{ts,tsx}',
+    './src/gui-shared/**/*.{ts,tsx}',
+  ],
   theme: {
     extend: {
       colors: {

@@ -1,30 +1,14 @@
-import i18next from 'i18next'
-import LanguageDetector from 'i18next-browser-languagedetector'
+import { createI18n } from '@shared/i18n/create.js'
 import { zhCN } from './zh-CN.js'
 import { en } from './en.js'
 
 /**
- * 与桌面端同样的 i18next 配置：只按 navigator 语言判定、不落缓存，
- * 保证换系统语言后刷新即生效，不会被上一次的选择粘住。
+ * 初始化机制在共享层（@shared/i18n/create.ts），本文件只负责喂本端词典。
+ * 词典刻意不与另一端合并：命名空间零重叠，合并会让两端互相牵制措辞。
  */
-let initialized = false
-const initPromise = i18next.use(LanguageDetector).init({
-  resources: {
-    'zh-CN': { translation: zhCN },
-    en: { translation: en },
-  },
-  fallbackLng: 'zh-CN',
-  detection: {
-    order: ['navigator'],
-    caches: [],
-  },
-  interpolation: {
-    escapeValue: false,
-  },
+export const i18nInstance = createI18n({
+  'zh-CN': { translation: zhCN },
+  en: { translation: en },
 })
 
-initPromise.then(() => {
-  initialized = true
-})
-
-export { i18next, initPromise, initialized }
+export const { i18next, initPromise } = i18nInstance

@@ -15,7 +15,9 @@ import { WelcomePage } from './pages/Welcome.jsx'
 import { AppShell } from './AppShell.jsx'
 
 // 早于首次渲染接管主题（index.html 的内联脚本已写好初始属性，此处只是绑定后续变化）
-initTheme()
+// 桌面端外观真值在服务端 config.json，hint 由 global-config.ts 的
+// applyGlobalAppearance 负责写，这里不重复落盘。
+initTheme({ persistHint: false })
 
 const root = document.getElementById('app')
 if (!root) throw new Error('missing #app root')

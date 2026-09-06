@@ -9,6 +9,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src/gui/src'),
+      // 两端共用的平台无关逻辑层，见 src/gui-shared/
+      '@shared': resolve(__dirname, 'src/gui-shared'),
     },
   },
   build: {

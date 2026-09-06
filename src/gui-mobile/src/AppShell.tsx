@@ -1,6 +1,7 @@
 import type { ParentComponent } from 'solid-js'
 import { StatusBanner } from './components/StatusBanner.jsx'
 import { TabBar } from './components/TabBar.jsx'
+import { Toaster } from './components/Toast.jsx'
 import { watchNetwork } from './lib/network.js'
 
 /**
@@ -19,6 +20,8 @@ export const AppShell: ParentComponent = (props) => {
       <StatusBanner />
       <main class="flex min-h-0 flex-1 flex-col">{props.children}</main>
       <TabBar />
+      {/* 单例 toast，fixed 定位浮在导航之上，不参与上面的高度链条 */}
+      <Toaster />
     </>
   )
 }

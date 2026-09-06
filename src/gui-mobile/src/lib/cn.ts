@@ -1,6 +1,2 @@
-import { type ClassValue, clsx } from 'clsx'
-import { twMerge } from 'tailwind-merge'
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
+/** 过渡 shim：实现已迁至 src/gui-shared/lib/cn.ts，两端共用。 */
+export * from '@shared/lib/cn.js'

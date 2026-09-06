@@ -4,6 +4,13 @@ import { TopBar } from './TopBar.jsx'
 interface PageProps {
   title: string
   actions?: JSX.Element
+  /**
+   * 内容区是否套默认的 px-4 py-4。列表页传 false：行分隔线要通条贯穿，
+   * 左右留白由行自己给，否则分隔线两端会缺一块。
+   */
+  padded?: boolean
+  /** 二级页面的返回动作，透传给 TopBar。 */
+  onBack?: () => void
 }
 
 /**
@@ -15,9 +22,9 @@ interface PageProps {
  */
 export const Page: ParentComponent<PageProps> = (props) => (
   <>
-    <TopBar title={props.title} actions={props.actions} />
+    <TopBar title={props.title} actions={props.actions} onBack={props.onBack} />
     <div class="scroll-y min-h-0 flex-1 px-safe">
-      <div class="px-4 py-4">{props.children}</div>
+      <div class={props.padded === false ? '' : 'px-4 py-4'}>{props.children}</div>
     </div>
   </>
 )

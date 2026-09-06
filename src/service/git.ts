@@ -204,6 +204,34 @@ async function partitionPathsByStatus(cwd: string, paths: string[]): Promise<Par
   return result
 }
 
+/**
+ * Narrow a selection down to the paths `git add` can actually match.
+ *
+ * `git add` resolves its pathspec against the worktree and the index, and a
+ * pathspec matching neither aborts the *whole* call with
+ * `fatal: pathspec '<p>' did not match any files` — one such path poisons every
+ * other path in the same invocation. Two ordinary states hit that:
+ *   - a staged deletion (`D `): the file is gone from the worktree and its index
+ *     entry has already been removed;
+ *   - the origin side of a staged rename (`R  old -> new`): `old` is likewise
+ *     absent from both.
+ * Both are recognisable by a blank porcelain worktree column — the path is
+ * already fully staged, so there is nothing left to add. The commit below takes
+ * the whole index anyway, so dropping them stages exactly the same tree.
+ */
+function pathsNeedingStage(changes: GitChange[], paths: string[]): string[] {
+  const byPath = new Map(changes.map((c) => [c.path, c]))
+  const out: string[] = []
+  for (const p of paths) {
+    const change = byPath.get(p)
+    // Not in `git status` at all: a stale selection with nothing to stage.
+    if (!change) continue
+    if (change.worktree === ' ') continue
+    out.push(p)
+  }
+  return out
+}
+
 export async function commit(cwd: string, opts: CommitOptions): Promise<{ commit: string }> {
   const message = opts.message?.trim() ?? ''
   if (!message) throw new GitError('invalid_message', 'commit message must not be empty')
@@ -212,16 +240,16 @@ export async function commit(cwd: string, opts: CommitOptions): Promise<{ commit
   }
   for (const p of opts.paths) assertSafeRelativePath(cwd, p)
 
-  const { renamed } = await partitionPathsByStatus(cwd, opts.paths)
-  const extraPaths = renamed.map((r) => r.renamedFrom)
-  const allPaths = [...opts.paths, ...extraPaths]
+  // A rename's origin path is deliberately NOT staged here: `git mv` already put
+  // both sides in the index, and `git add -- <old>` would abort on the pathspec.
+  const toStage = pathsNeedingStage(await listChanges(cwd), opts.paths)
 
   // Stage first, then commit the index without a pathspec. A pathspec commit
   // (`git commit -- <paths>`) builds a temporary index, so a pre-commit hook
   // that rewrites files (e.g. a formatter) writes into that throwaway index:
   // after the commit the real index and the worktree disagree and the same file
   // shows up as both staged and unstaged with opposite diffs.
-  await runGit(cwd, ['add', '--', ...allPaths])
+  if (toStage.length) await runGit(cwd, ['add', '--', ...toStage])
   // `git commit` exits 1 when the staged set turns out to be empty. That is not
   // an infrastructure failure but an ordinary stale-selection race: the panel's
   // file list is a 1s poll snapshot, so a path can be committed or reverted by

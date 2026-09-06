@@ -23,10 +23,13 @@
     "types": ["vite/client", "vite-plugin-pwa/client"],
     // 与 vite.gui-mobile.config.ts 的 alias 一一对应。
     "paths": {
-      "@/*": ["./src/gui-mobile/src/*"]
+      "@/*": ["./src/gui-mobile/src/*"],
+      // 与 tsconfig.gui.json 同源：共享逻辑层被两个工程同时 include。
+      // 两者之间没有 project reference，各自独立编译，不触发"文件归属唯一"检查。
+      "@shared/*": ["./src/gui-shared/*"]
     },
     "composite": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.gui-mobile.tsbuildinfo"
   },
-  "include": ["src/gui-mobile/**/*.ts", "src/gui-mobile/**/*.tsx"]
+  "include": ["src/gui-mobile/**/*.ts", "src/gui-mobile/**/*.tsx", "src/gui-shared/**/*.ts"]
 }

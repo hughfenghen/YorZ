@@ -38,8 +38,8 @@ src/app.css           移动端基础层：安全区、触摸手感、视口高�
 src/main.tsx          路由注册；base="/m"
 src/AppShell.tsx      外壳：状态横幅 / 内容 / 底部导航
 src/components/       Page、TopBar、TabBar、StatusBanner + ui/（shadcn-solid）
-src/pages/            页面（当前均为占位）
-src/lib/              theme / pwa / network / cn
+src/pages/            一级页面（Sessions / Specs / Extensions / Projects）与 settings/ 二级页
+src/lib/              theme / pwa / network / cn（前三者是 @shared 的薄壳）、active-project
 src/i18n/             文案，zh-CN 为准，en 由类型约束保持同构
 ```
 
@@ -51,8 +51,16 @@ manifest 的 `start_url`/`scope`、`src/main.tsx` 里 Router 的 `base`、
 所在目录决定，前缀对不上就要么接管不到页面，要么越界接管桌面端。
 
 **不要从这里 import `src/gui` 的源码**。两个前端是各自独立的 TS composite 工程，
-跨工程直引源码会让文件同时归属两个 project、破坏增量构建。需要共享时抽成独立模块，
-两边各自 include——样式已按这个办法共享，见 `src/styles/theme-tokens.css`。
+跨工程直引源码会让文件同时归属两个 project、破坏增量构建。需要共享时抽成独立模块、
+两边各自 include，现有两类共享物：
+
+- 样式令牌 `src/styles/theme-tokens.css`；
+- 平台无关逻辑层 `src/gui-shared/`，两端都用 `@shared/*` 别名引入
+  （API 客户端与 DTO、SSE 订阅、theme、纯函数工具、i18n 工厂）。
+  两个 tsconfig 各自 include 它、之间没有 project reference，故不触发"文件归属唯一"检查；
+  代价只是共享文件被类型检查两次。
+
+页面级 UI、布局、外壳交互不属于共享范围——不能复用就各写各的，不要勉强。
 
 **配色改一处生效两端**：颜色/圆角/字体全部来自 `src/styles/theme-tokens.css`，
 这里只写布局与移动端特有的基础样式。

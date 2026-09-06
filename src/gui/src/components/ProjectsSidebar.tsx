@@ -30,6 +30,8 @@ import { Checkbox, CheckboxControl, CheckboxLabel } from './ui/checkbox.jsx'
 import { toast } from './ui/toast.jsx'
 import { subscribeProjectsList } from '../lib/sse.js'
 import { t } from '../i18n/index.js'
+// 命名规则已迁至共享层，移动端项目页复用同一套拼法
+import { displayProjectName } from '@shared/api/project.js'
 
 const COLLAPSED_KEY = 'yorz.projectsSidebar.collapsed'
 const WIDTH_KEY = 'yorz.projectsSidebar.width'
@@ -88,13 +90,6 @@ function writeWidth(value: number): void {
   } catch {
     // ignore quota errors
   }
-}
-
-function displayProjectName(p: ProjectListItem): string {
-  if (!p.worktree) return p.name
-  const mainBasename = p.worktree.mainPath.split('/').filter(Boolean).pop() ?? p.worktree.mainPath
-  const slug = p.worktree.cleanSlug ?? p.worktree.branch.replace(/^wt\//, '')
-  return `${mainBasename} · ${slug}`
 }
 
 export const ProjectsSidebar: Component = () => {

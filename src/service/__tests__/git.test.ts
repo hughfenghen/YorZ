@@ -228,6 +228,84 @@ describe('git.commit mixed states', () => {
 
     await rm(cwd, { recursive: true, force: true })
   })
+
+  // Regression: an already-staged deletion (`D `) is absent from both the
+  // worktree and the index, so `git add -- <path>` aborted the whole call with
+  // `pathspec ... did not match any files` — surfacing as an opaque 400 that
+  // also took down every other selected path in the same commit.
+  it('commits an already-staged deletion alongside a normal edit', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'gone.txt'), 'bye\n', 'utf8')
+    await writeFile(join(cwd, 'keep.txt'), 'orig\n', 'utf8')
+    await git(cwd, ['add', '-A'])
+    await git(cwd, ['commit', '-q', '-m', 'seed'])
+
+    await git(cwd, ['rm', '-q', 'gone.txt'])
+    await writeFile(join(cwd, 'keep.txt'), 'edited\n', 'utf8')
+    expect((await listChanges(cwd)).find((c) => c.path === 'gone.txt')).toMatchObject({
+      index: 'D',
+      worktree: ' ',
+    })
+
+    const { commit: sha } = await commit(cwd, {
+      message: 'drop gone, edit keep',
+      paths: ['gone.txt', 'keep.txt'],
+    })
+    expect(sha).toMatch(/^[0-9a-f]{40}$/)
+    expect(await listChanges(cwd)).toEqual([])
+    const tree = await git(cwd, ['ls-tree', '--name-only', 'HEAD'])
+    expect(tree).toContain('keep.txt')
+    expect(tree).not.toContain('gone.txt')
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  // Regression: `git mv` stages both sides, but the origin path then matches
+  // neither worktree nor index — staging it blew up the same way.
+  it('commits a staged rename without staging its origin path', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'old.txt'), 'content\n', 'utf8')
+    await git(cwd, ['add', 'old.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'seed'])
+    await git(cwd, ['mv', 'old.txt', 'new.txt'])
+
+    await commit(cwd, { message: 'rename', paths: ['new.txt'] })
+    expect(await listChanges(cwd)).toEqual([])
+    const tree = await git(cwd, ['ls-tree', '--name-only', 'HEAD'])
+    expect(tree).toContain('new.txt')
+    expect(tree).not.toContain('old.txt')
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  // A staged rename that was edited afterwards (`RM`) still needs the new path
+  // staged, so the follow-up edit must land in the commit.
+  it('stages the worktree edit of a renamed-then-modified file', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'old.txt'), 'content\n', 'utf8')
+    await git(cwd, ['add', 'old.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'seed'])
+    await git(cwd, ['mv', 'old.txt', 'new.txt'])
+    await writeFile(join(cwd, 'new.txt'), 'content\nmore\n', 'utf8')
+
+    await commit(cwd, { message: 'rename + edit', paths: ['new.txt'] })
+    expect(await listChanges(cwd)).toEqual([])
+    expect(await git(cwd, ['show', 'HEAD:new.txt'])).toBe('content\nmore\n')
+
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  // A path that vanished from `git status` between the panel's poll and the
+  // click must not abort the commit for the paths that are still real.
+  it('ignores a stale selection entry instead of failing the whole commit', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'real.txt'), 'hi\n', 'utf8')
+
+    await commit(cwd, { message: 'partial', paths: ['real.txt', 'never-existed.txt'] })
+    expect(await listChanges(cwd)).toEqual([])
+
+    await rm(cwd, { recursive: true, force: true })
+  })
 })
 
 describe('git.fileDiff', () => {
