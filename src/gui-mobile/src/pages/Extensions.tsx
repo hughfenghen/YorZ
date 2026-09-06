@@ -148,9 +148,7 @@ export const Extensions: Component = () => {
                         <button
                           type="button"
                           class="min-w-0 flex-1 text-left active:opacity-60"
-                          onClick={() =>
-                            navigate(`/ext/runs/${encodeURIComponent(run.runId)}`)
-                          }
+                          onClick={() => navigate(`/ext/runs/${encodeURIComponent(run.runId)}`)}
                         >
                           <span class="block truncate text-sm">{run.name}</span>
                           <span class="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
@@ -159,26 +157,26 @@ export const Extensions: Component = () => {
                             <span class="truncate">{run.cli}</span>
                           </span>
                         </button>
-                        {/* 图标按钮组：组内不留 gap（命中区相邻即可，视觉间距由 tap-target
-                            自带的内缩给出），组整体左移 13px —— 44px 命中区里居中的 18px 图标
-                            两侧各有 (44-18)/2 = 13px 空白，抵消掉之后 X 的右边界才和入口行
-                            那个 ChevronRight 一样落在距容器右 16px 处 */}
-                        <span class="-mr-[13px] flex shrink-0 items-center">
+                        {/* 图标按钮组：按钮视觉就是 20×20 的图标本身（见 app.css 的
+                            .tap-target），组内 gap-3 让两枚按钮的命中区正好相接；
+                            不再需要负边距补偿——X 的右边界天然落在容器 px-4 的 16px 处，
+                            与入口行那个 ChevronRight 对齐 */}
+                        <span class="flex shrink-0 items-center gap-3">
                           <button
                             type="button"
-                            class="tap-target flex items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+                            class="tap-target flex items-center justify-center text-muted-foreground active:opacity-60"
                             aria-label={t('ext.restart')}
                             onClick={() => void restart(run)}
                           >
-                            <RotateCcw size={18} aria-hidden="true" />
+                            <RotateCcw size={20} aria-hidden="true" />
                           </button>
                           <button
                             type="button"
-                            class="tap-target flex items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+                            class="tap-target flex items-center justify-center text-muted-foreground active:opacity-60"
                             aria-label={t('ext.stop')}
                             onClick={() => setConfirmRun(run)}
                           >
-                            <X size={18} aria-hidden="true" />
+                            <X size={20} aria-hidden="true" />
                           </button>
                         </span>
                       </div>

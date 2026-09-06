@@ -7,6 +7,7 @@ import { createChatTranscript } from '@shared/lib/chat-transcript.js'
 import { createAttachments } from '@shared/lib/attachments.js'
 import { attachmentLabels } from '@/lib/attachment-labels.js'
 import { Page } from '@/components/Page.jsx'
+import { AgentUsageHint } from '@/components/AgentUsageHint.jsx'
 import { MessageList } from '@/components/MessageList.jsx'
 import { ChatComposer } from '@/components/ChatComposer.jsx'
 import { NoProjectNotice } from '@/components/ListStates.jsx'
@@ -158,7 +159,7 @@ export const ChatDetail: Component = () => {
           {(id) => (
             <button
               type="button"
-              class="tap-target -mr-2 flex items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+              class="tap-target flex items-center justify-center text-muted-foreground active:opacity-60"
               aria-label={t('chat.openSpec')}
               onClick={() => navigate(`/specs/${encodeURIComponent(id())}`)}
             >
@@ -184,9 +185,16 @@ export const ChatDetail: Component = () => {
           <Show
             when={tx.blocks().length > 0}
             fallback={
-              <p class="py-8 text-center text-sm text-muted-foreground">
-                {sid() ? t('chat.empty') : t('chat.draftEmpty')}
-              </p>
+              <div class="flex flex-col items-center gap-2 py-8 text-center">
+                <p class="m-0 text-sm text-muted-foreground">
+                  {sid() ? t('chat.empty') : t('chat.draftEmpty')}
+                </p>
+                {/* 与桌面端同口径：只有草稿态（还没有会话）才提示 Agent 余额，
+                    已经在聊的会话里没人关心这条。 */}
+                <Show when={!sid()}>
+                  <AgentUsageHint />
+                </Show>
+              </div>
             }
           >
             <MessageList blocks={tx.blocks()} expand={tx.toolExpand} />

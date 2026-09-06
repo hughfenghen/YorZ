@@ -88,7 +88,9 @@ export const RunOutput: Component = () => {
     if (!run) return []
     // 终止不可逆（进程直接被杀），与扩展页/脚本页同一套两段式确认。
     if (confirmingStop()) {
-      return [{ label: t('runOutput.stopConfirm'), tone: 'destructive', onSelect: () => void stop() }]
+      return [
+        { label: t('runOutput.stopConfirm'), tone: 'destructive', onSelect: () => void stop() },
+      ]
     }
     const items: ActionSheetItem[] = []
     if (run.status === 'running') {
@@ -119,7 +121,7 @@ export const RunOutput: Component = () => {
         <Show when={view.run()}>
           <button
             type="button"
-            class="tap-target -mr-2 flex items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+            class="tap-target flex items-center justify-center text-muted-foreground active:opacity-60"
             aria-label={t('specDetail.more')}
             onClick={() => {
               setConfirmingStop(false)
@@ -131,10 +133,7 @@ export const RunOutput: Component = () => {
         </Show>
       }
     >
-      <Show
-        when={view.run()}
-        fallback={<Notice title={view.loadError() ?? t('common.loading')} />}
-      >
+      <Show when={view.run()} fallback={<Notice title={view.loadError() ?? t('common.loading')} />}>
         {(run) => (
           <>
             <div class="border-b border-border bg-card px-4 py-2.5">

@@ -1,8 +1,12 @@
-import { For, Show, type Component } from 'solid-js'
+import { For, Show, createEffect, type Component } from 'solid-js'
 import { Paperclip, Send, Square, X } from 'lucide-solid'
 import type { AttachmentsController } from '@shared/lib/attachments.js'
 import { ACCEPT_MIME, MAX_COUNT } from '@shared/lib/attachments.js'
+import { autoSizeTextarea } from '@/lib/autosize.js'
 import { t } from '@/i18n/index.js'
+
+/** 输入框最多长到 5 行，再多就内部滚动。 */
+const MAX_ROWS = 5
 
 /**
  * 底部输入栏：自增高文本域 + 回形针 + 发送/中断互斥按钮。
@@ -26,17 +30,19 @@ export const ChatComposer: Component<{
   attachments: AttachmentsController
 }> = (props) => {
   let fileInput: HTMLInputElement | undefined
+  let textareaEl: HTMLTextAreaElement | undefined
   const canSend = () =>
     props.value.trim().length > 0 && !props.starting && !props.attachments.hasPending()
 
   /**
-   * 1 行起、最多 5 行。先清 height 再读 scrollHeight：不清的话上一次撑开的高度
-   * 会成为 scrollHeight 的下界，文本删短后输入框再也收不回去。
+   * 高度跟着 `value` 走，而不是只跟着 `onInput` 走：发送成功后文本由父组件清空，
+   * 没有 input 事件，只挂 onInput 的话输入框会保持发送前撑开的高度。
+   * 首次挂载也走这条路径，给出确定的 1 行初始高度。
    */
-  const autoResize = (el: HTMLTextAreaElement) => {
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 5 * 24 + 16)}px`
-  }
+  createEffect(() => {
+    props.value
+    if (textareaEl) autoSizeTextarea(textareaEl, MAX_ROWS)
+  })
 
   return (
     <div class="kb-inset shrink-0 border-t border-border bg-card px-safe pb-safe">
@@ -90,10 +96,15 @@ export const ChatComposer: Component<{
         <p class="px-4 pt-2 text-xs text-destructive">{props.attachments.error()}</p>
       </Show>
 
-      <div class="flex items-end gap-2 px-4 py-2">
+      {/*
+        gap-3 与 mb-3：图标按钮的视觉盒就是 20×20 的图标本身（见 app.css），
+        命中区靠伪元素各向外扩 12px——间距取 12px 时相邻命中区正好相接不重叠，
+        底部再抬 12px，图标才落在输入框最后一行文字的高度上而不是贴着下边框。
+      */}
+      <div class="flex items-end gap-3 px-4 py-2">
         <button
           type="button"
-          class="tap-target flex shrink-0 items-center justify-center rounded-md text-muted-foreground active:bg-accent disabled:opacity-40"
+          class="tap-target mb-3 flex shrink-0 items-center justify-center text-muted-foreground active:opacity-60 disabled:opacity-40"
           aria-label={t('chat.attach')}
           disabled={props.attachments.count() >= MAX_COUNT}
           onClick={() => fileInput?.click()}
@@ -110,12 +121,13 @@ export const ChatComposer: Component<{
         />
 
         <textarea
+          ref={textareaEl}
           rows={1}
-          class="min-h-11 flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-base leading-6 outline-none focus:border-primary"
+          class="flex-1 resize-none overflow-y-hidden rounded-lg border border-border bg-background px-3 py-2.5 text-base leading-6 outline-none focus:border-primary"
           placeholder={t('chat.placeholder')}
           value={props.value}
           onInput={(e) => {
-            autoResize(e.currentTarget)
+            autoSizeTextarea(e.currentTarget, MAX_ROWS)
             props.onInput(e.currentTarget.value)
           }}
         />
@@ -125,22 +137,24 @@ export const ChatComposer: Component<{
           fallback={
             <button
               type="button"
-              class="tap-target flex shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground active:opacity-80 disabled:opacity-40"
+              // 20×20 的盒子被图标本身填满，填色底与描边框都只会被盖住，
+              // 于是改用色彩区分语义：发送用主色，中断用危险色。
+              class="tap-target mb-3 flex shrink-0 items-center justify-center text-primary active:opacity-60 disabled:opacity-40"
               aria-label={t('chat.send')}
               disabled={!canSend()}
               onClick={() => props.onSend()}
             >
-              <Send size={18} aria-hidden="true" />
+              <Send size={20} aria-hidden="true" />
             </button>
           }
         >
           <button
             type="button"
-            class="tap-target flex shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground active:bg-accent"
+            class="tap-target mb-3 flex shrink-0 items-center justify-center text-destructive active:opacity-60"
             aria-label={t('chat.abort')}
             onClick={() => props.onAbort()}
           >
-            <Square size={16} aria-hidden="true" />
+            <Square size={20} aria-hidden="true" />
           </button>
         </Show>
       </div>

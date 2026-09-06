@@ -328,11 +328,11 @@ export const QuestionSheet: Component<{
                   </h3>
                   <button
                     type="button"
-                    class="tap-target -mr-2 flex shrink-0 items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+                    class="tap-target flex shrink-0 items-center justify-center text-muted-foreground active:opacity-60"
                     aria-label={t('specDetail.removeAnnotation')}
                     onClick={() => props.onRemoveFreeform(f.id)}
                   >
-                    <X size={18} aria-hidden="true" />
+                    <X size={20} aria-hidden="true" />
                   </button>
                 </header>
                 <blockquote class="m-0 break-words border-l-2 border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">

@@ -24,41 +24,46 @@ export const SelectionBar: Component<{
   <Show when={props.snap}>
     {(snap) => (
       <div
-        class="animate-in slide-in-from-bottom-4 fixed inset-x-0 bottom-0 z-50 flex items-center gap-1 border-t border-border bg-card px-2 py-2 shadow-lg duration-150 px-safe pb-safe"
+        // 两层：外层只吃安全区，内层给视觉内边距。安全区工具类在产物 CSS 中排在
+        // Tailwind 的 p* 之后，写在同一元素上是覆盖而非叠加——没有刘海的设备上
+        // max(env(...),0) 取 0，内边距会被整个吃掉，按钮直接贴边。
+        class="animate-in slide-in-from-bottom-4 fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card shadow-lg duration-150 px-safe pb-safe"
         role="toolbar"
         aria-label={t('specDetail.annotate')}
       >
-        {/*
+        <div class="flex items-center gap-3 px-2 py-2">
+          {/*
           两道保险保住选区：
           1. `onPointerDown` 阻止默认行为，按下时不清空 selection；
           2. 所有动作只读**已冻结的快照**，从不回头读 live selection —— 即便
              第 1 条在某些 WebView 上失效，250ms 的去抖也足够让 click 先跑完。
         */}
-        <button
-          type="button"
-          class="min-h-11 flex-1 rounded-lg text-sm active:bg-accent"
-          onPointerDown={(e) => e.preventDefault()}
-          onClick={() => props.onAnnotate(snap())}
-        >
-          {t('specDetail.annotate')}
-        </button>
-        <button
-          type="button"
-          class="min-h-11 flex-1 rounded-lg text-sm active:bg-accent"
-          onPointerDown={(e) => e.preventDefault()}
-          onClick={() => props.onExplain(snap())}
-        >
-          {t('specDetail.explain')}
-        </button>
-        <button
-          type="button"
-          class="tap-target flex shrink-0 items-center justify-center rounded-md text-muted-foreground active:bg-accent"
-          aria-label={t('specDetail.selectionClose')}
-          onPointerDown={(e) => e.preventDefault()}
-          onClick={() => props.onClose()}
-        >
-          <X size={20} aria-hidden="true" />
-        </button>
+          <button
+            type="button"
+            class="min-h-11 flex-1 rounded-lg text-sm active:bg-accent"
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={() => props.onAnnotate(snap())}
+          >
+            {t('specDetail.annotate')}
+          </button>
+          <button
+            type="button"
+            class="min-h-11 flex-1 rounded-lg text-sm active:bg-accent"
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={() => props.onExplain(snap())}
+          >
+            {t('specDetail.explain')}
+          </button>
+          <button
+            type="button"
+            class="tap-target flex shrink-0 items-center justify-center text-muted-foreground active:opacity-60"
+            aria-label={t('specDetail.selectionClose')}
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={() => props.onClose()}
+          >
+            <X size={20} aria-hidden="true" />
+          </button>
+        </div>
       </div>
     )}
   </Show>

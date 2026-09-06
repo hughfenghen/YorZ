@@ -106,7 +106,7 @@ export const Specs: Component = () => {
       actions={
         <button
           type="button"
-          class="tap-target -mr-2 flex items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+          class="tap-target flex items-center justify-center text-muted-foreground active:opacity-60"
           aria-label={t('specs.new')}
           onClick={() => navigate('/specs/new')}
         >

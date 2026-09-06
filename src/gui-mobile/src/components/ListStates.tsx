@@ -33,7 +33,7 @@ export const ErrorNotice: Component<{ error: unknown; onRetry: () => void }> = (
     action={
       <button
         type="button"
-        class="tap-target rounded-md border border-border px-4 text-sm active:bg-accent"
+        class="min-h-11 rounded-md border border-border px-4 text-sm active:bg-accent"
         onClick={() => props.onRetry()}
       >
         {t('common.retry')}

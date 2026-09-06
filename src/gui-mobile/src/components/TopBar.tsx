@@ -30,26 +30,28 @@ interface TopBarProps {
  * 一整条 spec id）便把两侧挤没，图标溢出到标题底下互相压字。保留默认的
  * `min-width:auto`，收缩压力就落到带 `min-w-0 truncate` 的标题上——该截断的是
  * 标题，不是按钮。
+ *
+ * 侧槽用 `gap-3`：图标按钮视觉 20×20、命中区靠 `.tap-target` 的伪元素各向外扩
+ * 12px，间距正好是 12px 时两枚图标的命中区相接而不重叠（见 app.css）。
  */
 export const TopBar: Component<TopBarProps> = (props) => (
   <header class="shrink-0 border-b border-border bg-card px-safe pt-safe">
-    <div class="flex h-12 items-center gap-2 px-4">
-      <div class="flex flex-1 items-center justify-start gap-1">
+    <div class="flex h-12 items-center gap-3 px-4">
+      <div class="flex flex-1 items-center justify-start gap-3">
         <Show when={props.onBack}>
           <button
             type="button"
-            // -ml-2 与动作按钮的 -mr-2 同一口径：两侧图标中心距屏幕边缘等距
-            class="tap-target -ml-2 flex shrink-0 items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+            class="tap-target flex items-center justify-center text-muted-foreground active:opacity-60"
             aria-label={props.title}
             onClick={() => props.onBack?.()}
           >
-            <ChevronLeft size={22} aria-hidden="true" />
+            <ChevronLeft size={20} aria-hidden="true" />
           </button>
         </Show>
         {props.leading}
       </div>
       <h1 class="min-w-0 truncate text-base font-medium">{props.title}</h1>
-      <div class="flex flex-1 items-center justify-end gap-1">{props.actions}</div>
+      <div class="flex flex-1 items-center justify-end gap-3">{props.actions}</div>
     </div>
   </header>
 )

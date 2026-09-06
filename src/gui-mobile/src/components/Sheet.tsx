@@ -34,11 +34,12 @@ export const Sheet: ParentComponent<{
         onClick={() => props.onClose()}
       />
       <div class="animate-in slide-in-from-bottom-4 relative flex max-h-[85dvh] flex-col rounded-t-2xl bg-card px-safe pb-safe shadow-lg duration-150">
-        <header class="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3">
+        {/* h-12 与 TopBar 的内容行同高：弹层的头不该比页面的头还重。 */}
+        <header class="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4">
           <h2 class="min-w-0 flex-1 truncate text-base font-medium">{props.title}</h2>
           <button
             type="button"
-            class="tap-target -mr-2 flex shrink-0 items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+            class="tap-target flex shrink-0 items-center justify-center text-muted-foreground active:opacity-60"
             aria-label={t('common.close')}
             onClick={() => props.onClose()}
           >

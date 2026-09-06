@@ -24,7 +24,8 @@ import {
 import { format as formatTimeago, register as registerTimeago } from 'timeago.js'
 import zhCNTimeago from 'timeago.js/lib/lang/zh_CN.js'
 import { enShort } from '../lib/timeago-locale.js'
-import { api, type AgentUsageWindow, type CustomInstruction, type SessionInfo } from '../lib/api.js'
+import { api, type CustomInstruction, type SessionInfo } from '../lib/api.js'
+import { formatAgentUsageSummary } from '@shared/lib/agent-usage.js'
 import { globalConfig, saveCustomInstructions } from '../lib/global-config.js'
 import {
   projectInstructions,
@@ -580,42 +581,13 @@ export const ChatPanel: Component = () => {
     return new Date(ts).toLocaleString(lng())
   }
 
-  function formatUsageReset(ts: string | null): string {
-    if (!ts) return t('chat.usageResetUnknown')
-    const time = new Date(ts)
-    if (!Number.isFinite(time.getTime())) return t('chat.usageResetUnknown')
-    return time.toLocaleString(lng())
-  }
-
-  function formatUsageWindow(win: AgentUsageWindow): string {
-    if (typeof win.utilization !== 'number') {
-      return t('chat.usageWindowUnknown', { label: win.label })
-    }
-    const used = Math.min(100, Math.max(0, Math.round(win.utilization)))
-    const remaining = Math.max(0, 100 - used)
-    return t('chat.usageWindow', {
-      label: win.label,
-      remaining,
-      used,
-      reset: formatUsageReset(win.resetsAt),
-    })
-  }
-
+  // 文案组装在 @shared/lib/agent-usage：移动端空态要展示同一份摘要，
+  // 6 条分支复制一份必然漂移。这里只负责注入 t 与本地化的时间格式。
   const usageSummary = createMemo(() => {
     lng()
-    if (usageStatus.loading) return t('chat.usageLoading')
-    const usage = usageStatus()
-    if (!usage) return ''
-    if (usage.status === 'error') return t('chat.usageError', { kind: usage.kind })
-    if (usage.status === 'unavailable' && usage.installCommand) {
-      return t('chat.usageInstallHint', { kind: usage.kind, command: usage.installCommand })
-    }
-    if (usage.status === 'unavailable') return t('chat.usageUnavailable', { kind: usage.kind })
-    const windows = usage.windows ?? []
-    if (windows.length === 0) return t('chat.usageAvailableNoDetails', { kind: usage.kind })
-    return t('chat.usageSummary', {
-      kind: usage.kind,
-      details: windows.slice(0, 2).map(formatUsageWindow).join(t('chat.usageSeparator')),
+    return formatAgentUsageSummary(usageStatus(), usageStatus.loading, {
+      t,
+      formatTime: (date) => date.toLocaleString(lng()),
     })
   })
 

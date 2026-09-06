@@ -37,7 +37,7 @@ export const Projects: Component = () => {
       actions={
         <button
           type="button"
-          class="tap-target -mr-2 flex items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+          class="tap-target flex items-center justify-center text-muted-foreground active:opacity-60"
           aria-label={t('projects.globalSettings')}
           onClick={() => navigate('/settings/global')}
         >
@@ -86,7 +86,7 @@ export const Projects: Component = () => {
                       type="button"
                       // -mr-2 与顶栏省略号同一负边距口径（容器 px-4 / pr-4 + 按钮 -mr-2），
                       // 两枚图标中心因此都落在距屏幕右缘 30px，肉眼在同一竖线上
-                      class="tap-target -mr-2 flex shrink-0 items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+                      class="tap-target flex shrink-0 items-center justify-center text-muted-foreground active:opacity-60"
                       aria-label={t('projects.projectSettings')}
                       onClick={(e) => {
                         // 不阻止冒泡的话，点设置会顺带把活动项目切成这一行

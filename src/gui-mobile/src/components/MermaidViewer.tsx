@@ -30,11 +30,11 @@ export const MermaidViewer: Component<{
         <header class="flex shrink-0 justify-end px-2 py-1">
           <button
             type="button"
-            class="tap-target flex items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+            class="tap-target flex items-center justify-center text-muted-foreground active:opacity-60"
             aria-label={t('common.close')}
             onClick={() => props.onClose()}
           >
-            <X size={22} aria-hidden="true" />
+            <X size={20} aria-hidden="true" />
           </button>
         </header>
         <div

@@ -10,7 +10,7 @@ import {
 } from 'solid-js'
 import { useNavigate, useParams } from '@solidjs/router'
 import morphdom from 'morphdom'
-import { CircleHelp, MessageSquare } from 'lucide-solid'
+import { CircleHelp, MessageSquare, MoreHorizontal } from 'lucide-solid'
 import { api, type SpecDetail as SpecDetailDoc } from '@shared/api/index.js'
 import { subscribeSession, subscribeSessions, subscribeSpec } from '@shared/api/sse.js'
 import { renderMarkdown } from '@shared/lib/markdown.js'
@@ -114,6 +114,23 @@ export const SpecDetail: Component = () => {
   >(
     () => [pid(), params.id, refreshTick()] as const,
     async ([p, id], info) => fetchSpecWithRetry(p, id, info.value),
+  )
+
+  /**
+   * debug 入口的门禁，与桌面端 SpecDetail 同款：只有 debug.md 存在才渲染。
+   * 与正文共用 `refreshTick`——agent 写完 debug.md 后这里要跟着出现入口。
+   * 失败一律当作不存在：这只是一个可选入口，不该让详情页为它报错。
+   */
+  const [debugDoc] = createResource(
+    () => [pid(), params.id, refreshTick()] as const,
+    async ([p, id]) => {
+      if (!p || !id) return { exists: false, text: '' }
+      try {
+        return await api.getDebug(p, id)
+      } catch {
+        return { exists: false, text: '' }
+      }
+    },
   )
 
   const questions = createMemo(() => {
@@ -330,13 +347,25 @@ export const SpecDetail: Component = () => {
         <Show when={specSid()}>
           <button
             type="button"
-            class="tap-target flex items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+            class="tap-target flex items-center justify-center text-muted-foreground active:opacity-60"
             aria-label={t('specDetail.openSession')}
             onClick={goSession}
           >
             <MessageSquare size={20} aria-hidden="true" />
           </button>
         </Show>
+      }
+      // 「更多」是页面级动作，归顶栏右侧的 ··· ——meta 卡的动作行留给
+      // 追加任务 / debug / git 这三个与当前 spec 内容直接相关的入口。
+      actions={
+        <button
+          type="button"
+          class="tap-target flex items-center justify-center text-muted-foreground active:opacity-60"
+          aria-label={t('specDetail.more')}
+          onClick={() => setMoreOpen(true)}
+        >
+          <MoreHorizontal size={20} aria-hidden="true" />
+        </button>
       }
     >
       <Show when={pid()} fallback={<div class="px-4 py-4">{<NoProjectNotice />}</div>}>
@@ -382,9 +411,10 @@ export const SpecDetail: Component = () => {
                       </time>
                     </div>
 
-                    {/* 动作行。debug 仍照常渲染但点击弹「即将支持」：设计稿把
-                        它画在这里，隐藏会让结构对不上；沿用上一个 spec 已确立
-                        的降级口径，不新造第三种表达。 */}
+                    {/* 动作行。debug 与桌面端同一道门禁：只有该 spec 真的写过
+                        debug.md 才渲染入口——没有记录时摆一个点开是空的按钮，
+                        比不摆更让人困惑。移动端暂无 debug 详情页，点击仍走
+                        既有的「即将支持」降级口径。 */}
                     <div class="mt-3 flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -393,26 +423,21 @@ export const SpecDetail: Component = () => {
                       >
                         {t('specDetail.appendTask')}
                       </button>
-                      <button
-                        type="button"
-                        class="min-h-9 rounded-md border border-border px-3 text-xs text-muted-foreground active:bg-accent"
-                        onClick={comingSoon}
-                      >
-                        {t('specDetail.debug')}
-                      </button>
+                      <Show when={debugDoc()?.exists}>
+                        <button
+                          type="button"
+                          class="min-h-9 rounded-md border border-border px-3 text-xs text-muted-foreground active:bg-accent"
+                          onClick={comingSoon}
+                        >
+                          {t('specDetail.debug')}
+                        </button>
+                      </Show>
                       <button
                         type="button"
                         class="min-h-9 rounded-md border border-border px-3 text-xs active:bg-accent"
                         onClick={() => navigate(`/specs/${encodeURIComponent(params.id)}/git`)}
                       >
                         {t('specDetail.git')}
-                      </button>
-                      <button
-                        type="button"
-                        class="min-h-9 rounded-md border border-border px-3 text-xs text-muted-foreground active:bg-accent"
-                        onClick={() => setMoreOpen(true)}
-                      >
-                        {t('specDetail.more')}
                       </button>
                     </div>
                   </section>

@@ -20,8 +20,12 @@ import { ActionSheet, type ActionSheetItem } from '@/components/ActionSheet.jsx'
 import { NoProjectNotice, Notice } from '@/components/ListStates.jsx'
 import { showToast } from '@/components/Toast.jsx'
 import { activeProjectId } from '@/lib/active-project.js'
+import { autoSizeTextarea } from '@/lib/autosize.js'
 import { cn } from '@/lib/cn'
 import { t } from '@/i18n/index.js'
+
+/** 提交信息与会话输入框同口径：1 行起、最多 5 行。 */
+const COMMIT_MAX_ROWS = 5
 
 /** 六个 direct 动作共用一个闸：任一在飞，其余全部禁用。 */
 type GitAction = 'commit' | 'discard' | 'push' | 'pull' | 'checkout' | 'merge'
@@ -69,6 +73,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
   const [mergeTarget, setMergeTarget] = createSignal<string | null>(null)
   const [moreOpen, setMoreOpen] = createSignal(false)
   const [confirmingDiscard, setConfirmingDiscard] = createSignal(false)
+  const [messageEl, setMessageEl] = createSignal<HTMLTextAreaElement>()
 
   const projectId = () => activeProjectId() ?? undefined
   const specId = (): string | undefined => props.specId?.()
@@ -90,6 +95,19 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
   createEffect(() => {
     const msg = props.initialMessage?.() ?? ''
     if (msg && !userEditedMsg()) setMessage(msg)
+  })
+
+  /**
+   * 提交框高度跟着 `message()` 走，与会话输入框同一套自增高（最多 5 行）。
+   * 挂 effect 而不是只挂 onInput：预填回写与提交成功后的清空都不产生 input
+   * 事件，只靠 onInput 的话高度会停在上一次的行数上。
+   * 元素用信号持有：切到 agent 模式时这个 textarea 会被卸载，重新挂载后
+   * 必须让 effect 认得到新节点。
+   */
+  createEffect(() => {
+    message()
+    const el = messageEl()
+    if (el?.isConnected) autoSizeTextarea(el, COMMIT_MAX_ROWS)
   })
 
   const [branchState, { refetch: refetchBranches, mutate: mutateBranchState }] = createResource(
@@ -183,7 +201,6 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
   }
 
   function toggleAll(): void {
-    setMoreOpen(false)
     setSelected(allSelected() ? new Set<string>() : new Set(changes().map((c) => c.path)))
   }
 
@@ -322,14 +339,9 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
     if (confirmingDiscard()) {
       return [{ label: t('git.discardConfirm'), tone: 'destructive', onSelect: () => discard() }]
     }
+    // 全选不在这里：它是勾选文件的高频前置动作，已经提到底部操作栏常驻，
+    // 浮层里再留一份就是两个入口、两份真相。
     const items: ActionSheetItem[] = []
-    // agent 模式下没有勾选列表，全选也就无从谈起。
-    if (mode() === 'manual' && changes().length > 0) {
-      items.push({
-        label: allSelected() ? t('git.deselectAll') : t('git.selectAll'),
-        onSelect: toggleAll,
-      })
-    }
     items.push({
       label: t('git.push'),
       onSelect: () => {
@@ -364,7 +376,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
       actions={
         <button
           type="button"
-          class="tap-target -mr-2 flex items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+          class="tap-target flex items-center justify-center text-muted-foreground active:opacity-60"
           aria-label={t('git.more')}
           disabled={anyRunning()}
           onClick={() => {
@@ -377,84 +389,107 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
       }
       footer={
         <Show when={activeProjectId()}>
-          <div class="shrink-0 border-t border-border bg-card px-4 py-2 px-safe pb-safe">
-            {/* 只有 spec 入口才有派发对象：扩展页没有 spec 上下文，`gitOp` 无从调起。 */}
-            <Show when={hasSpec()}>
-              <div class="mb-2 flex rounded-lg border border-border p-0.5" role="radiogroup">
-                <For
-                  each={
-                    [
-                      ['manual', t('git.manualSelect')],
-                      ['agent', t('git.agentSelect')],
-                    ] as const
-                  }
+          {/*
+            两层：外层只吃安全区（边框与底色也留在外层，分隔线要通条贯穿到屏幕边），
+            内层给视觉内边距。安全区工具类在产物 CSS 中排在 Tailwind 的 p* 之后，
+            写在同一元素上是覆盖而非叠加——没有刘海的设备上 max(env(...),0) 取 0，
+            左右与底部内边距会被整个吃掉，控件直接贴边。
+          */}
+          <div class="shrink-0 border-t border-border bg-card px-safe pb-safe">
+            <div class="px-4 pb-3 pt-2">
+              {/* 只有 spec 入口才有派发对象：扩展页没有 spec 上下文，`gitOp` 无从调起。 */}
+              <Show when={hasSpec()}>
+                <div class="mb-2 flex rounded-lg border border-border p-0.5" role="radiogroup">
+                  <For
+                    each={
+                      [
+                        ['manual', t('git.manualSelect')],
+                        ['agent', t('git.agentSelect')],
+                      ] as const
+                    }
+                  >
+                    {([value, label]) => (
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={mode() === value}
+                        class={cn(
+                          'min-h-9 flex-1 rounded-md text-xs active:opacity-80 disabled:opacity-40',
+                          mode() === value
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-muted-foreground',
+                        )}
+                        disabled={anyRunning()}
+                        onClick={() => setMode(value)}
+                      >
+                        {label}
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </Show>
+              {/*
+                agent 模式下提交信息由 agent 自己写（`gitOp` 的请求体里没有 message
+                这一项），输入框留着只会误导人以为它会被采纳。
+              */}
+              <Show when={mode() === 'manual'}>
+                <textarea
+                  ref={setMessageEl}
+                  rows={1}
+                  class="w-full resize-none overflow-y-hidden rounded-lg border border-border bg-background px-3 py-2 text-base leading-6 outline-none focus:border-primary"
+                  placeholder={t('git.commitPlaceholder')}
+                  value={message()}
+                  disabled={anyRunning()}
+                  onInput={(e) => {
+                    autoSizeTextarea(e.currentTarget, COMMIT_MAX_ROWS)
+                    setUserEditedMsg(true)
+                    setMessage(e.currentTarget.value)
+                  }}
+                />
+              </Show>
+              <div class="flex items-center gap-2">
+                {/* 全选常驻在最左：勾选文件的高频前置动作，不该藏进顶栏的「更多」浮层。
+                    agent 模式没有勾选列表，全选无对象，整颗按钮不渲染。 */}
+                <Show when={mode() === 'manual'}>
+                  <button
+                    type="button"
+                    class="min-h-11 shrink-0 rounded-lg px-3 text-sm active:bg-accent disabled:opacity-40"
+                    disabled={anyRunning() || changes().length === 0}
+                    onClick={toggleAll}
+                  >
+                    {allSelected() ? t('git.deselectAll') : t('git.selectAll')}
+                  </button>
+                </Show>
+                {/* 四段挤在一行，窄屏优先截断计数文本而不是压扁按钮 */}
+                <span class="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  {mode() === 'agent'
+                    ? t('git.agentScope', { total: changes().length })
+                    : t('git.fileCount', { selected: selected().size, total: changes().length })}
+                </span>
+                <button
+                  type="button"
+                  class="min-h-11 shrink-0 rounded-lg px-4 text-sm text-destructive active:bg-accent disabled:opacity-40"
+                  disabled={!canDiscard()}
+                  onClick={() => {
+                    setConfirmingDiscard(true)
+                    setMoreOpen(true)
+                  }}
                 >
-                  {([value, label]) => (
-                    <button
-                      type="button"
-                      role="radio"
-                      aria-checked={mode() === value}
-                      class={cn(
-                        'min-h-9 flex-1 rounded-md text-xs active:opacity-80 disabled:opacity-40',
-                        mode() === value
-                          ? 'bg-primary text-primary-foreground'
-                          : 'text-muted-foreground',
-                      )}
-                      disabled={anyRunning()}
-                      onClick={() => setMode(value)}
-                    >
-                      {label}
-                    </button>
-                  )}
-                </For>
+                  {busy() === 'discard' || agentKind() === 'discard'
+                    ? t('git.discarding')
+                    : t('git.discard')}
+                </button>
+                <button
+                  type="button"
+                  class="min-h-11 shrink-0 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground active:opacity-80 disabled:opacity-40"
+                  disabled={!canCommit()}
+                  onClick={() => commit()}
+                >
+                  {busy() === 'commit' || agentKind() === 'commit'
+                    ? t('git.committing')
+                    : t('git.commit')}
+                </button>
               </div>
-            </Show>
-            {/*
-              agent 模式下提交信息由 agent 自己写（`gitOp` 的请求体里没有 message
-              这一项），输入框留着只会误导人以为它会被采纳。
-            */}
-            <Show when={mode() === 'manual'}>
-              <textarea
-                rows={1}
-                class="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-base outline-none focus:border-primary"
-                placeholder={t('git.commitPlaceholder')}
-                value={message()}
-                disabled={anyRunning()}
-                onInput={(e) => {
-                  setUserEditedMsg(true)
-                  setMessage(e.currentTarget.value)
-                }}
-              />
-            </Show>
-            <div class="mt-2 flex items-center gap-2">
-              <span class="text-xs text-muted-foreground">
-                {mode() === 'agent'
-                  ? t('git.agentScope', { total: changes().length })
-                  : t('git.fileCount', { selected: selected().size, total: changes().length })}
-              </span>
-              <button
-                type="button"
-                class="ml-auto min-h-11 rounded-lg px-4 text-sm text-destructive active:bg-accent disabled:opacity-40"
-                disabled={!canDiscard()}
-                onClick={() => {
-                  setConfirmingDiscard(true)
-                  setMoreOpen(true)
-                }}
-              >
-                {busy() === 'discard' || agentKind() === 'discard'
-                  ? t('git.discarding')
-                  : t('git.discard')}
-              </button>
-              <button
-                type="button"
-                class="min-h-11 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground active:opacity-80 disabled:opacity-40"
-                disabled={!canCommit()}
-                onClick={() => commit()}
-              >
-                {busy() === 'commit' || agentKind() === 'commit'
-                  ? t('git.committing')
-                  : t('git.commit')}
-              </button>
             </div>
           </div>
         </Show>
@@ -499,7 +534,10 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
                     {/* 勾选＝操作范围，点路径＝预览 diff，两者互不影响 */}
                     <button
                       type="button"
-                      class="tap-target flex shrink-0 items-center justify-center"
+                      // 勾选框不是图标按钮：视觉是 20×20 的方框，但整块 44×44 都要
+                      // 可点（列表行里最常见的误触就是勾选框太小），所以显式给尺寸，
+                      // 不套 .tap-target 那套「20×20 + 伪元素扩命中区」的口径。
+                      class="flex size-11 shrink-0 items-center justify-center"
                       role="checkbox"
                       aria-checked={selected().has(change.path)}
                       aria-label={change.path}

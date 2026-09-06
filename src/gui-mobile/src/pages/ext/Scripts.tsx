@@ -9,7 +9,7 @@ import {
   type Component,
 } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
-import { Plus } from 'lucide-solid'
+import { Play, Plus, Trash2 } from 'lucide-solid'
 import { api, type CommandDef, type CommandRun } from '@shared/api/index.js'
 import { subscribeCommandRuns } from '@shared/api/sse.js'
 import { Page } from '@/components/Page.jsx'
@@ -18,7 +18,6 @@ import { ActionSheet, type ActionSheetItem } from '@/components/ActionSheet.jsx'
 import { ErrorNotice, LoadingNotice, NoProjectNotice, Notice } from '@/components/ListStates.jsx'
 import { showToast } from '@/components/Toast.jsx'
 import { activeProjectId } from '@/lib/active-project.js'
-import { createLongPress } from '@/lib/long-press.js'
 import { t } from '@/i18n/index.js'
 
 /** 对齐服务端 routes/commands.ts 的 MAX_NAME_LEN / MAX_CLI_LEN，本地先挡一道。 */
@@ -29,7 +28,11 @@ const MAX_CLI_LEN = 2000
  * 扩展二级页：脚本管理。
  *
  * 桌面端把同样的能力塞在一个 DropdownMenu + 新增 Dialog 里（CommandMenu.tsx），
- * 移动端换成「列表 + 长按菜单 + 底部表单」这套本地手势，逻辑语义保持一致。
+ * 移动端换成「列表 + 行尾图标 + 底部表单」，逻辑语义保持一致。
+ *
+ * 行主体是纯展示：执行与删除各自有独立的图标按钮，点行本身什么都不会发生。
+ * 「点哪都跑」的代价是真起一个进程，而脚本没有详情页可去，与其给行一个时灵时
+ * 不灵的点击目标，不如让它彻底不可点。
  *
  * 没有「编辑」：服务端只有 GET / POST / DELETE 三个定义级端点，改脚本 = 删了重建，
  * 桌面端同样如此。
@@ -59,17 +62,17 @@ export const Scripts: Component = () => {
   })
 
   const runningIds = createMemo(
-    () => new Set(runs().filter((r) => r.status === 'running').map((r) => r.commandId)),
+    () =>
+      new Set(
+        runs()
+          .filter((r) => r.status === 'running')
+          .map((r) => r.commandId),
+      ),
   )
 
-  const [menuDef, setMenuDef] = createSignal<CommandDef | null>(null)
-  const [confirmingDelete, setConfirmingDelete] = createSignal(false)
+  /** 非 null ⇒ 正在为这个脚本做删除二次确认。 */
+  const [deleteDef, setDeleteDef] = createSignal<CommandDef | null>(null)
   const [addOpen, setAddOpen] = createSignal(false)
-
-  const closeMenu = () => {
-    setMenuDef(null)
-    setConfirmingDelete(false)
-  }
 
   /**
    * 运行并进入输出页。
@@ -80,7 +83,6 @@ export const Scripts: Component = () => {
   const run = async (def: CommandDef) => {
     const pid = activeProjectId()
     if (!pid) return
-    closeMenu()
     try {
       const started = await api.runCommand(pid, def.id)
       navigate(`/ext/runs/${encodeURIComponent(started.runId)}`)
@@ -92,7 +94,7 @@ export const Scripts: Component = () => {
   const remove = async (def: CommandDef) => {
     const pid = activeProjectId()
     if (!pid) return
-    closeMenu()
+    setDeleteDef(null)
     try {
       await api.deleteCommand(pid, def.id)
       // 定义列表没有自己的 SSE topic，本地摘掉即可——refetch 只会多打一次 HTTP。
@@ -103,22 +105,17 @@ export const Scripts: Component = () => {
     }
   }
 
-  const menuItems = (): ActionSheetItem[] => {
-    const def = menuDef()
+  // 删除不可逆，图标一点就没了太危险，所以入口只负责开确认面板。
+  // 入口本身已经写着「删除」，确认面板不必再摆一遍动作菜单，单段即可。
+  const deleteItems = (): ActionSheetItem[] => {
+    const def = deleteDef()
     if (!def) return []
-    // 删除不可逆，长按菜单里直接删一次误触就没了，所以拆成两段确认。
-    if (confirmingDelete()) {
-      return [
-        {
-          label: t('scripts.deleteConfirm'),
-          tone: 'destructive',
-          onSelect: () => void remove(def),
-        },
-      ]
-    }
     return [
-      { label: t('scripts.run'), onSelect: () => void run(def) },
-      { label: t('scripts.delete'), tone: 'destructive', onSelect: () => setConfirmingDelete(true) },
+      {
+        label: t('scripts.deleteConfirm'),
+        tone: 'destructive',
+        onSelect: () => void remove(def),
+      },
     ]
   }
 
@@ -130,7 +127,7 @@ export const Scripts: Component = () => {
       actions={
         <button
           type="button"
-          class="tap-target -mr-2 flex items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+          class="tap-target flex items-center justify-center text-muted-foreground active:opacity-60"
           aria-label={t('scripts.add')}
           onClick={() => setAddOpen(true)}
         >
@@ -150,34 +147,40 @@ export const Scripts: Component = () => {
             >
               <ul class="divide-y divide-border">
                 <For each={defs()}>
-                  {(def) => {
-                    const press = createLongPress({
-                      onLongPress: () => {
-                        setConfirmingDelete(false)
-                        setMenuDef(def)
-                      },
-                      onClick: () => void run(def),
-                    })
-                    return (
-                      <li>
+                  {(def) => (
+                    <li class="no-callout flex select-none items-center gap-3 px-4 py-3">
+                      <span class="min-w-0 flex-1">
+                        <span class="block truncate text-sm">{def.name}</span>
+                        <span class="block truncate font-mono text-xs text-muted-foreground">
+                          {def.cli}
+                        </span>
+                      </span>
+                      <Show when={runningIds().has(def.id)}>
+                        <span class="shrink-0 text-xs text-success">{t('scripts.running')}</span>
+                      </Show>
+                      {/* 图标按钮组：按钮视觉就是 20×20 的图标本身（见 app.css 的
+                          .tap-target），组内 gap-3 让两枚按钮的命中区正好相接——间距再小
+                          两块 ::after 就会重叠，上面那枚永远抢不到点击 */}
+                      <span class="flex shrink-0 items-center gap-3">
                         <button
                           type="button"
-                          class="no-callout flex w-full select-none items-center gap-3 px-4 py-3 text-left active:bg-accent"
-                          {...press}
+                          class="tap-target flex items-center justify-center text-muted-foreground active:opacity-60"
+                          aria-label={t('scripts.run')}
+                          onClick={() => void run(def)}
                         >
-                          <span class="min-w-0 flex-1">
-                            <span class="block truncate text-sm">{def.name}</span>
-                            <span class="block truncate font-mono text-xs text-muted-foreground">
-                              {def.cli}
-                            </span>
-                          </span>
-                          <Show when={runningIds().has(def.id)}>
-                            <span class="shrink-0 text-xs text-success">{t('scripts.running')}</span>
-                          </Show>
+                          <Play size={20} aria-hidden="true" />
                         </button>
-                      </li>
-                    )
-                  }}
+                        <button
+                          type="button"
+                          class="tap-target flex items-center justify-center text-destructive active:opacity-60"
+                          aria-label={t('scripts.delete')}
+                          onClick={() => setDeleteDef(def)}
+                        >
+                          <Trash2 size={20} aria-hidden="true" />
+                        </button>
+                      </span>
+                    </li>
+                  )}
                 </For>
               </ul>
             </Show>
@@ -186,11 +189,11 @@ export const Scripts: Component = () => {
       </Show>
 
       <ActionSheet
-        open={menuDef() !== null}
-        title={menuDef()?.name}
-        description={confirmingDelete() ? t('scripts.deleteHint') : undefined}
-        items={menuItems()}
-        onClose={closeMenu}
+        open={deleteDef() !== null}
+        title={deleteDef()?.name}
+        description={t('scripts.deleteHint')}
+        items={deleteItems()}
+        onClose={() => setDeleteDef(null)}
       />
 
       <AddScriptSheet
