@@ -16,6 +16,8 @@ import { subscribeSession, subscribeSessions, subscribeSpec } from '@shared/api/
 import { renderMarkdown } from '@shared/lib/markdown.js'
 import { renderMermaidCore } from '@shared/lib/mermaid-core.js'
 import { parseConfirmQuestions } from '@shared/lib/question-parse.js'
+import { newFreeformId, type FreeformDraft } from '@shared/lib/question-draft.js'
+import { observeSelection, type SelectionSnapshot } from '@shared/lib/selection.js'
 import { specFilePath } from '@shared/lib/spec-path.js'
 import { stageBadgeClass } from '@shared/lib/spec-meta.js'
 import { formatSpecUpdatedAt } from '@shared/lib/time.js'
@@ -24,6 +26,8 @@ import { ActionSheet } from '@/components/ActionSheet.jsx'
 import { MermaidViewer } from '@/components/MermaidViewer.jsx'
 import { QuestionSheet } from '@/components/QuestionSheet.jsx'
 import { AppendSheet } from '@/components/AppendSheet.jsx'
+import { AnnotateSheet } from '@/components/AnnotateSheet.jsx'
+import { SelectionBar } from '@/components/SelectionBar.jsx'
 import {
   ErrorNotice,
   LoadingNotice,
@@ -40,6 +44,15 @@ import { t } from '@/i18n/index.js'
 const SSE_DEBOUNCE_MS = 120
 const FETCH_RETRIES = 3
 const FETCH_BACKOFF_MS = 150
+
+/**
+ * 选区去抖窗口。桌面鼠标拖选 50ms 就够，触屏拖动选择把手期间
+ * `selectionchange` 的频率高得多，窗口太短底部条会跟着手指抖。
+ */
+const SELECTION_THROTTLE_MS = 250
+
+/** 服务端 explain 的正文上限；超了返 400，不如前端先拦一道。 */
+const EXPLAIN_MAX_CHARS = 4000
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -86,6 +99,14 @@ export const SpecDetail: Component = () => {
   const [appendOpen, setAppendOpen] = createSignal(false)
   const [moreOpen, setMoreOpen] = createSignal(false)
   const [diagram, setDiagram] = createSignal<string | null>(null)
+  const [snap, setSnap] = createSignal<SelectionSnapshot | null>(null)
+  const [annotateOpen, setAnnotateOpen] = createSignal(false)
+  const [annotateSnap, setAnnotateSnap] = createSignal<SelectionSnapshot | null>(null)
+  /**
+   * 批注草稿是**页面级**的（与桌面端同口径）：弹窗开合、agent 运行都不清空，
+   * 页面卸载才丢。它们唯一的提交出口是待确认项弹窗。
+   */
+  const [freeforms, setFreeforms] = createSignal<FreeformDraft[]>([])
 
   const [spec, { refetch }] = createResource<
     SpecDetailDoc | null,
@@ -99,6 +120,9 @@ export const SpecDetail: Component = () => {
     const s = spec()
     return s ? parseConfirmQuestions(s.body) : []
   })
+
+  /** FAB 的门禁与角标：待确认项与批注草稿共用同一个提交出口，所以合并计数。 */
+  const pendingCount = createMemo(() => questions().length + freeforms().length)
 
   // SSE：spec 文档变更 → 防抖 refetch。放进 startTransition，否则资源重取会让
   // <Suspense> 重新挂起，正文容器被拆掉重建，滚动位置归零。
@@ -209,6 +233,68 @@ export const SpecDetail: Component = () => {
     })
   })
 
+  // 正文选区 → 底部动作条。观察器挂在 document 的 selectionchange 上，
+  // 只有落在 <article> 里的 range 才会产出快照。
+  createEffect(() => {
+    const el = articleEl()
+    if (!el) return
+    const unsub = observeSelection(el, setSnap, {
+      noSectionLabel: t('specDetail.noSection'),
+      throttleMs: SELECTION_THROTTLE_MS,
+    })
+    onCleanup(unsub)
+  })
+
+  /** 批注：冻结当前快照后开弹窗，底部条同时隐藏（父级门禁在渲染处）。 */
+  function openAnnotate(s: SelectionSnapshot) {
+    setAnnotateSnap(s)
+    setAnnotateOpen(true)
+  }
+
+  /**
+   * 提交批注 —— **不发网络请求**（与桌面端一致），只往页面级草稿里加一条。
+   * 真正落盘发生在待确认项弹窗把答案与批注合成一个 payload 提交的时候。
+   */
+  function submitAnnotate(note: string) {
+    const s = annotateSnap()
+    if (!s) return
+    setFreeforms((prev) => [
+      ...prev,
+      { id: newFreeformId(prev.length), sectionPath: s.sectionPath, quote: s.text, note },
+    ])
+    setAnnotateOpen(false)
+    setSnap(null)
+    showToast(t('specDetail.annotationSaved'))
+  }
+
+  function removeFreeform(id: string) {
+    setFreeforms((prev) => prev.filter((f) => f.id !== id))
+  }
+
+  /**
+   * 解释：拉起（或复用）spec 的会话问一句，然后跳过去看输出。
+   *
+   * 与桌面端两处不同：一是这里是真正的路由跳转，而不是桌面「常驻侧栏被动切
+   * 会话」的语义；二是前端自己拦 4000 字上限——移动端「全选正文」只要一次
+   * 长按加一个手势，让用户吃一条裸的 400 message 不如直接说清楚。
+   */
+  async function openExplain(s: SelectionSnapshot) {
+    if (s.text.length > EXPLAIN_MAX_CHARS) {
+      showToast(t('specDetail.explainTooLong', { max: EXPLAIN_MAX_CHARS }), 'error')
+      return
+    }
+    setSnap(null)
+    setRunning(true)
+    try {
+      const { sessionId } = await api.explain(pid(), params.id, s.text)
+      setSpecSid(sessionId)
+      navigate(`/sessions/${encodeURIComponent(sessionId)}`)
+    } catch (err) {
+      setRunning(false)
+      showToast((err as Error).message || t('specDetail.explainFailed'), 'error')
+    }
+  }
+
   /**
    * 正文里的图表点击 → 全屏查看。事件委托到容器：图表数量随文档变化，
    * 而 morphdom 会不断替换节点，逐个挂监听必然漏。
@@ -296,9 +382,9 @@ export const SpecDetail: Component = () => {
                       </time>
                     </div>
 
-                    {/* 动作行。debug / git 照常渲染但点击弹「即将支持」：
-                        设计稿把它们画在这里，隐藏会让结构对不上；沿用上一个
-                        spec 已确立的降级口径，不新造第三种表达。 */}
+                    {/* 动作行。debug 仍照常渲染但点击弹「即将支持」：设计稿把
+                        它画在这里，隐藏会让结构对不上；沿用上一个 spec 已确立
+                        的降级口径，不新造第三种表达。 */}
                     <div class="mt-3 flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -316,8 +402,8 @@ export const SpecDetail: Component = () => {
                       </button>
                       <button
                         type="button"
-                        class="min-h-9 rounded-md border border-border px-3 text-xs text-muted-foreground active:bg-accent"
-                        onClick={comingSoon}
+                        class="min-h-9 rounded-md border border-border px-3 text-xs active:bg-accent"
+                        onClick={() => navigate(`/specs/${encodeURIComponent(params.id)}/git`)}
                       >
                         {t('specDetail.git')}
                       </button>
@@ -337,32 +423,50 @@ export const SpecDetail: Component = () => {
                     onClick={onArticleClick}
                   />
 
-                  {/* 有待确认项才出 FAB。运行中禁用，与桌面端 showPanel 的门禁
-                      同因：可见即可提交，会并发拉起第二个改写同一文档的 session。 */}
-                  <Show when={questions().length > 0}>
+                  {/* 有待确认项**或**批注草稿才出 FAB。运行中禁用，与桌面端
+                      showPanel 的门禁同因：可见即可提交，会并发拉起第二个改写
+                      同一文档的 session；草稿只是被隐藏，不清空。 */}
+                  <Show when={pendingCount() > 0}>
                     <button
                       type="button"
-                      class="fixed bottom-6 right-4 z-40 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg active:opacity-80 disabled:opacity-40"
+                      class="fixed bottom-6 right-4 z-40 flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg active:opacity-80 disabled:opacity-40"
                       aria-label={t('specDetail.questions')}
                       disabled={running()}
                       onClick={() => setQuestionOpen(true)}
                     >
                       <CircleHelp size={24} aria-hidden="true" />
                       <span class="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full border border-background bg-destructive px-1 text-[11px] text-destructive-foreground">
-                        {questions().length}
+                        {pendingCount()}
                       </span>
                     </button>
                   </Show>
+
+                  {/* 批注弹窗打开时把底部条摘掉：两者都贴底，同时在会叠在一起。 */}
+                  <SelectionBar
+                    snap={annotateOpen() ? null : snap()}
+                    onAnnotate={openAnnotate}
+                    onExplain={(s) => void openExplain(s)}
+                    onClose={() => setSnap(null)}
+                  />
+                  <AnnotateSheet
+                    open={annotateOpen()}
+                    snap={annotateSnap()}
+                    onClose={() => setAnnotateOpen(false)}
+                    onSubmit={submitAnnotate}
+                  />
 
                   <QuestionSheet
                     open={questionOpen()}
                     projectId={pid()}
                     specId={doc().id}
                     questions={questions()}
+                    freeforms={freeforms()}
+                    onRemoveFreeform={removeFreeform}
                     onClose={() => setQuestionOpen(false)}
                     onSubmitted={(sessionId) => {
                       setQuestionOpen(false)
                       setRunning(true)
+                      setFreeforms([])
                       if (sessionId) {
                         setSpecSid(sessionId)
                         navigate(`/sessions/${encodeURIComponent(sessionId)}`)

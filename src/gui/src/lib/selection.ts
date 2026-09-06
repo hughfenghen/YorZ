@@ -1,88 +1,25 @@
+import {
+  observeSelection as observeSelectionCore,
+  type ObserveSelectionOptions,
+  type SelectionCallback,
+  type SelectionSnapshot,
+} from '@shared/lib/selection.js'
 import { t } from '../i18n/index.js'
 
-export interface SelectionSnapshot {
-  text: string
-  rect: DOMRect
-  sectionPath: string
-}
+/**
+ * 桌面端薄封装：观察器本体已下沉共享层，这里只补上它刻意不持有的那一处
+ * 本地化文案，让既有调用点 `observeSelection(el, setSnap)` 保持两参形态。
+ */
 
-export type SelectionCallback = (snap: SelectionSnapshot | null) => void
-
-function findSectionHeading(node: Node | null, container: HTMLElement): HTMLElement | null {
-  let el: Node | null = node
-  while (el && el !== container) {
-    if (el.nodeType === 1) {
-      const tag = (el as HTMLElement).tagName
-      if (tag === 'H2' || tag === 'H3') return el as HTMLElement
-    }
-    let prev: Node | null = el.previousSibling
-    if (!prev) {
-      el = el.parentNode
-      continue
-    }
-    // descend into last children of the previous sibling
-    while (prev?.lastChild) prev = prev.lastChild
-    el = prev
-  }
-  return null
-}
-
-function rangeContainedIn(range: Range, container: HTMLElement): boolean {
-  return (
-    container.contains(range.startContainer) &&
-    container.contains(range.endContainer) &&
-    container.contains(range.commonAncestorContainer)
-  )
-}
+export type { SelectionSnapshot, SelectionCallback }
 
 export function observeSelection(
   container: HTMLElement,
   cb: SelectionCallback,
-  options: { throttleMs?: number } = {},
+  options: Omit<ObserveSelectionOptions, 'noSectionLabel'> = {},
 ): () => void {
-  const throttleMs = options.throttleMs ?? 50
-  let timer: number | undefined
-  let lastText = ''
-
-  const handler = () => {
-    window.clearTimeout(timer)
-    timer = window.setTimeout(() => {
-      const sel = window.getSelection()
-      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
-        if (lastText !== '') {
-          lastText = ''
-          cb(null)
-        }
-        return
-      }
-      const range = sel.getRangeAt(0)
-      if (!rangeContainedIn(range, container)) {
-        if (lastText !== '') {
-          lastText = ''
-          cb(null)
-        }
-        return
-      }
-      const text = sel.toString()
-      if (!text.trim()) {
-        if (lastText !== '') {
-          lastText = ''
-          cb(null)
-        }
-        return
-      }
-      const rect = range.getBoundingClientRect()
-      const heading = findSectionHeading(range.startContainer, container)
-      const noSection = t('selection.noSection')
-      const sectionPath = heading ? heading.textContent?.trim() || noSection : noSection
-      lastText = text
-      cb({ text, rect, sectionPath })
-    }, throttleMs)
-  }
-
-  document.addEventListener('selectionchange', handler)
-  return () => {
-    document.removeEventListener('selectionchange', handler)
-    window.clearTimeout(timer)
-  }
+  return observeSelectionCore(container, cb, {
+    ...options,
+    noSectionLabel: t('selection.noSection'),
+  })
 }

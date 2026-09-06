@@ -1,5 +1,6 @@
 import { Suspense, createMemo, createResource, type Component } from 'solid-js'
 import { useParams } from '@solidjs/router'
+import { specCommitMessage } from '@shared/lib/spec-meta.js'
 import { api } from '../lib/api.js'
 import { projectHref, useCurrentProjectId } from '../lib/project.js'
 import { useFocusModePage } from '../lib/layout-focus.js'
@@ -22,12 +23,9 @@ export const SpecReview: Component = () => {
   )
   useFocusModePage()
 
-  const defaultCommitMessage = createMemo(() => {
-    const parts = params.id.split('.')
-    const type = parts.length >= 2 ? parts[1]! : 'feat'
-    const summary = spec()?.frontmatter.summary ?? ''
-    return summary ? `${type}: ${summary}` : `${type}: update`
-  })
+  const defaultCommitMessage = createMemo(() =>
+    specCommitMessage(params.id, spec()?.frontmatter.summary),
+  )
 
   return (
     <section class="flex min-h-0 flex-1 flex-col gap-2 p-2">

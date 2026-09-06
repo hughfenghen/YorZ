@@ -1,4 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, type Component } from 'solid-js'
+import { X } from 'lucide-solid'
 import { api, type QuestionAnswersBody } from '@shared/api/index.js'
 import { FREEFORM_SENTINEL } from '@shared/lib/answer-payload.js'
 import type { ConfirmQuestion } from '@shared/lib/question-parse.js'
@@ -7,9 +8,11 @@ import {
   countUnanswered,
   impactAccent,
   initialAnswers,
+  toAnnotationBodies,
   type AnswerDraft,
   type ConfirmTop,
   type DropTarget,
+  type FreeformDraft,
   type RejectIntent,
 } from '@shared/lib/question-draft.js'
 import { Sheet } from './Sheet.jsx'
@@ -62,12 +65,18 @@ const OptionRow: Component<{
  * confirm 型的三级否决意图，桌面端是嵌套 RadioGroup 逐级缩进；375px 宽下
  * 三层缩进会把选项挤成竖排单字，所以改成**分级就地展开**：选了「否决」才出
  * 第二级，选了「弃目标」才出第三级。
+ *
+ * 它同时是选区批注草稿**唯一的展示与提交出口**：`freeforms` 由页面持有，
+ * 这里只渲染并把它们合进同一个 payload。
  */
 export const QuestionSheet: Component<{
   open: boolean
   projectId: string
   specId: string
   questions: ConfirmQuestion[]
+  /** 页面级的选区批注草稿；寿命比本弹窗长，关掉再打开仍在。 */
+  freeforms: FreeformDraft[]
+  onRemoveFreeform: (id: string) => void
   onClose: () => void
   /** 提交并拉起 agent 之后回调，带上新会话 id（拿不到则为空串）。 */
   onSubmitted: (sessionId: string) => void
@@ -76,7 +85,8 @@ export const QuestionSheet: Component<{
   const [busy, setBusy] = createSignal(false)
 
   // 每次打开都从初值重来：弹窗关掉意味着这一轮草稿作废，留着上次的选择
-  // 会让人以为自己已经答过。
+  // 会让人以为自己已经答过。**只重置答案**——`freeforms` 是页面级的，
+  // 批注攒到一半关掉弹窗去正文继续选，草稿不能跟着蒸发。
   createEffect(() => {
     if (props.open) setAnswers(initialAnswers(props.questions))
   })
@@ -110,13 +120,17 @@ export const QuestionSheet: Component<{
         showToast(t('specDetail.reasonRequired'), 'error')
         return
       }
-      if (built.items.length === 0) {
+      const annotations = toAnnotationBodies(props.freeforms)
+      // 服务端只要求两者不同时为空，所以「只批注不答题」是合法提交——
+      // 门禁必须同时看两边，否则前端会把一次有效提交自己挡下。
+      if (built.items.length === 0 && annotations.length === 0) {
         showToast(t('specDetail.unanswered', { count: props.questions.length }), 'error')
         return
       }
-      // freeformAnnotations 恒为空数组：移动端不做正文选区批注（见 spec 5.2），
-      // 没有能产出 sectionPath / quote 的入口。
-      const payload: QuestionAnswersBody = { answers: built.items, freeformAnnotations: [] }
+      const payload: QuestionAnswersBody = {
+        answers: built.items,
+        freeformAnnotations: annotations,
+      }
       await api.submitQuestionAnswers(props.projectId, props.specId, payload)
       const { sessionId } = await api.runAgent(props.projectId, props.specId)
       showToast(t('specDetail.submitted'))
@@ -152,7 +166,7 @@ export const QuestionSheet: Component<{
       }
     >
       <Show
-        when={props.questions.length > 0}
+        when={props.questions.length > 0 || props.freeforms.length > 0}
         fallback={
           <p class="py-6 text-center text-sm text-muted-foreground">
             {t('specDetail.questionsEmpty')}
@@ -299,6 +313,33 @@ export const QuestionSheet: Component<{
                     onInput={(e) => patch(q.id, { note: e.currentTarget.value })}
                   />
                 </Show>
+              </section>
+            )}
+          </For>
+
+          {/* 批注草稿排在问题卡之后（与桌面面板同序）：它们是用户自己加的，
+              先把 agent 提出的问题读完再回看自己的补充更符合阅读顺序。 */}
+          <For each={props.freeforms}>
+            {(f) => (
+              <section class="rounded-lg border border-primary/40 bg-background p-3">
+                <header class="mb-2 flex items-center gap-2">
+                  <h3 class="min-w-0 flex-1 text-sm font-medium">
+                    {t('specDetail.annotationDraft')}
+                  </h3>
+                  <button
+                    type="button"
+                    class="tap-target -mr-2 flex shrink-0 items-center justify-center rounded-md text-muted-foreground active:bg-accent"
+                    aria-label={t('specDetail.removeAnnotation')}
+                    onClick={() => props.onRemoveFreeform(f.id)}
+                  >
+                    <X size={18} aria-hidden="true" />
+                  </button>
+                </header>
+                <blockquote class="m-0 break-words border-l-2 border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  <em>{f.sectionPath}</em> {t('specDetail.annotationQuoteConnector')} “
+                  {f.quote.slice(0, 200)}”
+                </blockquote>
+                <p class="m-0 mt-2 whitespace-pre-wrap break-words text-sm">！！！{f.note}</p>
               </section>
             )}
           </For>

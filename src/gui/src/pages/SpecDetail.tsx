@@ -31,7 +31,8 @@ import { parseConfirmQuestions } from '../lib/question-parse.js'
 import { SelectionMenu } from '../components/SelectionMenu.jsx'
 import { AnnotatePopover } from '../components/AnnotatePopover.jsx'
 import { AppendTaskDialog } from '../components/AppendTaskDialog.jsx'
-import { QuestionConfirmPanel, type FreeformDraft } from '../components/QuestionConfirmPanel.jsx'
+import { QuestionConfirmPanel } from '../components/QuestionConfirmPanel.jsx'
+import { newFreeformId, type FreeformDraft } from '@shared/lib/question-draft.js'
 import { Breadcrumb } from '../components/Breadcrumb.jsx'
 import { FocusModeButton } from '../components/FocusModeButton.jsx'
 import { Button } from '../components/ui/button.jsx'
@@ -305,7 +306,7 @@ export const SpecDetail: Component = () => {
     setFreeforms((prev) => [
       ...prev,
       {
-        id: `f-${Date.now()}-${prev.length}`,
+        id: newFreeformId(prev.length),
         sectionPath: s.sectionPath,
         quote: s.text,
         note,

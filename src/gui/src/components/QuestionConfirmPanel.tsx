@@ -1,15 +1,17 @@
 import { For, Show, createMemo, createSignal, type Component } from 'solid-js'
 import type { ConfirmQuestion } from '../lib/question-parse.js'
-import type { AnnotationBody, QuestionAnswersBody } from '../lib/api.js'
+import type { QuestionAnswersBody } from '../lib/api.js'
 import { FREEFORM_SENTINEL } from '../lib/answer-payload.js'
 import {
   buildAnswerItems,
   countUnanswered,
   impactAccent,
   initialAnswers,
+  toAnnotationBodies,
   type AnswerDraft,
   type ConfirmTop,
   type DropTarget,
+  type FreeformDraft,
   type RejectIntent,
 } from '@shared/lib/question-draft.js'
 import { Button } from './ui/button.jsx'
@@ -23,13 +25,6 @@ import {
 import { Textarea } from './ui/textarea.jsx'
 import { Send, X } from 'lucide-solid'
 import { t } from '../i18n/index.js'
-
-export interface FreeformDraft {
-  id: string
-  sectionPath: string
-  quote: string
-  note: string
-}
 
 interface Props {
   questions: ConfirmQuestion[]
@@ -82,13 +77,7 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
       }
       const payload: QuestionAnswersBody = {
         answers: built.items,
-        freeformAnnotations: props.freeforms.map(
-          (f): AnnotationBody => ({
-            sectionPath: f.sectionPath,
-            quote: f.quote,
-            note: f.note,
-          }),
-        ),
+        freeformAnnotations: toAnnotationBodies(props.freeforms),
       }
       if (payload.answers.length === 0 && payload.freeformAnnotations.length === 0) {
         setError(t('questionConfirm.noAnswers'))

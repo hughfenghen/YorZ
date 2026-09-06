@@ -1,4 +1,4 @@
-import type { QuestionAnswerBody } from '../api/index.js'
+import type { AnnotationBody, QuestionAnswerBody } from '../api/index.js'
 import {
   buildAnswerItem,
   buildConfirmAnswerItem,
@@ -132,6 +132,39 @@ export function buildAnswerItems(
     if (item) items.push(item)
   }
   return { ok: true, items }
+}
+
+/**
+ * 选区批注的本地草稿。
+ *
+ * 它与 `AnswerDraft` 走的是两条不同的寿命：答案草稿随面板/弹窗开合重置，
+ * 批注草稿是页面级的，可以攒好几条再和答案一起提交。`id` 只服务于列表 key
+ * 与删除，**不进 payload**——服务端不认这个字段。
+ */
+export interface FreeformDraft {
+  id: string
+  sectionPath: string
+  quote: string
+  note: string
+}
+
+/** 生成草稿 id。同一毫秒内连续批注靠 index 区分。 */
+export function newFreeformId(index: number): string {
+  return `f-${Date.now()}-${index}`
+}
+
+/**
+ * 草稿 → 提交体：丢掉 `id`，只留服务端校验的三个字段
+ * （`routes/specs.ts` 要求三者均为非空字符串，否则整个请求 400）。
+ */
+export function toAnnotationBodies(drafts: readonly FreeformDraft[]): AnnotationBody[] {
+  return drafts.map(
+    (f): AnnotationBody => ({
+      sectionPath: f.sectionPath,
+      quote: f.quote,
+      note: f.note,
+    }),
+  )
 }
 
 /** 影响文本含 🔴 → 高危红边，🟡 → 中危黄边。两端共用同一套设计 token。 */
