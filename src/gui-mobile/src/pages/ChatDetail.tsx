@@ -2,7 +2,7 @@ import { Show, createEffect, createMemo, createResource, createSignal } from 'so
 import type { Component } from 'solid-js'
 import { useNavigate, useParams } from '@solidjs/router'
 import { FileText } from 'lucide-solid'
-import { api, type SessionInfo } from '@shared/api/index.js'
+import { api, type SessionInfo, type SpecListItem } from '@shared/api/index.js'
 import { createChatTranscript } from '@shared/lib/chat-transcript.js'
 import { createAttachments } from '@shared/lib/attachments.js'
 import type { SlashCommand } from '@shared/lib/completion.js'
@@ -20,6 +20,8 @@ import { NoProjectNotice } from '@/components/ListStates.jsx'
 import { showToast } from '@/components/Toast.jsx'
 import { activeProjectId } from '@/lib/active-project.js'
 import { transcriptCache } from '@/lib/transcript-cache.js'
+import { readSessionCache, writeSessionCache } from '@/lib/session-cache.js'
+import { readSpecCache, writeSpecCache } from '@/lib/spec-cache.js'
 import { copyText } from '@/lib/clipboard.js'
 import { watchKeyboardInset } from '@/lib/keyboard.js'
 import { t } from '@/i18n/index.js'
@@ -66,17 +68,61 @@ export const ChatDetail: Component = () => {
   let messagesEl: HTMLDivElement | undefined
 
   /**
-   * 标题与 specId 只能从会话列表里查——后端没有「单个 session 的 GET」端点，
-   * 本次也不新增（沿用上一个 spec 确立的后端零改动边界）。列表上限 30 条，
-   * 查不到就回退未命名、且不渲染跳转 icon，而不是渲染一个点了没反应的按钮。
+   * session 元信息只能从列表里查——后端没有「单个 session 的 GET」端点，
+   * 本次也不新增（沿用上一个 spec 确立的后端零改动边界）。查不到就回退
+   * 未命名、且不渲染跳转 icon，而不是渲染一个点了没反应的按钮。
    */
+  const [list, setList] = createSignal<SessionInfo[] | null>(null)
   const [sessions] = createResource<SessionInfo[], string>(
     () => pid() || undefined,
     (p) => api.listSessions(p),
   )
-  const current = createMemo(() => sessions()?.find((s) => s.id === sid()))
-  const title = () => current()?.title || t('chat.untitled')
+
+  // 详情页标题优先走列表缓存：从会话列表点进来时首帧就能拿到真实 title，
+  // 不再先显示"未命名会话"再被接口结果替换。
+  createEffect(() => {
+    const p = pid()
+    setList(p ? readSessionCache(p) : null)
+  })
+
+  createEffect(() => {
+    if (sessions.state !== 'ready') return
+    const p = pid()
+    const fresh = sessions()
+    if (!p || !fresh) return
+    setList(fresh)
+    writeSessionCache(p, fresh)
+  })
+
+  const current = createMemo(() => list()?.find((s) => s.id === sid()))
   const specId = () => current()?.specId
+
+  const [specList, setSpecList] = createSignal<SpecListItem[] | null>(null)
+  const [specs] = createResource<SpecListItem[], string>(
+    () => pid() || undefined,
+    (p) => api.listSpecs(p),
+  )
+
+  createEffect(() => {
+    const p = pid()
+    setSpecList(p ? readSpecCache(p) : null)
+  })
+
+  createEffect(() => {
+    if (specs.state !== 'ready') return
+    const p = pid()
+    const fresh = specs()
+    if (!p || !fresh) return
+    setSpecList(fresh)
+    writeSpecCache(p, fresh)
+  })
+
+  const specById = createMemo(() => {
+    const map = new Map<string, SpecListItem>()
+    for (const spec of specList() ?? []) map.set(spec.id, spec)
+    return map
+  })
+  const title = () => specById().get(specId() ?? '')?.title || current()?.title || t('chat.untitled')
 
   // 列表是运行态的权威来源（服务端的 running 集合），SSE 只送变化。
   createEffect(() => {
