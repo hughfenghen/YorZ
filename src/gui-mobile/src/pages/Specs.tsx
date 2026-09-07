@@ -189,10 +189,10 @@ export const Specs: Component = () => {
                             {formatSpecUpdatedAt(spec.updated_at)}
                           </time>
                         </span>
-                        <span class="truncate text-sm">{spec.title}</span>
+                        <span class="truncate">{spec.title}</span>
                         <Show when={spec.summary}>
                           {/* 两行截断：一行太少（summary 常是一整句），三行会让每屏只剩四条 */}
-                          <span class="line-clamp-2 text-xs text-muted-foreground">
+                          <span class="line-clamp-2 text-sm text-muted-foreground">
                             {spec.summary}
                           </span>
                         </Show>

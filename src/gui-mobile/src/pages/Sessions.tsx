@@ -198,7 +198,7 @@ export const Sessions: Component = () => {
                             从详情页返回时就会先矮后高地跳一下。 */}
                         <span
                           class={cn(
-                            'block break-words text-sm',
+                            'block break-words',
                             group.specId ? 'line-clamp-1' : 'line-clamp-3',
                           )}
                         >
@@ -207,7 +207,7 @@ export const Sessions: Component = () => {
                         <Show when={group.specId}>
                           {/* min-h 撑住两行：spec 数据未到（或这条 spec 真的没写
                               summary）时留白，也不让行高变。 */}
-                          <span class="mt-0.5 line-clamp-2 min-h-8 break-words text-xs text-muted-foreground">
+                          <span class="mt-0.5 line-clamp-2 min-h-8 break-words text-sm text-muted-foreground">
                             {specOf(group.specId)?.summary}
                           </span>
                         </Show>

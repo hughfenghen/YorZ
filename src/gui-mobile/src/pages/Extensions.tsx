@@ -27,10 +27,12 @@ import { t } from '@/i18n/index.js'
 
 const Group: Component<{ title: string; children: import('solid-js').JSX.Element }> = (props) => (
   <section class="mb-6">
-    <h2 class="mb-2 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <h2 class="mb-2 px-4 text-sm font-medium uppercase tracking-wide text-muted-foreground">
       {props.title}
     </h2>
-    <div class="divide-y-[0.5px] divide-border border-y border-border bg-card">{props.children}</div>
+    <div class="divide-y-[0.5px] divide-border border-y border-border bg-card">
+      {props.children}
+    </div>
   </section>
 )
 
@@ -47,8 +49,8 @@ const EntryRow: Component<{
   >
     <props.icon size={18} class="shrink-0 text-muted-foreground" />
     <span class="min-w-0 flex-1">
-      <span class="block truncate text-sm">{props.label}</span>
-      <span class="block truncate text-xs text-muted-foreground">{props.desc}</span>
+      <span class="block truncate">{props.label}</span>
+      <span class="block truncate text-sm text-muted-foreground">{props.desc}</span>
     </span>
     <ChevronRight size={18} class="shrink-0 text-muted-foreground" />
   </button>
@@ -151,7 +153,7 @@ export const Extensions: Component = () => {
                           onClick={() => navigate(`/ext/runs/${encodeURIComponent(run.runId)}`)}
                         >
                           <span class="block truncate text-sm">{run.name}</span>
-                          <span class="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                          <span class="mt-0.5 flex items-center gap-2 text-muted-foreground">
                             <time>{formatDuration(run.startedAt, run.endedAt, now())}</time>
                             <span>·</span>
                             <span class="truncate">{run.cli}</span>

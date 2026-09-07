@@ -152,8 +152,8 @@ export const Scripts: Component = () => {
                   {(def) => (
                     <li class="no-callout flex select-none items-center gap-3 px-4 py-3">
                       <span class="min-w-0 flex-1">
-                        <span class="block truncate text-sm">{def.name}</span>
-                        <span class="block truncate font-mono text-xs text-muted-foreground">
+                        <span class="block truncate">{def.name}</span>
+                        <span class="block truncate font-mono text-sm text-muted-foreground">
                           {def.cli}
                         </span>
                       </span>

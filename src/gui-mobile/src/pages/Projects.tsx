@@ -77,9 +77,9 @@ export const Projects: Component = () => {
                         </Show>
                       </span>
                       <span class="min-w-0 flex-1">
-                        <span class="block truncate text-sm">{displayProjectName(p)}</span>
+                        <span class="block truncate">{displayProjectName(p)}</span>
                         {/* 路径从头部截断，见 app.css 的 .truncate-start */}
-                        <span class="truncate-start mt-0.5 block text-xs text-muted-foreground">
+                        <span class="truncate-start mt-0.5 block text-sm text-muted-foreground">
                           {p.path}
                         </span>
                       </span>
