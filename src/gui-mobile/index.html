@@ -16,9 +16,8 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="color-scheme" content="light dark" />
-    <!-- 地址栏/状态栏底色跟随亮暗，避免站点内容与系统 UI 之间出现一条异色带 -->
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2e9" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0d1210" />
+    <!-- 地址栏/状态栏底色由下面的主题引导脚本与 src/lib/pwa.ts 动态同步 -->
+    <meta name="theme-color" content="#f2f2e9" />
     <!-- iOS 独立窗口模式：Safari 至今不读 manifest 的 display/icons，只认这几个私有 meta -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -37,6 +36,11 @@
         try {
           var THEME_NAMES = ['terminal', 'graphite', 'paper']
           var THEME_MODES = ['system', 'light', 'dark']
+          var THEME_BACKGROUNDS = {
+            terminal: { light: '#f5f5ef', dark: '#171c18' },
+            graphite: { light: '#f4f5f6', dark: '#1e2024' },
+            paper: { light: '#f6f3e9', dark: '#2a241e' },
+          }
           var hint = null
           try {
             hint = JSON.parse(window.localStorage.getItem('yorz.appearanceHint') || 'null')
@@ -55,6 +59,9 @@
           document.documentElement.setAttribute('data-kb-theme', resolved)
           document.documentElement.setAttribute('data-kb-theme-name', name)
           document.documentElement.style.colorScheme = resolved
+
+          var themeColor = document.querySelector('meta[name="theme-color"]')
+          if (themeColor) themeColor.setAttribute('content', THEME_BACKGROUNDS[name][resolved])
         } catch (e) {}
       })()
     </script>

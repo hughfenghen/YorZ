@@ -26,10 +26,57 @@ export function applyUpdate(): void {
 
 let registered = false
 
+function hslTokenToHex(token: string): string | null {
+  const match = token.match(/^([\d.]+)\s+([\d.]+)%\s+([\d.]+)%$/)
+  if (!match) return null
+  const h = Number(match[1])
+  const s = Number(match[2]) / 100
+  const l = Number(match[3]) / 100
+  if (![h, s, l].every(Number.isFinite)) return null
+
+  const a = s * Math.min(l, 1 - l)
+  const channel = (n: number) => {
+    const k = (n + h / 30) % 12
+    const value = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1)
+    return Math.round(255 * value)
+      .toString(16)
+      .padStart(2, '0')
+  }
+  return `#${channel(0)}${channel(8)}${channel(4)}`
+}
+
+function syncThemeColorMeta(): void {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return
+  const root = document.documentElement
+  const background = window.getComputedStyle(root).getPropertyValue('--background').trim()
+  const color = hslTokenToHex(background) ?? '#f2f2e9'
+
+  let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+  if (!meta) {
+    meta = document.createElement('meta')
+    meta.name = 'theme-color'
+    document.head.append(meta)
+  }
+  meta.content = color
+}
+
+function initThemeColorSync(): void {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return
+  const sync = () => window.requestAnimationFrame(syncThemeColorMeta)
+  sync()
+
+  const observer = new window.MutationObserver(sync)
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-kb-theme', 'data-kb-theme-name'],
+  })
+}
+
 /** 在应用入口调用一次。SSR/测试环境下没有 navigator.serviceWorker，直接跳过。 */
 export function initPWA(): void {
   if (registered) return
   registered = true
+  initThemeColorSync()
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
 
   updateSW = registerSW({

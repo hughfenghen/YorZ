@@ -33,7 +33,10 @@ function redirectBaseWithoutSlash() {
       server.middlewares.use(
         (
           req: { url?: string },
-          res: { writeHead: (code: number, headers: Record<string, string>) => void; end: () => void },
+          res: {
+            writeHead: (code: number, headers: Record<string, string>) => void
+            end: () => void
+          },
           next: () => void,
         ) => {
           const url = req.url ?? ''
@@ -76,8 +79,8 @@ export default defineConfig({
         lang: 'zh-CN',
         // 与 app.css 中 paper 亮色主题的 --background/--primary 对齐，
         // 保证启动画面与首屏之间没有色块跳变。
-        background_color: '#f2f2e9',
-        theme_color: '#146638',
+        background_color: '#f6f3e9',
+        theme_color: '#f6f3e9',
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
