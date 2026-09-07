@@ -15,7 +15,7 @@ import { formatDuration } from '@shared/lib/duration.js'
 import { useNavigate } from '@solidjs/router'
 import { Page } from '@/components/Page.jsx'
 import { ActionSheet, type ActionSheetItem } from '@/components/ActionSheet.jsx'
-import { ErrorNotice, LoadingNotice, NoProjectNotice } from '@/components/ListStates.jsx'
+import { ErrorNotice, NoProjectNotice } from '@/components/ListStates.jsx'
 import { showToast } from '@/components/Toast.jsx'
 import { activeProjectId } from '@/lib/active-project.js'
 import { t } from '@/i18n/index.js'
@@ -54,6 +54,10 @@ const EntryRow: Component<{
     </span>
     <ChevronRight size={18} class="shrink-0 text-muted-foreground" />
   </button>
+)
+
+const RunningStateRow: Component<{ label: string }> = (props) => (
+  <p class="px-4 py-4 text-center text-sm text-muted-foreground">{props.label}</p>
 )
 
 export const Extensions: Component = () => {
@@ -129,7 +133,7 @@ export const Extensions: Component = () => {
           />
 
           <Show when={activeProjectId()} fallback={<NoProjectNotice />}>
-            <Show when={!runs.loading} fallback={<LoadingNotice />}>
+            <Show when={!runs.loading} fallback={<RunningStateRow label={t('common.loading')} />}>
               <Show
                 when={!runs.error}
                 fallback={<ErrorNotice error={runs.error} onRetry={() => void refetch()} />}
@@ -137,11 +141,7 @@ export const Extensions: Component = () => {
                 {/* 空态保留一行占位，不整段隐藏——否则最后一个脚本停掉时卡片会缩一下 */}
                 <Show
                   when={running().length > 0}
-                  fallback={
-                    <p class="px-4 py-4 text-center text-sm text-muted-foreground">
-                      {t('ext.runningEmpty')}
-                    </p>
-                  }
+                  fallback={<RunningStateRow label={t('ext.runningEmpty')} />}
                 >
                   <For each={running()}>
                     {(run) => (
