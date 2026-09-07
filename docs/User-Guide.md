@@ -4,38 +4,39 @@ This guide is for users who are connecting a project to YorZ for the first time.
 
 - [1. Installation](#1-installation)
 - [2. Start the Service](#2-start-the-service)
-- [3. Stop and Restart the Service](#3-stop-and-restart-the-service)
-- [4. View Service Logs](#4-view-service-logs)
-- [5. Add a Project](#5-add-a-project)
-- [6. Configuration Directories](#6-configuration-directories)
-  - [6.1 Project-level `.yorz/`](#61-project-level-yorz)
-  - [6.2 Global Configuration Directory](#62-global-configuration-directory)
-  - [6.3 Environment Variables](#63-environment-variables)
-- [7. GUI Features](#7-gui-features)
-  - [7.1 Layout](#71-layout)
-  - [7.2 Appearance and Language](#72-appearance-and-language)
-  - [7.3 Global Settings](#73-global-settings)
-  - [7.4 Keyboard Shortcuts](#74-keyboard-shortcuts)
-  - [7.5 Configure the Agent Method](#75-configure-the-agent-method)
-  - [7.6 Chat](#76-chat)
-  - [7.7 Custom Slash Commands](#77-custom-slash-commands)
-  - [7.8 Create a New spec](#78-create-a-new-spec)
-  - [7.9 Parallel Work in a New Project](#79-parallel-work-in-a-new-project)
-  - [7.10 Append Tasks](#710-append-tasks)
-  - [7.11 Debug Mode](#711-debug-mode)
-  - [7.12 Content Annotations](#712-content-annotations)
-  - [7.13 plan Decisions and Pending Confirmations](#713-plan-decisions-and-pending-confirmations)
-  - [7.14 Review](#714-review)
-  - [7.15 Project Commands](#715-project-commands)
-  - [7.16 Diagram Viewer](#716-diagram-viewer)
-  - [7.17 System Notifications and Version Updates](#717-system-notifications-and-version-updates)
-- [8. Common Workflows](#8-common-workflows)
-  - [8.1 Connect a Project for the First Time](#81-connect-a-project-for-the-first-time)
-  - [8.2 Handle a New Requirement](#82-handle-a-new-requirement)
-  - [8.3 Use Chat for Small Tasks](#83-use-chat-for-small-tasks)
-  - [8.4 Work on Multiple Requirements in Parallel](#84-work-on-multiple-requirements-in-parallel)
-  - [8.5 Append a Bug and Enter Debug Mode](#85-append-a-bug-and-enter-debug-mode)
-  - [8.6 Capture a Custom Slash Command](#86-capture-a-custom-slash-command)
+- [3. Access the Mobile PWA](#3-access-the-mobile-pwa)
+- [4. Stop and Restart the Service](#4-stop-and-restart-the-service)
+- [5. View Service Logs](#5-view-service-logs)
+- [6. Add a Project](#6-add-a-project)
+- [7. Configuration Directories](#7-configuration-directories)
+  - [7.1 Project-level `.yorz/`](#71-project-level-yorz)
+  - [7.2 Global Configuration Directory](#72-global-configuration-directory)
+  - [7.3 Environment Variables](#73-environment-variables)
+- [8. GUI Features](#8-gui-features)
+  - [8.1 Layout](#81-layout)
+  - [8.2 Appearance and Language](#82-appearance-and-language)
+  - [8.3 Global Settings](#83-global-settings)
+  - [8.4 Keyboard Shortcuts](#84-keyboard-shortcuts)
+  - [8.5 Configure the Agent Method](#85-configure-the-agent-method)
+  - [8.6 Chat](#86-chat)
+  - [8.7 Custom Slash Commands](#87-custom-slash-commands)
+  - [8.8 Create a New spec](#88-create-a-new-spec)
+  - [8.9 Parallel Work in a New Project](#89-parallel-work-in-a-new-project)
+  - [8.10 Append Tasks](#810-append-tasks)
+  - [8.11 Debug Mode](#811-debug-mode)
+  - [8.12 Content Annotations](#812-content-annotations)
+  - [8.13 plan Decisions and Pending Confirmations](#813-plan-decisions-and-pending-confirmations)
+  - [8.14 Review](#814-review)
+  - [8.15 Project Commands](#815-project-commands)
+  - [8.16 Diagram Viewer](#816-diagram-viewer)
+  - [8.17 System Notifications and Version Updates](#817-system-notifications-and-version-updates)
+- [9. Common Workflows](#9-common-workflows)
+  - [9.1 Connect a Project for the First Time](#91-connect-a-project-for-the-first-time)
+  - [9.2 Handle a New Requirement](#92-handle-a-new-requirement)
+  - [9.3 Use Chat for Small Tasks](#93-use-chat-for-small-tasks)
+  - [9.4 Work on Multiple Requirements in Parallel](#94-work-on-multiple-requirements-in-parallel)
+  - [9.5 Append a Bug and Enter Debug Mode](#95-append-a-bug-and-enter-debug-mode)
+  - [9.6 Capture a Custom Slash Command](#96-capture-a-custom-slash-command)
 
 ## 1. Installation
 
@@ -89,7 +90,41 @@ yorz serve --port 7424
 
 If the specified port is also taken, YorZ tries the next nine ports in order. The service only listens on the loopback address (`127.0.0.1` by default) and cannot be exposed to the network.
 
-## 3. Stop and Restart the Service
+## 3. Access the Mobile PWA
+
+Because YorZ Service listens only on the local loopback address by default, the recommended way to use the mobile PWA from your phone is to expose the service over HTTPS inside the same Tailscale tailnet.
+
+First make sure YorZ Service is running. The default port is `7423`:
+
+```bash
+yorz serve
+```
+
+Then install Tailscale on both your PC and your phone, enable HTTPS, and confirm that both devices are signed in to the same tailnet.
+
+On the PC, run:
+
+```bash
+tailscale serve --bg 7423
+```
+
+You should see output similar to:
+
+```text
+Available within your tailnet:
+https://<your Tailscale-generated domain>/
+|-- proxy http://127.0.0.1:7423
+```
+
+Open the HTTPS domain from your phone browser. YorZ detects mobile browsers and automatically switches to the mobile PWA:
+
+```text
+https://fenghenmacbook-pro.taildce4ce.ts.net/
+```
+
+Installing YorZ to your phone home screen is optional. Before doing that, confirm in system settings that your browser has permission to create home screen shortcuts, then open the browser settings menu and choose "Install and create shortcut".
+
+## 4. Stop and Restart the Service
 
 Stop the background YorZ Service:
 
@@ -107,7 +142,7 @@ yorz serve restart
 
 `yorz serve restart` returns immediately; the actual stop-and-start work is done by a detached child process. This means the restart also succeeds when it is triggered from inside the service itself — for example when you click "Restart Service" in the GUI after a version update. Restarting interrupts running Agent tasks; once the service is back, send "continue" in Chat to let the Agent pick up where it left off.
 
-## 4. View Service Logs
+## 5. View Service Logs
 
 `yorz serve` runs in the background for long stretches, so the service writes its logs to `logs/` inside the global configuration directory:
 
@@ -150,7 +185,7 @@ YORZ_LOG_LEVEL=debug yorz serve
 
 > When reporting an issue, attach `serve.log` first. If the service exits immediately on startup, or no `serve.log` is produced at all, attach `serve-stdio.log` as well. The logs only record metadata such as sessionId, prompt length, and duration — prompt bodies and Agent output are never written to disk.
 
-## 5. Add a Project
+## 6. Add a Project
 
 Before using the GUI for the first time, register your project directory with YorZ:
 
@@ -167,11 +202,11 @@ yorz add /path/to/your/project
 
 After adding the project, refresh the GUI. The project will appear in the project list on the left.
 
-## 6. Configuration Directories
+## 7. Configuration Directories
 
 YorZ uses the project-level directory to store spec documents and project-scoped settings, and the global directory to store the project list, personal preferences, and service runtime state.
 
-### 6.1 Project-level `.yorz/`
+### 7.1 Project-level `.yorz/`
 
 The `.yorz/` directory at the project root is the YorZ working directory for the current project.
 
@@ -184,7 +219,7 @@ Common contents:
 
 If you change the spec document directory in the GUI Project Configuration, new specs are written to the new directory. Existing specs remain in the old directory and need to be migrated manually when prompted.
 
-### 6.2 Global Configuration Directory
+### 7.2 Global Configuration Directory
 
 YorZ's global configuration directory defaults to:
 
@@ -206,13 +241,13 @@ Common global files:
 - `projects.json`: a legacy project list file. It is only read once as a fallback when `config.json` does not exist; all writes go to `config.json` afterwards.
 - `runtime.json`: runtime records for the background Service.
 - `skills/`: the shared bundled skills directory, containing `yorz-spec/`, `yorz-debug/`, and `yorz-git-ops/`.
-- `logs/`: the service log directory, containing `serve.log` (the rotating main log) and `serve-stdio.log`. See [4. View Service Logs](#4-view-service-logs).
+- `logs/`: the service log directory, containing `serve.log` (the rotating main log) and `serve-stdio.log`. See [5. View Service Logs](#5-view-service-logs).
 
 Personal preferences (appearance, theme, language, shortcuts, custom slash commands, and so on) now live in the user-level `config.json`, so they stay consistent across browsers and projects. Themes and languages stored in browser localStorage by older versions are migrated automatically on first load.
 
 You usually do not need to edit the global configuration directory manually. Prefer managing it through `yorz add`, the GUI project list, GUI Global Settings, and `yorz serve stop` / `yorz serve restart`.
 
-### 6.3 Environment Variables
+### 7.3 Environment Variables
 
 | Variable                 | Purpose                                                                                  | Default          |
 | ------------------------ | ---------------------------------------------------------------------------------------- | ---------------- |
@@ -222,9 +257,9 @@ You usually do not need to edit the global configuration directory manually. Pre
 | `YORZ_WATCH_USE_POLLING` | Set to `1` to make file watching use polling — useful on network drives and in containers | disabled         |
 | `YORZ_AGENT_CMD`         | Overrides the Agent launch command; takes precedence over project configuration. Mainly for testing and special integrations | unset |
 
-## 7. GUI Features
+## 8. GUI Features
 
-### 7.1 Layout
+### 8.1 Layout
 
 The GUI uses a three-column layout:
 
@@ -234,13 +269,13 @@ The GUI uses a three-column layout:
 
 Spec-related pages in the main area have a "Fullscreen" button in the top-right corner (default shortcut `Ctrl+Shift+F`). Fullscreen temporarily collapses the project list and Chat panel so you can focus on the document; press `Esc` or click again to exit. Navigating between the spec list, detail, Review, and Debug pages does not reset the fullscreen state, and exiting restores whatever sidebar collapse settings you had chosen manually.
 
-### 7.2 Appearance and Language
+### 8.2 Appearance and Language
 
 The far right side of the GUI header has a three-line settings entry. Open it to:
 
 - `Switch Language`: 中文 / English.
 - `Appearance`: two groups — Color Mode and Theme.
-- `Global Settings`: opens the settings dialog, see [7.3](#73-global-settings).
+- `Global Settings`: opens the settings dialog, see [8.3](#83-global-settings).
 
 **Color Mode** has three options:
 
@@ -256,7 +291,7 @@ The far right side of the GUI header has a three-line settings entry. Open it to
 
 Appearance and language are stored in the user-level `config.json` and apply across projects and browsers.
 
-### 7.3 Global Settings
+### 8.3 Global Settings
 
 Click "Global Settings" in the header menu to open the dialog. The dialog has **no save button — every change is saved immediately**; the title shows "Saving..." followed by "Saved".
 
@@ -265,9 +300,9 @@ Global Settings has four groups:
 - `Default Agent`: choose ClaudeCode, OpenCode, or Codex. Projects without a project-level override inherit this value. The initial value is ClaudeCode.
 - `Session end alerts`: independently enable Banner alert and Sound alert. Both are disabled by default. When enabled, YorZ Service triggers system notifications or sound as a best-effort action after an Agent turn ends; unsupported environments do not affect the session completion flow.
 - `Prevent sleep while tasks run`: three options, defaulting to "System default". "Prevent display sleep" keeps the screen on while an Agent session is running; "Prevent sleep" additionally keeps the system awake. It only takes effect while at least one session is running and is released as soon as all sessions finish. macOS, Linux, and Windows are supported; if the current system lacks the capability, YorZ falls back to "System default" without affecting task execution.
-- `Shortcuts`: see [7.4](#74-keyboard-shortcuts).
+- `Shortcuts`: see [8.4](#84-keyboard-shortcuts).
 
-### 7.4 Keyboard Shortcuts
+### 8.4 Keyboard Shortcuts
 
 The "Shortcuts" section of the Global Settings dialog lets you rebind three actions:
 
@@ -288,7 +323,7 @@ If two actions end up with the same binding, the conflicting rows turn red with 
 
 Shortcut bindings are stored in the user-level `config.json`.
 
-### 7.5 Configure the Agent Method
+### 8.5 Configure the Agent Method
 
 In the project list on the left side of the GUI, click the configuration entry next to a project (or press `Ctrl+Shift+S`) to open Project Configuration.
 
@@ -300,7 +335,7 @@ You can configure:
 
 After saving, new specs, spec reruns, appended tasks, Chat conversations, and Review for this project use the resolved Agent: Inherit global default uses the global default Agent, while a concrete Agent or custom command takes precedence for this project.
 
-### 7.6 Chat
+### 8.6 Chat
 
 The Chat panel is an always-present conversation area, well suited to small tasks that do not warrant a spec: asking about code, fixing a small bug, running a quick analysis. You can also escalate from here into the spec or debug workflow.
 
@@ -316,7 +351,7 @@ The Chat panel is an always-present conversation area, well suited to small task
 **Sending messages**:
 
 - `Enter` sends and `Shift+Enter` inserts a newline; confirming an IME candidate with Enter never sends by mistake.
-- Type `@` to fuzzy-search and reference a file in the project. Type `/` at the start of a line to open the command palette, see [7.7](#77-custom-slash-commands).
+- Type `@` to fuzzy-search and reference a file in the project. Type `/` at the start of a line to open the command palette, see [8.7](#87-custom-slash-commands).
 - The paperclip button imports attachments — up to 10 files, 5MB each, supporting images, PDF, txt, and md. Images can also be pasted directly with Cmd/Ctrl-V.
 - While a session is running, the send button becomes "Abort" so you can interrupt the current turn.
 - The `+` "New Session" button below the composer returns the panel to a draft state. The actual session is created on the first send, so no empty sessions accumulate.
@@ -331,7 +366,7 @@ The Chat panel is an always-present conversation area, well suited to small task
 
 **Remaining usage**: while Chat is in the empty draft state, a line below the placeholder shows the remaining model quota for the current Agent, for example "claude usage: 5-hour about 62% remaining (38% used, resets: …)". The line disappears once you select an existing session. Support varies by Agent: ClaudeCode and Codex can be queried directly, while OpenCode requires the `opencode-quota` plugin — the UI prints the install command for you. A failed query degrades to a short notice and never blocks sending messages.
 
-### 7.7 Custom Slash Commands
+### 8.7 Custom Slash Commands
 
 Custom slash commands turn a prompt you use often into a single `/command`, such as `/git-commit` or `/review-diff`.
 
@@ -360,7 +395,7 @@ Keep typing to filter fuzzily, use `↑` / `↓` to select, `Enter` or `Tab` to 
 
 **What happens on send**: YorZ resolves `/`-prefixed input on the server. Built-in commands expand into the corresponding skill instructions, custom commands attach their hidden prompt, and unmatched commands get an explanatory note — so the Agent never replies `Unknown command` again. The chat log always shows exactly what you typed.
 
-### 7.8 Create a New spec
+### 8.8 Create a New spec
 
 On the project home page, click "New spec" (or press `Ctrl+Shift+N`) to open the creation page.
 
@@ -374,7 +409,7 @@ The page remembers what you typed, so navigating away and back does not lose you
 
 After clicking "Send", the Agent creates the spec document according to the `yorz-spec` skill and automatically enters the plan stage. After the document is written, the GUI navigates to the spec detail page.
 
-### 7.9 Parallel Work in a New Project
+### 8.9 Parallel Work in a New Project
 
 When creating a new spec, you can enable "New project for parallel work".
 
@@ -388,7 +423,7 @@ It is suitable when:
 
 The parallel project appears as its own entry in the project list; its Chat sessions and command runs are isolated from the main project. After it is complete, use "Merge into main project" on the list page to merge the worktree changes back — the sessions from that worktree remain accessible after merging.
 
-### 7.10 Append Tasks
+### 8.10 Append Tasks
 
 On the spec detail page, click "Append task" to add a new requirement, refactor, or bug fix to an existing spec.
 
@@ -402,7 +437,7 @@ After submission, YorZ writes the appended content into the spec and automatical
 
 If you select text in the body before appending a task, the appended record includes the referenced section and selected text so the Agent can understand the context.
 
-### 7.11 Debug Mode
+### 8.11 Debug Mode
 
 When appending a `fix` task, you can enable "debug mode". You can also enter it directly by sending `/yorz-debug` in Chat.
 
@@ -414,11 +449,11 @@ It is suitable when:
 - Ordinary fixes have failed multiple times.
 - You need to preserve the investigation evidence chain.
 
-When entering the Debug workflow, YorZ automatically attaches the project's **running project commands** (name, command line, pid, log file path) as context, so the Agent can read those logs while investigating. If nothing is running, the Agent is told to start the service itself or ask you to start it from the command menu. See [7.15 Project Commands](#715-project-commands).
+When entering the Debug workflow, YorZ automatically attaches the project's **running project commands** (name, command line, pid, log file path) as context, so the Agent can read those logs while investigating. If nothing is running, the Agent is told to start the service itself or ask you to start it from the command menu. See [8.15 Project Commands](#815-project-commands).
 
 When the current spec has a `debug.md`, the detail page shows a "Debug" entry where you can view the records.
 
-### 7.12 Content Annotations
+### 8.12 Content Annotations
 
 On the spec detail page, select a piece of text in the document. An action menu appears.
 
@@ -429,7 +464,7 @@ Available actions:
 
 Annotations are written back to the spec document and trigger the Agent to process it again. Use them to correct the Agent's understanding, add constraints, or point out inaccurate task descriptions.
 
-### 7.13 plan Decisions and Pending Confirmations
+### 8.13 plan Decisions and Pending Confirmations
 
 During the plan stage, the Agent fills in "Current Analysis", "Technical Implementation Plan", and "Pending Confirmations".
 
@@ -443,7 +478,7 @@ Common pending confirmation types:
 
 You can fill in and send all answers from the pending confirmation panel at once. After sending, the Agent reads the responses, updates the plan, and continues to the tasks or execute stage.
 
-### 7.14 Review
+### 8.14 Review
 
 On the spec detail page, click "Review" to open the Review page.
 
@@ -459,7 +494,7 @@ Main features:
 
 After a spec is complete and verified, it is recommended to open the Review page and decide whether to commit, stage, or discard changes.
 
-### 7.15 Project Commands
+### 8.15 Project Commands
 
 Project commands let you start long-running commands — `pnpm dev`, a watch build, a test runner — directly from the GUI. Their output is written to a log file that the Agent can read while troubleshooting.
 
@@ -480,7 +515,7 @@ Clicking a row opens the **command run detail page**, which shows the exit code,
 
 Logs are stored at `.yorz/tmp/commands/<runId>.log` with an `index.json` alongside them. Run records are kept for 7 days and expired ones are cleaned up on service startup. All command child processes exit together with `yorz serve`, so no orphans are left behind.
 
-### 7.16 Diagram Viewer
+### 8.16 Diagram Viewer
 
 Fenced `mermaid` code blocks in spec documents are rendered as diagrams. Each diagram has a "Maximize diagram" button in the top-right corner that opens a fullscreen viewer:
 
@@ -491,7 +526,7 @@ Fenced `mermaid` code blocks in spec documents are rendered as diagrams. Each di
 
 The diagram is re-laid out as vector graphics, so text and lines stay crisp at any zoom level. The viewer fits the diagram to your viewport when it opens.
 
-### 7.17 System Notifications and Version Updates
+### 8.17 System Notifications and Version Updates
 
 A bell button with a red dot appears in the GUI header, to the right of the `YorZ` brand name — **only when there is a notification**. Click it to open the "System Notifications" list.
 
@@ -505,9 +540,9 @@ Available actions:
 
 Notifications are not persisted: restarting `yorz serve` clears them and the next check regenerates them. A failed check (for example without network access) is only logged and never interrupts you.
 
-## 8. Common Workflows
+## 9. Common Workflows
 
-### 8.1 Connect a Project for the First Time
+### 9.1 Connect a Project for the First Time
 
 ```bash
 npm install -g @yorz/cli
@@ -517,7 +552,7 @@ yorz add /path/to/your/project
 
 Then open `http://localhost:7423` and select the project on the left. While you are there, confirm the default Agent and appearance preferences from the header menu.
 
-### 8.2 Handle a New Requirement
+### 9.2 Handle a New Requirement
 
 1. Click "New spec" on the project home page (or press `Ctrl+Shift+N`).
 2. Choose `feat` and fill in the requirement content.
@@ -526,21 +561,21 @@ Then open `http://localhost:7423` and select the project on the left. While you 
 5. The Agent continues task breakdown and execution.
 6. After completion, open the "Review" page to process the changes.
 
-### 8.3 Use Chat for Small Tasks
+### 9.3 Use Chat for Small Tasks
 
 1. Click `+` in the Chat panel to start a new session.
 2. Describe the task, use `@` to reference relevant files, and paste screenshots if needed.
 3. If the task turns out bigger than expected, send `/yorz-spec` to let the Agent move into the spec-driven workflow using the current context.
 4. If you hit a stubborn bug, send `/yorz-debug` to enter the Debug workflow.
 
-### 8.4 Work on Multiple Requirements in Parallel
+### 9.4 Work on Multiple Requirements in Parallel
 
 1. Enable "New project for parallel work" when creating a spec.
 2. Let the Agent work on the task in the new worktree project.
 3. The main project can continue handling other work.
 4. After completion, use "Merge into main project" on the list page.
 
-### 8.5 Append a Bug and Enter Debug Mode
+### 9.5 Append a Bug and Enter Debug Mode
 
 1. If reproducing the bug requires a running service, start the matching command (for example `dev`) from the command menu first.
 2. Click "Append task" on the spec detail page.
@@ -550,7 +585,7 @@ Then open `http://localhost:7423` and select the project on the left. While you 
 6. Click "Send". The Agent receives the running command's log path automatically and enters the Debug workflow.
 7. View the `debug.md` records on the "Debug" page.
 
-### 8.6 Capture a Custom Slash Command
+### 9.6 Capture a Custom Slash Command
 
 1. Type `/` at the start of a line in the Chat composer and choose the last entry, "Add Command".
 2. Pick where to save it: "Global" for yourself, "This project" to share it with the team.
