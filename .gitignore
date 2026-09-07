@@ -1,5 +1,6 @@
 node_modules
 dist
+src/gui-mobile/dev-dist/
 *.log
 .DS_Store
 .claude
