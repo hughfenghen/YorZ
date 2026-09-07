@@ -524,7 +524,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
             */}
             <div
               class={cn(
-                'scroll-y min-h-0 divide-y divide-border',
+                'scroll-y min-h-0 divide-y-[0.5px] divide-border',
                 activePath() ? 'max-h-[38dvh] shrink-0' : 'flex-1',
               )}
             >
@@ -640,7 +640,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
             <p class="py-6 text-center text-sm text-muted-foreground">{t('git.noBranches')}</p>
           }
         >
-          <ul class="divide-y divide-border">
+          <ul class="divide-y-[0.5px] divide-border">
             <For each={filteredBranches()}>
               {(branch) => (
                 <li>
@@ -670,7 +670,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
             <p class="py-6 text-center text-sm text-muted-foreground">{t('git.noBranches')}</p>
           }
         >
-          <ul class="divide-y divide-border">
+          <ul class="divide-y-[0.5px] divide-border">
             <For each={filteredMergeCandidates()}>
               {(branch) => (
                 <li class={cn('flex items-center gap-2', mergeTarget() === branch && 'bg-accent')}>

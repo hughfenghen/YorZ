@@ -40,7 +40,7 @@ interface TopBarProps {
  * 12px，间距正好是 12px 时两枚图标的命中区相接而不重叠（见 app.css）。
  */
 export const TopBar: Component<TopBarProps> = (props) => (
-  <header class="shrink-0 border-b border-border bg-background px-safe pt-safe">
+  <header class="shrink-0 border-b-[0.5px] border-border bg-background px-safe pt-safe">
     <div class="flex h-12 items-center gap-3 px-4">
       <div class="flex flex-1 items-center justify-start gap-3">
         <Show when={props.onBack}>

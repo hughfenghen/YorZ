@@ -147,7 +147,7 @@ export const Scripts: Component = () => {
             >
               {/* 底色与扩展页列表同口径：卡片色列表浮在稍深的页面底色上。
                   只收 border-b：首行上方紧邻顶栏的 border-b，再加上边框会叠成 2px。 */}
-              <ul class="divide-y divide-border border-b border-border bg-card">
+              <ul class="divide-y-[0.5px] divide-border border-b-[0.5px] border-border bg-card">
                 <For each={defs()}>
                   {(def) => (
                     <li class="no-callout flex select-none items-center gap-3 px-4 py-3">

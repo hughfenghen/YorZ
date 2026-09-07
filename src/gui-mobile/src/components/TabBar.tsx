@@ -40,7 +40,7 @@ export const TabBar: Component = () => {
 
   return (
     <nav
-      class="shrink-0 border-t border-border bg-card px-safe pb-safe"
+      class="shrink-0 border-t-[0.5px] border-border bg-card px-safe pb-safe"
       aria-label={t('nav.sessions')}
     >
       <ul class="flex items-stretch justify-around">

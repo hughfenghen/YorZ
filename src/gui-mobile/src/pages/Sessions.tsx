@@ -177,7 +177,7 @@ export const Sessions: Component = () => {
             {/* 底色与扩展页列表同口径：卡片色列表浮在稍深的页面底色上。
                 只收 border-b：列表贴着顶栏滚动，再加上边框会与顶栏那条 border-b
                 并排成一条 2px 的粗线，首行上方交给顶栏收口就够了。 */}
-            <ul class="divide-y divide-border border-b border-border bg-card">
+            <ul class="divide-y-[0.5px] divide-border border-b-[0.5px] border-border bg-card">
               <For each={groups()}>
                 {(group) => (
                   <li>

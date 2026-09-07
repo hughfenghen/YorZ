@@ -30,7 +30,7 @@ const Group: Component<{ title: string; children: import('solid-js').JSX.Element
     <h2 class="mb-2 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
       {props.title}
     </h2>
-    <div class="divide-y divide-border border-y border-border bg-card">{props.children}</div>
+    <div class="divide-y-[0.5px] divide-border border-y border-border bg-card">{props.children}</div>
   </section>
 )
 

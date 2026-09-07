@@ -70,7 +70,7 @@ export const ActionSheet: Component<ActionSheetProps> = (props) => {
                 </Show>
               </div>
             </Show>
-            <div class="divide-y divide-border">
+            <div class="divide-y-[0.5px] divide-border">
               <For each={props.items}>
                 {(item) => (
                   <button

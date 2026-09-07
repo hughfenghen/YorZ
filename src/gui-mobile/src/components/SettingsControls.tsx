@@ -13,7 +13,7 @@ export const Group: Component<{ title: string; children: JSX.Element }> = (props
     <h2 class="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
       {props.title}
     </h2>
-    <div class="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
+    <div class="divide-y-[0.5px] divide-border overflow-hidden rounded-lg border border-border bg-card">
       {props.children}
     </div>
   </section>
