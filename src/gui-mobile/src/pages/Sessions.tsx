@@ -12,8 +12,8 @@ import { useNavigate } from '@solidjs/router'
 import { Plus } from 'lucide-solid'
 import { format as formatTimeago, register as registerTimeago } from 'timeago.js'
 import zhCNTimeago from 'timeago.js/lib/lang/zh_CN.js'
-import { api, type SessionInfo } from '@shared/api/index.js'
-import { subscribeSessions } from '@shared/api/sse.js'
+import { api, type SessionInfo, type SpecListItem } from '@shared/api/index.js'
+import { subscribeSessions, subscribeSpecsList } from '@shared/api/sse.js'
 import { groupSessions } from '@shared/lib/session-groups.js'
 import { enShort } from '@shared/lib/timeago-locale.js'
 import { Page } from '@/components/Page.jsx'
@@ -95,6 +95,37 @@ export const Sessions: Component = () => {
     return groupSessions(items, (sid) => items.find((s) => s.id === sid)?.running === true)
   })
 
+  /**
+   * spec 侧的补充信息。会话行对关联了 spec 的那一条只拿得到 spec id 当标题，
+   * 光看它判断不出「这条在干什么」，所以顺带拉一次 spec 列表，把 summary 借过来。
+   * 拉不到（接口挂了 / spec 已删）就退化成只有标题的行，不影响列表本身。
+   */
+  const [specs, { refetch: refetchSpecs }] = createResource<SpecListItem[], string>(
+    () => activeProjectId() ?? undefined,
+    (pid) => api.listSpecs(pid),
+  )
+
+  createEffect(() => {
+    const id = activeProjectId()
+    if (!id) return
+    const unsub = subscribeSpecsList(id, () => void refetchSpecs())
+    onCleanup(() => unsub())
+  })
+
+  const specById = createMemo(() => {
+    const map = new Map<string, SpecListItem>()
+    if (specs.state !== 'ready') return map
+    for (const spec of specs() ?? []) map.set(spec.id, spec)
+    return map
+  })
+
+  /** 行里那两行「实际内容」：只有关联 spec 且它确实有 summary 时才有。 */
+  const specSummary = (specId: string | undefined): string | undefined => {
+    if (!specId) return undefined
+    const summary = specById().get(specId)?.summary?.trim()
+    return summary || undefined
+  }
+
   return (
     <Page
       title={t('sessions.title')}
@@ -128,7 +159,10 @@ export const Sessions: Component = () => {
             when={groups().length > 0}
             fallback={<Notice title={t('sessions.empty')} action={<AgentUsageHint />} />}
           >
-            <ul class="divide-y divide-border">
+            {/* 底色与扩展页列表同口径：卡片色列表浮在稍深的页面底色上。
+                只收 border-b：列表贴着顶栏滚动，再加上边框会与顶栏那条 border-b
+                并排成一条 2px 的粗线，首行上方交给顶栏收口就够了。 */}
+            <ul class="divide-y divide-border border-b border-border bg-card">
               <For each={groups()}>
                 {(group) => (
                   <li>
@@ -139,22 +173,44 @@ export const Sessions: Component = () => {
                       // 会话详情自己会按 specId 把整组历史聚合出来。
                       onClick={() => navigate(`/sessions/${encodeURIComponent(group.latest.id)}`)}
                     >
-                      {/* 运行状态点占固定槽位：不运行时也留位，否则标题会左右跳动 */}
-                      <span
-                        class={cn(
-                          'size-2 shrink-0 rounded-full',
-                          group.running ? 'bg-primary animate-pulse' : 'bg-muted-foreground/40',
-                        )}
-                        aria-label={group.running ? t('sessions.running') : undefined}
-                      />
                       <span class="min-w-0 flex-1">
-                        <span class="block truncate text-sm">{group.latest.title}</span>
+                        {/* 内容区统一封顶三行：没有 spec 时标题独占这三行（会话标题
+                            来自首条 prompt 的摘要，一行常截得只剩半句话）；有 spec 时
+                            标题让到一行，把剩下两行留给 summary——spec 行的标题是
+                            spec id，真正能判断「这条在干什么」的是 summary。 */}
+                        <span
+                          class={cn(
+                            'block break-words text-sm',
+                            specSummary(group.specId) ? 'line-clamp-1' : 'line-clamp-3',
+                          )}
+                        >
+                          {group.latest.title}
+                        </span>
+                        <Show when={specSummary(group.specId)}>
+                          {(summary) => (
+                            <span class="mt-0.5 line-clamp-2 break-words text-xs text-muted-foreground">
+                              {summary()}
+                            </span>
+                          )}
+                        </Show>
                         <span class="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                           <time>{formatTimeago(group.updatedAt, lng())}</time>
                           <span>·</span>
                           <span>{group.latest.kind}</span>
                         </span>
                       </span>
+                      {/* 运行状态点占固定槽位：不运行时槽位仍在、只是透明，
+                          否则运行行与已结束行的标题可截断宽度会差一个点宽 + gap，
+                          长标题的省略号位置在相邻两行之间来回跳。
+                          已结束的会话不再画灰点——一屏里跑着的通常只有零星几条，
+                          其余全是灰点反而把真正在跑的那颗淹掉了。 */}
+                      <span
+                        class={cn(
+                          'size-2 shrink-0 rounded-full',
+                          group.running ? 'bg-primary animate-pulse' : 'bg-transparent',
+                        )}
+                        aria-label={group.running ? t('sessions.running') : undefined}
+                      />
                     </button>
                   </li>
                 )}

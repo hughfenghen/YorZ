@@ -19,6 +19,7 @@ import { ChatComposer } from '@/components/ChatComposer.jsx'
 import { NoProjectNotice } from '@/components/ListStates.jsx'
 import { showToast } from '@/components/Toast.jsx'
 import { activeProjectId } from '@/lib/active-project.js'
+import { transcriptCache } from '@/lib/transcript-cache.js'
 import { copyText } from '@/lib/clipboard.js'
 import { watchKeyboardInset } from '@/lib/keyboard.js'
 import { t } from '@/i18n/index.js'
@@ -137,6 +138,9 @@ export const ChatDetail: Component = () => {
     },
     onSubjectChange: () => setAutoScroll(true),
     errorLabel: (message) => t('chat.errorMessage', { message }),
+    // 本页每次导航都重挂载，屏上内容不跨页留存；缓存交给 hook 后，进页先画上次
+    // 读到的那份，权威读取到达再按尾部比对决定要不要换。桌面端不传，行为不变。
+    transcriptCache,
   })
 
   function isNearBottom(el: HTMLDivElement): boolean {
@@ -224,22 +228,34 @@ export const ChatDetail: Component = () => {
     >
       <Show when={pid()} fallback={<div class="px-4 py-4">{<NoProjectNotice />}</div>}>
         <div class="px-4 py-3" onClick={onMessagesClick}>
+          {/* 三态而非二态：历史是异步读的，`blocks` 为空既可能是「还没读到」也可能是
+              「真的没有」。只有 hook 分得清这两者（见 historyLoading），页面自己拿
+              sessions.loading 猜会在弱网下反复抖动。 */}
           <Show
-            when={tx.blocks().length > 0}
+            when={!tx.historyLoading()}
             fallback={
-              <div class="flex flex-col items-center gap-2 py-8 text-center">
-                <p class="m-0 text-sm text-muted-foreground">
-                  {sid() ? t('chat.empty') : t('chat.draftEmpty')}
-                </p>
-                {/* 与桌面端同口径：只有草稿态（还没有会话）才提示 Agent 余额，
-                    已经在聊的会话里没人关心这条。 */}
-                <Show when={!sid()}>
-                  <AgentUsageHint />
-                </Show>
-              </div>
+              <p class="m-0 py-8 text-center text-sm text-muted-foreground">
+                {t('common.loading')}
+              </p>
             }
           >
-            <MessageList blocks={tx.blocks()} expand={tx.toolExpand} />
+            <Show
+              when={tx.blocks().length > 0}
+              fallback={
+                <div class="flex flex-col items-center gap-2 py-8 text-center">
+                  <p class="m-0 text-sm text-muted-foreground">
+                    {sid() ? t('chat.empty') : t('chat.draftEmpty')}
+                  </p>
+                  {/* 与桌面端同口径：只有草稿态（还没有会话）才提示 Agent 余额，
+                      已经在聊的会话里没人关心这条。 */}
+                  <Show when={!sid()}>
+                    <AgentUsageHint />
+                  </Show>
+                </div>
+              }
+            >
+              <MessageList blocks={tx.blocks()} expand={tx.toolExpand} />
+            </Show>
           </Show>
         </div>
       </Show>

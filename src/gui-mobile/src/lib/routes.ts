@@ -11,17 +11,28 @@ export const ROUTER_BASE = '/m'
 export const TAB_PATHS = ['/', '/specs', '/ext', '/projects'] as const
 
 /**
- * 该路径是否是一级页面（决定要不要渲染底部导航）。
+ * 把 `useLocation().pathname` 归一成「不带 base 的应用内路径」。
  *
- * 入参是 `useLocation().pathname`，**带着 `ROUTER_BASE` 前缀**——这一版
- * solid-router 不会替我们剥掉它（`useMatch('/specs')` 同样匹配不上），
- * 所以剥离必须发生在这里。少了这一步，底部导航会从所有页面上消失。
+ * 这一版 solid-router **不会**替我们剥掉 base（`useMatch('/specs')` 同样匹配不上），
+ * 所以剥离必须发生在应用侧。导出成公共函数是因为有两个消费方：`isTabRoute`
+ * 决定要不要渲染底部导航，`TabBar` 决定哪个 tab 高亮——两边各写一遍必然分叉成
+ * 「导航栏显示对了、高亮没跟上」。
+ *
+ * 同时归一化末尾斜杠：`/m/specs/` → `/specs`，`/m` 与 `/m/` → `/`。
  */
-export function isTabRoute(pathname: string): boolean {
+export function stripRouterBase(pathname: string): string {
   const withoutBase = pathname.startsWith(ROUTER_BASE)
     ? pathname.slice(ROUTER_BASE.length)
     : pathname
-  // 末尾斜杠不影响归属：/specs 与 /specs/ 是同一个 tab；根路径归一到 '/'。
-  const normalized = withoutBase.replace(/\/+$/, '') || '/'
-  return (TAB_PATHS as readonly string[]).includes(normalized)
+  return withoutBase.replace(/\/+$/, '') || '/'
+}
+
+/**
+ * 该路径是否是一级页面（决定要不要渲染底部导航）。
+ *
+ * 入参是 `useLocation().pathname`，**带着 `ROUTER_BASE` 前缀**；少了
+ * `stripRouterBase` 这一步，底部导航会从所有页面上消失。
+ */
+export function isTabRoute(pathname: string): boolean {
+  return (TAB_PATHS as readonly string[]).includes(stripRouterBase(pathname))
 }

@@ -18,6 +18,11 @@ interface TopBarProps {
 
 /**
  * 顶栏：只承载标题与页面级动作。
+ *
+ * 底色用 `bg-background` 而不是 `bg-card`：浅色主题下 card 比 background 更浅，
+ * 顶栏用 card 会比内容还亮，和「卡片浮在页面底色上」的分层正好倒挂。顶栏与页面
+ * 同色、只靠 `border-b` 分隔，`bg-card` 便只留给列表卡片这一层（扩展页口径）。
+ *
  * pt-safe 把刘海区域算进内边距，标题不会被状态栏压住——
  * index.html 用了 viewport-fit=cover，安全区必须由内容自己处理。
  *
@@ -35,7 +40,7 @@ interface TopBarProps {
  * 12px，间距正好是 12px 时两枚图标的命中区相接而不重叠（见 app.css）。
  */
 export const TopBar: Component<TopBarProps> = (props) => (
-  <header class="shrink-0 border-b border-border bg-card px-safe pt-safe">
+  <header class="shrink-0 border-b border-border bg-background px-safe pt-safe">
     <div class="flex h-12 items-center gap-3 px-4">
       <div class="flex flex-1 items-center justify-start gap-3">
         <Show when={props.onBack}>

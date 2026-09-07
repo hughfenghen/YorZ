@@ -20,10 +20,42 @@ const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8'))
  */
 const BASE = '/m/'
 
+/**
+ * dev server 上把 `/m` 补成 `/m/`。
+ * Vite 只把 base 目录本身当作入口，少了尾斜杠既命中不了 base、也走不到 SPA 兜底，
+ * 直接 404。生产侧的同名重定向在 src/service/static.ts，两处行为要保持一致。
+ */
+function redirectBaseWithoutSlash() {
+  const withoutSlash = BASE.replace(/\/$/, '')
+  return {
+    name: 'yorz-redirect-mobile-base',
+    configureServer(server: { middlewares: { use: (fn: unknown) => void } }) {
+      server.middlewares.use(
+        (
+          req: { url?: string },
+          res: { writeHead: (code: number, headers: Record<string, string>) => void; end: () => void },
+          next: () => void,
+        ) => {
+          const url = req.url ?? ''
+          // 只处理裸前缀，`/m?x=1`、`/m#a` 也一并带上 query/hash 转过去
+          const rest = url.slice(withoutSlash.length)
+          if (url.startsWith(withoutSlash) && (rest === '' || rest[0] === '?' || rest[0] === '#')) {
+            res.writeHead(301, { Location: `${BASE}${rest}` })
+            res.end()
+            return
+          }
+          next()
+        },
+      )
+    },
+  }
+}
+
 export default defineConfig({
   root: resolve(__dirname, 'src/gui-mobile'),
   base: BASE,
   plugins: [
+    redirectBaseWithoutSlash(),
     solid(),
     VitePWA({
       // 新版本上线后自动接管，不给用户留「点一下才更新」的旧壳；

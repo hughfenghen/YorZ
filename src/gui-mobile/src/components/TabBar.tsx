@@ -2,6 +2,7 @@ import { For, type Component } from 'solid-js'
 import { A, useLocation } from '@solidjs/router'
 import { Blocks, FileText, FolderGit2, MessagesSquare } from 'lucide-solid'
 import { cn } from '@/lib/cn'
+import { stripRouterBase } from '@/lib/routes'
 import { t } from '@/i18n/index.js'
 
 /**
@@ -28,8 +29,14 @@ export const TabBar: Component = () => {
 
   // A 组件自带 activeClass，但这里要同时给图标和文字上色，直接自己判定更直观。
   // `/` 必须精确匹配，否则它会对所有路径成立、四个 tab 同时高亮。
-  const isActive = (href: string, end: boolean) =>
-    end ? location.pathname === href : location.pathname.startsWith(href)
+  //
+  // 必须先 stripRouterBase：pathname 带着 `/m` 前缀，直接和裸 href 比对时
+  // `/m` !== `/`、`'/m/specs'.startsWith('/specs')` 也是 false，四个 tab 会全都不亮。
+  // 与 isTabRoute 读同一份剥离规则，避免「导航栏在、高亮却没跟上」。
+  const isActive = (href: string, end: boolean) => {
+    const path = stripRouterBase(location.pathname)
+    return end ? path === href : path.startsWith(href)
+  }
 
   return (
     <nav
@@ -44,8 +51,11 @@ export const TabBar: Component = () => {
                 href={tab.href}
                 class={cn(
                   'flex h-14 flex-col items-center justify-center gap-0.5 text-[0.68rem] transition-colors',
+                  // 激活态同时切颜色与字重：0.68rem 的标签只靠色相区分，强光下
+                  // 很难一眼读出「我在哪一页」。取 600 而不是 700——这个字号上
+                  // 700 的笔画会糊在一起，也压过 lucide 图标 2px 的线宽。
                   isActive(tab.href, tab.end)
-                    ? 'text-primary'
+                    ? 'font-semibold text-primary'
                     : 'text-muted-foreground active:text-foreground',
                 )}
                 aria-current={isActive(tab.href, tab.end) ? 'page' : undefined}

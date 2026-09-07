@@ -56,9 +56,11 @@ export const Projects: Component = () => {
               <Notice title={t('common.emptyProjects')} hint={t('common.emptyProjectsHint')} />
             }
           >
-            {/* border-b 补最后一行的下边框：项目通常只有几条，末行下方是整屏空白，
-                只靠 divide-y 会让列表看起来像被裁断 */}
-            <ul class="divide-y divide-border border-b border-border">
+            {/* border-b 补末行的边框：项目通常只有几条，末行下方是整屏空白，
+                只靠 divide-y 会让列表看起来像被裁断。首行上边框不补——列表贴着
+                顶栏滚动，那条 border-t 会和顶栏的 border-b 叠成 2px 粗线。
+                底色与扩展页列表同口径：卡片色列表浮在稍深的页面底色上 */}
+            <ul class="divide-y divide-border border-b border-border bg-card">
               <For each={projects()}>
                 {(p) => (
                   <li class="flex items-center pr-4 active:bg-accent">
