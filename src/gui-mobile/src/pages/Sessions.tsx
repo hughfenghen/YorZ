@@ -21,6 +21,7 @@ import { AgentUsageHint } from '@/components/AgentUsageHint.jsx'
 import { ErrorNotice, LoadingNotice, NoProjectNotice, Notice } from '@/components/ListStates.jsx'
 import { activeProjectId } from '@/lib/active-project.js'
 import { readSessionCache, writeSessionCache } from '@/lib/session-cache.js'
+import { readSpecCache, writeSpecCache } from '@/lib/spec-cache.js'
 import { cn } from '@/lib/cn'
 import { t, useTranslation } from '@/i18n/index.js'
 
@@ -96,14 +97,33 @@ export const Sessions: Component = () => {
   })
 
   /**
-   * spec 侧的补充信息。会话行对关联了 spec 的那一条只拿得到 spec id 当标题，
-   * 光看它判断不出「这条在干什么」，所以顺带拉一次 spec 列表，把 summary 借过来。
-   * 拉不到（接口挂了 / spec 已删）就退化成只有标题的行，不影响列表本身。
+   * spec 侧的补充信息。会话行自己只带得到 spec id（spec 会话的 title 就是 id），
+   * 光看它判断不出「这条在干什么」，所以顺带拉一次 spec 列表，把标题与 summary 借过来。
+   * 拉不到（接口挂了 / spec 已删）就退化成只有会话标题的行，不影响列表本身。
+   *
+   * 和会话列表一样走「缓存优先、接口覆盖」：这一页每次从详情页返回都会重新挂载，
+   * 只靠 resource 的话首帧必然缺 summary，等接口回来才补上那两行，行高当场跳一下。
    */
+  const [specList, setSpecList] = createSignal<SpecListItem[] | null>(null)
+
   const [specs, { refetch: refetchSpecs }] = createResource<SpecListItem[], string>(
     () => activeProjectId() ?? undefined,
     (pid) => api.listSpecs(pid),
   )
+
+  createEffect(() => {
+    const pid = activeProjectId()
+    setSpecList(pid ? readSpecCache(pid) : null)
+  })
+
+  createEffect(() => {
+    if (specs.state !== 'ready') return
+    const pid = activeProjectId()
+    const fresh = specs()
+    if (!pid || !fresh) return
+    setSpecList(fresh)
+    writeSpecCache(pid, fresh)
+  })
 
   createEffect(() => {
     const id = activeProjectId()
@@ -114,17 +134,12 @@ export const Sessions: Component = () => {
 
   const specById = createMemo(() => {
     const map = new Map<string, SpecListItem>()
-    if (specs.state !== 'ready') return map
-    for (const spec of specs() ?? []) map.set(spec.id, spec)
+    for (const spec of specList() ?? []) map.set(spec.id, spec)
     return map
   })
 
-  /** 行里那两行「实际内容」：只有关联 spec 且它确实有 summary 时才有。 */
-  const specSummary = (specId: string | undefined): string | undefined => {
-    if (!specId) return undefined
-    const summary = specById().get(specId)?.summary?.trim()
-    return summary || undefined
-  }
+  const specOf = (specId: string | undefined): SpecListItem | undefined =>
+    specId ? specById().get(specId) : undefined
 
   return (
     <Page
@@ -174,24 +189,27 @@ export const Sessions: Component = () => {
                       onClick={() => navigate(`/sessions/${encodeURIComponent(group.latest.id)}`)}
                     >
                       <span class="min-w-0 flex-1">
-                        {/* 内容区统一封顶三行：没有 spec 时标题独占这三行（会话标题
-                            来自首条 prompt 的摘要，一行常截得只剩半句话）；有 spec 时
-                            标题让到一行，把剩下两行留给 summary——spec 行的标题是
-                            spec id，真正能判断「这条在干什么」的是 summary。 */}
+                        {/* 内容区统一封顶三行：没关联 spec 时标题独占这三行（会话标题
+                            来自首条 prompt 的摘要，一行常截得只剩半句话）；关联了 spec
+                            则标题让到一行，剩下两行留给 spec summary。
+
+                            行型只看 `group.specId`（会话数据自带、首帧就有），不看
+                            summary 是否已到：一旦让布局跟着「spec 列表回来没有」走，
+                            从详情页返回时就会先矮后高地跳一下。 */}
                         <span
                           class={cn(
                             'block break-words text-sm',
-                            specSummary(group.specId) ? 'line-clamp-1' : 'line-clamp-3',
+                            group.specId ? 'line-clamp-1' : 'line-clamp-3',
                           )}
                         >
-                          {group.latest.title}
+                          {specOf(group.specId)?.title || group.latest.title}
                         </span>
-                        <Show when={specSummary(group.specId)}>
-                          {(summary) => (
-                            <span class="mt-0.5 line-clamp-2 break-words text-xs text-muted-foreground">
-                              {summary()}
-                            </span>
-                          )}
+                        <Show when={group.specId}>
+                          {/* min-h 撑住两行：spec 数据未到（或这条 spec 真的没写
+                              summary）时留白，也不让行高变。 */}
+                          <span class="mt-0.5 line-clamp-2 min-h-8 break-words text-xs text-muted-foreground">
+                            {specOf(group.specId)?.summary}
+                          </span>
                         </Show>
                         <span class="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                           <time>{formatTimeago(group.updatedAt, lng())}</time>

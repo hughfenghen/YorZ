@@ -21,6 +21,7 @@ import { showToast } from '@/components/Toast.jsx'
 import { activeProjectId } from '@/lib/active-project.js'
 import { copyText } from '@/lib/clipboard.js'
 import { createLongPress } from '@/lib/long-press.js'
+import { readSpecCache, writeSpecCache } from '@/lib/spec-cache.js'
 import { cn } from '@/lib/cn'
 import { t } from '@/i18n/index.js'
 
@@ -35,10 +36,27 @@ import { t } from '@/i18n/index.js'
  */
 export const Specs: Component = () => {
   const navigate = useNavigate()
+  const [list, setList] = createSignal<SpecListItem[] | null>(null)
   const [specs, { refetch }] = createResource<SpecListItem[], string>(
     () => activeProjectId() ?? undefined,
     (pid) => api.listSpecs(pid),
   )
+
+  // 缓存优先：从详情 / 新建页切回来时先画上次列表，接口回来后再替换。
+  createEffect(() => {
+    const pid = activeProjectId()
+    setList(pid ? readSpecCache(pid) : null)
+  })
+
+  // 接口仍是权威来源；成功后整份替换并写缓存，供下次重挂或 PWA 冷启使用。
+  createEffect(() => {
+    if (specs.state !== 'ready') return
+    const pid = activeProjectId()
+    const fresh = specs()
+    if (!pid || !fresh) return
+    setList(fresh)
+    writeSpecCache(pid, fresh)
+  })
 
   createEffect(() => {
     const id = activeProjectId()
@@ -115,70 +133,75 @@ export const Specs: Component = () => {
       }
     >
       <Show when={activeProjectId()} fallback={<NoProjectNotice />}>
-        <Show when={!specs.loading} fallback={<LoadingNotice />}>
-          <Show
-            when={!specs.error}
-            fallback={<ErrorNotice error={specs.error} onRetry={() => void refetch()} />}
-          >
-            <Show when={(specs() ?? []).length > 0} fallback={<Notice title={t('specs.empty')} />}>
-              {/* 底色与扩展页列表同口径：卡片色列表浮在稍深的页面底色上。
-                  只收 border-b：首行上方紧邻顶栏的 border-b，再加上边框会叠成 2px。 */}
-              <ul class="divide-y divide-border border-b border-border bg-card">
-                <For each={specs()}>
-                  {(spec) => {
-                    const parts = splitSpecId(spec.id)
-                    const press = createLongPress({
-                      onLongPress: () => openMenu(spec),
-                      onClick: () => navigate(`/specs/${encodeURIComponent(spec.id)}`),
-                    })
-                    return (
-                      <li>
-                        <button
-                          type="button"
-                          // no-callout + select-none：光拦 contextmenu 拦不住 iOS 的
-                          // 长按放大镜与「拷贝/查询」callout
-                          class="no-callout flex w-full select-none flex-col gap-1 px-4 py-3 text-left active:bg-accent"
-                          {...press}
-                        >
-                          <span class="flex items-center gap-2">
-                            <span
-                              class={cn(
-                                'rounded border px-1.5 py-0.5 text-[0.65rem] font-medium',
-                                stageBadgeClass(spec.stage),
-                              )}
-                            >
-                              {spec.stage}
-                            </span>
-                            <Show when={parts}>
-                              {(p) => (
-                                <span
-                                  class={cn(
-                                    'text-[0.65rem] font-medium',
-                                    SPEC_TYPE_TEXT[p().type] ?? 'text-muted-foreground',
-                                  )}
-                                >
-                                  {p().type}
-                                </span>
-                              )}
-                            </Show>
-                            <time class="ml-auto shrink-0 text-xs text-muted-foreground">
-                              {formatSpecUpdatedAt(spec.updated_at)}
-                            </time>
-                          </span>
-                          <span class="truncate text-sm">{spec.title}</span>
-                          <Show when={spec.summary}>
-                            {/* 两行截断：一行太少（summary 常是一整句），三行会让每屏只剩四条 */}
-                            <span class="line-clamp-2 text-xs text-muted-foreground">
-                              {spec.summary}
-                            </span>
-                          </Show>
-                        </button>
-                      </li>
-                    )
-                  }}
-                </For>
-              </ul>
+        <Show
+          when={list()}
+          fallback={
+            <Show
+              when={!specs.error}
+              fallback={<ErrorNotice error={specs.error} onRetry={() => void refetch()} />}
+            >
+              <LoadingNotice />
             </Show>
+          }
+        >
+          <Show when={(list() ?? []).length > 0} fallback={<Notice title={t('specs.empty')} />}>
+            {/* 底色与扩展页列表同口径：卡片色列表浮在稍深的页面底色上。
+                  只收 border-b：首行上方紧邻顶栏的 border-b，再加上边框会叠成 2px。 */}
+            <ul class="divide-y divide-border border-b border-border bg-card">
+              <For each={list()}>
+                {(spec) => {
+                  const parts = splitSpecId(spec.id)
+                  const press = createLongPress({
+                    onLongPress: () => openMenu(spec),
+                    onClick: () => navigate(`/specs/${encodeURIComponent(spec.id)}`),
+                  })
+                  return (
+                    <li>
+                      <button
+                        type="button"
+                        // no-callout + select-none：光拦 contextmenu 拦不住 iOS 的
+                        // 长按放大镜与「拷贝/查询」callout
+                        class="no-callout flex w-full select-none flex-col gap-1 px-4 py-3 text-left active:bg-accent"
+                        {...press}
+                      >
+                        <span class="flex items-center gap-2">
+                          <span
+                            class={cn(
+                              'rounded border px-1.5 py-0.5 text-[0.65rem] font-medium',
+                              stageBadgeClass(spec.stage),
+                            )}
+                          >
+                            {spec.stage}
+                          </span>
+                          <Show when={parts}>
+                            {(p) => (
+                              <span
+                                class={cn(
+                                  'text-[0.65rem] font-medium',
+                                  SPEC_TYPE_TEXT[p().type] ?? 'text-muted-foreground',
+                                )}
+                              >
+                                {p().type}
+                              </span>
+                            )}
+                          </Show>
+                          <time class="ml-auto shrink-0 text-xs text-muted-foreground">
+                            {formatSpecUpdatedAt(spec.updated_at)}
+                          </time>
+                        </span>
+                        <span class="truncate text-sm">{spec.title}</span>
+                        <Show when={spec.summary}>
+                          {/* 两行截断：一行太少（summary 常是一整句），三行会让每屏只剩四条 */}
+                          <span class="line-clamp-2 text-xs text-muted-foreground">
+                            {spec.summary}
+                          </span>
+                        </Show>
+                      </button>
+                    </li>
+                  )
+                }}
+              </For>
+            </ul>
           </Show>
         </Show>
       </Show>
