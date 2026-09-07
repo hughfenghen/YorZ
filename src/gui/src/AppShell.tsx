@@ -10,6 +10,7 @@ import {
   type ParentComponent,
 } from 'solid-js'
 import { A, useLocation, useNavigate } from '@solidjs/router'
+import { createViewTransitionNav } from '@shared/lib/view-transition-nav.js'
 import {
   BookOpen,
   Check,
@@ -55,6 +56,7 @@ import {
   type ThemeMode,
   type ThemeName,
 } from './lib/theme.js'
+import { resolveDesktopDirection } from './lib/vt-direction.js'
 import { t, useTranslation } from './i18n/index.js'
 
 const THEME_OPTIONS: { mode: ThemeMode; labelKey: string; icon: typeof Sun }[] = [
@@ -75,6 +77,9 @@ const USER_GUIDE_BASE = 'https://github.com/hughfenghen/YorZ/blob/main/docs'
 export const AppShell: ParentComponent = (props): JSX.Element => {
   const location = useLocation()
   const navigate = useNavigate()
+  // 路由切换套上 View Transition：拦在 beforeLeave 这一个点上，
+  // 链接点击 / 程序化 navigate / 浏览器前进后退全覆盖，页面组件不用感知。
+  createViewTransitionNav({ resolveDirection: resolveDesktopDirection })
   const { lng, changeLanguage } = useTranslation()
   const [globalConfigOpen, setGlobalConfigOpen] = createSignal(false)
 
@@ -287,7 +292,11 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
       <div class="flex min-h-0 flex-1">
         <ProjectsSidebar />
         <ChatPanel />
-        <main class="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">{props.children}</main>
+        {/* vt-page 把页面内容从 root 快照里独立出来：切页时只有这块动，
+            顶栏 / 项目侧边栏 / 会话面板保持静止（见 app.css 的 View Transition 段） */}
+        <main class="vt-page flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
+          {props.children}
+        </main>
       </div>
       <Toaster position="top-center" />
       <GlobalConfigDialog open={globalConfigOpen()} onClose={() => setGlobalConfigOpen(false)} />

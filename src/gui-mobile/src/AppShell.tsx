@@ -1,10 +1,12 @@
 import { Show, type ParentComponent } from 'solid-js'
 import { useLocation } from '@solidjs/router'
+import { createViewTransitionNav } from '@shared/lib/view-transition-nav.js'
 import { StatusBanner } from './components/StatusBanner.jsx'
 import { TabBar } from './components/TabBar.jsx'
 import { Toaster } from './components/Toast.jsx'
 import { watchNetwork } from './lib/network.js'
 import { isTabRoute } from './lib/routes.js'
+import { resolveMobileDirection } from './lib/vt-direction.js'
 
 /**
  * 应用外壳：状态横幅 / 路由内容 / 底部导航三段式。
@@ -17,12 +19,18 @@ export const AppShell: ParentComponent = (props) => {
   // 但没有必要——注册本身不碰 DOM 布局。
   watchNetwork()
 
+  // 路由切换套上 View Transition：拦在 beforeLeave 这一个点上，
+  // 链接点击 / 程序化 navigate / 系统前进后退全覆盖，页面组件不用感知。
+  createViewTransitionNav({ resolveDirection: resolveMobileDirection })
+
   const location = useLocation()
 
   return (
     <>
       <StatusBanner />
-      <main class="flex min-h-0 flex-1 flex-col">{props.children}</main>
+      {/* vt-page 把这个节点从 root 快照里独立出来，切页时只有它动，
+          状态横幅与底部导航留在 root 里（见 app.css 的 View Transition 段） */}
+      <main class="vt-page flex min-h-0 flex-1 flex-col">{props.children}</main>
       {/*
         二级页面不出底部导航：它们都带返回键，再留一条 tab 栏既抢走 56px 高度，
         又与「返回」的层级语义打架；会话详情底部本来就是输入栏，两条底栏叠在

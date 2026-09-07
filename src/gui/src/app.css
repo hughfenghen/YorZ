@@ -224,3 +224,134 @@
     max-height: none;
   }
 }
+
+/*
+ * ===== View Transition：页面切换动效 =====
+ *
+ * 机制层在 src/gui-shared/lib/view-transition.ts：它在过渡期间把
+ * `data-vt="forward|back|lateral"` 写到 <html> 上，这里只负责按方向选动画。
+ * 属性名与 `.vt-page` 的 `page` 都是与那个模块的常量约定的契约，改名要同步两处。
+ *
+ * 规则**写在 @layer 之外**：::view-transition-* 是挂在文档根上的独立伪元素树，
+ * 不属于 base/components/utilities 任何一层，塞进 @layer 只会让优先级更难推理。
+ *
+ * 桌面端的口径比移动端克制得多：只有内容区做淡入 + 6px 纵向位移，
+ * 平级切换（项目切换）纯淡入淡出——桌面窗口宽，整页横滑会显得晃。
+ */
+:root {
+  --vt-duration: 180ms;
+  --vt-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/*
+ * 只在过渡期间给页面节点命名。
+ *
+ * `view-transition-name` 不是零副作用的：按规范，取值非 none 的元素**恒定形成
+ * 一个层叠上下文**。常驻挂在 <main> 上会改变页面内浮层与外壳之间的层叠关系；
+ * 挂在 `html[data-vt]` 下，属性只在过渡的那一百多毫秒内存在——旧快照捕获发生在
+ * 属性写入之后、新快照发生在清除之前，两头都覆盖得到，平时则完全没有副作用。
+ */
+html[data-vt] .vt-page {
+  view-transition-name: page;
+  /*
+   * 过渡期间补一层不透明底色。<main> 自身从来没有背景——页面底色一直由 body 的
+   * `bg-background` 提供；而 page 快照只拍 <main> 这棵子树，子树没画到的地方就是
+   * 透明的（body 的底色留在 root 快照里）。淡入淡出期间两页快照是叠着的，新页一透
+   * 就能直接看到底下的旧页内容。取和 body 同一个令牌，平时不生效、过渡期间也看不
+   * 出差别。
+   */
+  background-color: hsl(var(--background));
+}
+
+/*
+ * root 快照装的是顶栏 / 项目侧边栏 / 会话面板 / toast，它们跨路由持久存在，
+ * 且自带 transition-[width]、animate-in 这类动画；再叠一层 root 淡入会变成
+ * 双重动画，所以显式关掉。
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-image-pair(page) {
+  isolation: auto;
+}
+
+::view-transition-old(page),
+::view-transition-new(page) {
+  animation-duration: var(--vt-duration);
+  animation-timing-function: var(--vt-ease);
+  animation-fill-mode: both;
+  /* 两页都是不透明内容，默认的 plus-lighter 混合会让交叠处发白 */
+  mix-blend-mode: normal;
+}
+
+html[data-vt='forward']::view-transition-old(page) {
+  animation-name: vt-page-fade-out;
+}
+html[data-vt='forward']::view-transition-new(page) {
+  animation-name: vt-page-enter-up;
+}
+html[data-vt='back']::view-transition-old(page) {
+  animation-name: vt-page-fade-out;
+}
+html[data-vt='back']::view-transition-new(page) {
+  animation-name: vt-page-enter-down;
+}
+html[data-vt='lateral']::view-transition-old(page) {
+  animation-name: vt-page-fade-out;
+}
+html[data-vt='lateral']::view-transition-new(page) {
+  animation-name: vt-page-fade-in;
+}
+
+@keyframes vt-page-enter-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes vt-page-enter-down {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes vt-page-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes vt-page-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * 减弱动态效果：JS 层已经会直接跳过整个过渡，这里是兜底——防止将来别处
+ * 直接调 startViewTransition 时漏掉。上面 @layer base 里那条 `*` 规则覆盖不到
+ * 伪元素树，必须单列。
+ */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

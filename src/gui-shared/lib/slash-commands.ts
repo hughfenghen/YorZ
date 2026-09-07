@@ -1,4 +1,4 @@
-import type { CustomInstruction } from './api.js'
+import type { CustomInstruction } from '../api/index.js'
 
 /** Where a custom slash command is stored. */
 export type SlashCommandScope = 'project' | 'global'

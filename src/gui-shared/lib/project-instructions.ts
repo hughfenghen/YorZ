@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js'
-import { api, type CustomInstruction } from './api.js'
+import { api, type CustomInstruction } from '../api/index.js'
 
 /**
  * Project-scoped slash commands, cached per project id.
