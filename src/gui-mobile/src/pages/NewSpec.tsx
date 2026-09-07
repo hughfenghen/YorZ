@@ -14,6 +14,7 @@ import {
   type SpecType,
 } from '@shared/lib/spec-draft.js'
 import { Page } from '@/components/Page.jsx'
+import { CompletionTextarea } from '@/components/CompletionTextarea.jsx'
 import { NoProjectNotice } from '@/components/ListStates.jsx'
 import { showToast } from '@/components/Toast.jsx'
 import { activeProjectId } from '@/lib/active-project.js'
@@ -184,12 +185,13 @@ export const NewSpec: Component = () => {
 
           <label class="block">
             <span class="mb-1 block text-xs text-muted-foreground">{t('newSpec.requirement')}</span>
-            <textarea
+            <CompletionTextarea
+              projectId={pid()}
               rows={8}
               class="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-base outline-none focus:border-primary"
               placeholder={t('newSpec.requirementHint')}
               value={requirement()}
-              onInput={(e) => setRequirement(e.currentTarget.value)}
+              onValueChange={setRequirement}
             />
           </label>
 

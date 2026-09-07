@@ -5,6 +5,12 @@ import { FileText } from 'lucide-solid'
 import { api, type SessionInfo } from '@shared/api/index.js'
 import { createChatTranscript } from '@shared/lib/chat-transcript.js'
 import { createAttachments } from '@shared/lib/attachments.js'
+import type { SlashCommand } from '@shared/lib/completion.js'
+import { buildSlashReplacement, mergeScopedInstructions } from '@shared/lib/slash-commands.js'
+import {
+  projectInstructions,
+  refreshProjectInstructions,
+} from '@shared/lib/project-instructions.js'
 import { attachmentLabels } from '@/lib/attachment-labels.js'
 import { Page } from '@/components/Page.jsx'
 import { AgentUsageHint } from '@/components/AgentUsageHint.jsx'
@@ -78,6 +84,40 @@ export const ChatDetail: Component = () => {
   })
 
   const attachments = createAttachments({ projectId: pid, labels: attachmentLabels() })
+
+  /**
+   * `/` 指令表：两个 scope 合并，project 在前并遮蔽同名 global——与服务端
+   * `mergeCustomInstructions` 同口径，选中的那条才等于服务端解析出的那条。
+   */
+  const [globalInstructions] = createResource(() => api.getGlobalConfig())
+  createEffect(() => {
+    const p = pid()
+    if (p) void refreshProjectInstructions(p)
+  })
+  const slashCommands = createMemo<SlashCommand[]>(() => {
+    const custom = mergeScopedInstructions(
+      projectInstructions(pid()),
+      globalInstructions()?.customInstructions ?? [],
+    ).map((cmd) => {
+      const value = `/${cmd.name}`
+      return {
+        value,
+        label: value,
+        // 不回退到 hiddenPrompt：它按定义就是用户看不到的那部分，
+        // 摆进选择器等于自相矛盾（与桌面端同口径）。
+        description: cmd.description || t('chat.customSlashCommandNoDescription'),
+        replacement: buildSlashReplacement(cmd.name, cmd.prefill),
+        customId: cmd.id,
+      }
+    })
+    // 移动端不提供「新建指令」入口（那是一个带四个字段的表单，属二期），
+    // 因此也不放桌面端的 `/add-command` 项——点了没有去处的入口比没有更糟。
+    return [
+      { value: '/yorz-debug', description: t('chat.slashCommandYorzDebug') },
+      { value: '/yorz-spec', description: t('chat.slashCommandYorzSpec') },
+      ...custom,
+    ]
+  })
 
   const tx = createChatTranscript({
     projectId: pid,
@@ -177,6 +217,8 @@ export const ChatDetail: Component = () => {
           running={running()}
           starting={tx.starting()}
           attachments={attachments}
+          projectId={pid()}
+          slashCommands={slashCommands()}
         />
       }
     >

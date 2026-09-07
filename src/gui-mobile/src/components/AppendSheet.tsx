@@ -1,6 +1,7 @@
 import { For, createEffect, createSignal, type Component } from 'solid-js'
 import { api, type AppendItemBody, type AppendItemKind } from '@shared/api/index.js'
 import { Sheet } from './Sheet.jsx'
+import { CompletionTextarea } from './CompletionTextarea.jsx'
 import { showToast } from './Toast.jsx'
 import { cn } from '@/lib/cn'
 import { t } from '@/i18n/index.js'
@@ -104,12 +105,13 @@ export const AppendSheet: Component<{
           <span class="mb-1 block text-xs text-muted-foreground">
             {t('specDetail.appendDescription')}
           </span>
-          <textarea
+          <CompletionTextarea
+            projectId={props.projectId}
             rows={5}
             class="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-base outline-none focus:border-primary"
             placeholder={t('specDetail.appendDescriptionHint')}
             value={description()}
-            onInput={(e) => setDescription(e.currentTarget.value)}
+            onValueChange={setDescription}
           />
         </label>
       </div>

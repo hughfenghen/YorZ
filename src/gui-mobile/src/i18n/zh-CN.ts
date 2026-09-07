@@ -203,6 +203,11 @@ export const zhCN = {
     placeholder: '输入消息…',
     send: '发送',
     abort: '中断',
+    // 补全候选条：键名与文案均与桌面端一致，两端指令表是同一份
+    slashCommandNoMatch: '没有匹配的指令',
+    slashCommandYorzDebug: '启动 debug 模式，尝试解决疑难问题',
+    slashCommandYorzSpec: '基于上下文启动 spec 驱动开发',
+    customSlashCommandNoDescription: '自定义指令',
     attach: '添加附件',
     attachmentLimit: '附件总数不能超过 {{max}} 个',
     attachUnsupported: '不支持的文件类型：{{name}}',

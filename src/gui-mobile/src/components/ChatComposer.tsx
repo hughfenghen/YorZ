@@ -1,19 +1,24 @@
-import { For, Show, createEffect, type Component } from 'solid-js'
+import { For, Show, createEffect, onCleanup, type Component } from 'solid-js'
 import { Paperclip, Send, Square, X } from 'lucide-solid'
 import type { AttachmentsController } from '@shared/lib/attachments.js'
 import { ACCEPT_MIME, MAX_COUNT } from '@shared/lib/attachments.js'
+import { createCompletion, type CompletionItem, type SlashCommand } from '@shared/lib/completion.js'
 import { autoSizeTextarea } from '@/lib/autosize.js'
+import { BLUR_CLOSE_DELAY_MS, MOBILE_SEARCH_DEBOUNCE_MS } from '@/lib/completion-config.js'
+import { CompletionBar } from '@/components/CompletionBar.jsx'
 import { t } from '@/i18n/index.js'
 
 /** 输入框最多长到 5 行，再多就内部滚动。 */
 const MAX_ROWS = 5
 
 /**
- * 底部输入栏：自增高文本域 + 回形针 + 发送/中断互斥按钮。
+ * 底部输入栏：自增高文本域 + 回形针 + 发送/中断互斥按钮，
+ * 以及 `/` 指令与 `@` 文件路径补全（候选条见 `CompletionBar`）。
  *
- * 不做桌面端的 `@` 文件补全与 `/` 命令弹层（见 spec 5.2）：两者都依赖 caret
- * 坐标定位浮层，而移动端的 caret 位置在软键盘、候选词条、放大镜之间不断变化，
- * 浮层要么盖住输入、要么飘到屏幕外。
+ * 补全的触发判定、模糊排序与文本替换全部来自 `@shared/lib/completion.js`，
+ * 与桌面 `MentionTextarea` 是同一份状态机；这里只接了触屏那套交互。
+ * 尤其 `/` 指令选中后插入的文本必须由共享层的 `buildSlashReplacement` 生成：
+ * 服务端靠前导 `/name` 反查指令并注入 hiddenPrompt，前缀丢了会静默失效。
  *
  * `.kb-inset` 是 iOS 软键盘的占位（见 lib/keyboard.ts），`.pb-safe` 是 home
  * indicator 的占位——两者叠加而不是二选一：键盘收起时只需要后者，弹出时前者
@@ -28,11 +33,28 @@ export const ChatComposer: Component<{
   /** 建号 → 订阅 → 首发的握手进行中，禁止二次触发。 */
   starting: boolean
   attachments: AttachmentsController
+  /** 空串则关闭补全：没有项目就没有可搜的文件范围。 */
+  projectId: string
+  /** 空数组则只留 `@`，不触发 `/`。 */
+  slashCommands: SlashCommand[]
 }> = (props) => {
   let fileInput: HTMLInputElement | undefined
   let textareaEl: HTMLTextAreaElement | undefined
+  let blurTimer: ReturnType<typeof setTimeout> | null = null
+  onCleanup(() => {
+    if (blurTimer) clearTimeout(blurTimer)
+  })
   const canSend = () =>
     props.value.trim().length > 0 && !props.starting && !props.attachments.hasPending()
+
+  const completion = createCompletion({
+    projectId: () => props.projectId,
+    value: () => props.value,
+    onValueChange: (next) => props.onInput(next),
+    slashCommands: () => props.slashCommands,
+    slashEmptyEnabled: () => true,
+    searchDebounceMs: MOBILE_SEARCH_DEBOUNCE_MS,
+  })
 
   /**
    * 高度跟着 `value` 走，而不是只跟着 `onInput` 走：发送成功后文本由父组件清空，
@@ -44,8 +66,32 @@ export const ChatComposer: Component<{
     if (textareaEl) autoSizeTextarea(textareaEl, MAX_ROWS)
   })
 
+  /**
+   * 选中候选项后自己收尾光标：共享层只负责算出替换后的文本与光标位置，
+   * 聚焦与 setSelectionRange 属于宿主的 DOM。放到下一帧是因为此刻 `value`
+   * 刚下发、textarea 还没重渲染，立即 setSelectionRange 会被覆盖。
+   */
+  function onSelectCompletion(item: CompletionItem): void {
+    const outcome = completion.select(item)
+    if (outcome.kind !== 'text') return
+    requestAnimationFrame(() => {
+      if (!textareaEl) return
+      textareaEl.focus()
+      textareaEl.setSelectionRange(outcome.cursorPos, outcome.cursorPos)
+      autoSizeTextarea(textareaEl, MAX_ROWS)
+    })
+  }
+
   return (
     <div class="kb-inset shrink-0 border-t border-border bg-card px-safe pb-safe">
+      <Show when={completion.open() && (completion.items().length > 0 || completion.slashEmpty())}>
+        <CompletionBar
+          items={completion.items()}
+          empty={completion.slashEmpty()}
+          onSelect={onSelectCompletion}
+        />
+      </Show>
+
       <Show when={props.attachments.attachments().length > 0}>
         {/* 横向滚动的缩略图条：竖排会在小屏上把输入框挤出视口 */}
         <div class="flex gap-2 overflow-x-auto px-4 pt-2">
@@ -129,6 +175,13 @@ export const ChatComposer: Component<{
           onInput={(e) => {
             autoSizeTextarea(e.currentTarget, MAX_ROWS)
             props.onInput(e.currentTarget.value)
+            completion.handleInput(e.currentTarget)
+          }}
+          // 候选项的手势会抑制合成事件，正常不会走到这里；
+          // 真正点走（消息区、附件按钮）才收起候选条。
+          onBlur={() => {
+            if (blurTimer) clearTimeout(blurTimer)
+            blurTimer = setTimeout(completion.close, BLUR_CLOSE_DELAY_MS)
           }}
         />
 

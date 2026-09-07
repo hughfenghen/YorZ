@@ -1,55 +1,14 @@
-import { For, Show, createSignal, onCleanup, type Component } from 'solid-js'
+import { For, Show, onCleanup, type Component } from 'solid-js'
 import { Pencil, Plus, Trash2 } from 'lucide-solid'
+import { createCompletion, type CompletionItem, type SlashCommand } from '@shared/lib/completion.js'
 import { cn } from '../lib/cn.js'
-import { api } from '../lib/api.js'
 import { Button } from './ui/button.jsx'
 import { AutoResizeTextarea } from './ui/textarea.jsx'
 
-const SEARCH_DEBOUNCE_MS = 150
+export type { SlashCommand }
+
 /** Blur must outlive the候选项 mousedown, or the click never lands. */
 const BLUR_CLOSE_DELAY_MS = 150
-const FUZZY_SCORE_MATCH = 16
-const FUZZY_SCORE_PREFIX = 48
-const FUZZY_SCORE_CONSECUTIVE = 24
-const FUZZY_SCORE_BOUNDARY = 8
-
-export interface SlashCommand {
-  value: string
-  label?: string
-  description?: string
-  replacement?: string
-  action?: 'add'
-  customId?: string
-  editable?: boolean
-  editLabel?: string
-  deletable?: boolean
-  deleteLabel?: string
-  icon?: 'plus'
-}
-
-type CompletionItem =
-  | { kind: 'mention'; value: string }
-  | {
-      kind: 'slash'
-      value: string
-      label: string
-      description?: string
-      replacement?: string
-      action?: 'add'
-      customId?: string
-      editable?: boolean
-      editLabel?: string
-      deletable?: boolean
-      deleteLabel?: string
-      icon?: 'plus'
-      command: SlashCommand
-    }
-
-interface ScoredSlashCommand {
-  cmd: SlashCommand
-  score: number
-  index: number
-}
 
 export interface MentionTextareaProps {
   /** Empty id disables completion (no project scope to search). */
@@ -88,247 +47,81 @@ export interface MentionTextareaProps {
   onPaste?: (e: ClipboardEvent) => void
 }
 
-function stripLeadingSlash(value: string): string {
-  return value.replace(/^\/+/, '')
-}
-
-function isFuzzyBoundary(target: string, index: number): boolean {
-  if (index === 0) return true
-  return /[\s/_.-]/.test(target[index - 1] ?? '')
-}
-
-function scoreFuzzyText(query: string, target: string): number | null {
-  if (!query) return 0
-  const q = query.toLowerCase()
-  const t = target.toLowerCase()
-  let score = 0
-  let lastIndex = -1
-
-  for (let qi = 0; qi < q.length; qi++) {
-    const nextIndex = t.indexOf(q[qi]!, lastIndex + 1)
-    if (nextIndex === -1) return null
-
-    score += FUZZY_SCORE_MATCH
-    if (nextIndex === qi) score += FUZZY_SCORE_PREFIX
-    if (nextIndex === lastIndex + 1) score += FUZZY_SCORE_CONSECUTIVE
-    if (isFuzzyBoundary(target, nextIndex)) score += FUZZY_SCORE_BOUNDARY
-    score -= Math.max(0, nextIndex - lastIndex - 1)
-    lastIndex = nextIndex
-  }
-
-  return score - target.length * 0.01
-}
-
-function scoreFuzzySlashCommand(query: string, cmd: SlashCommand): number | null {
-  const q = stripLeadingSlash(query.trim())
-  if (!q) return 0
-  const valueScore = scoreFuzzyText(q, stripLeadingSlash(cmd.value))
-  const labelScore = cmd.label ? scoreFuzzyText(q, stripLeadingSlash(cmd.label)) : null
-  if (valueScore == null) return labelScore
-  if (labelScore == null) return valueScore
-  return Math.max(valueScore, labelScore)
-}
-
-function filterSlashCommands(commands: SlashCommand[], query: string): SlashCommand[] {
-  if (!query) return commands
-  return commands
-    .map<ScoredSlashCommand | null>((cmd, index) => {
-      const score = scoreFuzzySlashCommand(query, cmd)
-      return score == null ? null : { cmd, score, index }
-    })
-    .filter((entry): entry is ScoredSlashCommand => entry != null)
-    .sort((a, b) => b.score - a.score || a.index - b.index)
-    .map((entry) => entry.cmd)
-}
-
 /**
  * Textarea with `@`-triggered file-path completion and content-driven height.
  *
  * Extracted from NewSpec so Chat can reuse it: keeping one copy is what keeps the
  * popup's active-item styling (and the IME/Enter precedence) consistent in both.
+ *
+ * The trigger/filter/splice logic lives in `@shared/lib/completion.js` so the
+ * mobile composer can drive the same state machine behind its own UI; what stays
+ * here is desktop-only — the anchored popup, keyboard navigation, and the row
+ * edit/delete affordances.
  */
 export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
-  const [open, setOpen] = createSignal(false)
-  const [items, setItems] = createSignal<CompletionItem[]>([])
-  const [index, setIndex] = createSignal(0)
-  /** Popup is open on a `/` query that matched nothing. */
-  const [slashEmpty, setSlashEmpty] = createSignal(false)
-
   let el: HTMLTextAreaElement | undefined
   let itemRefs: (HTMLLIElement | null)[] = []
-  let mentionStart = -1
-  let mentionQuery = ''
-  let slashQuery = ''
-  let timer: ReturnType<typeof setTimeout> | null = null
   let blurTimer: ReturnType<typeof setTimeout> | null = null
 
+  // The search timer is owned by createCompletion; this one is still ours.
   onCleanup(() => {
-    if (timer) clearTimeout(timer)
     if (blurTimer) clearTimeout(blurTimer)
   })
 
-  function closeMention(): void {
-    setOpen(false)
-    setSlashEmpty(false)
-    setItems([])
-    setIndex(0)
-    mentionStart = -1
-    mentionQuery = ''
-    slashQuery = ''
-    itemRefs = []
-    if (timer) {
-      clearTimeout(timer)
-      timer = null
-    }
-  }
-
-  function debouncedSearch(query: string): void {
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(async () => {
-      const pid = props.projectId
-      if (!pid) return
-      try {
-        const result = await api.listFiles(pid, query)
-        itemRefs = []
-        setItems(result.items.map((value) => ({ kind: 'mention', value })))
-        setIndex(0)
-      } catch {
-        setItems([])
-      }
-    }, SEARCH_DEBOUNCE_MS)
-  }
-
-  function checkSlashCommand(target: HTMLTextAreaElement): boolean {
-    const commands = props.slashCommands ?? []
-    if (commands.length === 0) return false
-    const pos = target.selectionStart
-    const text = target.value.slice(0, pos)
-    if (!/^\/[\w-]*$/.test(text)) return false
-
-    mentionStart = -1
-    mentionQuery = ''
-    slashQuery = text.slice(1)
-    const next = filterSlashCommands(commands, slashQuery).map((cmd) => ({
-      kind: 'slash' as const,
-      value: cmd.value,
-      label: cmd.label ?? cmd.value,
-      description: cmd.description,
-      replacement: cmd.replacement,
-      action: cmd.action,
-      customId: cmd.customId,
-      editable: cmd.editable,
-      editLabel: cmd.editLabel,
-      deletable: cmd.deletable,
-      deleteLabel: cmd.deleteLabel,
-      icon: cmd.icon,
-      command: cmd,
-    }))
-    itemRefs = []
-    setItems(next)
-    setIndex(0)
-    if (next.length > 0) {
-      setSlashEmpty(false)
-      setOpen(true)
-    } else if (props.slashEmptyLabel) {
-      setSlashEmpty(true)
-      setOpen(true)
-    } else {
-      closeMention()
-    }
-    return true
-  }
-
-  /** An `@` opens the popup while the run after it still looks like a path fragment. */
-  function checkMention(target: HTMLTextAreaElement): void {
-    const pos = target.selectionStart
-    const text = target.value.slice(0, pos)
-    const atIdx = text.lastIndexOf('@')
-    if (atIdx === -1) {
-      closeMention()
-      return
-    }
-    const afterAt = text.slice(atIdx + 1)
-    if (!/^[\w./@-]*$/.test(afterAt)) {
-      closeMention()
-      return
-    }
-    mentionStart = atIdx
-    mentionQuery = afterAt
-    if (!open()) setOpen(true)
-    debouncedSearch(afterAt)
-  }
-
-  function checkCompletion(target: HTMLTextAreaElement): void {
-    if (checkSlashCommand(target)) return
-    checkMention(target)
-  }
+  const completion = createCompletion({
+    projectId: () => props.projectId,
+    value: () => props.value,
+    onValueChange: (next) => props.onValueChange(next),
+    slashCommands: () => props.slashCommands ?? [],
+    slashEmptyEnabled: () => Boolean(props.slashEmptyLabel),
+  })
 
   function selectItem(item: CompletionItem): void {
-    if (item.kind === 'slash' && item.action === 'add') {
-      const text = props.value
-      const after = text.slice(1 + slashQuery.length)
-      props.onValueChange(after)
-      closeMention()
-      props.onSlashCommandAction?.(item.command)
+    itemRefs = []
+    const outcome = completion.select(item)
+    if (outcome.kind === 'noop') return
+    if (outcome.kind === 'action') {
+      props.onSlashCommandAction?.(outcome.command)
       requestAnimationFrame(() => el?.focus())
       return
     }
-    const text = props.value
-    const isSlash = item.kind === 'slash'
-    const start = isSlash ? 0 : mentionStart
-    const queryLength = isSlash ? slashQuery.length : mentionQuery.length
-    const before = text.slice(0, start)
-    const after = text.slice(start + 1 + queryLength)
-    const replacement = isSlash ? (item.replacement ?? `${item.value} `) : `@${item.value}`
-    props.onValueChange(before + replacement + after)
-    closeMention()
-    const cursorPos = before.length + replacement.length
     // Height follows from the new `value` — AutoResizeTextarea's own effect owns it.
     requestAnimationFrame(() => {
       if (!el) return
       el.focus()
-      el.setSelectionRange(cursorPos, cursorPos)
+      el.setSelectionRange(outcome.cursorPos, outcome.cursorPos)
     })
   }
 
   function deleteSlashItem(item: CompletionItem): void {
     if (item.kind !== 'slash') return
     props.onDeleteSlashCommand?.(item.command)
-    let shouldClose = false
-    setItems((prev) => {
-      const next = prev.filter((candidate) => {
-        return candidate.kind !== 'slash' || !item.customId || candidate.customId !== item.customId
-      })
-      setIndex((current) => Math.min(current, Math.max(0, next.length - 1)))
-      shouldClose = next.length === 0
-      return next
-    })
-    if (shouldClose) closeMention()
+    if (item.customId) completion.removeSlashItem(item.customId)
   }
 
   function editSlashItem(item: CompletionItem): void {
     if (item.kind !== 'slash') return
     props.onEditSlashCommand?.(item.command)
-    closeMention()
+    completion.close()
     requestAnimationFrame(() => el?.focus())
   }
 
   function scrollActiveIntoView(): void {
-    itemRefs[index()]?.scrollIntoView({ block: 'nearest' })
+    itemRefs[completion.index()]?.scrollIntoView({ block: 'nearest' })
   }
 
   function onKeyDown(e: KeyboardEvent): void {
-    const list = items()
-    if (open() && list.length > 0) {
+    const list = completion.items()
+    if (completion.open() && list.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setIndex((i) => (i + 1) % list.length)
+        completion.moveIndex(1)
         requestAnimationFrame(scrollActiveIntoView)
         return
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setIndex((i) => (i - 1 + list.length) % list.length)
+        completion.moveIndex(-1)
         requestAnimationFrame(scrollActiveIntoView)
         return
       }
@@ -337,12 +130,12 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
         // host, send the message) — let the composition swallow it.
         if (!e.isComposing) {
           e.preventDefault()
-          selectItem(list[index()]!)
+          selectItem(list[completion.index()]!)
           return
         }
       } else if (e.key === 'Escape') {
         e.preventDefault()
-        closeMention()
+        completion.close()
         return
       }
     }
@@ -363,21 +156,22 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
         class={props.class}
         onInput={(e) => {
           props.onValueChange(e.currentTarget.value)
-          checkCompletion(e.currentTarget)
+          itemRefs = []
+          completion.handleInput(e.currentTarget)
         }}
         onKeyDown={onKeyDown}
         onPaste={(e) => props.onPaste?.(e)}
         onBlur={() => {
           if (blurTimer) clearTimeout(blurTimer)
-          blurTimer = setTimeout(closeMention, BLUR_CLOSE_DELAY_MS)
+          blurTimer = setTimeout(completion.close, BLUR_CLOSE_DELAY_MS)
         }}
       />
-      <Show when={open() && (items().length > 0 || slashEmpty())}>
+      <Show when={completion.open() && (completion.items().length > 0 || completion.slashEmpty())}>
         <ul class="absolute bottom-full left-0 right-0 z-[100] m-0 max-h-60 list-none overflow-y-auto rounded-lg border bg-card py-1 shadow-lg">
-          <Show when={slashEmpty()}>
+          <Show when={completion.slashEmpty()}>
             <li class="px-3 py-1.5 text-sm text-muted-foreground">{props.slashEmptyLabel}</li>
           </Show>
-          <For each={items()}>
+          <For each={completion.items()}>
             {(item, i) => (
               // The row highlight lives on the <li> so the delete control can be a
               // real sibling <button> — nesting one inside the select button was
@@ -386,11 +180,11 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
                 ref={(node) => (itemRefs[i()] = node)}
                 class={cn(
                   'flex items-center',
-                  index() === i()
+                  completion.index() === i()
                     ? 'bg-primary text-primary-foreground'
                     : 'text-foreground hover:bg-accent hover:text-accent-foreground',
                 )}
-                onMouseEnter={() => setIndex(i())}
+                onMouseEnter={() => completion.setIndex(i())}
               >
                 <button
                   type="button"
@@ -412,7 +206,9 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
                       <span
                         class={cn(
                           'block overflow-hidden text-ellipsis whitespace-nowrap text-xs',
-                          index() === i() ? 'text-primary-foreground/80' : 'text-muted-foreground',
+                          completion.index() === i()
+                            ? 'text-primary-foreground/80'
+                            : 'text-muted-foreground',
                         )}
                       >
                         {item.kind === 'slash' ? item.description : ''}
@@ -431,7 +227,7 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
                         title={item.kind === 'slash' ? item.editLabel : undefined}
                         class={cn(
                           'h-7 w-7 p-0',
-                          index() === i()
+                          completion.index() === i()
                             ? 'text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground'
                             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                         )}
@@ -453,7 +249,7 @@ export const MentionTextarea: Component<MentionTextareaProps> = (props) => {
                         title={item.kind === 'slash' ? item.deleteLabel : undefined}
                         class={cn(
                           'h-7 w-7 p-0',
-                          index() === i()
+                          completion.index() === i()
                             ? 'text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground'
                             : 'text-destructive hover:bg-destructive/10 hover:text-destructive',
                         )}
