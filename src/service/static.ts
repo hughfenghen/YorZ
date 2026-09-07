@@ -55,6 +55,8 @@ export function createStaticRoutes(guiRoot?: string): Hono {
 
   app.get('*', async (c) => {
     if (c.req.path.startsWith('/api')) return c.notFound()
+    if (c.req.path === '/' && isMobileRequest(c)) return c.redirect(`${MOBILE_PREFIX}/`)
+
     const file = resolveStaticFile(root, c.req.path)
     if (file) return serveFile(c, file)
     const indexPath = join(root, 'index.html')
@@ -63,6 +65,13 @@ export function createStaticRoutes(guiRoot?: string): Hono {
   })
 
   return app
+}
+
+function isMobileRequest(c: import('hono').Context): boolean {
+  const ua = c.req.header('user-agent') ?? ''
+  const chMobile = c.req.header('sec-ch-ua-mobile')
+  if (chMobile === '?1') return true
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(ua)
 }
 
 function defaultGuiRoot(): string {

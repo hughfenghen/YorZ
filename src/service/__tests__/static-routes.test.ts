@@ -78,6 +78,34 @@ describe('createStaticRoutes', () => {
     expect(res.headers.get('location')).toBe('/m/')
   })
 
+  it('redirects mobile root visits to /m/ without affecting desktop root visits', async () => {
+    await seed({
+      'gui/index.html': '<html>desktop</html>',
+      'gui-mobile/index.html': '<html>mobile</html>',
+    })
+    mount()
+
+    const mobile = await app.request('/', {
+      headers: { 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile' },
+    })
+    expect(mobile.status).toBe(302)
+    expect(mobile.headers.get('location')).toBe('/m/')
+
+    const desktop = await app.request('/', {
+      headers: { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' },
+    })
+    expect(await desktop.text()).toBe('<html>desktop</html>')
+  })
+
+  it('honors client hints when deciding whether the root visit is mobile', async () => {
+    await seed({ 'gui/index.html': 'd', 'gui-mobile/index.html': 'm' })
+    mount()
+
+    const res = await app.request('/', { headers: { 'sec-ch-ua-mobile': '?1' } })
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('/m/')
+  })
+
   it('marks the entry document and the service worker as no-cache', async () => {
     await seed({
       'gui/index.html': 'd',
