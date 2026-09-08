@@ -46,6 +46,7 @@
     "test:agent": "node scripts/test-agent.mjs",
     "test:e2e": "pnpm run build && playwright test",
     "format": "prettier --write \"src/**/*.{ts,tsx,md,css}\"",
+    "prepare": "node scripts/setup-git-hooks.mjs",
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {

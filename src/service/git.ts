@@ -224,14 +224,10 @@ function pathsNeedingStage(changes: GitChange[], paths: string[]): string[] {
   const out: string[] = []
   for (const p of paths) {
     const change = byPath.get(p)
-    // `git status` omits both clean paths and pathspecs that never existed.
-    // Keep either kind here and let `git add` distinguish them: adding a clean
-    // path succeeds (then `git commit` reports the stale selection), while an
-    // unknown path preserves Git's useful "did not match any files" failure.
-    if (!change) {
-      out.push(p)
-      continue
-    }
+    // `git status` omits both clean paths and stale selections. Neither has a
+    // worktree change to stage, and passing a vanished path to `git add` would
+    // abort the whole batch instead of committing the paths that still exist.
+    if (!change) continue
     if (change.worktree === ' ') continue
     out.push(p)
   }

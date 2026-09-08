@@ -219,12 +219,13 @@ describe('POST /git/commit', () => {
     expect(body.error).toMatch(/nothing to commit/i)
   })
 
-  it('surfaces the underlying git stderr on failure', async () => {
+  it('treats a vanished unknown path as a stale selection', async () => {
     const { apiPrefix } = await startInRepo()
     const res = await postJson(`${apiPrefix}/git/commit`, { message: 'm', paths: ['ghost.txt'] })
     expect(res.status).toBe(400)
-    const body = (await res.json()) as { error: string }
-    expect(body.error).toMatch(/did not match any files/)
+    const body = (await res.json()) as { error: string; code: string }
+    expect(body.code).toBe('nothing_to_commit')
+    expect(body.error).toMatch(/nothing to commit/i)
   })
 
   it('400s on empty message or empty paths', async () => {

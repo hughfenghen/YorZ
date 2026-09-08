@@ -1,0 +1,31 @@
+#!/bin/sh
+
+set -eu
+
+zero_sha='0000000000000000000000000000000000000000'
+should_test=false
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "${local_sha:-$zero_sha}" = "$zero_sha" ]; then
+    continue
+  fi
+
+  if printf '%s\n' "${remote_ref:-}" | grep -Eq '^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$'; then
+    should_test=true
+    continue
+  fi
+
+  if [ "${remote_ref:-}" = 'refs/heads/main' ]; then
+    subject=$(git log -1 --format=%s "$local_sha")
+    if printf '%s\n' "$subject" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
+      should_test=true
+    fi
+  fi
+done
+
+if [ "$should_test" = false ]; then
+  exit 0
+fi
+
+echo '检测到发布版本推送，正在运行本地单测...'
+pnpm test
