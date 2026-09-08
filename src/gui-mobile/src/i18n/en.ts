@@ -197,7 +197,7 @@ export const en: Translation = {
     usageWindowUnknown: '{{label}} remaining usage unknown',
     usageResetUnknown: 'unknown',
     usageSeparator: ' · ',
-    placeholder: 'Message…',
+    placeholder: '/ for commands, @ to reference files',
     send: 'Send',
     abort: 'Stop',
     slashCommandNoMatch: 'No matching command',

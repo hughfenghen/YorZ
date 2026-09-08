@@ -200,7 +200,7 @@ export const zhCN = {
     usageWindowUnknown: '{{label}} 剩余用量未知',
     usageResetUnknown: '未知',
     usageSeparator: ' · ',
-    placeholder: '输入消息…',
+    placeholder: '/ 触发候选指令，@ 引用文件',
     send: '发送',
     abort: '中断',
     // 补全候选条：键名与文案均与桌面端一致，两端指令表是同一份
