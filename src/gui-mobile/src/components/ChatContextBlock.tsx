@@ -20,7 +20,7 @@ export const ChatContextBlock: Component<{
     <div class="mb-2">
       <button
         type="button"
-        class="flex min-h-11 items-center gap-1.5 rounded border border-dashed px-2 text-left text-xs text-muted-foreground active:opacity-60"
+        class="flex items-center gap-1.5 rounded border border-dashed p-2 text-left text-xs text-muted-foreground active:opacity-60"
         aria-expanded={open()}
         onClick={() => props.expand.set(props.expandKey, !open())}
       >

@@ -23,7 +23,7 @@ export const ChatToolBlock: Component<{ segment: ToolsSegment; expand: ToolExpan
     <div class="my-1">
       <button
         type="button"
-        class="flex min-h-11 w-full items-center gap-1.5 text-left text-xs text-muted-foreground active:opacity-60"
+        class="flex w-full items-center gap-1.5 py-2 text-left text-xs text-muted-foreground active:opacity-60"
         aria-expanded={open()}
         onClick={() => props.expand.set(props.segment.id, !open())}
       >
