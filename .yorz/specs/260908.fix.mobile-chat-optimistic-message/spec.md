@@ -1,8 +1,8 @@
 ---
 stage: done
-last_action: '任务全部完成，标记 done'
-updated_at: '2026-09-08 15:58:00'
-summary: '修复移动端 ChatDetail：草稿首发消息不上屏、后台拉取把已有内容切回加载中、建号后标题不更新'
+last_action: 用户手动置为 done
+updated_at: '2026-09-08 19:40:41'
+summary: 修复移动端 ChatDetail：草稿首发消息不上屏、后台拉取把已有内容切回加载中、建号后标题不更新
 ---
 
 # 移动端会话详情：首条消息立即上屏与静默刷新
@@ -281,7 +281,17 @@ _暂无_
 - [x] 在 src/gui-mobile/src/pages/ChatDetail.tsx 解构 `sessions` 资源的 `refetch` 并给 hook 传 `onSessionsChanged`（验收：建号后标题由未命名会话变为服务端标题）
 - [x] 运行 pnpm test 与 pnpm typecheck 并记录结果（验收：两条命令均通过）
 
-## 7. 执行记录
+## 7. 追加任务
+
+- [done] [fix] 2026-09-08 19:19:23 | claude 正常，codex 在空白页发送消息后，消息未直接上屏，而是显示“加载中...”，跳转 "这个会话还没有消息"，再跳转正确的显示状态：用户发送的第一
+  - 描述：claude 正常，codex 在空白页发送消息后，消息未直接上屏，而是显示“加载中...”，跳转 "这个会话还没有消息"，再跳转正确的显示状态：用户发送的第一条消息，第二条 codex 输出的内容
+  - 结论：根因是 codex 换 session id（`session-started`）时四份账非原子搬迁——中途的
+    `onSessionsChanged` 同步 flush 了 history effect，撞上「`displayedSid` 已是新 id、
+    `o.sessionId()` 还是旧 id」的半搬完状态，`planHistoryLoad` 误判为切换会话返回
+    `load{clear:true}`，清空乐观气泡并进加载态。详见
+    `@.yorz/specs/260908.fix.mobile-chat-optimistic-message/debug.md` 的 Debug 1。
+
+## 8. 执行记录
 
 - 路由合并：`@src/gui-mobile/src/main.tsx` 两条 `Route` 合并为
   `<Route path={['/sessions/new', '/sessions/:id']} component={ChatDetail} />`，旁注改写为

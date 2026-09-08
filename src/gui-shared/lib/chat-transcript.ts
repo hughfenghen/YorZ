@@ -1,4 +1,12 @@
-import { createEffect, createMemo, createSignal, onCleanup, untrack, type Accessor } from 'solid-js'
+import {
+  batch,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  untrack,
+  type Accessor,
+} from 'solid-js'
 import { api } from '../api/index.js'
 import { subscribeSession, type SessionEvent } from '../api/sse.js'
 import {
@@ -469,16 +477,39 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
           appendError(ev.message)
           o.onRunningChange(sid, false)
         } else if (ev.type === 'session-started' && ev.sessionId !== sid) {
-          // codex swaps in its own id mid-turn. The new id has no transcript
-          // either, so inherit `fresh` — otherwise re-subscribing under the new
-          // id would clear the deltas already on screen.
-          if (freshSids.has(sid)) freshSids.add(ev.sessionId)
-          if (displayedSid === sid) displayedSid = ev.sessionId
-          o.onRunningChange(sid, false)
-          o.onRunningChange(ev.sessionId, true)
-          // The list must already be in flight when the new id goes live.
-          o.onSessionsChanged?.()
-          o.onSessionIdChange(ev.sessionId)
+          // codex swaps in its own id mid-turn. Handing the swap over is FOUR
+          // writes — `displayedSid` here, plus the host's active id, run state
+          // and session list — and the history effect reads two of them. Outside
+          // a batch each write flushes that effect on its own, so it ran on a
+          // half-applied swap: `displayedSid` already the new id while
+          // `o.sessionId()` was still the old one. `planHistoryLoad` reads that
+          // as "the area holds a DIFFERENT session" and answers
+          // `load{clear: true}` — which blanked the optimistic user bubble and
+          // raised the spinner, for a session whose transcript is still `[]`.
+          // That is the codex-only "加载中 → 这个会话还没有消息 → content"
+          // flicker; claude never hit it because its `session-started` carries
+          // the id we already have and this branch does not run at all.
+          //
+          // Batching makes the inconsistent window zero-width: the effect runs
+          // once, after every book has been moved to the new id.
+          batch(() => {
+            // The new id has no transcript either, so inherit `fresh` —
+            // otherwise re-subscribing under it would clear the deltas already
+            // on screen.
+            if (freshSids.has(sid)) freshSids.add(ev.sessionId)
+            if (displayedSid === sid) displayedSid = ev.sessionId
+            // Before the run-state transitions, not after: a host may route
+            // `onRunningChange` by whichever id is currently active (mobile
+            // holds one boolean for the session it shows), and the new id's
+            // `running = true` is dropped on the floor while the old id is
+            // still the active one — leaving the composer's Abort button gone
+            // mid-turn until the session list happens to correct it.
+            o.onSessionIdChange(ev.sessionId)
+            o.onRunningChange(sid, false)
+            o.onRunningChange(ev.sessionId, true)
+            // The list is now stale: the id it knows no longer exists.
+            o.onSessionsChanged?.()
+          })
         }
         // `compact` carries only metrics; nothing to render.
       },
