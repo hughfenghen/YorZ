@@ -12,6 +12,7 @@ describe('resolveMobileDirection', () => {
   it('treats drilling into secondary / tertiary pages as forward', () => {
     expect(resolveMobileDirection('/m/specs', '/m/specs/abc')).toBe('forward')
     expect(resolveMobileDirection('/m/specs/abc', '/m/specs/abc/git')).toBe('forward')
+    expect(resolveMobileDirection('/m/specs/abc', '/m/specs/abc/debug')).toBe('forward')
     expect(resolveMobileDirection('/m/ext', '/m/ext/runs/r1')).toBe('forward')
     expect(resolveMobileDirection('/m/projects', '/m/settings/global')).toBe('forward')
   })
@@ -20,6 +21,7 @@ describe('resolveMobileDirection', () => {
     // 返回键都是 navigate('/显式目标')，history 里是 push，只能靠深度推
     expect(resolveMobileDirection('/m/specs/abc', '/m/specs')).toBe('back')
     expect(resolveMobileDirection('/m/specs/abc/git', '/m/specs/abc')).toBe('back')
+    expect(resolveMobileDirection('/m/specs/abc/debug', '/m/specs/abc')).toBe('back')
     expect(resolveMobileDirection('/m/sessions/s1', '/m/')).toBe('back')
     expect(resolveMobileDirection('/m/settings/global', '/m/projects')).toBe('back')
     expect(resolveMobileDirection('/m/ext/runs/r1', '/m/ext')).toBe('back')

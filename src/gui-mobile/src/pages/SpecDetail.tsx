@@ -10,7 +10,7 @@ import {
 } from 'solid-js'
 import { useNavigate, useParams } from '@solidjs/router'
 import morphdom from 'morphdom'
-import { CircleHelp, MessageSquare, MoreHorizontal } from 'lucide-solid'
+import { CircleHelp, GitBranch, MessageSquare, MoreHorizontal } from 'lucide-solid'
 import { api, type SpecDetail as SpecDetailDoc } from '@shared/api/index.js'
 import { subscribeSession, subscribeSessions, subscribeSpec } from '@shared/api/sse.js'
 import { renderMarkdown } from '@shared/lib/markdown.js'
@@ -28,12 +28,7 @@ import { QuestionSheet } from '@/components/QuestionSheet.jsx'
 import { AppendSheet } from '@/components/AppendSheet.jsx'
 import { AnnotateSheet } from '@/components/AnnotateSheet.jsx'
 import { SelectionBar } from '@/components/SelectionBar.jsx'
-import {
-  ErrorNotice,
-  LoadingNotice,
-  NoProjectNotice,
-  comingSoon,
-} from '@/components/ListStates.jsx'
+import { ErrorNotice, LoadingNotice, NoProjectNotice } from '@/components/ListStates.jsx'
 import { showToast } from '@/components/Toast.jsx'
 import { activeProjectId } from '@/lib/active-project.js'
 import { copyText } from '@/lib/clipboard.js'
@@ -413,8 +408,7 @@ export const SpecDetail: Component = () => {
 
                     {/* 动作行。debug 与桌面端同一道门禁：只有该 spec 真的写过
                         debug.md 才渲染入口——没有记录时摆一个点开是空的按钮，
-                        比不摆更让人困惑。移动端暂无 debug 详情页，点击仍走
-                        既有的「即将支持」降级口径。 */}
+                        比不摆更让人困惑。 */}
                     <div class="mt-3 flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -427,17 +421,19 @@ export const SpecDetail: Component = () => {
                         <button
                           type="button"
                           class="min-h-9 rounded-md border border-border px-3 text-xs text-muted-foreground active:bg-accent"
-                          onClick={comingSoon}
+                          onClick={() => navigate(`/specs/${encodeURIComponent(params.id)}/debug`)}
                         >
                           {t('specDetail.debug')}
                         </button>
                       </Show>
                       <button
                         type="button"
-                        class="min-h-9 rounded-md border border-border px-3 text-xs active:bg-accent"
+                        class="flex min-h-9 min-w-9 items-center justify-center rounded-md border border-border active:bg-accent"
+                        aria-label={t('specDetail.git')}
+                        title={t('specDetail.git')}
                         onClick={() => navigate(`/specs/${encodeURIComponent(params.id)}/git`)}
                       >
-                        {t('specDetail.git')}
+                        <GitBranch size={16} aria-hidden="true" />
                       </button>
                     </div>
                   </section>

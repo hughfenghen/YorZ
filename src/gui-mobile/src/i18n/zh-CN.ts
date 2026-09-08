@@ -233,7 +233,7 @@ export const zhCN = {
     running: '运行中',
     openSession: '查看会话',
     appendTask: '追加任务',
-    debug: 'debug',
+    debug: 'Debug 文档',
     git: 'git',
     more: '更多',
     copySpecPath: '复制 spec 路径',
@@ -283,6 +283,9 @@ export const zhCN = {
     explainTooLong: '选中内容超过 {{max}} 字，请选少一点',
     explainFailed: '解释失败',
     selectionClose: '取消选择',
+  },
+  specDebug: {
+    empty: '暂无 debug.md 记录',
   },
   newSpec: {
     title: '新建 spec',

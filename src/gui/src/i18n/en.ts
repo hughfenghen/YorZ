@@ -216,7 +216,7 @@ export const en = {
     appendTask: 'Append Task',
     agentLogs: 'Agent Logs',
     review: 'Review',
-    debug: 'Debug',
+    debug: 'Debug document',
     running: 'Running…',
     forceStage: 'Force set spec stage',
     notFound: 'Spec not found or deleted',

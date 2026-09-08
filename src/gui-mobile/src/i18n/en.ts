@@ -229,7 +229,7 @@ export const en: Translation = {
     running: 'Running',
     openSession: 'Open session',
     appendTask: 'Append task',
-    debug: 'debug',
+    debug: 'Debug document',
     git: 'git',
     more: 'More',
     copySpecPath: 'Copy spec path',
@@ -279,6 +279,9 @@ export const en: Translation = {
     explainTooLong: 'Selection exceeds {{max}} characters — please select less',
     explainFailed: 'Explain failed',
     selectionClose: 'Clear selection',
+  },
+  specDebug: {
+    empty: 'No debug.md records yet',
   },
   newSpec: {
     title: 'New spec',

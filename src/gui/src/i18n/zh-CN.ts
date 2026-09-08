@@ -210,7 +210,7 @@ export const zhCN = {
     appendTask: '追加任务',
     agentLogs: '执行日志',
     review: 'Review',
-    debug: 'Debug',
+    debug: 'Debug 文档',
     running: '运行中…',
     forceStage: '强制设置 spec 状态',
     notFound: 'spec 不存在或已删除',

@@ -10,6 +10,7 @@ import { Sessions } from './pages/Sessions.jsx'
 import { Specs } from './pages/Specs.jsx'
 import { ChatDetail } from './pages/ChatDetail.jsx'
 import { SpecDetail } from './pages/SpecDetail.jsx'
+import { SpecDebug } from './pages/SpecDebug.jsx'
 import { SpecGit } from './pages/SpecGit.jsx'
 import { NewSpec } from './pages/NewSpec.jsx'
 import { Extensions } from './pages/Extensions.jsx'
@@ -62,6 +63,7 @@ render(
       <Route path={['/sessions/new', '/sessions/:id']} component={ChatDetail} />
       <Route path="/specs/new" component={NewSpec} />
       <Route path="/specs/:id" component={SpecDetail} />
+      <Route path="/specs/:id/debug" component={SpecDebug} />
       {/* spec 作用域的 git 三级页；深度不同，不与上面两条相互遮挡。 */}
       <Route path="/specs/:id/git" component={SpecGit} />
       {/* 同理，两条静态的扩展二级页排在 /ext/runs/:runId 之前。 */}
