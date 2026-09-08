@@ -129,3 +129,29 @@ export function samePartTail(a: ChatPart[], b: ChatPart[]): boolean {
   if (a.length === 0) return true
   return samePart(a[a.length - 1]!, b[b.length - 1]!)
 }
+
+/**
+ * Whether `next` is a prefix of `current` — i.e. the transcript that just
+ * arrived is what is on screen MINUS a tail the read has not caught up with.
+ *
+ * This is the "may an arriving read shrink the message area?" test, and the
+ * answer is no. The stream only grows at the tail, so a shorter-but-matching
+ * read can only mean the screen is ahead of the disk, which happens routinely:
+ *
+ *   - a session created a moment ago has no transcript yet and answers `[]`,
+ *     while the area already holds the optimistic user bubble that created it;
+ *   - a message sent while the read was in flight is on screen but not in the
+ *     response that was assembled before it.
+ *
+ * Both used to blank the user's own message the instant the read landed.
+ * An empty `next` is a prefix of everything, so the first case needs no special
+ * casing. A genuinely different transcript (a compaction, another session)
+ * fails the comparison and is swapped in as before.
+ */
+export function isPartPrefix(next: ChatPart[], current: ChatPart[]): boolean {
+  if (next.length > current.length) return false
+  for (let i = 0; i < next.length; i++) {
+    if (!samePart(next[i]!, current[i]!)) return false
+  }
+  return true
+}

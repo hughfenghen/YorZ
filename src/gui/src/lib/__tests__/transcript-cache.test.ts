@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ChatPart } from '@shared/lib/chat-blocks.js'
 import {
   createTranscriptCache,
+  isPartPrefix,
   samePartTail,
   transcriptCacheKey,
   TRANSCRIPT_CACHE_CAPACITY,
@@ -160,5 +161,38 @@ describe('samePartTail', () => {
     expect(samePartTail([a], [{ ...a }])).toBe(true)
     expect(samePartTail([a], [{ ...a, sessionId: 's2' }])).toBe(false)
     expect(samePartTail([a], [{ ...a, startedAt: 2 }])).toBe(false)
+  })
+})
+
+describe('isPartPrefix', () => {
+  // 回归点：草稿首发后 transcript 还没落盘，读取返回空数组。旧实现按「尾部不同
+  // 就整份替换」把刚压上去的用户气泡抹掉，页面退回空白，只剩后来的 Agent 输出。
+  it('an empty read is a prefix of anything — it may never blank the area', () => {
+    expect(isPartPrefix([], [text('你好', 'user')])).toBe(true)
+    expect(isPartPrefix([], [])).toBe(true)
+  })
+
+  // 读取途中发消息：回来的历史里没有这条乐观气泡，屏幕严格领先。
+  it('accepts a read that lags behind the optimistic tail', () => {
+    const history = [text('q', 'user'), text('a')]
+    expect(isPartPrefix(history, [...history, text('再问一句', 'user')])).toBe(true)
+  })
+
+  it('equal streams are a prefix of each other', () => {
+    const parts = [text('q', 'user'), text('a')]
+    expect(isPartPrefix(parts, [...parts])).toBe(true)
+  })
+
+  it('rejects a longer read — that one must be swapped in', () => {
+    expect(isPartPrefix([text('a'), text('b')], [text('a')])).toBe(false)
+  })
+
+  // 与 samePartTail 的分工：尾部相同不代表中间相同，前缀判定要逐个比。
+  it('rejects a read whose middle diverges even when the length fits', () => {
+    expect(isPartPrefix([text('a'), text('x')], [text('a'), text('b'), text('c')])).toBe(false)
+  })
+
+  it('rejects a read that caught the last message mid-stream', () => {
+    expect(isPartPrefix([text('a'), text('partial')], [text('a'), text('par')])).toBe(false)
   })
 })

@@ -73,7 +73,7 @@ export const ChatDetail: Component = () => {
    * 未命名、且不渲染跳转 icon，而不是渲染一个点了没反应的按钮。
    */
   const [list, setList] = createSignal<SessionInfo[] | null>(null)
-  const [sessions] = createResource<SessionInfo[], string>(
+  const [sessions, { refetch: refetchSessions }] = createResource<SessionInfo[], string>(
     () => pid() || undefined,
     (p) => api.listSessions(p),
   )
@@ -179,6 +179,12 @@ export const ChatDetail: Component = () => {
       setSidOverride(next)
       navigate(`/sessions/${encodeURIComponent(next)}`, { replace: true })
     },
+    // 列表是这一页的元信息来源（标题 / specId / 运行态），而它的 source 只有
+    // projectId，建号本身不会让它重取。hook 在两个「列表已过时」的点上叫我们：
+    // 草稿首发 POST 成功之后、以及 codex 中途换 session id 之后。前者正是标题
+    // 就绪的时刻——服务端在返回 202 之前就已按用户原文写好标题，所以这里重取
+    // 一次即可把顶栏的「未命名会话」换成真标题，不需要轮询。
+    onSessionsChanged: () => void refetchSessions(),
     onRunningChange: (changed, value) => {
       if (changed === sid()) setRunning(value)
     },

@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup, type Accessor } from 'solid-js'
+import { createEffect, createMemo, createSignal, onCleanup, untrack, type Accessor } from 'solid-js'
 import { api } from '../api/index.js'
 import { subscribeSession, type SessionEvent } from '../api/sse.js'
 import {
@@ -10,7 +10,12 @@ import {
   type ToolExpandState,
 } from './chat-blocks.js'
 import { createHistoryLoadGate, planHistoryLoad } from './chat-history-load.js'
-import { samePartTail, transcriptCacheKey, type TranscriptCache } from './transcript-cache.js'
+import {
+  isPartPrefix,
+  samePartTail,
+  transcriptCacheKey,
+  type TranscriptCache,
+} from './transcript-cache.js'
 
 /** Deltas are batched at this cadence; sub-frame flushes only cost re-renders. */
 export const STREAM_FLUSH_MS = 80
@@ -192,6 +197,25 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
   const historyGate = createHistoryLoadGate()
 
   /**
+   * Whether what the area currently shows is THIS session's own, non-empty
+   * content — as opposed to blank, or the session we are switching away from.
+   *
+   * `displayedSid` is only ever written from a real load (never from a guess),
+   * and the `clear` branch blanks the area before switching subjects, so
+   * "displayed session is `sid` and `parts` is non-empty" is exactly the claim
+   * "the pixels on screen belong to `sid`". `paintedFromCache` covers the same
+   * claim for a copy painted optimistically before the read settled.
+   *
+   * Untracked on purpose: this runs inside the history effect, and subscribing
+   * that effect to `parts` would re-run the whole load plan on every streamed
+   * delta — roughly 12×/s during a run.
+   */
+  function hasOwnContent(sid: string): boolean {
+    if (displayedSid !== sid && paintedFromCache !== sid) return false
+    return untrack(parts).length > 0
+  }
+
+  /**
    * Draw the cached transcript for `sid`, if there is one. Returns whether the
    * area now holds content, which is also the answer to "may the spinner stay
    * off while the read is in flight".
@@ -203,6 +227,11 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
    */
   function paintCached(pid: string, sid: string): boolean {
     if (paintedFromCache === sid) return true
+    // Already showing this session's own content: the cached copy cannot be
+    // fresher than what is on screen (the area is where the live stream lands),
+    // so painting it would rewind the conversation the user is watching. And
+    // since there IS content, the caller must not raise the spinner either.
+    if (hasOwnContent(sid)) return true
     const cached = o.transcriptCache?.get(transcriptCacheKey(pid, sid))
     if (!cached || cached.parts.length === 0) return false
     resetParts(cached.parts)
@@ -383,17 +412,29 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
         // the floor after `clear` had already blanked the area.
         if (!isCurrent()) return
         paintedFromCache = ''
+        const shown = untrack(parts)
         // Same tail at the same length means this is what is already drawn (the
         // cached copy was current). Swapping it in anyway would rebuild every
         // block object and remount the message tree for no change at all.
-        if (!samePartTail(parts(), next)) resetParts(next)
+        //
+        // Beyond that: a read may never SHRINK the area. `isPartPrefix` says the
+        // arriving transcript is what is on screen minus a tail it has not
+        // caught up with — the optimistic user bubble of a session created a
+        // moment ago (whose transcript is still `[]`), or a message sent while
+        // this very read was in flight. Replacing then is how the user's own
+        // message used to vanish the instant the response landed.
+        const keep = samePartTail(shown, next) || isPartPrefix(next, shown)
+        if (!keep) resetParts(next)
         setHistoryLoading(false)
+        // Cache what the area actually holds, not what came back: when the read
+        // was kept out, `next` is the poorer copy of the two.
+        const stored = keep ? shown : next
         // An empty transcript is not worth a slot: a hit on it would render the
         // "no messages yet" state, which is exactly the flash to avoid.
-        if (next.length > 0) {
+        if (stored.length > 0) {
           o.transcriptCache?.set(transcriptCacheKey(pid, sid), {
             specId: plan.specId,
-            parts: next,
+            parts: stored,
           })
         }
       })
@@ -498,6 +539,12 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     o.onSubjectChange?.()
     if (!sid) return sendFromDraft(pid, prompt, draftId)
     pushPart({ kind: 'text', role: 'user', text: prompt })
+    // The area is no longer empty, so by `historyLoading`'s own contract it is
+    // no longer "loading" — the user's message must be visible immediately even
+    // if they sent it while the transcript read was still in flight. The read
+    // itself is left alone: it is not superseded, and when it lands the prefix
+    // rule folds it in under this bubble instead of replacing it.
+    setHistoryLoading(false)
     o.onRunningChange(sid, true)
     try {
       await api.sendSessionMessage(pid, sid, prompt, draftId)

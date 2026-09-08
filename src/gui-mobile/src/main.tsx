@@ -45,10 +45,21 @@ render(
       {/*
         二级页面。/specs/new 必须排在 /specs/:id 之前：Solid Router 里静态段
         虽然优先级更高，但把顺序写反会让「新建」在阅读时被误当成一个 id。
-        会话详情与新建会话共用 ChatDetail，按 params.id 是否存在分支。
       */}
-      <Route path="/sessions/new" component={ChatDetail} />
-      <Route path="/sessions/:id" component={ChatDetail} />
+      {/*
+        草稿与会话详情必须是**同一条 Route**，两个 path 写进数组里。
+
+        solid-router 判断「路由切换时能否复用已挂载的实例」看的是 `route.key`，
+        而 key 就是这条 Route 的定义对象本身：写成两条 Route 就是两个对象，
+        `/sessions/new → /sessions/<id>` 于是走 dispose + createRoot，ChatDetail
+        整个重建——首发时刚压进去的用户气泡、以及「本 tab 的内存消息比磁盘
+        transcript 更完整」这个凭据（freshSids）随实例一起消失，页面退回空白，
+        随后只剩 Agent 的输出。同一条 Route 的数组 path 展开出的各分支共享同一个
+        key，实例被复用；`params.id` 是响应式的，草稿分支下仍是 undefined，
+        页面按它分支即可。顺序不必操心：静态段计 3 分、`:param` 计 2 分，
+        `/sessions/new` 的匹配分天然高于 `/sessions/:id`。
+      */}
+      <Route path={['/sessions/new', '/sessions/:id']} component={ChatDetail} />
       <Route path="/specs/new" component={NewSpec} />
       <Route path="/specs/:id" component={SpecDetail} />
       {/* spec 作用域的 git 三级页；深度不同，不与上面两条相互遮挡。 */}
