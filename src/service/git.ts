@@ -224,8 +224,14 @@ function pathsNeedingStage(changes: GitChange[], paths: string[]): string[] {
   const out: string[] = []
   for (const p of paths) {
     const change = byPath.get(p)
-    // Not in `git status` at all: a stale selection with nothing to stage.
-    if (!change) continue
+    // `git status` omits both clean paths and pathspecs that never existed.
+    // Keep either kind here and let `git add` distinguish them: adding a clean
+    // path succeeds (then `git commit` reports the stale selection), while an
+    // unknown path preserves Git's useful "did not match any files" failure.
+    if (!change) {
+      out.push(p)
+      continue
+    }
     if (change.worktree === ' ') continue
     out.push(p)
   }

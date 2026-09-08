@@ -55,10 +55,19 @@ export default defineConfig({
   // 单测里 src/gui/src/lib/*.ts 已改为指向 @shared 的 re-export shim，
   // vitest 需要同样的别名才能解析。
   resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src/gui/src'),
-      '@shared': resolve(__dirname, 'src/gui-shared'),
-    },
+    alias: [
+      { find: '@shared', replacement: resolve(__dirname, 'src/gui-shared') },
+      { find: '@', replacement: resolve(__dirname, 'src/gui/src') },
+      // `solid-js` 的 exports 里 node 条件指向 dist/server.js —— 那份构建的
+      // createEffect 是空函数。共享逻辑层（chat-transcript）的不变量全都长在
+      // effect 上，用 server 构建跑单测等于什么都没测，因此显式指向浏览器构建。
+      // 精确匹配（`^solid-js$`）：`solid-js/store` 之类的子路径不能被前缀替换掉。
+      // 服务端代码不 import solid-js，这条别名对其余单测是死代码。
+      {
+        find: /^solid-js$/,
+        replacement: resolve(__dirname, 'node_modules/solid-js/dist/solid.js'),
+      },
+    ],
   },
   test: {
     environment: 'node',
