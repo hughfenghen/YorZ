@@ -337,7 +337,18 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
 
   const moreItems = (): ActionSheetItem[] => {
     if (confirmingDiscard()) {
-      return [{ label: t('git.discardConfirm'), tone: 'destructive', onSelect: () => discard() }]
+      return [
+        {
+          label: t('git.discardConfirm'),
+          tone: 'destructive',
+          // 确认即关：留着面板会盖住随后的 toast，也让人以为还能再点一次。
+          onSelect: () => {
+            setMoreOpen(false)
+            setConfirmingDiscard(false)
+            discard()
+          },
+        },
+      ]
     }
     // 全选不在这里：它是勾选文件的高频前置动作，已经提到底部操作栏常驻，
     // 浮层里再留一份就是两个入口、两份真相。
