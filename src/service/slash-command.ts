@@ -113,7 +113,7 @@ function buildDraftAttachmentGuide(specsDirRelative: string, draftId?: string): 
     `- 在创建 \`${specsDirRelative}/<id>/\` 目录并写入 \`spec.md\` 骨架**之后**，立即把该 draft 目录下的所有文件迁移到 \`${specsDirRelative}/<id>/attachments/\`，文件名保持不变。`,
     '- 迁移完成后，在 `## 背景` 章节末尾追加一段附件列表，每个附件占一行（按文件扩展名判定 `kind`）：',
     '  - 图片（`.png` / `.jpg` / `.jpeg` / `.gif` / `.webp` / `.bmp` / `.svg` / `.avif` / `.heic`）：使用 `![<文件名>](attachments/<文件名>)`',
-    '  - PDF（`.pdf`） / 文本（`.txt` / `.md` / `.markdown`）：使用 `[<文件名>](attachments/<文件名>)`',
+    '  - PDF（`.pdf`） / 文本（`.txt` / `.md` / `.markdown`） / 其他任意格式：使用 `[<文件名>](attachments/<文件名>)`',
     '- 迁移失败（如 draft 目录已被清理、权限不足）时，**不要静默丢弃**：在 `## 待确认项` 章节追加一条记录说明问题，并退出本轮等待用户介入。',
   ]
 }

@@ -200,7 +200,7 @@ export const en: Translation = {
     attachmentLimit: 'Cannot exceed {{max}} attachments',
     attachUnsupported: 'Unsupported file type: {{name}}',
     attachUnsupportedMime: 'Unsupported MIME: {{mime}}',
-    attachTooBig: '{{name}} exceeds the 5 MB limit',
+    attachTooBig: '{{name}} exceeds the 10 MB limit',
     attachTooMany: 'Can only add {{room}} more ({{current}}/{{max}})',
     attachFailed: 'Attachment upload failed — remove it and retry',
     attachUploading: 'Attachments are still uploading',

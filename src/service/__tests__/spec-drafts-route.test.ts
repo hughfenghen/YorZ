@@ -86,16 +86,19 @@ describe('POST /api/spec-drafts/:draftId/attachments', () => {
     expect(meta.kind).toBe('pdf')
   })
 
-  it('returns 415 when MIME not allowed', async () => {
+  it('accepts an arbitrary file type as a generic attachment', async () => {
     const { apiPrefix } = await startInTmp()
     const draft = await fetch(`${apiPrefix}/spec-drafts`, { method: 'POST' })
     const { draftId } = (await draft.json()) as { draftId: string }
     const blob = new Blob([new Uint8Array([1, 2, 3])], { type: 'application/zip' })
     const res = await fetch(`${apiPrefix}/spec-drafts/${draftId}/attachments`, {
       method: 'POST',
-      body: makeForm(blob, 'evil.zip'),
+      body: makeForm(blob, 'bundle.zip'),
     })
-    expect(res.status).toBe(415)
+    expect(res.status).toBe(201)
+    const meta = (await res.json()) as { storedName: string; kind: string }
+    expect(meta.storedName).toBe('bundle.zip')
+    expect(meta.kind).toBe('file')
   })
 
   it('returns 404 for unknown draftId', async () => {

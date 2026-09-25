@@ -1,10 +1,11 @@
 import { createMemo, createSignal, onCleanup, untrack, type Accessor } from 'solid-js'
 import { api, type AttachmentKind } from '../api/index.js'
 
-export const ACCEPT_MIME = 'image/*,application/pdf,text/plain,text/markdown,.md,.txt,.markdown'
-export const MAX_FILE_SIZE = 5 * 1024 * 1024
+// 空串 = 不限制文件类型：`<input accept>` 为空即接受任意格式。附件不再按 MIME
+// 白名单筛选，未识别的类型统一归入通用 `file`（见 classifyFile）。
+export const ACCEPT_MIME = ''
+export const MAX_FILE_SIZE = 10 * 1024 * 1024
 export const MAX_COUNT = 10
-const ALLOWED_MIMES = new Set(['application/pdf', 'text/plain', 'text/markdown'])
 
 export interface DraftAttachment {
   id: string
@@ -17,13 +18,14 @@ export interface DraftAttachment {
   error?: string
 }
 
-export function classifyFile(file: File): AttachmentKind | null {
+export function classifyFile(file: File): AttachmentKind {
   const mime = file.type
   if (mime.startsWith('image/')) return 'image'
   if (mime === 'application/pdf') return 'pdf'
   if (mime === 'text/plain' || mime === 'text/markdown') return 'text'
   if (mime === '' && /\.(md|markdown|txt)$/i.test(file.name)) return 'text'
-  return null
+  // 其余任意格式：作为通用文件收下，交给 Agent 用文件工具直接读取。
+  return 'file'
 }
 
 export function inferMimeIfMissing(file: File): File {
@@ -158,14 +160,6 @@ export function createAttachments(opts: {
     for (const rawFile of files.slice(0, room)) {
       const file = inferMimeIfMissing(rawFile)
       const kind = classifyFile(file)
-      if (!kind) {
-        setError(labels.unsupportedType(file.name))
-        continue
-      }
-      if (kind !== 'image' && !ALLOWED_MIMES.has(file.type)) {
-        setError(labels.unsupportedMime(file.type || '(unknown)'))
-        continue
-      }
       if (file.size > MAX_FILE_SIZE) {
         setError(labels.fileTooLarge(file.name))
         continue

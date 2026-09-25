@@ -17,17 +17,17 @@ describe('AttachmentStore', () => {
     expect(stats.isDirectory()).toBe(true)
   })
 
-  it('rejects unsupported MIME', async () => {
+  it('accepts unrecognized MIME as a generic file', async () => {
     const cwd = await tmp()
     const store = new AttachmentStore({ cwd })
     const draftId = await store.createDraft()
-    await expect(
-      store.addAttachment(draftId, {
-        name: 'a.bin',
-        mime: 'application/octet-stream',
-        data: new Uint8Array([1, 2, 3]),
-      }),
-    ).rejects.toBeInstanceOf(AttachmentStoreError)
+    const meta = await store.addAttachment(draftId, {
+      name: 'a.bin',
+      mime: 'application/octet-stream',
+      data: new Uint8Array([1, 2, 3]),
+    })
+    expect(meta.kind).toBe('file')
+    expect(meta.storedName).toBe('a.bin')
   })
 
   it('rejects oversized file', async () => {

@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 
-export type AttachmentKind = 'image' | 'pdf' | 'text'
+export type AttachmentKind = 'image' | 'pdf' | 'text' | 'file'
 
 export interface AttachmentMeta {
   storedName: string
@@ -17,7 +17,7 @@ export interface AttachmentStoreOptions {
   cwd: string
   /** Override "now" for deterministic tests. */
   now?: () => number
-  /** Single-file max in bytes (default 5 MB). */
+  /** Single-file max in bytes (default 10 MB). */
   maxFileSize?: number
   /** Per-draft max count (default 10). */
   maxCount?: number
@@ -41,7 +41,7 @@ export class AttachmentStoreError extends Error {
   }
 }
 
-const DEFAULT_MAX_FILE_SIZE = 5 * 1024 * 1024
+const DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024
 const DEFAULT_MAX_COUNT = 10
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000
 
@@ -76,11 +76,12 @@ const EXT_TO_MIME: Record<string, string> = {
   '.markdown': 'text/markdown',
 }
 
-export function classifyMime(mime: string): AttachmentKind | null {
+export function classifyMime(mime: string): AttachmentKind {
   if (mime.startsWith('image/')) return 'image'
   if (mime === 'application/pdf') return 'pdf'
   if (mime === 'text/plain' || mime === 'text/markdown') return 'text'
-  return null
+  // 未识别的 MIME 一律归为通用文件，不再拒收。
+  return 'file'
 }
 
 export function mimeForExt(ext: string): string {
@@ -163,9 +164,6 @@ export class AttachmentStore {
     file: { name: string; mime: string; data: Uint8Array },
   ): Promise<AttachmentMeta> {
     const kind = classifyMime(file.mime)
-    if (!kind) {
-      throw new AttachmentStoreError('invalid_mime', `unsupported MIME: ${file.mime}`)
-    }
     if (file.data.byteLength > this.maxFileSize) {
       throw new AttachmentStoreError(
         'file_too_large',
@@ -237,7 +235,7 @@ export class AttachmentStore {
         name: finalName,
         size: stats.size,
         mime: mimeForExt(oldExt),
-        kind: classifyMime(mimeForExt(oldExt)) ?? 'text',
+        kind: classifyMime(mimeForExt(oldExt)),
       }
     }
     const next = join(this.draftAttachmentsDir(draftId), finalName)
@@ -249,7 +247,7 @@ export class AttachmentStore {
       name: finalName,
       size: stats.size,
       mime,
-      kind: classifyMime(mime) ?? 'text',
+      kind: classifyMime(mime),
     }
   }
 
@@ -263,7 +261,6 @@ export class AttachmentStore {
       const ext = extname(name).toLowerCase()
       const mime = mimeForExt(ext)
       const kind = classifyMime(mime)
-      if (!kind) continue
       out.push({ storedName: name, name, size: stats.size, mime, kind })
     }
     return out.sort((a, b) => (a.storedName < b.storedName ? -1 : 1))
@@ -281,9 +278,6 @@ export class AttachmentStore {
     const ext = extname(storedName).toLowerCase()
     const mime = mimeForExt(ext)
     const kind = classifyMime(mime)
-    if (!kind) {
-      throw new AttachmentStoreError('attachment_not_found', `not a recognized attachment`)
-    }
     return { data, mime, kind }
   }
 

@@ -39,7 +39,7 @@ export interface CreateSpecBody {
   draftProjectId?: string
 }
 
-export type AttachmentKind = 'image' | 'pdf' | 'text'
+export type AttachmentKind = 'image' | 'pdf' | 'text' | 'file'
 
 export interface AttachmentMeta {
   storedName: string

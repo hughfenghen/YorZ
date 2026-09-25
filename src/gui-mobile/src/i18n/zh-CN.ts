@@ -205,7 +205,7 @@ export const zhCN = {
     attachmentLimit: '附件总数不能超过 {{max}} 个',
     attachUnsupported: '不支持的文件类型：{{name}}',
     attachUnsupportedMime: '不支持的 MIME：{{mime}}',
-    attachTooBig: '{{name}} 超过 5 MB 限制',
+    attachTooBig: '{{name}} 超过 10 MB 限制',
     attachTooMany: '只能再添加 {{room}} 个附件（当前 {{current}}/{{max}}）',
     attachFailed: '附件上传失败，请移除后重试',
     attachUploading: '附件还在上传中',

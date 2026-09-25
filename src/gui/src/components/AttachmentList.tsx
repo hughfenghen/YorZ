@@ -7,6 +7,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.jsx'
 import { ImagePreview } from './ImagePreview.jsx'
 import type { AttachmentsController, DraftAttachment } from '../lib/attachments.js'
 
+/** Short badge shown in place of a thumbnail for non-image attachments. */
+function kindBadge(kind: DraftAttachment['kind']): string {
+  if (kind === 'pdf') return 'PDF'
+  if (kind === 'text') return 'TXT'
+  return 'FILE'
+}
+
 /** One-line summary used as the hover tooltip in compact mode. */
 function infoText(att: DraftAttachment): string {
   if (att.status === 'pending') return `${att.name} · ${t('newSpec.uploading')}`
@@ -59,7 +66,7 @@ export const AttachmentList: Component<{
                     when={att.kind === 'image' && att.previewUrl}
                     fallback={
                       <span class="text-xs font-bold text-muted-foreground">
-                        {att.kind === 'pdf' ? 'PDF' : 'TXT'}
+                        {kindBadge(att.kind)}
                       </span>
                     }
                   >
@@ -117,7 +124,7 @@ const FullList: Component<{
                 when={att.kind === 'image' && att.previewUrl}
                 fallback={
                   <span class="rounded border border-border bg-background px-1 py-0.5 text-sm font-bold text-muted-foreground">
-                    {att.kind === 'pdf' ? 'PDF' : 'TXT'}
+                    {kindBadge(att.kind)}
                   </span>
                 }
               >

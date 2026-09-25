@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { AttachmentStoreError, classifyMime } from '../attachment-store.js'
+import { AttachmentStoreError } from '../attachment-store.js'
 import type { ProjectInstance } from '../project-registry.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
@@ -45,9 +45,6 @@ export function createSpecDraftsRoutes(resolveProject: ResolveProject): Hono {
     const buf = new Uint8Array(await blob.arrayBuffer())
     const mime = blob.type || ''
     const name = blob.name || 'attachment'
-    if (!classifyMime(mime)) {
-      return c.json({ error: `unsupported MIME: ${mime || '(empty)'}` }, 415)
-    }
     try {
       const meta = await p.attachments.addAttachment(draftId, { name, mime, data: buf })
       return c.json(meta, 201)

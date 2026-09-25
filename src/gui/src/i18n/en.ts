@@ -210,7 +210,7 @@ export const en = {
     requirementPlaceholder:
       'Raw needs, pain points, expected outcomes, related docs/modules (use @ to reference)',
     attachments: 'Attachments',
-    attachmentsHint: '{{count}}/{{max}}, max 5 MB per file; images support Cmd/Ctrl-V paste',
+    attachmentsHint: '{{count}}/{{max}}, max 10 MB per file; images support Cmd/Ctrl-V paste',
     importAttachment: 'Import',
     createAndStart: 'Send',
     creating: 'Creating spec…',
@@ -218,7 +218,7 @@ export const en = {
     attachmentLimit: 'Cannot exceed {{max}} attachments',
     unsupportedType: 'Unsupported file type: {{name}}',
     unsupportedMime: 'Unsupported MIME: {{mime}}',
-    fileTooLarge: '{{name}} exceeds 5 MB limit',
+    fileTooLarge: '{{name}} exceeds 10 MB limit',
     attachmentRoomLimit: 'Can only add {{room}} more ({{current}}/{{max}})',
     attachmentFailedCount: '{{count}} attachment(s) failed to upload, please remove or retry',
     attachmentUploading: 'Attachments still uploading, please wait',
