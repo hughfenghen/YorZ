@@ -41,7 +41,6 @@ export const CommandMenu: Component<CommandMenuProps> = (props) => {
       // existing record rather than starting a second process, so navigating to
       // the run detail is the right outcome either way.
       const run = await api.runCommand(pid, def.id)
-      toast.success(t('commands.started'))
       props.onRunStarted?.()
       navigate(projectHref(`commands/${encodeURIComponent(run.runId)}`))
     } catch (err) {

@@ -38,8 +38,7 @@ export const CommandRunDetail: Component = () => {
 
   async function onStop() {
     const res = await view.stop()
-    if (res.ok) toast.success(t('commands.stopped'))
-    else if (res.error) toast.error(res.error)
+    if (res.error) toast.error(res.error)
   }
 
   return (

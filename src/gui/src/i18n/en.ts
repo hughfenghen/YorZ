@@ -427,7 +427,6 @@ export const en = {
     cliPlaceholder: 'e.g. pnpm dev',
     submit: 'Add',
     deleteDef: 'Delete command',
-    started: 'Command started',
     running: 'Running commands',
     status: {
       running: 'Running',
@@ -440,10 +439,8 @@ export const en = {
       'Terminates the running process and deletes this run record and its log file.',
     clear: 'Stop and clear',
     restart: 'Restart',
-    restarted: 'Command restarted',
     stop: 'Stop',
     stopping: 'Stopping...',
-    stopped: 'Command stopped',
     detailTitle: 'Command run',
     logFile: 'Log file',
     exitCode: 'Exit code',

@@ -74,7 +74,6 @@ export const RunningCommands: Component<RunningCommandsProps> = (props) => {
     try {
       await api.clearCommandRun(pid, run.runId)
       await api.runCommand(pid, run.commandId)
-      toast.success(t('commands.restarted'))
       await refetch()
     } catch (err) {
       toast.error((err as Error).message)
