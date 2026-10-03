@@ -7,7 +7,7 @@ import {
   untrack,
   type Accessor,
 } from 'solid-js'
-import { api } from '../api/index.js'
+import { api, type AgentKind } from '../api/index.js'
 import { subscribeSession, type SessionEvent } from '../api/sse.js'
 import {
   groupParts,
@@ -109,6 +109,14 @@ export interface ChatTranscript {
   historyLoading: Accessor<boolean>
   toolExpand: ToolExpandState
   send: (prompt: string, draftId?: string) => Promise<SendOutcome>
+  /**
+   * Paint a system-driven round's user turn optimistically. The round (append /
+   * run / git-ops) was dispatched server-side, so its user bubble never streams
+   * over SSE; this shows `userText` (+ a divider when earlier rounds are on
+   * screen) the instant the panel switches, and the real transcript folds in and
+   * replaces it when the round's messages land on disk.
+   */
+  beginOptimisticRound: (sid: string, userText: string, kind: AgentKind) => void
   abort: () => Promise<void>
   /** Drop back to an empty draft (desktop's "new session" button). */
   reset: () => void
@@ -181,6 +189,42 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
    */
   const freshSids = new Set<string>()
   const [freshRevision, setFreshRevision] = createSignal(0)
+  /**
+   * Spec rounds represented on screen — the sessions that were non-empty in the
+   * last applied spec read. Its purpose is twofold: to tell whether the ACTIVE
+   * round has been folded in yet, and to stop a stale (still-empty) read from
+   * wiping content we have already streamed for that round.
+   */
+  let foldedSids = new Set<string>()
+  /** The active session has streamed content since the last applied load. */
+  let liveForActive = false
+  /**
+   * A system-driven round whose user turn is painted optimistically until its
+   * transcript lands. `startedAt` is frozen at request time so a re-injection
+   * (e.g. a stale empty read) produces a byte-identical divider — otherwise the
+   * prefix check would see a "changed" divider and wipe the live content under it.
+   */
+  let pendingRound:
+    | { sid: string; userText: string; kind: AgentKind; startedAt: number }
+    | undefined
+  /**
+   * Forces the history effect to re-read, WITHOUT depending on the list's
+   * run-state edges. The one automatic fold-in of a spec round's transcript (its
+   * divider + the append/run user turn, which never stream over SSE and are never
+   * pushed optimistically) used to hang off the `running` true→false transition
+   * alone — and when that edge was not cleanly observed the round stayed missing
+   * until a full page reload. Bumping this on `turn-completed` makes the fold-in
+   * happen on the turn's own terminal event instead.
+   */
+  const [reloadRevision, setReloadRevision] = createSignal(0)
+  let reloadTimer: number | null = null
+  function scheduleReload(): void {
+    if (reloadTimer != null) return
+    reloadTimer = window.setTimeout(() => {
+      reloadTimer = null
+      setReloadRevision((v) => v + 1)
+    }, 120)
+  }
   let displayedSid = ''
   /**
    * Spec whose aggregate transcript the area currently holds, or undefined when
@@ -361,6 +405,7 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
       running,
     })
     freshRevision()
+    reloadRevision()
     // `hold` is the one early return that still owes content: the list has not
     // said which spec this session belongs to, so the read may not start yet and
     // the area stays (correctly) blank until it settles. Reporting "not loading"
@@ -403,6 +448,15 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
       resetParts()
       resetExpanded()
     }
+    // A subject switch invalidates the fold bookkeeping: the new session has not
+    // been folded in yet, and no live content for it has arrived.
+    if (plan.clear) {
+      foldedSids = new Set()
+      liveForActive = false
+      // Drop an optimistic round only when we are leaving it; (re)entering the
+      // pending session must keep it, since it is painted from this state.
+      if (pendingRound && pendingRound.sid !== sid) pendingRound = undefined
+    }
     displayedSid = sid
     displayedSpecId = plan.specId
     const isCurrent = historyGate.begin()
@@ -410,15 +464,62 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     // Flatten message → parts: tool-result keeps its payload instead of being
     // dropped, so the transcript and the live stream agree. A spec row reads
     // every session it owns, dividers included.
-    const load = plan.specId
-      ? api.getSpecMessages(pid, plan.specId).then(specMessagesToParts)
-      : api.getSessionMessages(pid, sid).then(messagesToParts)
+    const load: Promise<{ next: ChatPart[]; folded: Set<string> }> = plan.specId
+      ? api.getSpecMessages(pid, plan.specId).then((entries) => ({
+          next: specMessagesToParts(entries),
+          // Only rounds that actually have a transcript count as "folded in": an
+          // empty entry contributes neither parts nor a divider (see
+          // `specMessagesToParts`), so it must not be treated as present.
+          folded: new Set(entries.filter((e) => e.messages.length > 0).map((e) => e.sessionId)),
+        }))
+      : api.getSessionMessages(pid, sid).then((messages) => ({
+          next: messagesToParts(messages),
+          folded: new Set(messages.length > 0 ? [sid] : []),
+        }))
     void load
-      .then((next) => {
+      .then(({ next, folded }) => {
         // Not `onCleanup`: the effect re-runs for reasons that have nothing to
         // do with the content, and cancelling there dropped this transcript on
         // the floor after `clear` had already blanked the area.
         if (!isCurrent()) return
+        // The optimistic round's real transcript has landed — drop the stand-in.
+        if (pendingRound && pendingRound.sid === sid && folded.has(sid)) {
+          pendingRound = undefined
+        }
+        // Whether to paint the optimistic round on top of this read: the server
+        // dispatched it but its transcript is not folded in yet.
+        const injectOptimistic = Boolean(
+          plan.specId && pendingRound && pendingRound.sid === sid && !folded.has(sid),
+        )
+        // A spec read that STILL does not contain the active round must not
+        // replace output we have already streamed for it: the round's transcript
+        // simply has not caught up on disk. Keep the live content and let the
+        // next `turn-completed` reload (by which point the user turn and finished
+        // assistant turn are persisted) fold in the divider + user bubble. Without
+        // this, an early/stale read blanks the live output back to the previous
+        // rounds — the very "content disappeared" the user would then reload to fix.
+        // The optimistic round is the exception: it is exactly the content to show.
+        if (plan.specId && !folded.has(sid) && liveForActive && !injectOptimistic) {
+          setHistoryLoading(false)
+          return
+        }
+        // Paint the dispatched round's user turn (+ a divider when earlier rounds
+        // are already on screen) now, instead of leaving it blank until the round
+        // finishes. The real transcript replaces this on the fold-in read.
+        let applied = next
+        if (injectOptimistic && pendingRound) {
+          const optimistic: ChatPart[] = []
+          if (next.length > 0) {
+            optimistic.push({
+              kind: 'divider',
+              sessionId: sid,
+              agentKind: pendingRound.kind,
+              startedAt: pendingRound.startedAt,
+            })
+          }
+          optimistic.push({ kind: 'text', role: 'user', text: pendingRound.userText })
+          applied = [...next, ...optimistic]
+        }
         paintedFromCache = ''
         const shown = untrack(parts)
         // Same tail at the same length means this is what is already drawn (the
@@ -431,12 +532,16 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
         // moment ago (whose transcript is still `[]`), or a message sent while
         // this very read was in flight. Replacing then is how the user's own
         // message used to vanish the instant the response landed.
-        const keep = samePartTail(shown, next) || isPartPrefix(next, shown)
-        if (!keep) resetParts(next)
+        const keep = samePartTail(shown, applied) || isPartPrefix(applied, shown)
+        if (!keep) resetParts(applied)
+        foldedSids = folded
+        // The active round is on screen now; live deltas from here on extend it
+        // rather than needing another fold-in.
+        if (folded.has(sid)) liveForActive = false
         setHistoryLoading(false)
         // Cache what the area actually holds, not what came back: when the read
-        // was kept out, `next` is the poorer copy of the two.
-        const stored = keep ? shown : next
+        // was kept out, `applied` is the poorer copy of the two.
+        const stored = keep ? shown : applied
         // An empty transcript is not worth a slot: a hit on it would render the
         // "no messages yet" state, which is exactly the flash to avoid.
         if (stored.length > 0) {
@@ -461,11 +566,20 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     const sub = subscribeSession(pid, sid, {
       onReady: () => markSubscribed(sid),
       onEvent: (ev: SessionEvent) => {
-        if (ev.type === 'text') appendAssistantDelta(ev.delta)
-        else if (ev.type === 'tool-use') {
+        // Content streamed for a spec round that is not yet folded in: mark it so
+        // a stale read cannot wipe it, and so the fold-in below knows to run.
+        const noteSpecLive = (): void => {
+          if (o.specId() && sid === o.sessionId() && !foldedSids.has(sid)) liveForActive = true
+        }
+        if (ev.type === 'text') {
+          appendAssistantDelta(ev.delta)
+          noteSpecLive()
+        } else if (ev.type === 'tool-use') {
           pushPart({ kind: 'tool', name: ev.name, input: ev.input })
+          noteSpecLive()
         } else if (ev.type === 'tool-result') {
           pushPart({ kind: 'tool', result: ev.text })
+          noteSpecLive()
         } else if (ev.type === 'turn-completed') {
           // The turn is persisted now — a later re-select should read the
           // transcript rather than trust this tab's in-memory parts. Drain the
@@ -473,6 +587,16 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
           flushDeltas()
           markFreshPersisted(sid)
           o.onRunningChange(sid, false)
+          // Fold this round's transcript in on its OWN terminal event, not only on
+          // the list's `running` edge: an append/run round's divider + user turn
+          // live solely in the transcript, and relying on the run-state transition
+          // alone left them missing (until a full reload) whenever that edge was
+          // not cleanly observed. Running is `false` by the time this reload lands,
+          // so `planHistoryLoad` returns `load`, not `keep`.
+          if (o.specId() && sid === o.sessionId() && !foldedSids.has(sid)) {
+            liveForActive = true
+            scheduleReload()
+          }
         } else if (ev.type === 'error') {
           appendError(ev.message)
           o.onRunningChange(sid, false)
@@ -522,6 +646,7 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
 
   onCleanup(() => {
     if (flushTimer != null) clearTimeout(flushTimer)
+    if (reloadTimer != null) clearTimeout(reloadTimer)
     // The host is gone; a read still in flight must not write to it.
     historyGate.invalidate()
     // Hand the area's final state to the cache before it is dropped. This copy
@@ -552,7 +677,24 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     displayedSid = ''
     displayedSpecId = undefined
     paintedFromCache = ''
+    foldedSids = new Set()
+    liveForActive = false
+    pendingRound = undefined
+    if (reloadTimer != null) {
+      clearTimeout(reloadTimer)
+      reloadTimer = null
+    }
     o.onSubjectChange?.()
+  }
+
+  /** See `ChatTranscript.beginOptimisticRound`. */
+  function beginOptimisticRound(sid: string, userText: string, kind: AgentKind): void {
+    if (!sid || !userText) return
+    pendingRound = { sid, userText, kind, startedAt: Date.now() }
+    // Protect the optimistic bubble from a stale empty read, and nudge the history
+    // effect to (re-)read so it is injected even if the load already settled.
+    liveForActive = true
+    scheduleReload()
   }
 
   function resetAll(): void {
@@ -651,6 +793,7 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     historyLoading,
     toolExpand,
     send,
+    beginOptimisticRound,
     abort,
     reset,
     markPersisted: markFreshPersisted,

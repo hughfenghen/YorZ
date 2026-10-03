@@ -39,7 +39,11 @@ import {
 } from '../lib/slash-commands.js'
 import { subscribeSessions } from '../lib/sse.js'
 import { activeProjectId } from '../lib/project.js'
-import { clearRequestedChatSession, requestedChatSessionId } from '../lib/chat-session-request.js'
+import {
+  clearRequestedChatSession,
+  requestedChatSessionId,
+  requestedOptimisticRound,
+} from '../lib/chat-session-request.js'
 import { focusMode, exitFocusMode } from '../lib/layout-focus.js'
 import {
   type AgentContextBlock,
@@ -446,8 +450,16 @@ export const ChatPanel: Component = () => {
   createEffect(() => {
     const sid = requestedChatSessionId()
     if (!sid) return
+    const optimistic = requestedOptimisticRound()
     clearRequestedChatSession()
     selectSession(sid)
+    // A system-driven round (append / run / git-ops) dispatches its user turn
+    // server-side, so paint it immediately instead of waiting for the round's
+    // transcript to be read back. Must follow `selectSession` so the id the hook
+    // reads is already this session.
+    if (optimistic && optimistic.sessionId === sid) {
+      tx.beginOptimisticRound(sid, optimistic.userText, optimistic.kind)
+    }
     if (collapsed()) {
       setCollapsed(false)
       writeLocal(COLLAPSED_KEY, '0')

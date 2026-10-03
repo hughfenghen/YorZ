@@ -391,7 +391,16 @@ export const api = {
   // `busy` means the item was saved but no round was dispatched: the spec
   // already had a session running, and two agents must not edit one spec.md.
   appendItem: (pid: string, id: string, body: AppendItemBody) =>
-    request<{ ok: true; runId?: string; sessionId?: string; busy?: boolean }>(
+    request<{
+      ok: true
+      runId?: string
+      sessionId?: string
+      busy?: boolean
+      /** The `/yorz-spec …` line to paint as the round's user bubble (optimistic). */
+      commandLine?: string
+      /** The round session's agent kind, for the optimistic divider. */
+      kind?: AgentKind
+    }>(
       `${projectBase(pid)}/specs/${encodeURIComponent(id)}/appends`,
       {
         method: 'POST',

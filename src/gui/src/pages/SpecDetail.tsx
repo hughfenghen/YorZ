@@ -338,7 +338,12 @@ export const SpecDetail: Component = () => {
     if (res.sessionId) {
       setRunning(true)
       setSpecSid(res.sessionId)
-      requestChatSession(res.sessionId)
+      // Paint the `/yorz-spec …` bubble + divider the instant Chat switches: this
+      // round's user turn is dispatched server-side and never streams over SSE.
+      requestChatSession(
+        res.sessionId,
+        res.commandLine ? { userText: res.commandLine, kind: res.kind ?? 'claude' } : undefined,
+      )
     }
   }
 

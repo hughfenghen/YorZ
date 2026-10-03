@@ -213,7 +213,7 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
     if (await p.sessions.isSpecRunning(specId)) return c.json({ ok: true, busy: true })
     // Guard BEFORE minting a session, or a refused dispatch would leave an
     // empty shell session behind in the list.
-    const { sessionId } = await p.sessions.createSessionForSpec(specId)
+    const { sessionId, kind } = await p.sessions.createSessionForSpec(specId)
     // A `fix` append *is* Debug mode. The reentry guard widens that: an active
     // debug.md keeps the session in Debug mode whatever this append's kind.
     const debugActive = (await readDebugMdStatus(join(p.specsDir, specId))) === 'debugging'
@@ -237,7 +237,11 @@ export function createSpecsRoutes(resolveProject: ResolveProject): Hono {
       before: detail,
       trigger: 'append',
     })
-    return c.json({ ok: true, runId: handle.runId, sessionId })
+    // `commandLine` / `kind` let the Chat panel paint the round's user bubble +
+    // divider optimistically — this round's user turn is dispatched server-side
+    // and never streams over SSE, so without this it stays invisible until the
+    // round's transcript is read back.
+    return c.json({ ok: true, runId: handle.runId, sessionId, commandLine, kind })
   })
 
   app.post('/projects/:projectId/specs/:id/run', async (c) => {
