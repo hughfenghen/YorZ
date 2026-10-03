@@ -232,7 +232,16 @@ function openMermaidOverlay(host: HTMLElement, sourceSvg: SVGSVGElement) {
   }
 
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') close()
+    // The overlay is a modal dialog (role="dialog" aria-modal). Escape must ONLY
+    // close the preview — NOT bubble on to the page-level Escape handlers (e.g.
+    // focus mode's window listener in layout-focus.ts), which would otherwise
+    // also fire and collapse focus mode in the same keypress. This document-level
+    // listener runs before that window-level one (document precedes window in the
+    // bubble phase), so stopping propagation here fully consumes the key.
+    if (event.key === 'Escape') {
+      event.stopPropagation()
+      close()
+    }
   }
 
   zoomOutButton.addEventListener('click', () => zoomAt(scale / 1.2))
