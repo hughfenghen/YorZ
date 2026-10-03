@@ -89,6 +89,7 @@ export const en = {
     deleteFiles: 'Also delete file directory',
     uncommittedChanges: 'Uncommitted git changes',
     resizeHint: 'Drag to resize project panel width',
+    projectRunning: 'Task running in {{name}}',
   },
   chat: {
     title: 'Chat',

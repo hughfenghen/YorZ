@@ -70,6 +70,37 @@ describe('ProjectRegistry', () => {
     expect(got).toBeNull()
   })
 
+  it('list() reports running=false for projects with no in-flight session', async () => {
+    const reg = await newRegistry()
+    const projDir = await newProjectDir()
+    const { entry } = await reg.add(projDir)
+    // 未 materialize 时也必须有明确的 running=false，而不是触发 getOrCreate。
+    const list = await reg.list()
+    expect(list.find((p) => p.id === entry.id)?.running).toBe(false)
+    // materialize 后仍无 in-flight turn → 依旧 false。
+    await reg.getOrCreate(entry.id)
+    const list2 = await reg.list()
+    expect(list2.find((p) => p.id === entry.id)?.running).toBe(false)
+  })
+
+  it('setSessionActivityListener fires on session running status changes', async () => {
+    const reg = await newRegistry()
+    const projDir = await newProjectDir()
+    const { entry } = await reg.add(projDir)
+    let fired = 0
+    reg.setSessionActivityListener(() => {
+      fired += 1
+    })
+    const instance = await reg.getOrCreate(entry.id)
+    // 直接驱动一次 status 翻转，验证监听器被回调（无需真实 agent 运行）。
+    instance!.sessions['setRunning']('sid-1', true)
+    expect(fired).toBe(1)
+    expect(instance!.sessions.hasRunningSession()).toBe(true)
+    instance!.sessions['setRunning']('sid-1', false)
+    expect(fired).toBe(2)
+    expect(instance!.sessions.hasRunningSession()).toBe(false)
+  })
+
   it('project agent inherits the global default in service runtime', async () => {
     const { reg, configPath } = await newRegistryWithConfigPath()
     await saveGlobalConfig(

@@ -69,6 +69,8 @@ export function createApp(opts: CreateAppOptions): Hono {
   const resolveProject = (id: string) => opts.registry.getOrCreate(id)
   const projectsBus = new RegistryEventBus()
   projectsBus.start(opts.registry.configPath())
+  // 会话 running 翻转 → 防抖广播 projects-changed，驱动项目侧栏呼吸点刷新。
+  opts.registry.setSessionActivityListener(() => projectsBus.emitDebounced())
   const worktreeManager = new WorktreeManager({
     registry: opts.registry,
     onProjectsChanged: () => projectsBus.emit(),

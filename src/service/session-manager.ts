@@ -273,6 +273,15 @@ export class SessionManager {
     return this.running.has(sid)
   }
 
+  /**
+   * Whether ANY session of this project has a turn in flight. Read by
+   * ProjectRegistry.list() to surface a project-level "running" flag without
+   * exposing the internal set. Cheap + synchronous: safe to call per list row.
+   */
+  hasRunningSession(): boolean {
+    return this.running.size > 0
+  }
+
   /** Subscribe to project-level session run status changes. */
   subscribeStatus(cb: (ev: SessionStatusEvent) => void): () => void {
     this.statusEmitter.on('status', cb)

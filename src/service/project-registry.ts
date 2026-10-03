@@ -61,6 +61,8 @@ export interface ProjectListItem {
   path: string
   lastActivityAt: string | null
   worktree?: WorktreeMeta
+  /** 该项目下是否有任意 session 任务正在运行（仅从已缓存实例读取，不触发 materialize）。 */
+  running: boolean
 }
 
 export interface ProjectRegistryOptions {
@@ -75,6 +77,8 @@ interface CachedInstance {
 export class ProjectRegistry {
   private readonly globalConfigPath?: string
   private readonly cache = new Map<string, CachedInstance>()
+  /** 任一项目的会话 running 状态翻转时触发；由 server 接到 projects 列表变更总线。 */
+  private sessionActivityListener?: () => void
 
   constructor(opts: ProjectRegistryOptions = {}) {
     this.globalConfigPath = opts.globalConfigPath
@@ -84,14 +88,23 @@ export class ProjectRegistry {
     return this.globalConfigPath ?? resolveGlobalConfigPath()
   }
 
+  /**
+   * 注册「某项目有会话 running 状态翻转」的监听器。后置设置：registry 先于
+   * projectsBus 构造，两者之间不存在任何 materialize，故不会漏接已存在实例。
+   */
+  setSessionActivityListener(cb: () => void): void {
+    this.sessionActivityListener = cb
+  }
+
   async list(): Promise<ProjectListItem[]> {
     const config = await loadGlobalConfig(this.globalConfigPath)
-    const items: Array<ProjectListItem & { sortKey: string }> = []
+    // running 只在最终 map 聚合，中间排序结构不含该字段。
+    const items: Array<Omit<ProjectListItem, 'running'> & { sortKey: string }> = []
     for (const p of config.projects) {
       const name = basename(p.path)
       const fallback = await maxSpecUpdatedAt(p.path)
       const sortKey = p.lastActivityAt ?? fallback ?? ''
-      const item: ProjectListItem & { sortKey: string } = {
+      const item: Omit<ProjectListItem, 'running'> & { sortKey: string } = {
         id: p.id,
         name,
         path: p.path,
@@ -103,7 +116,10 @@ export class ProjectRegistry {
     }
     items.sort((a, b) => (a.sortKey < b.sortKey ? 1 : a.sortKey > b.sortKey ? -1 : 0))
     return items.map(({ id, name, path, lastActivityAt, worktree }) => {
-      const out: ProjectListItem = { id, name, path, lastActivityAt }
+      // 只读已缓存实例：未 materialize 的项目不可能有 running 会话，故一律 false，
+      // 且绝不在这里触发 getOrCreate（否则列出侧栏会把所有项目的 watcher 全拉起）。
+      const running = this.cache.get(id)?.instance.sessions.hasRunningSession() ?? false
+      const out: ProjectListItem = { id, name, path, lastActivityAt, running }
       if (worktree) out.worktree = worktree
       return out
     })
@@ -231,6 +247,8 @@ export class ProjectRegistry {
       onSessionEnd: notifySessionEnded,
       onSessionStatusChange: (ev) => {
         powerInhibit.setSessionRunning(`${input.id}:${ev.sessionId}`, ev.running)
+        // 会话 running 翻转「升维」为项目列表变更信号，驱动侧栏呼吸点刷新。
+        this.sessionActivityListener?.()
       },
     })
 

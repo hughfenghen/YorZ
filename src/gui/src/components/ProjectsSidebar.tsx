@@ -33,6 +33,7 @@ import { subscribeProjectsList } from '../lib/sse.js'
 import { t } from '../i18n/index.js'
 // 命名规则与分组计算已迁至共享层，两端复用同一套逻辑
 import { displayProjectName, groupProjects } from '@shared/api/project.js'
+import { cn } from '@shared/lib/cn.js'
 
 const COLLAPSED_KEY = 'yorz.projectsSidebar.collapsed'
 const WIDTH_KEY = 'yorz.projectsSidebar.width'
@@ -372,11 +373,11 @@ export const ProjectsSidebar: Component = () => {
                   <li class="group relative flex items-center">
                     <A
                       href={`/${encodeURIComponent(p.id)}`}
-                      class={`flex-1 truncate px-2.5 py-1.5 no-underline ${
+                      class={`flex-1 truncate py-1.5 no-underline ${
                         isActive()
                           ? 'bg-primary-soft text-foreground font-semibold'
                           : 'hover:bg-accent'
-                      } ${railCollapsed() ? 'px-0 text-center' : ''}`}
+                      } ${railCollapsed() ? 'px-0 text-center' : 'pl-2.5 pr-12'}`}
                       title={p.worktree ? `${p.path}\nworktree of ${p.worktree.mainPath}` : p.path}
                     >
                       <Show
@@ -390,10 +391,29 @@ export const ProjectsSidebar: Component = () => {
                                 {info.indexInGroup}
                               </sub>
                             </Show>
+                            {/* 折叠态运行标识：首字母徽标右上角叠加呼吸点 */}
+                            <Show when={p.running}>
+                              <span
+                                class="absolute -right-2 -top-1 size-1.5 animate-pulse rounded-full bg-primary"
+                                aria-label={t('sidebar.projectRunning', { name: p.name })}
+                              />
+                            </Show>
                           </span>
                         }
                       >
-                        <span class="block truncate">{displayProjectName(p)}</span>
+                        {/* 左侧固定圆点槽位：常驻占位，运行中才上色，保证项目名起点恒定不错位 */}
+                        <span class="flex min-w-0 items-center">
+                          <span
+                            class={cn(
+                              'mr-1.5 size-2 shrink-0 rounded-full',
+                              p.running ? 'animate-pulse bg-primary' : 'bg-transparent',
+                            )}
+                            aria-label={
+                              p.running ? t('sidebar.projectRunning', { name: p.name }) : undefined
+                            }
+                          />
+                          <span class="truncate">{displayProjectName(p)}</span>
+                        </span>
                       </Show>
                     </A>
                     <Show when={!railCollapsed()}>

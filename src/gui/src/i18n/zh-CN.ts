@@ -87,6 +87,7 @@ export const zhCN = {
     deleteFiles: '同时删除文件目录',
     uncommittedChanges: '存在未提交 git 的变更',
     resizeHint: '拖动调整项目面板宽度',
+    projectRunning: '{{name}} 有任务正在运行',
   },
   chat: {
     title: 'Chat',

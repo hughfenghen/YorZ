@@ -3,7 +3,7 @@ import { groupProjects, type ProjectListItem } from '../project.js'
 
 /** 造一个普通项目行。 */
 function proj(id: string, name = id): ProjectListItem {
-  return { id, name, path: `/repos/${id}`, lastActivityAt: null }
+  return { id, name, path: `/repos/${id}`, lastActivityAt: null, running: false }
 }
 
 /** 造一个指向 mainId 的 worktree 行。 */
@@ -13,6 +13,7 @@ function wt(id: string, mainId: string, name = mainId): ProjectListItem {
     name,
     path: `/repos/${mainId}.wt/${id}`,
     lastActivityAt: null,
+    running: false,
     worktree: {
       mainProjectId: mainId,
       mainPath: `/repos/${mainId}`,
@@ -26,12 +27,7 @@ function wt(id: string, mainId: string, name = mainId): ProjectListItem {
 describe('groupProjects', () => {
   it('把 worktree 紧随其源项目排列，并标注组内序号', () => {
     // 后端扁平序（活动降序）：源 A、A 的两个 worktree 彼此分散、独立 B 穿插其间
-    const flat = [
-      wt('a1', 'A'),
-      proj('B'),
-      proj('A', 'Yorz'),
-      wt('a2', 'A'),
-    ]
+    const flat = [wt('a1', 'A'), proj('B'), proj('A', 'Yorz'), wt('a2', 'A')]
     const rows = groupProjects(flat)
     const ids = rows.map((r) => r.project.id)
     // A 组最新成员是 a1（下标 0），故整组顶到最前；组长 A 置顶，worktree 按原序 a1、a2

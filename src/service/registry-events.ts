@@ -38,6 +38,14 @@ export class RegistryEventBus {
     }
   }
 
+  /**
+   * 合并高频触发源（如会话 running 翻转）的防抖 emit，复用 FS watch 同一条
+   * 200ms 防抖路径，把一个 turn 起止的抖动合并成一次 projects-changed。
+   */
+  emitDebounced(): void {
+    this.scheduleEmit()
+  }
+
   start(globalConfigPath: string): void {
     if (this.watcher) return
     const dir = dirname(globalConfigPath)

@@ -23,6 +23,8 @@ export interface ProjectListItem {
   path: string
   lastActivityAt: string | null
   worktree?: WorktreeMeta
+  /** 该项目下是否有任意 session 任务正在运行（后端按已缓存实例聚合）。 */
+  running: boolean
 }
 
 /**
