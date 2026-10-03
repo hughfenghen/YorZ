@@ -1,7 +1,11 @@
 import { For, Show, type Component } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
 import { Check, MoreHorizontal } from 'lucide-solid'
-import { displayProjectName, type ProjectListItem } from '@shared/api/project.js'
+import {
+  displayProjectName,
+  groupProjects,
+  type ProjectListItem,
+} from '@shared/api/project.js'
 import { Page } from '@/components/Page.jsx'
 import { ErrorNotice, LoadingNotice, Notice } from '@/components/ListStates.jsx'
 import { showToast } from '@/components/Toast.jsx'
@@ -61,9 +65,11 @@ export const Projects: Component = () => {
                 顶栏滚动，那条 border-t 会和顶栏的 border-b 叠成 2px 粗线。
                 底色与扩展页列表同口径：卡片色列表浮在稍深的页面底色上 */}
             <ul class="divide-y-[0.5px] divide-border border-b-[0.5px] border-border bg-card">
-              <For each={projects()}>
-                {(p) => (
-                  <li class="flex items-center pr-4 active:bg-accent">
+              <For each={groupProjects(projects() ?? [])}>
+                {(info) => {
+                  const p = info.project
+                  return (
+                  <li class="relative flex items-center pr-4 active:bg-accent">
                     <button
                       type="button"
                       class="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 text-left"
@@ -100,7 +106,8 @@ export const Projects: Component = () => {
                       <MoreHorizontal size={18} aria-hidden="true" />
                     </button>
                   </li>
-                )}
+                  )
+                }}
               </For>
             </ul>
           </Show>

@@ -31,8 +31,8 @@ import { Checkbox, CheckboxControl, CheckboxLabel } from './ui/checkbox.jsx'
 import { toast } from './ui/toast.jsx'
 import { subscribeProjectsList } from '../lib/sse.js'
 import { t } from '../i18n/index.js'
-// 命名规则已迁至共享层，移动端项目页复用同一套拼法
-import { displayProjectName } from '@shared/api/project.js'
+// 命名规则与分组计算已迁至共享层，两端复用同一套逻辑
+import { displayProjectName, groupProjects } from '@shared/api/project.js'
 
 const COLLAPSED_KEY = 'yorz.projectsSidebar.collapsed'
 const WIDTH_KEY = 'yorz.projectsSidebar.width'
@@ -364,8 +364,9 @@ export const ProjectsSidebar: Component = () => {
           fallback={<p class="px-2.5 py-2 text-muted-foreground">{t('common.loading')}</p>}
         >
           <ul class="m-0 flex-1 list-none overflow-y-auto py-1.5">
-            <For each={projects() ?? []}>
-              {(p) => {
+            <For each={groupProjects(projects() ?? [])}>
+              {(info) => {
+                const p = info.project
                 const isActive = () => activeProjectId() === p.id
                 return (
                   <li class="group relative flex items-center">
@@ -381,8 +382,14 @@ export const ProjectsSidebar: Component = () => {
                       <Show
                         when={!railCollapsed()}
                         fallback={
-                          <span class="inline-block font-semibold">
-                            {(p.name[0] ?? '?').toUpperCase()}
+                          <span class="relative inline-block font-semibold">
+                            {info.letter}
+                            {/* 右下角序号下标区分组内序号，形成 Y0 / Y1 / Y2 */}
+                            <Show when={info.grouped}>
+                              <sub class="absolute -bottom-1 -right-2 text-[9px] font-semibold leading-none">
+                                {info.indexInGroup}
+                              </sub>
+                            </Show>
                           </span>
                         }
                       >
