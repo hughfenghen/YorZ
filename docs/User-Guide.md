@@ -88,11 +88,11 @@ If the default port is already in use, specify another port:
 yorz serve --port 7424
 ```
 
-If the specified port is also taken, YorZ tries the next nine ports in order. The service only listens on the loopback address (`127.0.0.1` by default) and cannot be exposed to the network.
+If the specified port is also taken, YorZ tries the next nine ports in order. By default the service only binds the loopback address (`127.0.0.1`); when you need to reach it from your phone or remotely, expose it to the internet through a `tailscale funnel` reverse proxy, protected by pairing-token authentication. See [3. Access the Mobile PWA](#3-access-the-mobile-pwa).
 
 ## 3. Access the Mobile PWA
 
-Because YorZ Service listens only on the local loopback address by default, the recommended way to use the mobile PWA from your phone is to expose the service over HTTPS inside the same Tailscale tailnet.
+YorZ Service binds only the local loopback address by default, but ever since the mobile PWA gained **pairing authentication** (every `/api/*` request must carry a valid token), the recommended way to reach it from your phone is to expose the service to the public internet with Tailscale **Funnel**, and let your phone connect over the public network. Exposing it publicly is safe: every command API requires a valid token, and a phone must complete pairing before it can access anything.
 
 First make sure YorZ Service is running. The default port is `7423`:
 
@@ -100,25 +100,34 @@ First make sure YorZ Service is running. The default port is `7423`:
 yorz serve
 ```
 
-Then install [Tailscale](https://github.com/tailscale/tailscale) on both your PC and your phone, enable HTTPS, and confirm that both devices are signed in to the same tailnet.
-
-On the PC, run:
+Then install [Tailscale](https://github.com/tailscale/tailscale) on your **PC** and sign in. On the PC, run:
 
 ```bash
-tailscale serve --bg 7423
+tailscale funnel 7423
 ```
 
 You should see output similar to:
 
 ```text
-Available within your tailnet:
+Available on the internet:
 https://<your Tailscale-generated domain>/
 |-- proxy http://127.0.0.1:7423
 ```
 
-Open the HTTPS domain from your phone browser, YorZ detects mobile browsers and automatically switches to the mobile PWA.
+Open that public HTTPS domain from your phone browser; YorZ detects mobile browsers and automatically switches to the mobile PWA. On first visit an unpaired phone is redirected to the pairing page `/m/pair`: on the PC, click the QR-code icon to the right of the "YorZ" title in the header to pop up a pairing QR code, then **scan it** or **type the pairing code** on the phone to finish pairing and enter the app.
+
+**Installing and running Tailscale on your phone is optional.** Without Tailscale, your phone can still reach the service through the Funnel public domain above; if the phone also installs Tailscale and signs in to the same tailnet, traffic can take a faster direct tailnet route. Note, however, that Tailscale is itself a VPN, and a phone usually allows only one VPN to be active at a time, so enabling Tailscale conflicts with any other VPN you rely on to reach the global internet — **if you want to use the "task-completion push notifications" feature below (which needs access to the global internet), do not spend your phone's single VPN slot on Tailscale.**
 
 Installing YorZ to your phone home screen is optional. Before doing that, confirm in system settings that your browser has permission to create home screen shortcuts, then open the browser settings menu and choose "Install and create shortcut".
+
+### Task-completion Push Notifications
+
+The mobile PWA can push a notification to your phone when an Agent task (a chat turn, a spec run, and so on) finishes. To enable it, open the notifications group in mobile **Global Settings** and turn on "Task-completion push"; the browser asks for notification permission, and once you allow it you are set. From then on, every time an Agent round ends your phone receives a "Task completed" notification that opens the PWA when tapped.
+
+Enabling push has two prerequisites:
+
+- **A secure context**: push relies on the browser's Service Worker and Push API, which require HTTPS or localhost. Access through Funnel is already HTTPS, so this is satisfied automatically; on iOS you must first "Add to Home Screen" and run the PWA in its own window (iOS 16.4 or later). In a non-secure context the toggle in settings is disabled with an explanatory hint.
+- **Access to the global internet**: push messages are delivered through the browser vendor's push service (Google FCM / Mozilla, etc.). **On networks that restrict access to these services, you need a VPN/proxy that can reach the global internet before your phone will receive push notifications** — otherwise the notification never arrives even with the toggle on and permission granted. This is also why the note above says not to spend your phone's single VPN slot on Tailscale if you want push.
 
 ## 4. Stop and Restart the Service
 

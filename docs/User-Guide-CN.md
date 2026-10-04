@@ -89,11 +89,11 @@ yorz serve --foreground
 yorz serve --port 7424
 ```
 
-若指定端口也被占用，YorZ 会依次尝试其后的 9 个端口。服务只监听回环地址（默认 `127.0.0.1`），不支持对外网暴露。
+若指定端口也被占用，YorZ 会依次尝试其后的 9 个端口。服务默认只绑定回环地址（`127.0.0.1`）；需要手机或远程访问时，可通过 `tailscale funnel` 以反向代理方式暴露到公网，并由配对鉴权（令牌校验）保证安全，详见 [3. 访问移动端 PWA](#3-访问移动端-pwa)。
 
 ## 3. 访问移动端 PWA
 
-由于 YorZ Service 默认只监听本机回环地址，建议使用 [Tailscale](https://github.com/tailscale/tailscale) 在同一个 tailnet 内通过 HTTPS 访问手机端 PWA。
+YorZ Service 默认只绑定本机回环地址，但自从移动端 PWA 落地**配对鉴权**（`/api/*` 一律校验令牌）后，推荐用 [Tailscale](https://github.com/tailscale/tailscale) 的 **Funnel** 把服务直接暴露到公网，手机通过公共网络访问即可。即使暴露到公网也不用担心安全问题：任何命令类 API 都必须携带有效令牌，手机还需先完成配对才能访问。
 
 先确认 YorZ Service 已启动，默认端口是 `7423`：
 
@@ -101,25 +101,34 @@ yorz serve --port 7424
 yorz serve
 ```
 
-然后在 PC 和手机上安装 Tailscale，开启 HTTPS，并确认两台设备已经登录到同一个 tailnet。
-
-在 PC 终端执行：
+然后在 **PC** 上安装 Tailscale 并登录，在 PC 终端执行：
 
 ```bash
-tailscale serve --bg 7423
+tailscale funnel 7423
 ```
 
 期望看到类似输出：
 
 ```text
-Available within your tailnet:
+Available on the internet:
 https://<tailscale 给你生成的专属域名>/
 |-- proxy http://127.0.0.1:7423
 ```
 
-在手机浏览器中打开 Tailscale 给出的 HTTPS 域名，YorZ 会探测移动端浏览器并自动切换到手机端 PWA。
+在手机浏览器中打开这个公网 HTTPS 域名，YorZ 会探测移动端浏览器并自动切换到手机端 PWA。首次访问时，未配对的手机会自动跳转到配对页 `/m/pair`：在 PC 端点击 header 标题「YorZ」右侧的二维码图标弹出配对二维码，手机**扫码**或**手动输入配对码**即可完成配对、进入应用。
+
+**手机端是否安装、启动 Tailscale 是可选项。** 不装 Tailscale，手机也能经上面的 Funnel 公网域名访问；如果手机也安装 Tailscale 并登录同一个 tailnet，可走内网直连、速度更快。但请注意：Tailscale 本身是 VPN，手机同一时间通常只允许一个 VPN 生效，启用 Tailscale 会与翻墙 VPN 互斥冲突——**如果你要使用下面的「任务完成推送」功能（需翻墙连接外网），就不要把 VPN 名额占给 Tailscale**。
 
 如果希望把 YorZ 安装到手机桌面，这是可选步骤。先在系统设置中确认当前浏览器拥有“桌面快捷方式”权限，然后打开浏览器设置菜单，点击“安装并创建快捷方式”。
+
+### 任务完成推送
+
+移动端 PWA 支持在 Agent 任务（聊天会话轮次、spec 执行等）完成时向手机推送消息通知。开启方式：在移动端「全局配置」的通知分组中打开「任务完成推送」开关，浏览器会弹出通知授权请求，允许后即可。此后每当一轮 Agent 任务结束，手机就会收到一条「任务已完成」通知，点击可回到 PWA。
+
+启用推送有两个前提：
+
+- **安全上下文**：推送依赖浏览器的 Service Worker 与 Push API，要求以 HTTPS 或 localhost 访问。经 Funnel 访问本身就是 HTTPS，天然满足；iOS 还需要先把 PWA「添加到主屏」并运行在独立窗口（iOS 16.4 及以上）。非安全上下文下设置页的开关会被禁用并给出提示。
+- **需翻墙连接外网**：推送消息的投递要经过浏览器厂商的 Push 服务（Google FCM / Mozilla 等）。**在受限网络环境下，必须翻墙连接外网，手机才能收到推送**；否则即使开关已打开、授权已通过，通知也无法送达。这也是上面强调「要用推送就不要把手机 VPN 占给 Tailscale」的原因。
 
 ## 4. 停止与重启服务
 

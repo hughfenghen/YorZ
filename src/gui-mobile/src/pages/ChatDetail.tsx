@@ -1,4 +1,4 @@
-import { Show, createEffect, createMemo, createResource, createSignal } from 'solid-js'
+import { Show, createEffect, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
 import type { Component } from 'solid-js'
 import { useNavigate, useParams } from '@solidjs/router'
 import { FileText } from 'lucide-solid'
@@ -128,6 +128,20 @@ export const ChatDetail: Component = () => {
   createEffect(() => {
     const info = current()
     if (info) setRunning(Boolean(info.running))
+  })
+
+  // PWA 切后台会断开 SSE 长连接：若任务在断连期间完成，per-session 的 `turn-completed`
+  // ——本页让 running 归位的唯一事件——会随断连一起丢失（SSE 无 replay buffer，服务端
+  // 重连后只回 `ready` 不补发运行态）。切回前台时主动重拉会话列表：它是运行态的权威来源，
+  // refetch 会经 current() 把 running 校准回真值，避免状态永远卡在「执行中」。与桌面端
+  // 「列表为权威，任一 refetch 自愈漏掉的 running=false」同口径。
+  onMount(() => {
+    if (typeof document === 'undefined') return
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && pid()) void refetchSessions()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    onCleanup(() => document.removeEventListener('visibilitychange', onVisible))
   })
 
   const attachments = createAttachments({ projectId: pid, labels: attachmentLabels() })

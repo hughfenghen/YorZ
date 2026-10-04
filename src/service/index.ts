@@ -61,6 +61,22 @@ export function isLoopbackHost(host: string): boolean {
 
 const log = () => getLogger().child('serve')
 
+/**
+ * 高亮打印能力 URL。该链接是本机令牌引导的唯一入口，但启动输出有多行，
+ * 容易被漏看；用空行 + 分隔线 + 醒目前缀把它从平铺文本里凸显出来。
+ * 纯文案排版，不依赖颜色（避免重定向到日志文件时产生转义噪声）。
+ */
+export function printCapabilityUrl(capabilityUrl: string): void {
+  const divider = '─'.repeat(60)
+  console.log('')
+  console.log(divider)
+  console.log(`  >> Open on this machine:`)
+  console.log(`  🔗 ${capabilityUrl}`)
+  console.log(`     (opens YorZ in your browser and completes token setup)`)
+  console.log(divider)
+  console.log('')
+}
+
 export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
   const host = opts.host?.trim() || DEFAULT_HOST
   if (!isLoopbackHost(host)) {
@@ -111,7 +127,8 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
     `YorZ Service ready at ${url} (${projects.length} project${projects.length === 1 ? '' : 's'})`,
   )
   // 能力 URL：在本机浏览器打开此链接完成令牌引导（前端存令牌后抹除 URL）。
-  console.log(`Open on this machine: ${capabilityUrl}`)
+  // 这条链接最关键但容易淹没在多行输出里，故用分隔线 + 醒目前缀单独高亮。
+  printCapabilityUrl(capabilityUrl)
   console.log(`Expose to the internet: tailscale funnel ${port.port}`)
   for (const p of projects) {
     console.log(`  - ${p.name} -> ${p.path}`)

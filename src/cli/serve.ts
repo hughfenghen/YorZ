@@ -6,7 +6,7 @@ import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { start, type ServeHandle } from '../service/index.js'
+import { start, printCapabilityUrl, type ServeHandle } from '../service/index.js'
 import { resolveGlobalConfigDir } from '../service/global-config.js'
 import { createAuthStore } from '../service/auth-store.js'
 import { configureLogger, getLogger, resolveLogDir, STDIO_LOG_FILE } from '../service/logger.js'
@@ -230,7 +230,8 @@ function startBackgroundServe(opts: ServeCommandOptions): Promise<BackgroundServ
     if (runtime) {
       try {
         const masterToken = await createAuthStore().getMasterToken()
-        console.log(`Open on this machine: ${url}?token=${masterToken}`)
+        // 能力链接是最关键的一行，单独高亮，避免淹没在多行启动输出里。
+        printCapabilityUrl(`${url}?token=${masterToken}`)
         console.log(`Expose to the internet: tailscale funnel ${port}`)
       } catch {
         // best-effort：读取令牌失败不阻断启动提示。
@@ -748,12 +749,7 @@ async function readWindowsProcessSnapshot(pid: number): Promise<ProcessSnapshot 
     ].join('; ')
     const { stdout } = await execFileAsync(
       'powershell.exe',
-      [
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        script,
-      ],
+      ['-NoProfile', '-NonInteractive', '-Command', script],
       // 后台 Service 进程（detached，无控制台）内执行时，缺 windowsHide 会弹出
       // 可见的 PowerShell 窗口；前台终端调用则继承控制台，本就无影响。
       { windowsHide: true },
