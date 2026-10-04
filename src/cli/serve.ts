@@ -349,8 +349,6 @@ async function ensureSkillsInstalledWithLog(cwd: string): Promise<void> {
       console.log(`[skill] ${r.skill} installed: ${r.path}`)
     } else if (r.status === 'updated') {
       console.log(`[skill] ${r.skill} updated: ${r.path}`)
-    } else {
-      console.log(`[skill] ${r.skill} is up to date: ${r.path}`)
     }
   }
   // Undo the per-Agent pollution written by pre-shared-install versions, so an

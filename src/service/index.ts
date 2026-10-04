@@ -123,17 +123,17 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
   const url = `http://localhost:${port.port}/`
   const masterToken = await authStore.getMasterToken()
   const capabilityUrl = `${url}?token=${masterToken}`
-  console.log(
+  log().info(
     `YorZ Service ready at ${url} (${projects.length} project${projects.length === 1 ? '' : 's'})`,
   )
   // 能力 URL：在本机浏览器打开此链接完成令牌引导（前端存令牌后抹除 URL）。
   // 这条链接最关键但容易淹没在多行输出里，故用分隔线 + 醒目前缀单独高亮。
   printCapabilityUrl(capabilityUrl)
-  console.log(`Expose to the internet: tailscale funnel ${port.port}`)
+  log().info(`Expose to the internet: tailscale funnel ${port.port}`)
   for (const p of projects) {
-    console.log(`  - ${p.name} -> ${p.path}`)
+    log().info(`  - ${p.name} -> ${p.path}`)
   }
-  console.log(`agent heartbeat enabled (interval=${HEARTBEAT_INTERVAL_MS / 1000}s)`)
+  log().info(`agent heartbeat enabled (interval=${HEARTBEAT_INTERVAL_MS / 1000}s)`)
 
   log().info('service ready', {
     pid: process.pid,
