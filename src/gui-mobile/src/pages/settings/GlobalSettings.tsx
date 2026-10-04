@@ -20,9 +20,11 @@ import { t, useTranslation } from '@/i18n/index.js'
  * 全局设置（二级页）。
  *
  * 只展示桌面端 GlobalConfigDialog 里已经实现、且在移动端讲得通的部分：
- * 默认 Agent、会话结束提示、外观、关于。刻意不展示的三类：
+ * 默认 Agent、任务完成推送、外观、关于。刻意不展示的几类：
  *   - 快捷键 / 防休眠：需求明确排除，手机上也没有对应交互；
- *   - 全局自定义指令：桌面端也没有编辑 UI，不属于「当前已实现的设置」。
+ *   - 全局自定义指令：桌面端也没有编辑 UI，不属于「当前已实现的设置」；
+ *   - 任务结束横幅 / 提示音（notifications.sessionEnd）：走宿主机 OS 原生通知，
+ *     只弹在服务器本机，对手机无效，故移动端不展示（配置字段仍原样回写，不清空桌面端）。
  *
  * **写回必须是读-改-写**：`PUT /api/global-config` 是整体覆写语义，
  * 直接提交一个只含展示字段的对象，会把 shortcuts / power / customInstructions
@@ -119,32 +121,6 @@ export const GlobalSettings: Component = () => {
                 </Group>
 
                 <Group title={t('globalSettings.notifications')}>
-                  <Toggle
-                    label={t('globalSettings.sessionEndBanner')}
-                    checked={() => cfg().notifications.sessionEnd.banner}
-                    onChange={(banner) =>
-                      void patch({
-                        ...cfg(),
-                        notifications: {
-                          ...cfg().notifications,
-                          sessionEnd: { ...cfg().notifications.sessionEnd, banner },
-                        },
-                      })
-                    }
-                  />
-                  <Toggle
-                    label={t('globalSettings.sessionEndSound')}
-                    checked={() => cfg().notifications.sessionEnd.sound}
-                    onChange={(sound) =>
-                      void patch({
-                        ...cfg(),
-                        notifications: {
-                          ...cfg().notifications,
-                          sessionEnd: { ...cfg().notifications.sessionEnd, sound },
-                        },
-                      })
-                    }
-                  />
                   <Show
                     when={pushSupported}
                     fallback={
@@ -171,6 +147,7 @@ export const GlobalSettings: Component = () => {
                     <Toggle
                       label={t('globalSettings.pushNotification')}
                       checked={() => cfg().notifications.push.enabled}
+                      busy={pushBusy}
                       onChange={(next) => void togglePush(cfg(), next)}
                     />
                   </Show>

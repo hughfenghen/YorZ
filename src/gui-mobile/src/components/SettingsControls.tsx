@@ -1,4 +1,5 @@
-import { For, type Component, type JSX } from 'solid-js'
+import { For, Show, type Component, type JSX } from 'solid-js'
+import { Loader2 } from 'lucide-solid'
 import { cn } from '@/lib/cn'
 
 /**
@@ -58,18 +59,31 @@ export function Segmented<T extends string>(props: {
   )
 }
 
-/** 布尔开关。用原生 checkbox 的语义 + 自绘轨道，省掉一个组件依赖。 */
+/**
+ * 布尔开关。用原生 checkbox 的语义 + 自绘轨道，省掉一个组件依赖。
+ *
+ * `busy` 为可选项：传入且为真时，开关切换是一个进行中的异步操作（如推送订阅），
+ * 在 label 文字后显示 spinner 并禁用 checkbox，避免等待期间重复触发。
+ * 不传时行为与现状完全一致，其它调用点无需改动。
+ */
 export const Toggle: Component<{
   label: string
   checked: () => boolean
   onChange: (next: boolean) => void
+  busy?: () => boolean
 }> = (props) => (
   <label class="flex items-center justify-between gap-3 px-4 py-3">
-    <span class="min-w-0 flex-1 text-sm">{props.label}</span>
+    <span class="flex min-w-0 flex-1 items-center gap-2 text-sm">
+      {props.label}
+      <Show when={props.busy?.()}>
+        <Loader2 aria-hidden="true" class="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+      </Show>
+    </span>
     <input
       type="checkbox"
       class="peer sr-only"
       checked={props.checked()}
+      disabled={props.busy?.()}
       onChange={(e) => props.onChange(e.currentTarget.checked)}
     />
     <span
@@ -77,6 +91,7 @@ export const Toggle: Component<{
       class={cn(
         'relative h-6 w-10 shrink-0 rounded-full transition-colors peer-focus-visible:ring-[1.5px] peer-focus-visible:ring-ring',
         props.checked() ? 'bg-primary' : 'bg-muted',
+        props.busy?.() && 'opacity-60',
       )}
     >
       <span
