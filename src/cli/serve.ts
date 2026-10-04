@@ -225,7 +225,6 @@ function startBackgroundServe(opts: ServeCommandOptions): Promise<BackgroundServ
     // runtime 里记录的真实 worker pid。
     const servicePid = runtime?.pid ?? child.pid
     console.log(`YorZ Service started in background (pid=${servicePid ?? 'unknown'}).`)
-    console.log(`Open ${url}${runtime ? '' : ` (or the next free port if ${port} is busy).`}`)
     // runtime 已就绪 → 子进程已写入 auth.json，此处只读既有主令牌（不会新生成）。
     if (runtime) {
       try {
