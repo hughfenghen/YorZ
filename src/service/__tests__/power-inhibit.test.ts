@@ -15,7 +15,7 @@ function baseConfig(mode: 'system-default' | 'prevent-display-sleep' | 'keep-sys
     version: 1 as const,
     projects: [],
     agent: { defaultKind: 'claude' as const },
-    notifications: { sessionEnd: { banner: false, sound: false } },
+    notifications: { sessionEnd: { banner: false, sound: false }, push: { enabled: false } },
     shortcuts: {},
     power: { inhibitWhenRunning: mode },
   }

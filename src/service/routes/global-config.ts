@@ -15,6 +15,7 @@ import {
   type GlobalCustomInstruction,
   type GlobalPowerConfig,
   type GlobalShortcutsConfig,
+  type PushNotificationsConfig,
   type SessionEndNotificationsConfig,
 } from '../global-config.js'
 import { parseCustomInstructions } from '../custom-instruction.js'
@@ -24,6 +25,7 @@ interface PutBody {
   agent: GlobalAgentConfig
   notifications: {
     sessionEnd: SessionEndNotificationsConfig
+    push: PushNotificationsConfig
   }
   shortcuts: GlobalShortcutsConfig
   power: GlobalPowerConfig
@@ -117,6 +119,19 @@ function parseBody(value: unknown): PutBody | { error: string } {
   if (typeof s.sound !== 'boolean') {
     return { error: 'notifications.sessionEnd.sound must be a boolean' }
   }
+  // push 向后兼容：旧客户端不带该字段时回落默认（关闭），只在显式给出时校验类型。
+  const pushRaw = n.push
+  let pushEnabled = false
+  if (pushRaw !== undefined) {
+    if (!pushRaw || typeof pushRaw !== 'object') {
+      return { error: 'notifications.push must be an object' }
+    }
+    const pushObj = pushRaw as Record<string, unknown>
+    if (typeof pushObj.enabled !== 'boolean') {
+      return { error: 'notifications.push.enabled must be a boolean' }
+    }
+    pushEnabled = pushObj.enabled
+  }
   const shortcutsRaw = obj.shortcuts ?? {}
   if (typeof shortcutsRaw !== 'object') {
     return { error: 'shortcuts must be an object' }
@@ -154,7 +169,10 @@ function parseBody(value: unknown): PutBody | { error: string } {
   if ('error' in customInstructions) return customInstructions
   return {
     agent: { defaultKind },
-    notifications: { sessionEnd: { banner: s.banner, sound: s.sound } },
+    notifications: {
+      sessionEnd: { banner: s.banner, sound: s.sound },
+      push: { enabled: pushEnabled },
+    },
     shortcuts: normalizeShortcuts(shortcutObj),
     power: { inhibitWhenRunning },
     appearance,

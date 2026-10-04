@@ -31,5 +31,8 @@
     "composite": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.gui-mobile.tsbuildinfo"
   },
-  "include": ["src/gui-mobile/**/*.ts", "src/gui-mobile/**/*.tsx", "src/gui-shared/**/*.ts"]
+  "include": ["src/gui-mobile/**/*.ts", "src/gui-mobile/**/*.tsx", "src/gui-shared/**/*.ts"],
+  // Service Worker 源码跑在 WebWorker 全局而非 DOM，类型体系与本工程（DOM lib）冲突；
+  // 它由 vite-plugin-pwa 的 injectManifest 独立用 esbuild 打包，不经 tsc -b，故在此排除。
+  "exclude": ["src/gui-mobile/src/sw.ts"]
 }

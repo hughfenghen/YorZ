@@ -1,5 +1,6 @@
 import { createSignal } from 'solid-js'
 import { registerSW } from 'virtual:pwa-register'
+import { api, type PushSubscriptionPayload } from '@shared/api/index.js'
 
 /**
  * Service Worker 注册与离线状态。
@@ -92,6 +93,72 @@ export function initPWA(): void {
       console.error('[pwa] service worker 注册失败', error)
     },
   })
+}
+
+/**
+ * 是否具备 Web Push 能力。
+ *
+ * 推送要求**安全上下文**（HTTPS 或 localhost）+ ServiceWorker + PushManager + Notification。
+ * 手机经局域网 IP 以 HTTP 访问 `/m/` 时 `isSecureContext` 为 false，这里会返回 false，
+ * 设置页据此禁用开关并给降级提示——这是 HTTP 下推送不可达的根本原因，非代码能绕过。
+ */
+export function isPushSupported(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false
+  if (!window.isSecureContext) return false
+  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+}
+
+/** VAPID 公钥是 Base64URL 字符串，subscribe 需要 Uint8Array 形式的 applicationServerKey。 */
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = atob(base64)
+  // 显式用 ArrayBuffer 作底，避免 lib.dom 把 Uint8Array 推断成 ArrayBufferLike（含
+  // SharedArrayBuffer）而与 applicationServerKey 的 BufferSource 类型不兼容。
+  const output = new Uint8Array(new ArrayBuffer(rawData.length))
+  for (let i = 0; i < rawData.length; i++) output[i] = rawData.charCodeAt(i)
+  return output
+}
+
+/** 当前是否已存在有效订阅（设置页初始化开关态用）。 */
+export async function hasPushSubscription(): Promise<boolean> {
+  if (!isPushSupported()) return false
+  const reg = await navigator.serviceWorker.ready
+  return (await reg.pushManager.getSubscription()) !== null
+}
+
+/**
+ * 开启推送：请求通知授权 → 取 VAPID 公钥 → `pushManager.subscribe` → 上报订阅。
+ * 失败以带标识的 Error 抛出（`push-unsupported` / `permission-denied`），由调用方映射文案。
+ */
+export async function enablePush(): Promise<void> {
+  if (!isPushSupported()) throw new Error('push-unsupported')
+  const permission = await Notification.requestPermission()
+  if (permission !== 'granted') throw new Error('permission-denied')
+  const { publicKey } = await api.getVapidPublicKey()
+  const reg = await navigator.serviceWorker.ready
+  const existing = await reg.pushManager.getSubscription()
+  const sub =
+    existing ??
+    (await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    }))
+  await api.savePushSubscription(sub.toJSON() as PushSubscriptionPayload)
+}
+
+/** 关闭推送：取消浏览器订阅并通知服务端退订。best-effort，不因任一步失败而中断另一步。 */
+export async function disablePush(): Promise<void> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
+  const reg = await navigator.serviceWorker.ready
+  const sub = await reg.pushManager.getSubscription()
+  if (!sub) return
+  const endpoint = sub.endpoint
+  try {
+    await sub.unsubscribe()
+  } finally {
+    await api.deletePushSubscription(endpoint).catch(() => {})
+  }
 }
 
 /**

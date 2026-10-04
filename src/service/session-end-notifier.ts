@@ -2,6 +2,8 @@ import { execFile } from 'node:child_process'
 import { platform } from 'node:os'
 import { promisify } from 'node:util'
 import { loadGlobalConfig } from './global-config.js'
+import { createPushDispatcher, type PushDispatcher } from './push-dispatcher.js'
+import { createPushStore } from './push-store.js'
 
 const execFileP = promisify(execFile)
 const COMMAND_TIMEOUT_MS = 4000
@@ -11,6 +13,11 @@ export interface SessionEndNotifierOptions {
   projectName?: string
   runCommand?: CommandRunner
   platform?: NodeJS.Platform
+  /**
+   * Web Push 发送器，供单测注入；缺省时按 globalConfigPath 惰性构造，
+   * 只有在 `notifications.push.enabled` 为真时才会真正被调用。
+   */
+  pushDispatcher?: PushDispatcher
 }
 
 export type CommandRunner = (cmd: string, args: string[]) => Promise<void>
@@ -19,7 +26,8 @@ export function createSessionEndNotifier(opts: SessionEndNotifierOptions = {}) {
   return async function notifySessionEnded(): Promise<void> {
     const cfg = await loadGlobalConfig(opts.globalConfigPath)
     const sessionEnd = cfg.notifications.sessionEnd
-    if (!sessionEnd.banner && !sessionEnd.sound) return
+    const pushEnabled = cfg.notifications.push.enabled
+    if (!sessionEnd.banner && !sessionEnd.sound && !pushEnabled) return
 
     const os = opts.platform ?? platform()
     const run = opts.runCommand ?? defaultRunCommand
@@ -27,6 +35,12 @@ export function createSessionEndNotifier(opts: SessionEndNotifierOptions = {}) {
     const tasks: Array<Promise<void>> = []
     if (sessionEnd.banner) tasks.push(showBanner(os, run, title))
     if (sessionEnd.sound) tasks.push(playSound(os, run))
+    if (pushEnabled) {
+      const dispatcher =
+        opts.pushDispatcher ?? createPushDispatcher(createPushStore(opts.globalConfigPath))
+      const body = cfg.appearance.language === 'en' ? 'Task completed' : '任务已完成'
+      tasks.push(dispatcher.send({ title, body, url: '/m/' }).then(() => {}))
+    }
     await Promise.all(tasks.map((task) => task.catch(() => {})))
   }
 }

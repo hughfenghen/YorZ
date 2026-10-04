@@ -61,8 +61,13 @@ export default defineConfig({
     redirectBaseWithoutSlash(),
     solid(),
     VitePWA({
+      // injectManifest：改用 src/sw.ts 自定义 SW（含 push / notificationclick 监听），
+      // 同时靠 Workbox 的 self.__WB_MANIFEST 注入点保留预缓存。generateSW 产不出推送逻辑。
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       // 新版本上线后自动接管，不给用户留「点一下才更新」的旧壳；
-      // 需要提示式更新时改成 'prompt' 并在 src/lib/pwa.ts 里接住回调。
+      // 自定义 SW 里已显式 skipWaiting()+clientsClaim() 落实该语义。
       registerType: 'autoUpdate',
       // 注册代码由 src/lib/pwa.ts 显式引入 virtual:pwa-register 完成，
       // 避免插件再往 index.html 里塞一段无法控制时序的内联脚本。
@@ -92,13 +97,10 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
+      injectManifest: {
+        // 预缓存清单的匹配范围保持不变；navigateFallback / denylist / cleanupOutdatedCaches
+        // 已迁移进 src/sw.ts（NavigationRoute + cleanupOutdatedCaches）。
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
-        // SPA 直连深层路由时回落到入口页；但 /api 必须走网络，
-        // 否则接口请求会被 SW 用 index.html 应答。
-        navigateFallback: `${BASE}index.html`,
-        navigateFallbackDenylist: [/^\/api/],
-        cleanupOutdatedCaches: true,
       },
       devOptions: {
         // 开发期也生成 SW，方便在真机上验证安装/离线行为

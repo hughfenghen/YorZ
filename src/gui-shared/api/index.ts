@@ -194,6 +194,9 @@ export interface GlobalConfig {
       banner: boolean
       sound: boolean
     }
+    push: {
+      enabled: boolean
+    }
   }
   shortcuts: Partial<
     Record<'newSpec' | 'toggleSpecDetailFullscreen' | 'projectSettings', string | null>
@@ -207,6 +210,13 @@ export interface GlobalConfig {
     language: 'zh-CN' | 'en'
   }
   customInstructions: CustomInstruction[]
+}
+
+/** 浏览器 `PushSubscription.toJSON()` 的结构，POST 给服务端保存。 */
+export interface PushSubscriptionPayload {
+  endpoint: string
+  expirationTime?: number | null
+  keys: { p256dh: string; auth: string }
 }
 
 export interface CustomInstruction {
@@ -581,6 +591,20 @@ export const api = {
         body: JSON.stringify({ customInstructions }),
       },
     ),
+  // ---- web push ----
+  getVapidPublicKey: () => request<{ publicKey: string }>('/api/push/vapid-public-key'),
+  savePushSubscription: (sub: PushSubscriptionPayload) =>
+    request<{ ok: true }>('/api/push/subscriptions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(sub),
+    }),
+  deletePushSubscription: (endpoint: string) =>
+    request<{ ok: true; removed: boolean }>('/api/push/subscriptions', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ endpoint }),
+    }),
   getGlobalConfig: () => request<GlobalConfig>('/api/global-config'),
   updateGlobalConfig: (body: GlobalConfig) =>
     request<{ ok: true; config: GlobalConfig }>('/api/global-config', {

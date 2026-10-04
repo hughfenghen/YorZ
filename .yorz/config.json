@@ -10,6 +10,12 @@
       "name": "dev:gui",
       "cli": "nr dev:gui",
       "createdAt": 1785511681636
+    },
+    {
+      "id": "20a72dcc9f570d45",
+      "name": "build:gui-mobile",
+      "cli": "nr build:gui-mobile",
+      "createdAt": 1791036666973
     }
   ],
   "customInstructions": []

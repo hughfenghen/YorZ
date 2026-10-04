@@ -126,6 +126,8 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
             banner: patch.notifications?.sessionEnd.banner ?? banner(),
             sound: patch.notifications?.sessionEnd.sound ?? sound(),
           },
+          // 推送开关只在移动端设置页管理，桌面端整体回写时原样保留，避免被清掉。
+          push: patch.notifications?.push ?? globalConfig().notifications.push,
         },
         shortcuts: nextShortcuts,
         power: {
@@ -185,12 +187,22 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
 
   function updateBanner(value: boolean): void {
     setBanner(value)
-    void persistPatch({ notifications: { sessionEnd: { banner: value, sound: sound() } } })
+    void persistPatch({
+      notifications: {
+        sessionEnd: { banner: value, sound: sound() },
+        push: globalConfig().notifications.push,
+      },
+    })
   }
 
   function updateSound(value: boolean): void {
     setSound(value)
-    void persistPatch({ notifications: { sessionEnd: { banner: banner(), sound: value } } })
+    void persistPatch({
+      notifications: {
+        sessionEnd: { banner: banner(), sound: value },
+        push: globalConfig().notifications.push,
+      },
+    })
   }
 
   function updatePowerMode(mode: PowerInhibitMode): void {

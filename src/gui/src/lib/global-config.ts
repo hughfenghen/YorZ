@@ -12,6 +12,9 @@ export const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
       banner: false,
       sound: false,
     },
+    push: {
+      enabled: false,
+    },
   },
   shortcuts: {},
   power: {

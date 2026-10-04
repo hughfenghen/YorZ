@@ -51,6 +51,7 @@ export type GlobalAgentKind = 'claude' | 'opencode' | 'codex' | 'pi'
 
 export interface GlobalNotificationsConfig {
   sessionEnd: SessionEndNotificationsConfig
+  push: PushNotificationsConfig
 }
 
 export interface GlobalPowerConfig {
@@ -79,6 +80,14 @@ export interface SessionEndNotificationsConfig {
   sound: boolean
 }
 
+/**
+ * 移动端 PWA 的 Web Push 开关。仅记录「是否启用」；VAPID 密钥与浏览器订阅不入
+ * config.json，由 push-store 落在全局配置目录的独立文件。
+ */
+export interface PushNotificationsConfig {
+  enabled: boolean
+}
+
 export type GlobalShortcutActionId = 'newSpec' | 'toggleSpecDetailFullscreen' | 'projectSettings'
 export type GlobalShortcutsConfig = Partial<Record<GlobalShortcutActionId, string | null>>
 
@@ -86,6 +95,7 @@ const CURRENT_VERSION = 1 as const
 export const DEFAULT_GLOBAL_AGENT: GlobalAgentConfig = { defaultKind: 'claude' }
 export const DEFAULT_NOTIFICATIONS: GlobalNotificationsConfig = {
   sessionEnd: { banner: false, sound: false },
+  push: { enabled: false },
 }
 export const DEFAULT_POWER: GlobalPowerConfig = {
   inhibitWhenRunning: 'system-default',
@@ -215,6 +225,7 @@ export function defaultGlobalConfig(): GlobalConfig {
         banner: DEFAULT_NOTIFICATIONS.sessionEnd.banner,
         sound: DEFAULT_NOTIFICATIONS.sessionEnd.sound,
       },
+      push: { enabled: DEFAULT_NOTIFICATIONS.push.enabled },
     },
     shortcuts: {},
     power: {
@@ -239,9 +250,13 @@ function normalizeNotifications(value: unknown): GlobalNotificationsConfig {
   if (!value || typeof value !== 'object') return defaultGlobalConfig().notifications
   const obj = value as Record<string, unknown>
   const sessionEndRaw = obj.sessionEnd
-  if (!sessionEndRaw || typeof sessionEndRaw !== 'object')
-    return defaultGlobalConfig().notifications
-  const sessionEndObj = sessionEndRaw as Record<string, unknown>
+  const sessionEndObj =
+    sessionEndRaw && typeof sessionEndRaw === 'object'
+      ? (sessionEndRaw as Record<string, unknown>)
+      : {}
+  const pushRaw = obj.push
+  const pushObj =
+    pushRaw && typeof pushRaw === 'object' ? (pushRaw as Record<string, unknown>) : {}
   return {
     sessionEnd: {
       banner:
@@ -252,6 +267,12 @@ function normalizeNotifications(value: unknown): GlobalNotificationsConfig {
         typeof sessionEndObj.sound === 'boolean'
           ? sessionEndObj.sound
           : DEFAULT_NOTIFICATIONS.sessionEnd.sound,
+    },
+    push: {
+      enabled:
+        typeof pushObj.enabled === 'boolean'
+          ? pushObj.enabled
+          : DEFAULT_NOTIFICATIONS.push.enabled,
     },
   }
 }
