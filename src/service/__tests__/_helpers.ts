@@ -18,7 +18,7 @@ export async function startInTmpService(opts: { prefix?: string } = {}): Promise
   const cwd = await mkdtemp(join(tmpdir(), prefix))
   const cfgDir = await mkdtemp(join(tmpdir(), `${prefix}cfg-`))
   const globalConfigPath = join(cfgDir, 'config.json')
-  const handle = await start({ cwd, port: 0, globalConfigPath })
+  const handle = await start({ cwd, port: 0, disableAuth: true, globalConfigPath })
   const list = await handle.registry.list()
   const projectId = list[0]?.id ?? ''
   if (!projectId) throw new Error('startInTmpService: project was not auto-registered')

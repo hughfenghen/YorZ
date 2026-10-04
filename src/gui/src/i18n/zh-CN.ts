@@ -452,4 +452,14 @@ export const zhCN = {
   selection: {
     noSection: '(无章节)',
   },
+  pairing: {
+    title: '配对移动端',
+    hint: '在手机上打开应用，扫描二维码或手动输入下方配对码完成配对。配对码 5 分钟内有效、仅可使用一次。',
+    loading: '生成配对码中…',
+    error: '生成配对码失败',
+    retry: '重试',
+    refresh: '刷新配对码',
+    unauthorizedTitle: '未授权',
+    unauthorized: '当前页面缺少有效令牌，请使用 `yorz serve` 启动日志中打印的带 token 链接打开本页面。',
+  },
 }

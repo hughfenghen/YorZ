@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { start, type ServeHandle } from '../service/index.js'
 import { resolveGlobalConfigDir } from '../service/global-config.js'
+import { createAuthStore } from '../service/auth-store.js'
 import { configureLogger, getLogger, resolveLogDir, STDIO_LOG_FILE } from '../service/logger.js'
 import { spawnWithoutWindow } from '../service/process.js'
 import { cleanupLegacyAgentSkills, ensureSkillsInstalled } from './install.js'
@@ -225,6 +226,16 @@ function startBackgroundServe(opts: ServeCommandOptions): Promise<BackgroundServ
     const servicePid = runtime?.pid ?? child.pid
     console.log(`YorZ Service started in background (pid=${servicePid ?? 'unknown'}).`)
     console.log(`Open ${url}${runtime ? '' : ` (or the next free port if ${port} is busy).`}`)
+    // runtime 已就绪 → 子进程已写入 auth.json，此处只读既有主令牌（不会新生成）。
+    if (runtime) {
+      try {
+        const masterToken = await createAuthStore().getMasterToken()
+        console.log(`Open on this machine: ${url}?token=${masterToken}`)
+        console.log(`Expose to the internet: tailscale funnel ${port}`)
+      } catch {
+        // best-effort：读取令牌失败不阻断启动提示。
+      }
+    }
     console.log(`Stop with: yorz serve stop`)
 
     return {

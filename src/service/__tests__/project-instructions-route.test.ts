@@ -38,7 +38,7 @@ beforeAll(async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-instr-route-'))
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-instr-route-cfg-'))
   await mkdir(join(cwd, '.yorz'), { recursive: true })
-  const handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
+  const handle = await start({ cwd, port: 0, disableAuth: true, globalConfigPath: join(cfgDir, 'config.json') })
   const projectId = (await handle.registry.list())[0]?.id ?? ''
   if (!projectId) throw new Error('project was not auto-registered')
   svc = { cwd, apiPrefix: `${handle.url}api/projects/${projectId}`, handle }

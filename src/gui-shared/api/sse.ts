@@ -1,4 +1,5 @@
 import type { CommandRun, GitChange } from './index.js'
+import { appendAuthToken, withAuthHeaders } from './auth.js'
 
 export interface ServerHeartbeatEvent {
   ts: number
@@ -74,7 +75,7 @@ class SseMultiplex {
 
   private ensureOpen(): void {
     if (this.source) return
-    const url = `/api/events/stream?clientId=${encodeURIComponent(this.clientId)}`
+    const url = appendAuthToken(`/api/events/stream?clientId=${encodeURIComponent(this.clientId)}`)
     const source = new EventSource(url)
     this.source = source
     this.lastFrameAt = Date.now()
@@ -198,11 +199,14 @@ class SseMultiplex {
     this.syncInFlight = true
     try {
       const topics = [...this.handlers.keys()].sort()
-      await fetch('/api/events/subscribe', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ clientId: this.clientId, topics }),
-      })
+      await fetch(
+        '/api/events/subscribe',
+        withAuthHeaders({
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ clientId: this.clientId, topics }),
+        }),
+      )
     } catch {
       // network error; a later scheduleSync (or reconnect open) will retry
     } finally {

@@ -5,6 +5,7 @@ import './i18n/config.js'
 import { initTheme } from './lib/theme.js'
 import { ROUTER_BASE } from './lib/routes.js'
 import { initPWA } from './lib/pwa.js'
+import { initPairingAuth } from './lib/pairing.js'
 import { AppShell } from './AppShell.jsx'
 import { Sessions } from './pages/Sessions.jsx'
 import { Specs } from './pages/Specs.jsx'
@@ -21,12 +22,15 @@ import { Projects } from './pages/Projects.jsx'
 import { GlobalSettings } from './pages/settings/GlobalSettings.jsx'
 import { ProjectSettings } from './pages/settings/ProjectSettings.jsx'
 import { NotFound } from './pages/NotFound.jsx'
+import { Pair } from './pages/Pair.jsx'
 
 // 早于首次渲染接管主题（index.html 的内联脚本已写好初始属性，这里只是绑定后续变化）
 // 移动端没有服务端外观真值这一层，首屏提示由主题模块自己写 localStorage。
 initTheme({ persistHint: true })
 // SW 注册不阻塞首屏：registerSW 内部是异步的，失败也只是降级成纯在线应用
 initPWA()
+// 注册配对令牌 provider 与 401 回调（令牌失效时清除，守卫 effect 随即跳回 /pair）。
+initPairingAuth()
 
 const root = document.getElementById('app')
 if (!root) throw new Error('missing #app root')
@@ -72,6 +76,7 @@ render(
       <Route path="/ext/runs/:runId" component={RunOutput} />
       <Route path="/settings/global" component={GlobalSettings} />
       <Route path="/settings/project" component={ProjectSettings} />
+      <Route path="/pair" component={Pair} />
       <Route path="*" component={NotFound} />
     </Router>
   ),

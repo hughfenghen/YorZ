@@ -77,7 +77,7 @@ beforeAll(async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-cmd-sse-'))
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-cmd-sse-cfg-'))
   await mkdir(join(cwd, '.yorz'), { recursive: true })
-  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
+  handle = await start({ cwd, port: 0, disableAuth: true, globalConfigPath: join(cfgDir, 'config.json') })
   base = handle.url
   projectId = (await handle.registry.list())[0]?.id ?? ''
   apiPrefix = `${base}api/projects/${projectId}`
@@ -190,7 +190,7 @@ describe('service lifecycle binding', () => {
     const cwd = await mkdtemp(join(tmpdir(), 'yorz-cmd-close-'))
     const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-cmd-close-cfg-'))
     await mkdir(join(cwd, '.yorz'), { recursive: true })
-    const h = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
+    const h = await start({ cwd, port: 0, disableAuth: true, globalConfigPath: join(cfgDir, 'config.json') })
     const pid = (await h.registry.list())[0]!.id
     const prefix = `${h.url}api/projects/${pid}`
 

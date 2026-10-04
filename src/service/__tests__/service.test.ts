@@ -45,7 +45,7 @@ async function startInTmp() {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-service-'))
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-service-cfg-'))
   await mkdir(join(cwd, '.yorz'), { recursive: true })
-  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
+  handle = await start({ cwd, port: 0, disableAuth: true, globalConfigPath: join(cfgDir, 'config.json') })
   const list = await handle.registry.list()
   const projectId = list[0]!.id
   return {
@@ -296,7 +296,7 @@ describe('YorZ Service HTTP', () => {
     const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-service-cfg-'))
     await mkdir(join(cwd, '.yorz'), { recursive: true })
     await initGitRepoIn(cwd)
-    handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
+    handle = await start({ cwd, port: 0, disableAuth: true, globalConfigPath: join(cfgDir, 'config.json') })
     const list = await handle.registry.list()
     const projectId = list[0]!.id
     const apiRoot = `${handle.url}api`
@@ -329,7 +329,7 @@ describe('YorZ Service HTTP', () => {
     expect(initial.status).toBe(200)
     expect(await initial.json()).toEqual({
       agent: { defaultKind: 'claude' },
-      notifications: { sessionEnd: { banner: false, sound: false } },
+      notifications: { sessionEnd: { banner: false, sound: false }, push: { enabled: false } },
       shortcuts: {},
       power: { inhibitWhenRunning: 'system-default' },
       appearance: { themeMode: 'system', themeName: 'paper', language: 'zh-CN' },
@@ -362,7 +362,7 @@ describe('YorZ Service HTTP', () => {
     const saved = await fetch(`${apiRoot}/global-config`)
     expect(await saved.json()).toEqual({
       agent: { defaultKind: 'codex' },
-      notifications: { sessionEnd: { banner: true, sound: true } },
+      notifications: { sessionEnd: { banner: true, sound: true }, push: { enabled: false } },
       shortcuts: { newSpec: 'Ctrl+Shift+K' },
       power: { inhibitWhenRunning: 'prevent-display-sleep' },
       appearance: { themeMode: 'dark', themeName: 'paper', language: 'en' },
@@ -506,7 +506,7 @@ describe('service logging', () => {
     await withLogDir(async (dir) => {
       const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-service-cfg-'))
       const registry = new ProjectRegistry({ globalConfigPath: join(cfgDir, 'config.json') })
-      const app = createApp({ registry })
+      const app = createApp({ registry, disableAuth: true })
       // POST is not claimed by the API sub-app nor the static SPA fallback, so
       // this reaches our handler and exercises the real `app.onError`.
       app.post('/boom', () => {

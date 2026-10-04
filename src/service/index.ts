@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { serve } from '@hono/node-server'
 import { isIP, type AddressInfo } from 'node:net'
 import { createApp } from './server.js'
+import { createAuthStore } from './auth-store.js'
 import { ProjectRegistry } from './project-registry.js'
 import { stopAllCommandManagers, stopAllCommandManagersSync } from './command-manager.js'
 import { HEARTBEAT_INTERVAL_MS } from './routes/events.js'
@@ -28,6 +29,8 @@ export interface ServeOptions {
   shutdownToken?: string
   /** 令牌验证通过后触发的统一关闭流程。 */
   onShutdownRequest?: () => void
+  /** 关闭 /api 配对鉴权（仅供集成测试）。生产不应设置。 */
+  disableAuth?: boolean
 }
 
 export interface ServeHandle {
@@ -87,10 +90,13 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
   const projects = await registry.list()
   const systemNotifications = new SystemNotificationCenter()
   systemNotifications.startVersionChecks()
+  const authStore = createAuthStore(registry.configPath())
   const app = createApp({
     registry,
     guiRoot: opts.guiRoot,
     systemNotifications,
+    authStore,
+    disableAuth: opts.disableAuth,
     shutdown:
       opts.shutdownToken && opts.onShutdownRequest
         ? { token: opts.shutdownToken, request: opts.onShutdownRequest }
@@ -99,9 +105,14 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
 
   const port = await listen(app.fetch, opts.port ?? DEFAULT_PORT, host)
   const url = `http://localhost:${port.port}/`
+  const masterToken = await authStore.getMasterToken()
+  const capabilityUrl = `${url}?token=${masterToken}`
   console.log(
     `YorZ Service ready at ${url} (${projects.length} project${projects.length === 1 ? '' : 's'})`,
   )
+  // 能力 URL：在本机浏览器打开此链接完成令牌引导（前端存令牌后抹除 URL）。
+  console.log(`Open on this machine: ${capabilityUrl}`)
+  console.log(`Expose to the internet: tailscale funnel ${port.port}`)
   for (const p of projects) {
     console.log(`  - ${p.name} -> ${p.path}`)
   }
@@ -120,7 +131,8 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
   installGlobalErrorHandlers()
   installCommandExitGuard()
 
-  if (opts.open) await tryOpenBrowser(url)
+  // 打开能力 URL 以便首次访问即完成令牌引导。
+  if (opts.open) await tryOpenBrowser(capabilityUrl)
 
   return {
     url,

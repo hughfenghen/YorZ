@@ -1,4 +1,15 @@
 import type { ProjectListItem, WorktreeMeta } from './project.js'
+import { notifyUnauthorized, withAuthHeaders } from './auth.js'
+
+/**
+ * 统一注入配对令牌头并在 401 时回调的 fetch 封装。request() 与各处裸 fetch
+ * 都走它，确保桌面/移动端请求携带 `x-yorz-pair-token`，未授权时触发 onUnauthorized。
+ */
+async function authedFetch(path: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(path, withAuthHeaders(init))
+  if (res.status === 401) notifyUnauthorized()
+  return res
+}
 
 export type SpecType = 'feat' | 'refct' | 'fix'
 
@@ -338,7 +349,7 @@ export type AddProjectOutcome =
   | { ok: false; needGitInit: true; path: string }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init)
+  const res = await authedFetch(path, init)
   if (!res.ok) {
     const detail = await extractErrorDetail(res)
     throw new Error(`${res.status} ${detail || res.statusText}`)
@@ -366,7 +377,7 @@ export const api = {
   ): Promise<
     { id: string; path: string; draft?: false } | { runId: string; sessionId: string; draft: true }
   > =>
-    fetch(`${projectBase(pid)}/specs`, {
+    authedFetch(`${projectBase(pid)}/specs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -521,7 +532,7 @@ export const api = {
    * 而非抛错，由调用方弹二次确认后带 `gitInit: true` 重试。
    */
   addProject: async (path: string, opts?: { gitInit?: boolean }): Promise<AddProjectOutcome> => {
-    const res = await fetch('/api/projects', {
+    const res = await authedFetch('/api/projects', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ path, ...(opts?.gitInit ? { gitInit: true } : {}) }),
@@ -591,6 +602,16 @@ export const api = {
         body: JSON.stringify({ customInstructions }),
       },
     ),
+  // ---- pairing ----
+  /** 可信端（持主令牌）签发一次性配对码，供手机扫码/手输换设备令牌。 */
+  getPairingCode: () => request<{ code: string; expiresAt: number }>('/api/pairing/code'),
+  /** 手机端以配对码换取设备令牌（放行清单，无需令牌）。 */
+  claimPairing: (code: string) =>
+    request<{ token: string }>('/api/pairing/claim', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code }),
+    }),
   // ---- web push ----
   getVapidPublicKey: () => request<{ publicKey: string }>('/api/push/vapid-public-key'),
   savePushSubscription: (sub: PushSubscriptionPayload) =>
@@ -621,7 +642,7 @@ export const api = {
   uploadAttachment: async (pid: string, draftId: string, file: File): Promise<AttachmentMeta> => {
     const fd = new FormData()
     fd.append('file', file, file.name)
-    const res = await fetch(
+    const res = await authedFetch(
       `${projectBase(pid)}/spec-drafts/${encodeURIComponent(draftId)}/attachments`,
       {
         method: 'POST',

@@ -131,7 +131,7 @@ describe('system notifications', () => {
   it('serves global notification routes', async () => {
     const center = new SystemNotificationCenter({ runUpdate: async () => {} })
     center.upsertVersionUpdate({ current: '0.4.2', latest: '0.4.3' })
-    const app = createApp({ registry: new ProjectRegistry(), systemNotifications: center })
+    const app = createApp({ registry: new ProjectRegistry(), systemNotifications: center, disableAuth: true })
 
     const list = await app.request('/api/system-notifications')
     expect(list.status).toBe(200)

@@ -459,4 +459,15 @@ export const en = {
   selection: {
     noSection: '(no section)',
   },
+  pairing: {
+    title: 'Pair a mobile device',
+    hint: 'Open the app on your phone, then scan the QR code or type the pairing code below. The code is valid for 5 minutes and can be used once.',
+    loading: 'Generating pairing code…',
+    error: 'Failed to generate pairing code',
+    retry: 'Retry',
+    refresh: 'Refresh code',
+    unauthorizedTitle: 'Unauthorized',
+    unauthorized:
+      'This page has no valid token. Open it using the token-bearing URL printed in the `yorz serve` startup log.',
+  },
 }

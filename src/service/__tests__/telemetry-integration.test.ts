@@ -49,7 +49,7 @@ async function startInRepo() {
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-telemetry-int-cfg-'))
   await mkdir(join(cwd, '.yorz'), { recursive: true })
   await execFileP('git', ['init', '-q', '-b', 'main'], { cwd })
-  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
+  handle = await start({ cwd, port: 0, disableAuth: true, globalConfigPath: join(cfgDir, 'config.json') })
   const list = await handle.registry.list()
   const projectId = list[0]!.id
   return { cwd, apiPrefix: `${handle.url}api/projects/${projectId}` }

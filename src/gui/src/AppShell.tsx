@@ -27,6 +27,7 @@ import { ProjectsSidebar } from './components/ProjectsSidebar.jsx'
 import { ChatPanel } from './components/ChatPanel.jsx'
 import { GlobalConfigDialog } from './components/GlobalConfigDialog.jsx'
 import { SystemNotifications } from './components/SystemNotifications.jsx'
+import { QrPairingPopover } from './components/QrPairingPopover.jsx'
 import { Button } from './components/ui/button.jsx'
 import {
   DropdownMenu,
@@ -57,6 +58,7 @@ import {
   type ThemeName,
 } from './lib/theme.js'
 import { resolveDesktopDirection } from './lib/vt-direction.js'
+import { unauthorized } from './lib/auth.js'
 import { t, useTranslation } from './i18n/index.js'
 
 const THEME_OPTIONS: { mode: ThemeMode; labelKey: string; icon: typeof Sun }[] = [
@@ -184,6 +186,7 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
         <A href="/" class="text-lg font-bold">
           YorZ
         </A>
+        <QrPairingPopover />
         <SystemNotifications />
         <div class="ml-auto flex items-center gap-2">
           <Show when={activeProjectId()}>
@@ -289,6 +292,11 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
           </DropdownMenu>
         </div>
       </header>
+      <Show when={unauthorized()}>
+        <div class="shrink-0 border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-xs text-destructive">
+          {t('pairing.unauthorized')}
+        </div>
+      </Show>
       <div class="flex min-h-0 flex-1">
         <ProjectsSidebar />
         <ChatPanel />

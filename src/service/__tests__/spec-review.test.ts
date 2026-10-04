@@ -20,7 +20,7 @@ async function startInTmp() {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-review-'))
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-review-cfg-'))
   await mkdir(join(cwd, '.yorz'), { recursive: true })
-  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
+  handle = await start({ cwd, port: 0, disableAuth: true, globalConfigPath: join(cfgDir, 'config.json') })
   const list = await handle.registry.list()
   const projectId = list[0]!.id
   return {

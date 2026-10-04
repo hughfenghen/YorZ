@@ -14,7 +14,9 @@ import { createProjectFilesRoutes } from './routes/project-files.js'
 import { createFsRoutes } from './routes/fs.js'
 import { createCommandsRoutes } from './routes/commands.js'
 import { createSystemNotificationsRoutes } from './routes/system-notifications.js'
+import { createPairingRoutes } from './routes/pairing.js'
 import { createStaticRoutes } from './static.js'
+import { createAuthStore, type AuthStore } from './auth-store.js'
 import type { ProjectRegistry } from './project-registry.js'
 import { RegistryEventBus } from './registry-events.js'
 import { WorktreeManager } from './worktree-manager.js'
@@ -26,12 +28,23 @@ export interface CreateAppOptions {
   registry: ProjectRegistry
   guiRoot?: string
   systemNotifications?: SystemNotificationCenter
+  /** 配对鉴权令牌 store；未提供时按全局配置目录惰性创建。 */
+  authStore?: AuthStore
+  /** 关闭 /api 配对鉴权中间件（仅供聚焦非鉴权行为的集成测试）。生产不应设置。 */
+  disableAuth?: boolean
   /** 受 runtime 随机令牌保护的本地停服回调。 */
   shutdown?: {
     token: string
     request: () => void
   }
 }
+
+/**
+ * 命中放行清单的 `/api/*` 路径（不需携带配对令牌）：
+ * - `/api/pairing/claim`：设备引导入口，无令牌时用于以配对码换设备令牌；
+ * - `/api/internal/shutdown`：有自身的 `x-yorz-shutdown-token` 校验。
+ */
+const AUTH_ALLOWLIST = new Set(['/api/pairing/claim', '/api/internal/shutdown'])
 
 /** Requests slower than this are surfaced at `warn` even when they succeed. */
 const SLOW_REQUEST_MS = 1000
@@ -57,6 +70,20 @@ export function createApp(opts: CreateAppOptions): Hono {
   })
 
   const api = new Hono()
+  const authStore = opts.authStore ?? createAuthStore(opts.registry.configPath())
+
+  // 能力 URL / 持有令牌模型：/api/* 一律校验 bearer 令牌（主令牌或设备令牌），
+  // 放行清单内的握手/停服入口除外。静态资源不走 /api，天然放行。
+  if (!opts.disableAuth) {
+    api.use('*', async (c, next) => {
+      if (AUTH_ALLOWLIST.has(c.req.path)) return next()
+      // EventSource 无法设置自定义头，故 SSE 走 `?token=` query；其余请求用 header。
+      const token = c.req.header('x-yorz-pair-token') ?? c.req.query('token')
+      if (await authStore.validateToken(token)) return next()
+      return c.json({ error: 'Unauthorized' }, 401)
+    })
+  }
+
   if (opts.shutdown) {
     api.post('/internal/shutdown', (c) => {
       const token = c.req.header('x-yorz-shutdown-token')
@@ -109,6 +136,7 @@ export function createApp(opts: CreateAppOptions): Hono {
   }
   api.route('/', createGlobalConfigRoutes(opts.registry.configPath()))
   api.route('/', createPushRoutes(opts.registry.configPath()))
+  api.route('/', createPairingRoutes(authStore))
   api.route('/', createProjectConfigRoutes(opts.registry))
   api.route('/', createSpecsRoutes(resolveProject))
   api.route('/', createSessionsRoutes(resolveProject))

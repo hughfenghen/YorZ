@@ -33,7 +33,7 @@ async function startInRepo() {
   await git(cwd, ['add', '.'])
   await git(cwd, ['commit', '-q', '-m', 'init'])
 
-  handle = await start({ cwd, port: 0, globalConfigPath: join(cfgDir, 'config.json') })
+  handle = await start({ cwd, port: 0, disableAuth: true, globalConfigPath: join(cfgDir, 'config.json') })
   const list = await handle.registry.list()
   const projectId = list[0]!.id
   return { cwd, apiPrefix: `${handle.url}api/projects/${projectId}` }

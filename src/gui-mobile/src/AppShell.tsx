@@ -1,11 +1,12 @@
-import { Show, type ParentComponent } from 'solid-js'
-import { useLocation } from '@solidjs/router'
+import { Show, createEffect, type ParentComponent } from 'solid-js'
+import { useLocation, useNavigate } from '@solidjs/router'
 import { createViewTransitionNav } from '@shared/lib/view-transition-nav.js'
 import { StatusBanner } from './components/StatusBanner.jsx'
 import { TabBar } from './components/TabBar.jsx'
 import { Toaster } from './components/Toast.jsx'
 import { watchNetwork } from './lib/network.js'
-import { isTabRoute } from './lib/routes.js'
+import { isPaired } from './lib/pairing.js'
+import { isTabRoute, stripRouterBase } from './lib/routes.js'
 import { resolveMobileDirection } from './lib/vt-direction.js'
 
 /**
@@ -24,6 +25,16 @@ export const AppShell: ParentComponent = (props) => {
   createViewTransitionNav({ resolveDirection: resolveMobileDirection })
 
   const location = useLocation()
+  const navigate = useNavigate()
+
+  // 启动守卫：未配对（无设备令牌）时跳配对页；令牌失效被清除后同样响应式跳转。
+  // 配对页本身豁免，否则会自我重定向成死循环。
+  createEffect(() => {
+    const path = stripRouterBase(location.pathname)
+    if (path !== '/pair' && !isPaired()) {
+      navigate('/pair', { replace: true })
+    }
+  })
 
   return (
     <>

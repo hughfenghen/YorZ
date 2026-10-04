@@ -3,6 +3,7 @@ import { render } from 'solid-js/web'
 import { Router, Route } from '@solidjs/router'
 import './i18n/config.js'
 import { initTheme } from './lib/theme.js'
+import { bootstrapAuth } from './lib/auth.js'
 import { SpecList } from './pages/SpecList.jsx'
 import { NewSpec } from './pages/NewSpec.jsx'
 import { SpecDetail } from './pages/SpecDetail.jsx'
@@ -18,6 +19,9 @@ import { AppShell } from './AppShell.jsx'
 // 桌面端外观真值在服务端 config.json，hint 由 global-config.ts 的
 // applyGlobalAppearance 负责写，这里不重复落盘。
 initTheme({ persistHint: false })
+
+// 启动 URL 令牌引导：读 ?token → localStorage → 抹除地址栏；注册令牌 provider。
+bootstrapAuth()
 
 const root = document.getElementById('app')
 if (!root) throw new Error('missing #app root')
