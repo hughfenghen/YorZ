@@ -7,15 +7,13 @@ import { showToast } from '@/components/Toast.jsx'
 import { claimPairing } from '@/lib/pairing.js'
 import { t } from '@/i18n/index.js'
 
-type Mode = 'scan' | 'manual'
-
 /**
- * 配对页：支持「摄像头扫码」或「手动输入配对码」两种方式。提交后以配对码换取设备令牌
- * 并持久化，随后回到首页。摄像头不可用（非安全上下文 / 无权限）时自动退化为手输。
+ * 配对页：手动输入配对码始终可用，摄像头扫码作为可选增强（点「扫码」开启摄像头）。
+ * 提交后以配对码换取设备令牌并持久化，随后回到首页。摄像头不可用（非安全上下文 /
+ * 无权限）时提示并退回手动输入。
  */
 export const Pair: Component = () => {
   const navigate = useNavigate()
-  const [mode, setMode] = createSignal<Mode>('manual')
   const [code, setCode] = createSignal('')
   const [submitting, setSubmitting] = createSignal(false)
   const [scanning, setScanning] = createSignal(false)
@@ -82,7 +80,6 @@ export const Pair: Component = () => {
     const media = navigator.mediaDevices
     if (!window.isSecureContext || !media || !media.getUserMedia) {
       setCameraError(true)
-      setMode('manual')
       return
     }
     try {
@@ -96,14 +93,7 @@ export const Pair: Component = () => {
     } catch {
       stopCamera()
       setCameraError(true)
-      setMode('manual')
     }
-  }
-
-  const switchMode = (next: Mode) => {
-    if (next === mode()) return
-    if (next === 'manual') stopCamera()
-    setMode(next)
   }
 
   return (
@@ -111,75 +101,56 @@ export const Pair: Component = () => {
       <div class="flex flex-col gap-4">
         <p class="text-sm text-muted-foreground">{t('pair.intro')}</p>
 
-        <div class="flex gap-2">
-          <Button
-            variant={mode() === 'scan' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => switchMode('scan')}
-          >
-            {t('pair.scan')}
-          </Button>
-          <Button
-            variant={mode() === 'manual' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => switchMode('manual')}
-          >
-            {t('pair.manual')}
-          </Button>
+        {/* 扫码：可选增强。video 始终挂载以绑定 ref，未扫码时隐藏；摄像头不可用时提示。 */}
+        <div class="flex flex-col items-center gap-3">
+          <Show when={!scanning()}>
+            <Button variant="outline" size="sm" onClick={() => void startCamera()}>
+              {t('pair.scan')}
+            </Button>
+          </Show>
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+          <video
+            ref={video}
+            class={scanning() ? 'w-full max-w-sm rounded bg-black' : 'hidden'}
+            playsinline
+            muted
+            autoplay
+          />
+          <canvas ref={canvas} class="hidden" />
+          <Show when={scanning()}>
+            <p class="text-xs text-muted-foreground">{t('pair.scanHint')}</p>
+          </Show>
+          <Show when={cameraError()}>
+            <p class="text-xs text-destructive">{t('pair.cameraUnavailable')}</p>
+          </Show>
         </div>
 
-        <Show when={mode() === 'scan'}>
-          <div class="flex flex-col items-center gap-3">
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <video
-              ref={video}
-              class="w-full max-w-sm rounded bg-black"
-              playsinline
-              muted
-              autoplay
-            />
-            <canvas ref={canvas} class="hidden" />
-            <Show when={!scanning()}>
-              <Button size="sm" onClick={() => void startCamera()}>
-                {t('pair.cameraStart')}
-              </Button>
-            </Show>
-            <Show when={scanning()}>
-              <p class="text-xs text-muted-foreground">{t('pair.scanHint')}</p>
-            </Show>
-            <Show when={cameraError()}>
-              <p class="text-xs text-destructive">{t('pair.cameraUnavailable')}</p>
-            </Show>
-          </div>
-        </Show>
-
-        <Show when={mode() === 'manual'}>
-          <form
-            class="flex flex-col gap-3"
-            onSubmit={(e) => {
-              e.preventDefault()
-              void submit(code())
-            }}
-          >
-            <label class="text-sm font-medium" for="pairing-code">
-              {t('pair.codeLabel')}
-            </label>
-            <input
-              id="pairing-code"
-              type="text"
-              value={code()}
-              onInput={(e) => setCode(e.currentTarget.value)}
-              placeholder={t('pair.codePlaceholder')}
-              autocapitalize="characters"
-              autocomplete="off"
-              spellcheck={false}
-              class="h-11 w-full rounded-md border border-input bg-background px-3 font-mono text-base uppercase tracking-widest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-            <Button type="submit" disabled={submitting() || !code().trim()}>
-              {submitting() ? t('pair.submitting') : t('pair.submit')}
-            </Button>
-          </form>
-        </Show>
+        {/* 手动输入：始终可用的主路径与兜底。 */}
+        <form
+          class="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void submit(code())
+          }}
+        >
+          <label class="text-sm font-medium" for="pairing-code">
+            {t('pair.codeLabel')}
+          </label>
+          <input
+            id="pairing-code"
+            type="text"
+            value={code()}
+            onInput={(e) => setCode(e.currentTarget.value)}
+            placeholder={t('pair.codePlaceholder')}
+            autocapitalize="characters"
+            autocomplete="off"
+            spellcheck={false}
+            class="h-11 w-full rounded-md border border-input bg-background px-3 font-mono text-base uppercase tracking-widest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          <Button type="submit" disabled={submitting() || !code().trim()}>
+            {submitting() ? t('pair.submitting') : t('pair.submit')}
+          </Button>
+        </form>
       </div>
     </Page>
   )

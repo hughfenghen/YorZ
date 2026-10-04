@@ -50,10 +50,25 @@ export async function claimPairing(code: string): Promise<void> {
   setDeviceToken(token)
 }
 
-/** 启动时注册共享层令牌 provider 与 401 回调；应在首次渲染前调用一次。 */
-export function initPairingAuth(): void {
+function wireAuth(): void {
   configureAuth({
     tokenProvider: () => deviceToken(),
     onUnauthorized: () => setDeviceToken(null),
   })
+}
+
+// 关键时序：必须在**模块求值期**（import 副作用）就注册 provider/401 回调，
+// 而不能等到 main.tsx 函数体里再调用——否则会被下面这条竞态击穿：
+//   ES import 先于函数体执行，`lib/active-project.ts` 顶层的 `createResource`
+//   会在其模块求值时立即发起 `GET /api/projects`。若此刻 provider 仍是共享层
+//   默认的 `() => null`，该请求不带令牌 → 401；而 401 响应异步回来时，函数体里的
+//   `initPairingAuth()` 早已把 `onUnauthorized` 配好 → 把刚持久化的有效设备令牌清掉，
+//   于是每次刷新/重进都被踢回 /pair。
+// pairing.ts 在 main.tsx 中先于 AppShell/页面（含 active-project）导入，故此处的
+// import 副作用能保证「provider 就绪」早于任何 /api 请求发出。
+wireAuth()
+
+/** 保留显式入口（幂等）；真正的注册已在模块导入时完成。 */
+export function initPairingAuth(): void {
+  wireAuth()
 }

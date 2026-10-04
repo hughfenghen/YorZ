@@ -1,7 +1,7 @@
 ---
 stage: done
-last_action: 任务全部完成，标记 done
-updated_at: '2026-10-04 16:05:00'
+last_action: 用户手动置为 done
+updated_at: '2026-10-04 16:30:38'
 summary: 为移动端 PWA 增加配对鉴权：采用能力 URL/持有令牌模型，单端口直连 funnel；PC 经启动 URL 引导主令牌，手机扫码/输码换设备令牌，/api/* 一律校验 bearer 令牌。
 ---
 
@@ -280,7 +280,13 @@ _暂无_
 - [x] 双端 i18n 文案：src/gui/src/i18n 与 src/gui-mobile/src/i18n 新增配对相关 key（二维码标题、配对页提示、扫码/手输、401 提示等），保持双端同步（验收：无缺失 key，构建通过）
 - [x] 全量 typecheck/构建验证：对受影响的 service/gui/gui-mobile 运行仓库构建或 tsc，记录结果（验收：构建/typecheck 通过）
 
-## 7. 执行记录
+## 7. 追加任务
+
+- [open] [fix] 2026-10-04 16:11:50 | 1. 移动端每次刷新，或关闭页面重新进入都会跳转 http://localhost:7424/m/pair；期望持久化授权码
+  - 描述：1. 移动端每次刷新，或关闭页面重新进入都会跳转 http://localhost:7424/m/pair；期望持久化授权码
+2. 授权配对页面，“手动输入”按钮应该没用，移除该按钮
+
+## 8. 执行记录
 
 - 新增 `src/service/auth-store.ts`：`createAuthStore`，`auth.json` 存明文主令牌 + 设备令牌 sha256 哈希，`getMasterToken`（惰性生成 randomBytes(32) base64url）/`validateToken`（统一哈希 + timingSafeEqual 常量时间比较）/`addDevice`/`listDevices`，持久化照搬 push-store（原子写 + serialize 串行）。
 - 新增 `src/service/pairing-codes.ts`：`createPairingCodes`，8 位自定义 base32 短码（去 0/O/1/I/L）、TTL 5min、单活动码、连续失败 5 次锁 60s，导出 `issue`/`claim` + `normalizeCode`。
