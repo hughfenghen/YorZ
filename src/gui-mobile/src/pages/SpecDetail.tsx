@@ -382,7 +382,7 @@ export const SpecDetail: Component = () => {
                   {/* meta 卡：概要 / 阶段 / 更新时间 / 运行态。阶段徽章只读——
                       强制切 stage 是把文档状态机拧到不一致的操作，不该塞进
                       一块拇指随时会蹭到的区域。 */}
-                  <section class="border-b border-border px-4 py-3">
+                  <section class="border-b border-border px-2 py-3">
                     <p class="text-sm leading-relaxed">
                       {doc().frontmatter.summary || t('common.pendingAgent')}
                     </p>
@@ -440,7 +440,7 @@ export const SpecDetail: Component = () => {
 
                   <article
                     ref={(el) => setArticleEl(el)}
-                    class="markdown px-4 py-4"
+                    class="markdown px-2 py-4"
                     onClick={onArticleClick}
                   />
 

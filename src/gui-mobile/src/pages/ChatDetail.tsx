@@ -279,7 +279,7 @@ export const ChatDetail: Component = () => {
       }
     >
       <Show when={pid()} fallback={<div class="px-4 py-4">{<NoProjectNotice />}</div>}>
-        <div class="px-4 py-3" onClick={onMessagesClick}>
+        <div class="px-2 py-3" onClick={onMessagesClick}>
           {/* 三态而非二态：历史是异步读的，`blocks` 为空既可能是「还没读到」也可能是
               「真的没有」。只有 hook 分得清这两者（见 historyLoading），页面自己拿
               sessions.loading 猜会在弱网下反复抖动。 */}

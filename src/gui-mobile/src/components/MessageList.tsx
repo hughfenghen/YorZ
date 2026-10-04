@@ -54,13 +54,13 @@ export const MessageList: Component<{
                 fallback={
                   // 用户输入不过 markdown：里面常带 `@路径`、缩进和裸
                   // `*`/`_`，交给 md 会被改写成别的东西。
-                  <div class="mb-2 whitespace-pre-wrap rounded-lg border border-primary/20 border-l-2 border-l-primary bg-primary/10 px-3 py-2 text-[0.95rem] font-medium [overflow-wrap:anywhere]">
+                  <div class="mb-2 whitespace-pre-wrap rounded-lg border border-primary/20 border-l-2 border-l-primary bg-primary/10 p-2 text-[0.95rem] font-medium [overflow-wrap:anywhere]">
                     {asUser(block())?.text}
                   </div>
                 }
               >
                 {(assistant) => (
-                  <div class="mb-2 min-w-0 rounded-lg border bg-card px-3 py-2 [overflow-wrap:anywhere]">
+                  <div class="mb-2 min-w-0 rounded-lg border bg-card p-2 [overflow-wrap:anywhere]">
                     <Index each={assistant().segments}>
                       {(seg) => (
                         <Show
