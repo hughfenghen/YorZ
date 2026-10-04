@@ -77,6 +77,27 @@ export function printCapabilityUrl(capabilityUrl: string): void {
   console.log('')
 }
 
+/**
+ * 打印「暴露到公网」提示：说明行 + 可整行复制的命令独占缩进行。
+ * 命令不加 `$` 前缀，方便双击/三击整行复制而不带入提示符；纯文本不依赖
+ * 颜色，可安全重定向到日志文件。前台 start() 与后台父进程共用，避免两处重复。
+ */
+export function printExposeHint(port: number): void {
+  console.log('')
+  console.log('Expose to the internet:')
+  console.log(`  tailscale funnel --bg ${port}`)
+}
+
+/**
+ * 打印「停止服务」提示（仅后台模式有意义，前台用 Ctrl+C 停止）。
+ * 风格与 printExposeHint 一致：说明行 + 命令独占缩进行。
+ */
+export function printStopHint(): void {
+  console.log('')
+  console.log('Stop the service:')
+  console.log(`  yorz serve stop`)
+}
+
 export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
   const host = opts.host?.trim() || DEFAULT_HOST
   if (!isLoopbackHost(host)) {
@@ -129,7 +150,7 @@ export async function start(opts: ServeOptions = {}): Promise<ServeHandle> {
   // 能力 URL：在本机浏览器打开此链接完成令牌引导（前端存令牌后抹除 URL）。
   // 这条链接最关键但容易淹没在多行输出里，故用分隔线 + 醒目前缀单独高亮。
   printCapabilityUrl(capabilityUrl)
-  log().info(`Expose to the internet: tailscale funnel ${port.port}`)
+  printExposeHint(port.port)
   for (const p of projects) {
     log().info(`  - ${p.name} -> ${p.path}`)
   }

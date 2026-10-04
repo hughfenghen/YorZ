@@ -6,7 +6,13 @@ import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { start, printCapabilityUrl, type ServeHandle } from '../service/index.js'
+import {
+  start,
+  printCapabilityUrl,
+  printExposeHint,
+  printStopHint,
+  type ServeHandle,
+} from '../service/index.js'
 import { resolveGlobalConfigDir } from '../service/global-config.js'
 import { createAuthStore } from '../service/auth-store.js'
 import { configureLogger, getLogger, resolveLogDir, STDIO_LOG_FILE } from '../service/logger.js'
@@ -188,7 +194,7 @@ function startBackgroundServe(opts: ServeCommandOptions): Promise<BackgroundServ
       const existing = live[0]!
       console.log(`YorZ Service is already running in background (pid=${existing.pid}).`)
       console.log(`Open ${existing.url}`)
-      console.log(`Stop with: yorz serve stop`)
+      printStopHint()
       return {
         background: true,
         reused: true,
@@ -231,12 +237,12 @@ function startBackgroundServe(opts: ServeCommandOptions): Promise<BackgroundServ
         const masterToken = await createAuthStore().getMasterToken()
         // 能力链接是最关键的一行，单独高亮，避免淹没在多行启动输出里。
         printCapabilityUrl(`${url}?token=${masterToken}`)
-        console.log(`Expose to the internet: tailscale funnel ${port}`)
+        printExposeHint(port)
       } catch {
         // best-effort：读取令牌失败不阻断启动提示。
       }
     }
-    console.log(`Stop with: yorz serve stop`)
+    printStopHint()
 
     return {
       background: true,
