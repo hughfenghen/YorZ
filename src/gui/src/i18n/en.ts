@@ -46,6 +46,9 @@ export const en = {
     restart: 'Restart Service',
     restartTooltip:
       'Restarting the service will interrupt running tasks. You can send "continue" in chat.',
+    disconnectedTitle: 'Service disconnected',
+    disconnectedMessage:
+      'The connection to the YorZ service was lost; running tasks may have stopped. Restart it in your terminal with',
   },
   welcome: {
     title: 'Welcome to YorZ',

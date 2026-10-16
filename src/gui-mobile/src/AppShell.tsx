@@ -5,6 +5,7 @@ import { StatusBanner } from './components/StatusBanner.jsx'
 import { TabBar } from './components/TabBar.jsx'
 import { Toaster } from './components/Toast.jsx'
 import { watchNetwork } from './lib/network.js'
+import { watchConnection } from './lib/connection.js'
 import { isPaired } from './lib/pairing.js'
 import { isTabRoute, stripRouterBase } from './lib/routes.js'
 import { resolveMobileDirection } from './lib/vt-direction.js'
@@ -19,6 +20,9 @@ export const AppShell: ParentComponent = (props) => {
   // 在组件作用域内调用：内部用 onCleanup 注销监听，放到 onMount 里也行，
   // 但没有必要——注册本身不碰 DOM 布局。
   watchNetwork()
+  // 监听与 Service 的实时通道健康：断连时顶栏标题后显示断开 icon。
+  // 在 shell 作用域内启动，保证切到任何页面都在探活。
+  watchConnection()
 
   // 路由切换套上 View Transition：拦在 beforeLeave 这一个点上，
   // 链接点击 / 程序化 navigate / 系统前进后退全覆盖，页面组件不用感知。

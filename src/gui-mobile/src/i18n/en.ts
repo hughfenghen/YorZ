@@ -312,6 +312,11 @@ export const en: Translation = {
     refresh: 'Reload',
     offline: 'Offline — showing cached content',
   },
+  connection: {
+    disconnected: 'Service disconnected',
+    disconnectedToast:
+      'The connection to the YorZ service was lost; running tasks may have stopped. Please wait or restart the service.',
+  },
   notFound: {
     title: 'Page not found',
     back: 'Back to home',

@@ -1,5 +1,8 @@
 import { Show, type Component, type JSX } from 'solid-js'
-import { ChevronLeft } from 'lucide-solid'
+import { ChevronLeft, Unplug } from 'lucide-solid'
+import { connected } from '@/lib/connection.js'
+import { showToast } from './Toast.jsx'
+import { t } from '@/i18n/index.js'
 
 interface TopBarProps {
   title: string
@@ -56,6 +59,19 @@ export const TopBar: Component<TopBarProps> = (props) => (
         {props.leading}
       </div>
       <h1 class="min-w-0 truncate text-base font-medium">{props.title}</h1>
+      {/* 断连指示：紧贴标题之后、显眼的 destructive 色 Unplug。与 StatusBanner 的
+          网络离线(CloudOff)刻意区分——这里是「Service 进程断开」。点击弹提示说明。
+          shrink-0 防止被长标题挤没。 */}
+      <Show when={!connected()}>
+        <button
+          type="button"
+          class="tap-target shrink-0 text-destructive active:opacity-60"
+          aria-label={t('connection.disconnected')}
+          onClick={() => showToast(t('connection.disconnectedToast'), 'error')}
+        >
+          <Unplug size={18} aria-hidden="true" />
+        </button>
+      </Show>
       <div class="flex flex-1 items-center justify-end gap-3">{props.actions}</div>
     </div>
   </header>

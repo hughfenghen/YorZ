@@ -317,6 +317,10 @@ export const zhCN = {
     refresh: '刷新',
     offline: '当前离线，展示的是缓存内容',
   },
+  connection: {
+    disconnected: '服务已断开',
+    disconnectedToast: '与 YorZ 服务的连接已中断，正在执行的任务可能已停止，请稍候或重新启动服务',
+  },
   notFound: {
     title: '页面不存在',
     back: '返回首页',

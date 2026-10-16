@@ -45,6 +45,8 @@ export const zhCN = {
     updating: '更新中…',
     restart: '重启服务',
     restartTooltip: '重复服务会中断正在运行中的任务，可在 chat 中发送“继续”指令',
+    disconnectedTitle: '服务已断开',
+    disconnectedMessage: '与 YorZ 服务的连接已中断，正在执行的任务可能已停止。请在终端重新执行',
   },
   welcome: {
     title: '欢迎使用 YorZ',

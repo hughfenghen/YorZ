@@ -2,6 +2,7 @@ import { For, Show, createEffect, createSignal, onCleanup, type JSX } from 'soli
 import { Bell, RotateCw, Trash2 } from 'lucide-solid'
 import { api, type SystemNotification } from '../lib/api.js'
 import { subscribeSystemNotifications } from '../lib/sse.js'
+import { connected, watchConnection } from '../lib/connection.js'
 import { waitForNotificationReset } from '../lib/system-notifications.js'
 import { t } from '../i18n/index.js'
 import { Button } from './ui/button.jsx'
@@ -11,6 +12,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.jsx'
 export function SystemNotifications(): JSX.Element {
   const [items, setItems] = createSignal<SystemNotification[]>([])
   const [busyId, setBusyId] = createSignal<string | null>(null)
+
+  // 订阅实时通道健康：服务意外中断时拉不到服务端通知列表，断连提示只能由前端
+  // 连接信号驱动。
+  watchConnection()
 
   async function load(): Promise<void> {
     try {
@@ -59,7 +64,7 @@ export function SystemNotifications(): JSX.Element {
   }
 
   return (
-    <Show when={items().length > 0}>
+    <Show when={items().length > 0 || !connected()}>
       <Popover placement="bottom-start">
         <PopoverTrigger
           as={Button}
@@ -78,6 +83,26 @@ export function SystemNotifications(): JSX.Element {
             </PopoverTitle>
           </div>
           <div class="max-h-96 overflow-auto p-2">
+            {/* 断连提示：前端合成，置顶于服务端通知之上，无操作按钮。服务重新上线后
+                connected() 翻回 true，本行随之消失。 */}
+            <Show when={!connected()}>
+              <div class="rounded-md px-2 py-2 text-sm">
+                <div class="flex items-center gap-3">
+                  <div class="min-w-0 flex-1">
+                    <div class="font-medium text-destructive">
+                      {t('systemNotifications.disconnectedTitle')}
+                    </div>
+                    <p class="mt-1 text-xs leading-5 text-muted-foreground">
+                      {t('systemNotifications.disconnectedMessage')}
+                      {' '}
+                      <code class="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
+                        yorz serve start
+                      </code>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </Show>
             <For each={items()}>
               {(item) => (
                 <div class="rounded-md px-2 py-2 text-sm">
