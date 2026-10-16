@@ -1,6 +1,7 @@
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
 import hljs from 'highlight.js/lib/common'
+import { appendAuthToken } from '../api/auth.js'
 
 const md = new MarkdownIt({
   // 开启原始 HTML 解析，但仅放行 details/summary 折叠标签（见下方 sanitizeRawHtml），
@@ -119,10 +120,12 @@ function rewriteHrefIfAttachment(
     warnMissingProjectIdOnce(specId)
     return href
   }
-  return (
+  // `<img src>` / `<a href>` 导航无法携带 `x-yorz-pair-token` 头，附加 `?token=`
+  // query 以通过 /api/* 的 bearer 校验（无令牌时 appendAuthToken 原样返回）。
+  return appendAuthToken(
     `/api/projects/${encodeURIComponent(projectId)}` +
-    `/specs/${encodeURIComponent(specId)}` +
-    `/attachments/${encodeURIComponent(m[1]!)}`
+      `/specs/${encodeURIComponent(specId)}` +
+      `/attachments/${encodeURIComponent(m[1]!)}`,
   )
 }
 
