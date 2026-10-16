@@ -29,6 +29,7 @@ describe('PowerInhibitController', () => {
     const controller = new PowerInhibitController({
       globalConfigPath: fp,
       platform: 'darwin',
+      watchPid: 4242,
       spawnCommand: (command, args) => {
         calls.push({ command, args })
         return { kill: () => true, unref: () => {} }
@@ -38,7 +39,7 @@ describe('PowerInhibitController', () => {
     controller.setSessionRunning('s1', true)
     await controller.refresh()
 
-    expect(calls).toEqual([{ command: 'caffeinate', args: ['-d'] }])
+    expect(calls).toEqual([{ command: 'caffeinate', args: ['-d', '-w', '4242'] }])
   })
 
   it('starts macOS system awake inhibition with caffeinate -i', async () => {
@@ -48,6 +49,7 @@ describe('PowerInhibitController', () => {
     const controller = new PowerInhibitController({
       globalConfigPath: fp,
       platform: 'darwin',
+      watchPid: 4242,
       spawnCommand: (command, args) => {
         calls.push({ command, args })
         return { kill: () => true, unref: () => {} }
@@ -57,7 +59,7 @@ describe('PowerInhibitController', () => {
     controller.setSessionRunning('s1', true)
     await controller.refresh()
 
-    expect(calls).toEqual([{ command: 'caffeinate', args: ['-i'] }])
+    expect(calls).toEqual([{ command: 'caffeinate', args: ['-i', '-w', '4242'] }])
   })
 
   it('releases the inhibit process when no sessions are running', async () => {
@@ -97,6 +99,7 @@ describe('PowerInhibitController', () => {
     const controller = new PowerInhibitController({
       globalConfigPath: fp,
       platform: 'linux',
+      watchPid: 4242,
       spawnCommand: (command, args) => {
         calls.push({ command, args })
         return { kill: () => true }
@@ -109,7 +112,13 @@ describe('PowerInhibitController', () => {
     expect(calls).toEqual([
       {
         command: 'systemd-inhibit',
-        args: ['--what=idle', '--why=YorZ agent task running', 'sleep', 'infinity'],
+        args: [
+          '--what=idle',
+          '--why=YorZ agent task running',
+          'sh',
+          '-c',
+          'while kill -0 4242 2>/dev/null; do sleep 2; done',
+        ],
       },
     ])
   })
@@ -121,6 +130,7 @@ describe('PowerInhibitController', () => {
     const controller = new PowerInhibitController({
       globalConfigPath: fp,
       platform: 'linux',
+      watchPid: 4242,
       spawnCommand: (command, args) => {
         calls.push({ command, args })
         return { kill: () => true }
@@ -133,7 +143,13 @@ describe('PowerInhibitController', () => {
     expect(calls).toEqual([
       {
         command: 'systemd-inhibit',
-        args: ['--what=idle:sleep', '--why=YorZ agent task running', 'sleep', 'infinity'],
+        args: [
+          '--what=idle:sleep',
+          '--why=YorZ agent task running',
+          'sh',
+          '-c',
+          'while kill -0 4242 2>/dev/null; do sleep 2; done',
+        ],
       },
     ])
   })
@@ -145,6 +161,7 @@ describe('PowerInhibitController', () => {
     const controller = new PowerInhibitController({
       globalConfigPath: fp,
       platform: 'win32',
+      watchPid: 4242,
       spawnCommand: (command, args) => {
         calls.push({ command, args })
         return { kill: () => true }
@@ -164,6 +181,7 @@ describe('PowerInhibitController', () => {
     ])
     expect(calls[0]!.args[4]).toContain('SetThreadExecutionState(0x80000002)')
     expect(calls[0]!.args[4]).toContain('SetThreadExecutionState(0x80000000)')
+    expect(calls[0]!.args[4]).toContain('Get-Process -Id 4242')
   })
 
   it('starts Windows system sleep inhibition with ES_SYSTEM_REQUIRED', async () => {
@@ -173,6 +191,7 @@ describe('PowerInhibitController', () => {
     const controller = new PowerInhibitController({
       globalConfigPath: fp,
       platform: 'win32',
+      watchPid: 4242,
       spawnCommand: (command, args) => {
         calls.push({ command, args })
         return { kill: () => true }
@@ -186,6 +205,7 @@ describe('PowerInhibitController', () => {
     expect(calls[0]!.command).toBe('powershell.exe')
     expect(calls[0]!.args[4]).toContain('SetThreadExecutionState(0x80000001)')
     expect(calls[0]!.args[4]).toContain('SetThreadExecutionState(0x80000000)')
+    expect(calls[0]!.args[4]).toContain('Get-Process -Id 4242')
   })
 
   it('does not spawn on unsupported platforms', async () => {

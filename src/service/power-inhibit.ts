@@ -25,6 +25,12 @@ export interface PowerInhibitControllerOptions {
   globalConfigPath?: string
   platform?: NodeJS.Platform
   spawnCommand?: PowerInhibitSpawn
+  /**
+   * YorZ 服务进程 pid；helper 进程在 OS 层绑定此 pid 的存活。一旦 YorZ 进程
+   * 以任何方式退出（正常关闭、崩溃、SIGTERM/SIGINT、SIGKILL、系统杀死），
+   * helper 会自行退出并还原电源管理状态——不依赖 YorZ 显式 kill。默认 `process.pid`。
+   */
+  watchPid?: number
 }
 
 const powerLog = () => getLogger().child('power')
@@ -34,6 +40,7 @@ export class PowerInhibitController {
   private readonly globalConfigPath?: string
   private readonly platform: NodeJS.Platform
   private readonly spawnCommand: PowerInhibitSpawn
+  private readonly watchPid: number
   private readonly runningSessions = new Set<string>()
   private currentMode: PowerInhibitMode = 'system-default'
   private process: PowerInhibitProcess | null = null
@@ -42,6 +49,7 @@ export class PowerInhibitController {
   constructor(opts: PowerInhibitControllerOptions = {}) {
     this.globalConfigPath = opts.globalConfigPath
     this.platform = opts.platform ?? osPlatform()
+    this.watchPid = opts.watchPid ?? process.pid
     this.spawnCommand =
       opts.spawnCommand ??
       // win32 下经 withHiddenWindowsConsole 附加 windowsHide，避免 PowerShell 弹出可见控制台。
@@ -120,19 +128,26 @@ export class PowerInhibitController {
     args: string[]
   } | null {
     if (this.platform === 'darwin') {
+      // `-w <pid>`：caffeinate 在被监视进程退出时自动结束。覆盖 YorZ 崩溃 /
+      // 被 SIGKILL / 系统杀死等无法在 YorZ 内部执行清理的场景。
+      const assert = mode === 'prevent-display-sleep' ? '-d' : '-i'
       return {
         command: 'caffeinate',
-        args: mode === 'prevent-display-sleep' ? ['-d'] : ['-i'],
+        args: [assert, '-w', String(this.watchPid)],
       }
     }
     if (this.platform === 'linux') {
+      // systemd-inhibit 持锁期间运行其子命令；子命令退出即释放锁。用一个轮询
+      // YorZ pid 的 shell 循环替代 `sleep infinity`：YorZ 一旦消失，`kill -0`
+      // 失败 → 循环退出 → systemd-inhibit 释放抑制锁并退出。
       return {
         command: 'systemd-inhibit',
         args: [
           `--what=${mode === 'prevent-display-sleep' ? 'idle' : 'idle:sleep'}`,
           '--why=YorZ agent task running',
-          'sleep',
-          'infinity',
+          'sh',
+          '-c',
+          `while kill -0 ${this.watchPid} 2>/dev/null; do sleep 2; done`,
         ],
       }
     }
@@ -145,7 +160,7 @@ export class PowerInhibitController {
           '-ExecutionPolicy',
           'Bypass',
           '-Command',
-          windowsExecutionStateScript(flags),
+          windowsExecutionStateScript(flags, this.watchPid),
         ],
       }
     }
@@ -164,13 +179,19 @@ export class PowerInhibitController {
   }
 }
 
-function windowsExecutionStateScript(flags: string): string {
+function windowsExecutionStateScript(flags: string, watchPid: number): string {
+  // 轮询 YorZ 进程：一旦它消失（崩溃 / 被结束 / 系统杀死），跳出循环，由
+  // finally 调用 SetThreadExecutionState(ES_CONTINUOUS) 复位电源请求，helper 自退。
+  // 即便本 PowerShell 进程自身被强杀，Windows 也会在进程退出时清除 ES_CONTINUOUS。
   return [
     '$signature = \'[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint esFlags);\';',
     '$native = Add-Type -MemberDefinition $signature -Name YorZPowerInhibit -Namespace YorZ -PassThru;',
     'try {',
     `  [void]$native::SetThreadExecutionState(${flags});`,
-    '  while ($true) { Start-Sleep -Seconds 3600; }',
+    '  while ($true) {',
+    `    if ($null -eq (Get-Process -Id ${watchPid} -ErrorAction SilentlyContinue)) { break; }`,
+    '    Start-Sleep -Seconds 2;',
+    '  }',
     '} finally {',
     '  [void]$native::SetThreadExecutionState(0x80000000);',
     '}',
