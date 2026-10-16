@@ -90,6 +90,9 @@ const RUNTIME_FILE = 'runtime.json'
 const START_LOCK_DIR = 'serve.lock'
 const START_WAIT_MS = 5000
 const RESTART_DELAY_MS = 500
+// worker 内需串行走 sleep(RESTART_DELAY_MS) → stop（含进程退出等待）→ start（内部最长
+// 等 START_WAIT_MS）。父进程留足裕量，等重启完整走完再读新服务的能力链接。
+const RESTART_READY_WAIT_MS = RESTART_DELAY_MS + START_WAIT_MS + 10000
 
 export interface BackgroundStdio {
   stdio: StdioOptions
@@ -341,10 +344,54 @@ export async function runRestartServe(opts: RestartServeOptions = {}): Promise<v
 
   const entry = process.argv[1]
   if (!entry) throw new Error('Cannot resolve CLI entrypoint for restart')
+  // worker 会先 stop 旧进程再 start 新进程；记下重启前的 live pid，用于只认"新
+  // 起来的那个服务"，避免把即将被杀的旧进程当成重启结果。
+  const previousPids = new Set((await readLiveProcesses()).map((p) => p.pid))
   // 同 startBackgroundServe：worker 必须脱离父进程生命周期；win32 经 launcher
   // 中转让 worker 自带无窗口控制台（见 spawnBackgroundWorker 注释）。
   spawnBackgroundWorker([entry, ...restartWorkerArgs(opts)], 'ignore')
   console.log(`YorZ Service restart scheduled.`)
+
+  // worker 的输出走 'ignore'，能力链接若只在 worker 内打印用户看不到。改由父进程
+  // 轮询 runtime.json 等新服务就绪，再像 start 子命令那样高亮访问链接——否则升级后
+  // restart 完无从得知访问地址。
+  const runtime = await waitForRestartedRuntime(previousPids, RESTART_READY_WAIT_MS)
+  if (!runtime) {
+    log().warn('timed out waiting for restarted runtime.json', {
+      timeoutMs: RESTART_READY_WAIT_MS,
+    })
+    console.log('YorZ Service is restarting; run `yorz serve` to view the access link once ready.')
+    return
+  }
+
+  console.log(`YorZ Service restarted in background (pid=${runtime.pid}).`)
+  try {
+    const masterToken = await createAuthStore().getMasterToken()
+    // 能力链接是最关键的一行，单独高亮，避免淹没在多行启动输出里。
+    printCapabilityUrl(`${runtime.url}?token=${masterToken}`)
+    printExposeHint(runtime.port)
+  } catch {
+    // best-effort：读取令牌失败不阻断重启提示。
+  }
+  printStopHint()
+}
+
+/**
+ * 轮询等待"重启后新起来"的 Service：live 列表里首个 pid 不在重启前集合中的进程。
+ * worker 先 stop 再 start，旧 pid 会先被过滤掉，因而只会命中新进程。
+ */
+async function waitForRestartedRuntime(
+  previousPids: Set<number>,
+  timeoutMs: number,
+): Promise<ProcessEntry | null> {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const live = await readLiveProcesses()
+    const fresh = live.find((p) => !previousPids.has(p.pid))
+    if (fresh) return fresh
+    await sleep(100)
+  }
+  return null
 }
 
 async function ensureSkillsInstalledWithLog(cwd: string): Promise<void> {
