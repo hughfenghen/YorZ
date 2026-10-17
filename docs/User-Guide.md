@@ -217,7 +217,7 @@ The `.yorz/` directory at the project root is the YorZ working directory for the
 
 Common contents:
 
-- `.yorz/config.json`: project configuration, including the project Agent override (`agent`), the spec document directory (`specsDir`), project commands (`commands`), and project-level custom slash commands (`customInstructions`). Committing this file to git lets your team share the same commands and slash commands.
+- `.yorz/config.json`: project configuration, including the project Agent override (`agent`), the spec document directory (`specsDir`), project commands (`commands`), and project-level custom slash commands (`customInstructions`). Committing this file to git lets your team share the same commands and slash commands. (External agents are declared globally — see `customAgents` in the global configuration.)
 - `.yorz/specs/`: the default spec document directory. Each spec is usually stored at `.yorz/specs/<spec-id>/spec.md`.
 - `.yorz/specs/<spec-id>/debug.md`: the Debug mode record file. It appears only after the corresponding spec enters the Debug workflow.
 - `.yorz/tmp/`: runtime temporary directory. It should not be committed to git (`yorz add` writes it into `.gitignore` for you). Inside it, `commands/` holds project command run records and logs, `sessions/` holds the session index, and `drafts/` holds attachments for spec drafts.
@@ -242,7 +242,7 @@ If `YORZ_HOME` is set, it takes precedence and YorZ uses the directory it points
 
 Common global files:
 
-- `config.json`: **the single global configuration file today**. It holds the list of added projects, the global default Agent, session-end notification preferences, keyboard shortcuts, the sleep-inhibit policy, appearance preferences (color mode / theme / language), and global custom slash commands.
+- `config.json`: **the single global configuration file today**. It holds the list of added projects, the global default Agent, external agent declarations (`customAgents`), session-end notification preferences, keyboard shortcuts, the sleep-inhibit policy, appearance preferences (color mode / theme / language), and global custom slash commands.
 - `projects.json`: a legacy project list file. It is only read once as a fallback when `config.json` does not exist; all writes go to `config.json` afterwards.
 - `runtime.json`: runtime records for the background Service.
 - `skills/`: the shared bundled skills directory, containing `yorz-spec/`, `yorz-debug/`, and `yorz-git-ops/`.
@@ -260,7 +260,6 @@ You usually do not need to edit the global configuration directory manually. Pre
 | `XDG_CONFIG_HOME`        | Second precedence; YorZ uses `$XDG_CONFIG_HOME/yorz`                                     | `~/.config/yorz` |
 | `YORZ_LOG_LEVEL`         | Log level: `debug` / `info` / `warn` / `error`                                           | `info`           |
 | `YORZ_WATCH_USE_POLLING` | Set to `1` to make file watching use polling — useful on network drives and in containers | disabled         |
-| `YORZ_AGENT_CMD`         | Overrides the Agent launch command; takes precedence over project configuration. Mainly for testing and special integrations | unset |
 
 ## 8. GUI Features
 
@@ -334,10 +333,31 @@ In the project list on the left side of the GUI, click the configuration entry n
 
 You can configure:
 
-- `Agent`: choose Inherit global default, ClaudeCode, OpenCode, Codex, or Pi.
+- `Agent`: choose Inherit global default, ClaudeCode, OpenCode, Codex, Pi, or any external Agent declared in the global `customAgents`.
 - `Spec document directory`: a path relative to the project root. The default is `.yorz/specs`.
 
 After saving, new specs, spec reruns, appended tasks, Chat conversations, and Review for this project use the resolved Agent: Inherit global default uses the global default Agent, while a concrete Agent takes precedence for this project.
+
+#### External agents (`customAgents`)
+
+Beyond the four builtins, you can declare external agents to get capabilities on par with the builtins. **External agents are global and independent of any yorz project**: declare them once in the **global** `~/.config/yorz/config.json` (or the directory pointed to by `YORZ_HOME` / `XDG_CONFIG_HOME`) under a `customAgents` array, and any project can select them — they can also be the global default Agent. Each entry looks like `{ "id": "...", "name": "...", "module": "..." }`:
+
+- `id`: the agent id; must not collide with a builtin id (`claude`/`codex`/`opencode`/`pi`); referenced by the global `agent.defaultKind` or a project's `agent.kind`.
+- `module`: the module entry point. Three forms are supported — an **npm package name** (including globally-installed `npm install -g` packages), an **absolute JS file path**, or a **path relative to the global config directory** (`./`, `../`). The module must default- or named-export a `createAgentAdapter` factory.
+- `name` (optional): the dropdown label; falls back to the module's descriptor `displayName`.
+
+```json
+{
+  "version": 1,
+  "agent": { "defaultKind": "my-agent" },
+  "customAgents": [
+    { "id": "my-agent", "name": "My Agent", "module": "yorz-agent-my-agent" },
+    { "id": "local-agent", "module": "/Users/me/agents/my-adapter.js" }
+  ]
+}
+```
+
+External modules are loaded by the host process via dynamic `import()` and run with the same permissions (no sandbox), so only modules explicitly declared in config are loaded. Because agents are declared globally and live inside the user-managed global config, loading is no longer restricted to any project root. On load/validation failure (module missing, no factory export, missing required method) the host logs a warning and safely falls back to `claude`. Contract types are published under the `@yorz/cli/agent-sdk` subpath — authors can `import type { CreateAgentAdapter, AgentSdkAdapter } from '@yorz/cli/agent-sdk'` (everything is mandatory except `getUsageStatus`).
 
 ### 8.6 Chat
 

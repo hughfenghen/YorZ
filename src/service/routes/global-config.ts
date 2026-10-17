@@ -20,6 +20,7 @@ import {
 } from '../global-config.js'
 import { parseCustomInstructions } from '../custom-instruction.js'
 import { getPowerInhibitController, type PowerInhibitController } from '../power-inhibit.js'
+import { AdapterRegistry } from '../agent-sdk/registry.js'
 
 interface PutBody {
   agent: GlobalAgentConfig
@@ -38,6 +39,18 @@ export function createGlobalConfigRoutes(
   powerController: PowerInhibitController = getPowerInhibitController(globalConfigPath),
 ): Hono {
   const app = new Hono()
+
+  // Project-independent agent roster: builtin + global `customAgents`. Backs the
+  // global-default dropdown (which can now pick a global external agent). The
+  // throwaway registry only reads descriptors, so its cwd is immaterial.
+  app.get('/agents', async (c) => {
+    const registry = new AdapterRegistry(process.cwd(), globalConfigPath)
+    try {
+      return c.json(await registry.listDescriptors())
+    } finally {
+      await registry.dispose().catch(() => {})
+    }
+  })
 
   app.get('/global-config', async (c) => {
     const cfg = await loadGlobalConfig(globalConfigPath)
@@ -94,14 +107,13 @@ function parseBody(value: unknown): PutBody | { error: string } {
     return { error: 'agent must be an object' }
   }
   const agentObj = agent as Record<string, unknown>
-  const defaultKind = agentObj.defaultKind
-  if (
-    defaultKind !== 'claude' &&
-    defaultKind !== 'opencode' &&
-    defaultKind !== 'codex' &&
-    defaultKind !== 'pi'
-  ) {
-    return { error: 'agent.defaultKind must be claude | opencode | codex | pi' }
+  // `defaultKind` is an open string now (builtin id or a global customAgents id);
+  // unknown ids resolve via the registry's claude fallback. Only require a
+  // non-empty string here.
+  const defaultKind =
+    typeof agentObj.defaultKind === 'string' ? agentObj.defaultKind.trim() : ''
+  if (!defaultKind) {
+    return { error: 'agent.defaultKind must be a non-empty string' }
   }
   const notifications = obj.notifications
   if (!notifications || typeof notifications !== 'object') {

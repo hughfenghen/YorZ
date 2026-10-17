@@ -218,7 +218,7 @@ YorZ 主要使用项目级目录保存 spec 文档与项目相关配置，使用
 
 常见内容：
 
-- `.yorz/config.json`：项目配置，包含项目 Agent 覆盖方式（`agent`）、spec 文档目录（`specsDir`）、项目命令（`commands`）和项目级自定义斜杠指令（`customInstructions`）。这份文件建议提交到 git，方便团队成员共享同一套命令与指令。
+- `.yorz/config.json`：项目配置，包含项目 Agent 覆盖方式（`agent`）、spec 文档目录（`specsDir`）、项目命令（`commands`）和项目级自定义斜杠指令（`customInstructions`）。这份文件建议提交到 git，方便团队成员共享同一套命令与指令。（外部 Agent 改为全局声明——见全局配置的 `customAgents`。）
 - `.yorz/specs/`：默认 spec 文档目录。每个 spec 通常位于 `.yorz/specs/<spec-id>/spec.md`。
 - `.yorz/specs/<spec-id>/debug.md`：Debug 模式记录文件，仅在对应 spec 进入 Debug 流程后出现。
 - `.yorz/tmp/`：运行时临时目录，不应提交到 git（`yorz add` 会自动写入 `.gitignore`）。其中 `commands/` 保存项目命令的运行记录与日志，`sessions/` 保存会话索引，`drafts/` 保存新建 spec 的草稿附件。
@@ -243,7 +243,7 @@ $XDG_CONFIG_HOME/yorz
 
 常见全局文件：
 
-- `config.json`：**当前唯一的全局配置文件**，保存已添加项目列表、全局默认 Agent、会话结束提示、快捷键、防休眠策略、外观偏好（色彩模式 / 主题 / 语言）和全局自定义斜杠指令。
+- `config.json`：**当前唯一的全局配置文件**，保存已添加项目列表、全局默认 Agent、外部 Agent 声明（`customAgents`）、会话结束提示、快捷键、防休眠策略、外观偏好（色彩模式 / 主题 / 语言）和全局自定义斜杠指令。
 - `projects.json`：旧版本遗留的项目列表文件。仅在 `config.json` 不存在时被兼容读取一次，之后所有写入都只落到 `config.json`。
 - `runtime.json`：后台 Service 的运行记录。
 - `skills/`：共享的内置 skills 目录，包含 `yorz-spec/`、`yorz-debug/`、`yorz-git-ops/`。
@@ -261,7 +261,6 @@ $XDG_CONFIG_HOME/yorz
 | `XDG_CONFIG_HOME`        | 次优先，实际使用 `$XDG_CONFIG_HOME/yorz`                             | `~/.config/yorz`  |
 | `YORZ_LOG_LEVEL`         | 日志级别：`debug` / `info` / `warn` / `error`                        | `info`            |
 | `YORZ_WATCH_USE_POLLING` | 设为 `1` 时文件监听改用轮询模式，适用于网络盘、容器等场景            | 未启用            |
-| `YORZ_AGENT_CMD`         | 覆盖 Agent 启动命令，优先级高于项目配置，一般仅用于测试与特殊接入场景 | 未设置            |
 
 ## 8. GUI 功能介绍
 
@@ -335,10 +334,31 @@ GUI header 最右侧有三横配置入口，点击后可以：
 
 可以配置：
 
-- `Agent`：默认选择「继承全局默认」，也可以显式选择 ClaudeCode、OpenCode、Codex、Pi。
+- `Agent`：默认选择「继承全局默认」，也可以显式选择 ClaudeCode、OpenCode、Codex、Pi，或任意在全局 `customAgents` 中声明的外部 Agent。
 - `spec 文档目录`：相对项目根路径，默认是 `.yorz/specs`。
 
 保存后，该项目后续新建 spec、续跑 spec、追加任务、Chat 对话和 Review 会使用解析后的 Agent：项目选择「继承全局默认」时使用全局默认 Agent，项目选择具体 Agent 时优先使用项目配置。
+
+#### 接入外部 Agent（`customAgents`）
+
+除内置的四个 Agent 外，可声明外部 Agent，获得与内置对等的完整能力。**外部 Agent 是全局的、与具体 yorz 项目无关**：在**全局**配置 `~/.config/yorz/config.json`（或 `YORZ_HOME` / `XDG_CONFIG_HOME` 指向的目录）的 `customAgents` 数组中声明一次，即可被任意项目选用，也可作为全局默认 Agent。每个条目形如 `{ "id": "...", "name": "...", "module": "..." }`：
+
+- `id`：Agent 标识，不得与内置 id（`claude`/`codex`/`opencode`/`pi`）冲突；可被全局 `agent.defaultKind` 或项目 `agent.kind` 引用。
+- `module`：模块入口，支持三种写法——**npm 包名**（含 `npm install -g` 的全局包）、**JS 入口文件绝对路径**、或**相对全局配置目录的路径**（`./`、`../`）。该模块需默认导出或具名导出一个 `createAgentAdapter` 工厂。
+- `name`（可选）：下拉显示名，缺省时取模块 descriptor 的 `displayName`。
+
+```json
+{
+  "version": 1,
+  "agent": { "defaultKind": "my-agent" },
+  "customAgents": [
+    { "id": "my-agent", "name": "My Agent", "module": "yorz-agent-my-agent" },
+    { "id": "local-agent", "module": "/Users/me/agents/my-adapter.js" }
+  ]
+}
+```
+
+外部模块由宿主进程在运行期 `import()` 动态加载、以同等权限执行（无沙箱），因此只会加载 config 中显式声明的 `module`。既然 Agent 为全局声明、运行于用户自管的全局配置内，加载不再限定在项目根内。加载或校验失败（模块不存在、未导出工厂、未实现必选方法）时会打印告警并安全回落到 `claude`。契约类型通过 `@yorz/cli/agent-sdk` 子路径导出，作者可 `import type { CreateAgentAdapter, AgentSdkAdapter } from '@yorz/cli/agent-sdk'` 按契约编码（除 `getUsageStatus` 外全部必选）。
 
 ### 8.6 Chat 对话
 

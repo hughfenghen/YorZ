@@ -1,5 +1,5 @@
-import { createEffect, createSignal, Show, type Component } from 'solid-js'
-import { api, type AgentConfig, type ProjectConfig } from '../lib/api.js'
+import { createEffect, createSignal, For, Show, type Component } from 'solid-js'
+import { api, type AgentConfig, type AgentDescriptor, type ProjectConfig } from '../lib/api.js'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog.jsx'
 import { Button } from './ui/button.jsx'
 import { Input } from './ui/input.jsx'
@@ -22,12 +22,18 @@ interface Props {
   onSaved?: (message: string) => void
 }
 
-type AgentKind = 'inherit' | 'claude' | 'opencode' | 'codex' | 'pi'
-
 const DEFAULT_SPECS_DIR = '.yorz/specs'
 
+const BUILTIN_LABEL_KEY: Record<string, string> = {
+  claude: 'projectConfig.agentClaude',
+  opencode: 'projectConfig.agentOpencode',
+  codex: 'projectConfig.agentCodex',
+  pi: 'projectConfig.agentPi',
+}
+
 export const ProjectConfigDialog: Component<Props> = (props) => {
-  const [kind, setKind] = createSignal<AgentKind>('inherit')
+  const [kind, setKind] = createSignal<string>('inherit')
+  const [agents, setAgents] = createSignal<AgentDescriptor[]>([])
   const [specsDir, setSpecsDir] = createSignal(DEFAULT_SPECS_DIR)
   const [initialSpecsDir, setInitialSpecsDir] = createSignal(DEFAULT_SPECS_DIR)
   const [loading, setLoading] = createSignal(false)
@@ -40,7 +46,14 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
     setLoading(true)
     void (async () => {
       try {
-        const cfg = await api.getProjectConfig(props.projectId)
+        // Fetch config + the agent roster together: the dropdown lists builtin
+        // and external (config `customAgents`) agents from the single `/agents`
+        // source rather than a hardcoded array.
+        const [cfg, descriptors] = await Promise.all([
+          api.getProjectConfig(props.projectId),
+          api.listAgents(props.projectId).catch(() => [] as AgentDescriptor[]),
+        ])
+        setAgents(descriptors)
         applyConfig(cfg)
       } catch (err) {
         setError((err as Error).message)
@@ -61,12 +74,15 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
     return { kind: kind() }
   }
 
-  function agentLabel(k: AgentKind): string {
-    if (k === 'inherit') return t('projectConfig.inheritGlobal')
-    if (k === 'codex') return t('projectConfig.agentCodex')
-    if (k === 'opencode') return t('projectConfig.agentOpencode')
-    if (k === 'pi') return t('projectConfig.agentPi')
-    return t('projectConfig.agentClaude')
+  /** 'inherit' + every known agent id, in roster order. */
+  const options = (): string[] => ['inherit', ...agents().map((a) => a.id)]
+
+  function agentLabel(id: string): string {
+    if (id === 'inherit') return t('projectConfig.inheritGlobal')
+    const descriptor = agents().find((a) => a.id === id)
+    if (descriptor && descriptor.source === 'external') return descriptor.displayName
+    const key = BUILTIN_LABEL_KEY[id]
+    return key ? t(key) : (descriptor?.displayName ?? id)
   }
 
   async function submit(e: Event) {
@@ -111,19 +127,23 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
             <RadioGroup
               class="m-0 flex flex-wrap gap-2 border-0 p-0"
               value={kind()}
-              onChange={(v) => setKind(v as AgentKind)}
+              onChange={(v) => setKind(v)}
               disabled={busy()}
             >
               <RadioGroupLabel class="mb-1.5 w-full font-medium">
                 {t('projectConfig.agent')}
               </RadioGroupLabel>
-              {(['inherit', 'claude', 'opencode', 'codex', 'pi'] as const).map((k) => (
-                <RadioGroupItem value={k} class="flex items-center gap-1.5">
-                  <RadioGroupItemInput />
-                  <RadioGroupItemControl />
-                  <RadioGroupItemLabel class="cursor-pointer">{agentLabel(k)}</RadioGroupItemLabel>
-                </RadioGroupItem>
-              ))}
+              <For each={options()}>
+                {(k) => (
+                  <RadioGroupItem value={k} class="flex items-center gap-1.5">
+                    <RadioGroupItemInput />
+                    <RadioGroupItemControl />
+                    <RadioGroupItemLabel class="cursor-pointer">
+                      {agentLabel(k)}
+                    </RadioGroupItemLabel>
+                  </RadioGroupItem>
+                )}
+              </For>
             </RadioGroup>
 
             <label class="flex flex-col gap-1 font-medium">

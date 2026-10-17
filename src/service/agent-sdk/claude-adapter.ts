@@ -11,6 +11,7 @@ import { normalizeUsage } from '../telemetry/index.js'
 import type { PhaseUsageSnapshot, TurnMetrics, UsageSnapshot } from '../telemetry/index.js'
 import { PhaseAccumulator, isSpecWrite } from './phase-usage.js'
 import type {
+  AgentDescriptor,
   AgentEvent,
   AgentSdkAdapter,
   AgentSession,
@@ -266,6 +267,12 @@ class ClaudeSession implements AgentSession {
 
 export class ClaudeAdapter implements AgentSdkAdapter {
   readonly kind = 'claude' as const
+  readonly descriptor: AgentDescriptor = {
+    id: 'claude',
+    displayName: 'ClaudeCode',
+    source: 'builtin',
+    capabilities: { listSessions: true, getMessages: true, usageStatus: true },
+  }
   constructor(private readonly cwd: string) {}
 
   async createSession(): Promise<AgentSession> {
@@ -308,8 +315,11 @@ export class ClaudeAdapter implements AgentSdkAdapter {
   }
 
   capabilities(): Capabilities {
-    return { listSessions: true, getMessages: true, usageStatus: true }
+    return this.descriptor.capabilities
   }
+
+  /** Claude is fully managed by the SDK — no long-lived resource to release. */
+  async dispose(): Promise<void> {}
 
   async getUsageStatus(): Promise<AgentUsageStatus> {
     const options: Options = {

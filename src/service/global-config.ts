@@ -5,6 +5,7 @@ import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { type CustomInstruction, normalizeCustomInstructions } from './custom-instruction.js'
 import { samePath } from './path-normalize.js'
+import { isBuiltinAgentId } from './agent-sdk/types.js'
 
 export interface WorktreeMeta {
   mainProjectId: string
@@ -27,6 +28,12 @@ export interface GlobalConfig {
   version: 1
   projects: GlobalProjectEntry[]
   agent: GlobalAgentConfig
+  /**
+   * Externally-provided agents, loaded by dynamic import. Declared globally
+   * (not per-project) so a single definition is reusable across every project —
+   * external agents are host-global and independent of any yorz project.
+   */
+  customAgents: ExternalAgentDef[]
   notifications: GlobalNotificationsConfig
   shortcuts: GlobalShortcutsConfig
   power: GlobalPowerConfig
@@ -36,18 +43,39 @@ export interface GlobalConfig {
 
 export type GlobalConfigInput = Omit<
   GlobalConfig,
-  'power' | 'appearance' | 'customInstructions'
+  'power' | 'appearance' | 'customInstructions' | 'customAgents'
 > & {
   power?: GlobalPowerConfig
   appearance?: GlobalAppearanceConfig
   customInstructions?: GlobalCustomInstruction[]
+  customAgents?: ExternalAgentDef[]
 }
 
 export interface GlobalAgentConfig {
+  /**
+   * Default agent id. Open string: a builtin id or any `customAgents[].id`.
+   * Resolution/validation happens downstream (the adapter registry falls back
+   * to claude on a miss).
+   */
   defaultKind: GlobalAgentKind
 }
 
-export type GlobalAgentKind = 'claude' | 'opencode' | 'codex' | 'pi'
+/** Open agent id for the global default (builtin or a `customAgents[].id`). */
+export type GlobalAgentKind = string
+
+/**
+ * An externally-provided agent, loaded by dynamic `import()`. `module` is an npm
+ * package name (including globally-installed packages), an absolute JS path, or
+ * a path relative to the global config dir; it must default- or named-export a
+ * `createAgentAdapter` factory. `name` falls back to the module's
+ * `descriptor.displayName` when omitted.
+ */
+export interface ExternalAgentDef {
+  /** Must not collide with a builtin id. */
+  id: string
+  name?: string
+  module: string
+}
 
 export interface GlobalNotificationsConfig {
   sessionEnd: SessionEndNotificationsConfig
@@ -207,6 +235,9 @@ function normalizeConfig(value: unknown): GlobalConfig {
     version: CURRENT_VERSION,
     projects,
     agent: normalizeAgent(obj.agent),
+    // Whitelisted output: any field missing here is dropped on the next save, so
+    // new config fields must be added to this object too.
+    customAgents: normalizeCustomAgents(obj.customAgents),
     notifications: normalizeNotifications(obj.notifications),
     shortcuts: normalizeShortcuts(obj.shortcuts),
     power: normalizePower(obj.power),
@@ -215,11 +246,35 @@ function normalizeConfig(value: unknown): GlobalConfig {
   }
 }
 
+/**
+ * Whitelist-normalize the external agent list. Entries missing an id/module are
+ * dropped rather than repaired, ids that collide with a builtin are rejected (a
+ * builtin id must always resolve to the builtin), and duplicate ids keep the
+ * first.
+ */
+function normalizeCustomAgents(value: unknown): ExternalAgentDef[] {
+  if (!Array.isArray(value)) return []
+  const out: ExternalAgentDef[] = []
+  const seen = new Set<string>()
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const obj = item as Record<string, unknown>
+    const id = typeof obj.id === 'string' ? obj.id.trim() : ''
+    const module = typeof obj.module === 'string' ? obj.module.trim() : ''
+    const name = typeof obj.name === 'string' ? obj.name.trim() : ''
+    if (!id || !module || isBuiltinAgentId(id) || seen.has(id)) continue
+    seen.add(id)
+    out.push(name ? { id, name, module } : { id, module })
+  }
+  return out
+}
+
 export function defaultGlobalConfig(): GlobalConfig {
   return {
     version: CURRENT_VERSION,
     projects: [],
     agent: { defaultKind: DEFAULT_GLOBAL_AGENT.defaultKind },
+    customAgents: [],
     notifications: {
       sessionEnd: {
         banner: DEFAULT_NOTIFICATIONS.sessionEnd.banner,
@@ -239,11 +294,12 @@ export function defaultGlobalConfig(): GlobalConfig {
 function normalizeAgent(value: unknown): GlobalAgentConfig {
   if (!value || typeof value !== 'object') return { defaultKind: DEFAULT_GLOBAL_AGENT.defaultKind }
   const obj = value as Record<string, unknown>
-  const defaultKind = obj.defaultKind
-  if (defaultKind === 'opencode' || defaultKind === 'codex' || defaultKind === 'pi') {
-    return { defaultKind }
-  }
-  return { defaultKind: 'claude' }
+  // `defaultKind` is an open string now (builtin id / customAgents id). Unknown
+  // ids are preserved verbatim; the adapter registry validates them at resolve
+  // time and falls back to claude on a miss, so normalize must not pre-emptively
+  // flatten a valid external id to claude.
+  const defaultKind = typeof obj.defaultKind === 'string' ? obj.defaultKind.trim() : ''
+  return defaultKind ? { defaultKind } : { defaultKind: 'claude' }
 }
 
 function normalizeNotifications(value: unknown): GlobalNotificationsConfig {

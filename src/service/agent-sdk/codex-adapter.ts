@@ -8,6 +8,7 @@ import { Codex, type Thread, type ThreadEvent, type ThreadOptions } from '@opena
 import { normalizeUsage } from '../telemetry/index.js'
 import type {
   AgentContextKind,
+  AgentDescriptor,
   AgentEvent,
   AgentSdkAdapter,
   AgentSession,
@@ -277,6 +278,12 @@ class CodexSession implements AgentSession {
 
 export class CodexAdapter implements AgentSdkAdapter {
   readonly kind = 'codex' as const
+  readonly descriptor: AgentDescriptor = {
+    id: 'codex',
+    displayName: 'Codex',
+    source: 'builtin',
+    capabilities: { listSessions: true, getMessages: true, usageStatus: true },
+  }
   private readonly codex: Codex
   constructor(
     private readonly cwd: string,
@@ -348,8 +355,11 @@ export class CodexAdapter implements AgentSdkAdapter {
   }
 
   capabilities(): Capabilities {
-    return { listSessions: true, getMessages: true, usageStatus: true }
+    return this.descriptor.capabilities
   }
+
+  /** Codex SDK holds no persistent server/process to release. */
+  async dispose(): Promise<void> {}
 
   async getUsageStatus(): Promise<AgentUsageStatus> {
     const live = await this.readPrivateUsage().catch(() => null)

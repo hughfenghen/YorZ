@@ -14,6 +14,7 @@ import type { PhaseUsageSnapshot, TurnMetrics } from '../telemetry/index.js'
 import { summarizeCodexPromptForTitle as summarizePromptForTitle } from './codex-adapter.js'
 import { PhaseAccumulator, isSpecWrite } from './phase-usage.js'
 import type {
+  AgentDescriptor,
   AgentEvent,
   AgentSdkAdapter,
   AgentSession,
@@ -363,6 +364,12 @@ class PiSession implements AgentSession {
 
 export class PiAdapter implements AgentSdkAdapter {
   readonly kind = 'pi' as const
+  readonly descriptor: AgentDescriptor = {
+    id: 'pi',
+    displayName: 'Pi',
+    source: 'builtin',
+    capabilities: { listSessions: true, getMessages: true, usageStatus: false },
+  }
   private runtime: Promise<ModelRuntime> | null = null
   /** `session id → JSONL path`, refreshed from disk on a miss. */
   private readonly pathIndex = new Map<string, string>()
@@ -477,7 +484,7 @@ export class PiAdapter implements AgentSdkAdapter {
    * lets the GUI render nothing, which beats a probe that must always fail.
    */
   capabilities(): Capabilities {
-    return { listSessions: true, getMessages: true, usageStatus: false }
+    return this.descriptor.capabilities
   }
 
   async dispose(): Promise<void> {

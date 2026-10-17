@@ -245,6 +245,9 @@ export class ProjectRegistry {
     const defaultKind = resolveProjectAgentKind(cfg.agent, globalCfg.agent.defaultKind)
     const sessions = new SessionManager(input.path, defaultKind, sessionStore, {
       onSessionEnd: notifySessionEnded,
+      ...(this.globalConfigPath !== undefined
+        ? { globalConfigPath: this.globalConfigPath }
+        : {}),
       onSessionStatusChange: (ev) => {
         powerInhibit.setSessionRunning(`${input.id}:${ev.sessionId}`, ev.running)
         // 会话 running 翻转「升维」为项目列表变更信号，驱动侧栏呼吸点刷新。
@@ -293,15 +296,11 @@ export function resolveProjectAgentKind(
   projectAgent: AgentConfig,
   globalDefault: GlobalAgentKind,
 ): AgentKind {
-  if (projectAgent.kind === 'inherit') return globalDefault
-  if (
-    projectAgent.kind === 'codex' ||
-    projectAgent.kind === 'opencode' ||
-    projectAgent.kind === 'pi'
-  ) {
-    return projectAgent.kind
-  }
-  return 'claude'
+  // `kind` is open now: 'inherit' delegates to the global default, any other
+  // non-empty value (builtin id or customAgents id) is returned verbatim and
+  // resolved by the adapter registry (which falls back to claude on a miss).
+  if (!projectAgent.kind || projectAgent.kind === 'inherit') return globalDefault
+  return projectAgent.kind
 }
 
 function basename(p: string): string {

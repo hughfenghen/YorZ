@@ -1,6 +1,44 @@
 import type { CompactMetrics, TurnMetrics } from '../telemetry/types.js'
 
-export type AgentKind = 'claude' | 'codex' | 'opencode' | 'pi'
+/**
+ * Open agent identifier. Was a closed union; now any string so external agents
+ * declared in `.yorz/config.json` can register without touching source. The
+ * builtin literals live in {@link BUILTIN_AGENT_IDS} as the single source of
+ * truth — reference that constant instead of re-typing the literals.
+ */
+export type AgentId = string
+
+/** The four in-process SDK adapters YorZ ships with. */
+export const BUILTIN_AGENT_IDS = ['claude', 'codex', 'opencode', 'pi'] as const
+export type BuiltinAgentId = (typeof BUILTIN_AGENT_IDS)[number]
+
+export function isBuiltinAgentId(id: string): id is BuiltinAgentId {
+  return (BUILTIN_AGENT_IDS as readonly string[]).includes(id)
+}
+
+/**
+ * Backwards-compatible alias. Historically a closed union; kept so existing
+ * imports keep compiling, but its meaning is now open (see {@link AgentId}).
+ */
+export type AgentKind = AgentId
+
+/** GUI- and route-facing summary of one agent, builtin or external. */
+export interface AgentDescriptor {
+  id: AgentId
+  displayName: string
+  source: 'builtin' | 'external'
+  capabilities: Capabilities
+}
+
+/** Injected by the host into an external agent's {@link CreateAgentAdapter}. */
+export interface AgentAdapterContext {
+  cwd: string
+  descriptor: AgentDescriptor
+  logger?: Pick<Console, 'info' | 'warn' | 'error'>
+}
+
+/** Factory an external agent module must export (default or named). */
+export type CreateAgentAdapter = (ctx: AgentAdapterContext) => AgentSdkAdapter
 
 export type AgentContextKind = 'recommended_plugins' | 'agents_instructions' | 'environment_context'
 
@@ -86,9 +124,18 @@ export interface AgentSession {
   abort(): void
 }
 
-/** Uniform contract implemented per Agent SDK (claude / codex / opencode / pi). */
+/**
+ * Uniform contract implemented per agent, builtin or external. Per the
+ * "除了 usageStatus，全部必选" ruling, everything here is MANDATORY except
+ * `getUsageStatus`. Method-mandatory ≠ capability-always-on: `capabilities()`
+ * still declares which of listSessions/getMessages/usageStatus are actually
+ * usable at runtime, so an adapter may implement a required method as a no-op
+ * (return `[]`) while declaring the capability `false`.
+ */
 export interface AgentSdkAdapter {
-  readonly kind: AgentKind
+  readonly kind: AgentId
+  /** GUI/route-facing descriptor. `descriptor.id` equals `kind`. */
+  readonly descriptor: AgentDescriptor
   /** Create a brand-new session. */
   createSession(opts?: { title?: string }): Promise<AgentSession>
   /** Bind to an existing session id for continued conversation. */
@@ -97,9 +144,12 @@ export interface AgentSdkAdapter {
   listSessions(): Promise<SessionInfo[]>
   /** Read full normalized history for a session. */
   getMessages(id: string): Promise<NormalizedMessage[]>
-  /** Query remaining quota / usage status without mutating a chat transcript. */
-  getUsageStatus?(): Promise<AgentUsageStatus>
   capabilities(): Capabilities
-  /** Release any long-lived resources (e.g. opencode server). */
-  dispose?(): Promise<void>
+  /** Release any long-lived resources (e.g. opencode server). No-op when none. */
+  dispose(): Promise<void>
+  /**
+   * OPTIONAL — the only optional member. Query remaining quota / usage status
+   * without mutating a chat transcript. Omit when the agent has no quota API.
+   */
+  getUsageStatus?(): Promise<AgentUsageStatus>
 }

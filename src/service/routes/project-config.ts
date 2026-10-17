@@ -124,13 +124,11 @@ function parseAgent(value: unknown): { value: AgentConfig } | { error: string } 
     return { error: 'agent must be an object with `kind`' }
   }
   const obj = value as Record<string, unknown>
-  const kind = obj.kind
-  if (kind === 'inherit') return { value: { kind: 'inherit' } }
-  if (kind === 'claude') return { value: { kind: 'claude' } }
-  if (kind === 'opencode') return { value: { kind: 'opencode' } }
-  if (kind === 'codex') return { value: { kind: 'codex' } }
-  if (kind === 'pi') return { value: { kind: 'pi' } }
-  return { error: 'agent.kind must be inherit | claude | opencode | codex | pi' }
+  const kind = typeof obj.kind === 'string' ? obj.kind.trim() : ''
+  // `kind` is open now: 'inherit', a builtin id, or any customAgents[].id. The
+  // registry validates/falls back at resolve time, so accept any non-empty id.
+  if (!kind) return { error: 'agent.kind must be a non-empty string' }
+  return { value: { kind } }
 }
 
 function parseSpecsDir(value: unknown): { value: string } | { error: string } {

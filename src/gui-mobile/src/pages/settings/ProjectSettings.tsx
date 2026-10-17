@@ -1,6 +1,6 @@
 import { Show, createMemo, createResource, type Component } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
-import { api, type AgentConfig, type ProjectConfig } from '@shared/api/index.js'
+import { api, type AgentConfig, type AgentDescriptor, type ProjectConfig } from '@shared/api/index.js'
 import { displayProjectName } from '@shared/api/project.js'
 import { Page } from '@/components/Page.jsx'
 import { ErrorNotice, LoadingNotice, NoProjectNotice } from '@/components/ListStates.jsx'
@@ -22,17 +22,13 @@ import { t } from '@/i18n/index.js'
  * commands / customInstructions 由各自的路由管理，不经过这里。
  */
 
-type AgentKindOption = 'inherit' | 'claude' | 'codex' | 'opencode' | 'pi'
-
-// 写成函数而不是模块级常量：t() 在模块求值时 i18n 还没 init 完，
-// 且切语言后常量不会重算，标签会卡在初始语言上。
-const kindOptions = (): readonly { value: AgentKindOption; label: string }[] => [
-  { value: 'inherit', label: t('projectSettings.inherit') },
-  { value: 'claude', label: 'Claude' },
-  { value: 'codex', label: 'Codex' },
-  { value: 'opencode', label: 'opencode' },
-  { value: 'pi', label: 'Pi' },
-]
+// Builtin display labels; external agents use their descriptor.displayName.
+const BUILTIN_LABEL: Record<string, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  opencode: 'opencode',
+  pi: 'Pi',
+}
 
 export const ProjectSettings: Component = () => {
   const navigate = useNavigate()
@@ -40,6 +36,22 @@ export const ProjectSettings: Component = () => {
     () => activeProjectId() ?? undefined,
     (pid) => api.getProjectConfig(pid),
   )
+  // Agent roster (builtin + external) from the single `/agents` source, so the
+  // segmented control is no longer a hardcoded list.
+  const [agents] = createResource<AgentDescriptor[], string>(
+    () => activeProjectId() ?? undefined,
+    (pid) => api.listAgents(pid),
+  )
+
+  // 写成函数而不是模块级常量：t() 在模块求值时 i18n 还没 init 完，
+  // 且切语言后常量不会重算，标签会卡在初始语言上。
+  const kindOptions = (): readonly { value: string; label: string }[] => [
+    { value: 'inherit', label: t('projectSettings.inherit') },
+    ...(agents() ?? []).map((d) => ({
+      value: d.id,
+      label: d.source === 'external' ? d.displayName : (BUILTIN_LABEL[d.id] ?? d.displayName),
+    })),
+  ]
 
   // 标题用项目名而不是「项目设置」：二级页面从项目行进来，
   // 用户需要确认改的是哪个项目，而不是重复一遍入口文案。
@@ -63,7 +75,7 @@ export const ProjectSettings: Component = () => {
     }
   }
 
-  const onKindChange = (kind: AgentKindOption) => void save({ kind })
+  const onKindChange = (kind: string) => void save({ kind })
 
   return (
     <Page title={title()} onBack={() => navigate('/projects')}>

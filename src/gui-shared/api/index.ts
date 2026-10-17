@@ -142,12 +142,8 @@ export type MergeWorktreeResponse =
       conflictFiles: string[]
     }
 
-export type AgentConfig =
-  | { kind: 'inherit' }
-  | { kind: 'claude' }
-  | { kind: 'opencode' }
-  | { kind: 'codex' }
-  | { kind: 'pi' }
+// `kind` is open: 'inherit', a builtin id, or any `customAgents[].id`.
+export type AgentConfig = { kind: 'inherit' } | { kind: string }
 
 export interface CommandDef {
   id: string
@@ -198,7 +194,8 @@ export interface ProjectConfig {
 
 export interface GlobalConfig {
   agent: {
-    defaultKind: 'claude' | 'opencode' | 'codex' | 'pi'
+    // Open string: a builtin id or any global `customAgents[].id`.
+    defaultKind: string
   }
   notifications: {
     sessionEnd: {
@@ -244,7 +241,23 @@ export interface FileCompletionResult {
   items: string[]
 }
 
-export type AgentKind = 'claude' | 'codex' | 'opencode' | 'pi'
+// Open agent id — a builtin id or any configured external agent id.
+export type AgentKind = string
+
+export interface AgentCapabilities {
+  listSessions: boolean
+  getMessages: boolean
+  usageStatus: boolean
+}
+
+/** Mirror of the service `AgentDescriptor` — the GUI's single source for the
+ *  agent dropdown (builtin + external), fetched from `GET /agents`. */
+export interface AgentDescriptor {
+  id: AgentKind
+  displayName: string
+  source: 'builtin' | 'external'
+  capabilities: AgentCapabilities
+}
 
 export type SystemNotificationKind = 'version-update'
 export type SystemNotificationAction = 'none' | 'update-available' | 'updating' | 'restart-ready'
@@ -627,6 +640,8 @@ export const api = {
       body: JSON.stringify({ endpoint }),
     }),
   getGlobalConfig: () => request<GlobalConfig>('/api/global-config'),
+  /** Project-independent roster (builtin + global `customAgents`) for the global default. */
+  listGlobalAgents: () => request<AgentDescriptor[]>('/api/agents'),
   updateGlobalConfig: (body: GlobalConfig) =>
     request<{ ok: true; config: GlobalConfig }>('/api/global-config', {
       method: 'PUT',
@@ -678,6 +693,7 @@ export const api = {
       `${projectBase(pid)}/files?query=${encodeURIComponent(query)}&limit=${limit}`,
     ),
   listSessions: (pid: string) => request<SessionInfo[]>(`${projectBase(pid)}/sessions`),
+  listAgents: (pid: string) => request<AgentDescriptor[]>(`${projectBase(pid)}/agents`),
   getAgentUsageStatus: (pid: string) =>
     request<AgentUsageStatus>(`${projectBase(pid)}/agent-usage`),
   createSession: (pid: string, body: { title?: string; agentKind?: AgentKind } = {}) =>

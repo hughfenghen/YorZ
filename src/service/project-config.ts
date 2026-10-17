@@ -4,12 +4,12 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { CommandDef } from './command-types.js'
 import { type CustomInstruction, normalizeCustomInstructions } from './custom-instruction.js'
 
-export type AgentConfig =
-  | { kind: 'inherit' }
-  | { kind: 'claude' }
-  | { kind: 'opencode' }
-  | { kind: 'codex' }
-  | { kind: 'pi' }
+/**
+ * `kind` is now an open string: `'inherit'`, a builtin id, or any
+ * `customAgents[].id`. Resolution/validation happens downstream
+ * (`resolveProjectAgentKind` + the adapter registry's fallback).
+ */
+export type AgentConfig = { kind: 'inherit' } | { kind: string }
 
 export interface ProjectConfig {
   version: 1
@@ -131,23 +131,19 @@ function normalizeCommands(value: unknown): CommandDef[] {
 }
 
 function normalizeAgent(value: unknown): AgentConfig {
-  // Legacy schema: `{ agent: 'claude' | 'opencode' | 'codex' | 'pi' }` as a bare string.
+  // `kind` is an open string now (builtin id / customAgents id / 'inherit').
+  // Legacy schema: `{ agent: '<id>' }` as a bare string.
   if (typeof value === 'string') {
-    if (value === 'opencode') return { kind: 'opencode' }
-    if (value === 'codex') return { kind: 'codex' }
-    if (value === 'pi') return { kind: 'pi' }
-    return { kind: 'claude' }
+    const k = value.trim()
+    return k ? { kind: k } : { kind: 'claude' }
   }
   if (!value || typeof value !== 'object') return { kind: 'claude' }
   const obj = value as Record<string, unknown>
-  const kind = obj.kind
-  if (kind === 'inherit') return { kind: 'inherit' }
-  if (kind === 'opencode') return { kind: 'opencode' }
-  if (kind === 'codex') return { kind: 'codex' }
-  if (kind === 'pi') return { kind: 'pi' }
-  // 已移除的 `kind: 'custom'`（含 cmd/args）走这里降级为 claude：老配置文件里
-  // 残留的这一档不再被识别，下次保存时字段会被白名单输出丢掉。
-  return { kind: 'claude' }
+  const kind = typeof obj.kind === 'string' ? obj.kind.trim() : ''
+  // Unknown ids are preserved verbatim: the adapter registry validates them at
+  // resolve time (against customAgents) and falls back to claude on a miss, so
+  // normalize must not pre-emptively flatten a valid external id to claude.
+  return kind ? { kind } : { kind: 'claude' }
 }
 
 function normalizeSpecsDir(value: unknown): string {

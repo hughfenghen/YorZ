@@ -1,0 +1,26 @@
+{
+  // Standalone declaration + JS emit for the public `@yorz/cli/agent-sdk`
+  // entry. NOT part of the solution build (tsconfig.json references) — the Vite
+  // CLI build is bundle-only (noEmit), so this is the one step that writes the
+  // consumable contract (.d.ts + tiny runtime) into dist/. Run via
+  // `pnpm build:types`. tsc follows the import graph, so the few referenced
+  // files under src/service are emitted alongside with their relative paths
+  // preserved.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "emitDeclarationOnly": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": ["src/agent-sdk/index.ts"]
+}

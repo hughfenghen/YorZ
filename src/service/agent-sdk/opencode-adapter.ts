@@ -2,6 +2,7 @@ import { createOpencode } from '@opencode-ai/sdk'
 import type { OpencodeClient, Message, Part } from '@opencode-ai/sdk'
 import { normalizeUsage } from '../telemetry/index.js'
 import type {
+  AgentDescriptor,
   AgentEvent,
   AgentSdkAdapter,
   AgentSession,
@@ -87,6 +88,12 @@ class OpenCodeSession implements AgentSession {
 
 export class OpenCodeAdapter implements AgentSdkAdapter {
   readonly kind = 'opencode' as const
+  readonly descriptor: AgentDescriptor = {
+    id: 'opencode',
+    displayName: 'OpenCode',
+    source: 'builtin',
+    capabilities: { listSessions: true, getMessages: true, usageStatus: false },
+  }
   private booting: Promise<{ client: OpencodeClient; server: Server }> | null = null
 
   constructor(private readonly cwd: string) {}
@@ -169,7 +176,7 @@ export class OpenCodeAdapter implements AgentSdkAdapter {
    * 的子进程），不如明确声明不支持：前端据此什么都不显示。
    */
   capabilities(): Capabilities {
-    return { listSessions: true, getMessages: true, usageStatus: false }
+    return this.descriptor.capabilities
   }
 
   async dispose(): Promise<void> {

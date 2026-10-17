@@ -35,18 +35,21 @@ function fakeAdapter(opts: {
   // assigned): a spec now owns several sessions, so a constant id would collapse
   // them into one store entry and hide the very behaviour under test.
   let created = 0
+  const capabilities = {
+    listSessions: true,
+    getMessages: true,
+    usageStatus: opts.usageStatusCapable ?? Boolean(opts.usageStatus),
+  }
   return {
     kind: 'claude',
+    descriptor: { id: 'claude', displayName: 'Claude', source: 'builtin', capabilities },
     createSession: async () => makeSession(`created-${++created}`),
     resumeSession: async (id: string) => makeSession(id),
     listSessions: async () => opts.native ?? [],
     getMessages: async (id: string) => opts.messages?.[id] ?? [],
     getUsageStatus: opts.usageStatus,
-    capabilities: () => ({
-      listSessions: true,
-      getMessages: true,
-      usageStatus: opts.usageStatusCapable ?? Boolean(opts.usageStatus),
-    }),
+    capabilities: () => capabilities,
+    dispose: async () => {},
   }
 }
 
@@ -61,10 +64,15 @@ async function makeManager(adapter: AgentSdkAdapter): Promise<{
   // double, which reports the same (empty by default) native listing.
   ;(
     mgr as unknown as {
-      adapters: { get: () => AgentSdkAdapter; dispose: () => Promise<void> }
+      adapters: {
+        get: () => AgentSdkAdapter
+        listDescriptors: () => Promise<AgentSdkAdapter['descriptor'][]>
+        dispose: () => Promise<void>
+      }
     }
   ).adapters = {
     get: () => adapter,
+    listDescriptors: async () => [adapter.descriptor],
     dispose: async () => {},
   }
   return { mgr, store }
@@ -181,8 +189,26 @@ describe('SessionManager.getMessages', () => {
     const cwd = await mkdtemp(join(tmpdir(), 'yorz-sm-'))
     const empty = fakeAdapter({})
     const mgr = new SessionManager(cwd, defaultKind, new SessionStore(cwd))
-    ;(mgr as unknown as { adapters: { get: (k: AgentKind) => AgentSdkAdapter } }).adapters = {
-      get: (k) => byKind[k] ?? empty,
+    const resolve = (k: AgentKind) => byKind[k] ?? empty
+    ;(
+      mgr as unknown as {
+        adapters: {
+          get: (k: AgentKind) => AgentSdkAdapter
+          listDescriptors: () => Promise<AgentSdkAdapter['descriptor'][]>
+        }
+      }
+    ).adapters = {
+      get: resolve,
+      // Mirror the real registry: one descriptor per builtin kind, in the same
+      // claude→codex→opencode→pi order the discovery loop relies on for the
+      // "first adapter to claim an id wins" rule.
+      listDescriptors: async () =>
+        (['claude', 'codex', 'opencode', 'pi'] as AgentKind[]).map((id) => ({
+          id,
+          displayName: id,
+          source: 'builtin' as const,
+          capabilities: resolve(id).capabilities(),
+        })),
     }
     return mgr
   }

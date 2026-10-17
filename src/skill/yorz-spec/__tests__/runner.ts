@@ -3,8 +3,10 @@ import { existsSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import matter from 'gray-matter'
-import { resolveAgentCmd, type AgentName } from '../../../service/agent-config.js'
-import { spawnWithoutWindow } from '../../../service/process.js'
+import { AdapterRegistry } from '../../../service/agent-sdk/registry.js'
+
+/** Builtin agents this harness can drive through the SDK adapter registry. */
+export type AgentName = 'claude' | 'opencode' | 'codex' | 'pi'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(here, '../../../..')
@@ -96,32 +98,32 @@ async function seedSkill(tmpDir: string): Promise<void> {
 }
 
 /**
- * 启动无人值守的 Agent 测试进程，并把退出码或派生错误归一化给用例执行器。
+ * Drive one agent turn through the SDK adapter registry (no subprocess).
  *
- * @param cmd Agent CLI 可执行文件。
- * @param args Agent CLI 参数。
- * @param cwd 隔离测试项目的工作目录。
- * @returns Agent 退出码；派生失败时同时返回原始错误。
+ * The adapter runs in-process with `cwd` locked to the isolated tmp project and
+ * bypass-permissions on, so the agent edits `spec.md` via its own file tools
+ * exactly as the production Service dispatch does. The event stream is drained
+ * for its side effects; only a fatal `error` event is surfaced to the caller.
  */
-function spawnAgent(
-  cmd: string,
-  args: string[],
+async function runAgentTurn(
+  agent: AgentName,
   cwd: string,
-): Promise<{ code: number; spawnError?: Error }> {
-  return new Promise((resolveP) => {
-    const child = spawnWithoutWindow(cmd, args, { cwd, stdio: 'inherit' })
-    let settled = false
-    child.on('error', (err) => {
-      if (settled) return
-      settled = true
-      resolveP({ code: -1, spawnError: err })
-    })
-    child.on('exit', (code) => {
-      if (settled) return
-      settled = true
-      resolveP({ code: code ?? -1 })
-    })
-  })
+  prompt: string,
+): Promise<{ runError?: Error }> {
+  const registry = new AdapterRegistry(cwd)
+  try {
+    const adapter = await registry.get(agent)
+    const session = await adapter.createSession()
+    let runError: Error | undefined
+    for await (const ev of session.send(prompt)) {
+      if (ev.type === 'error') runError = new Error(ev.message)
+    }
+    return { runError }
+  } catch (err) {
+    return { runError: err instanceof Error ? err : new Error(String(err)) }
+  } finally {
+    await registry.dispose().catch(() => {})
+  }
 }
 
 export async function runAgentCase(opts: AgentCaseOptions): Promise<AgentCaseResult> {
@@ -155,8 +157,7 @@ export async function runAgentCase(opts: AgentCaseOptions): Promise<AgentCaseRes
     prompt = meta.prompt ?? `请使用 yorz-spec skill 处理 spec：${specPath}`
   }
 
-  const cmd = resolveAgentCmd({ cwd: tmpDir, agent, env: process.env })
-  const { code, spawnError } = await spawnAgent(cmd.cmd, cmd.args(prompt, tmpDir), tmpDir)
+  const { runError } = await runAgentTurn(agent, tmpDir, prompt)
 
   let outputSpec = ''
   let parsedFrontmatter: Record<string, unknown> = {}
@@ -174,15 +175,9 @@ export async function runAgentCase(opts: AgentCaseOptions): Promise<AgentCaseRes
   const prevTmp = process.env.YORZ_TEST_TMPDIR
   process.env.YORZ_TEST_TMPDIR = tmpDir
   try {
-    if (spawnError) {
+    if (runError && !outputSpec) {
       assertResult = {
-        failures: [`failed to spawn ${cmd.cmd}: ${spawnError.message}`],
-        hitRules: 0,
-        totalRules: 1,
-      }
-    } else if (code !== 0 && !outputSpec) {
-      assertResult = {
-        failures: [`agent exited with code ${code} and produced no spec.md`],
+        failures: [`agent '${agent}' failed and produced no spec.md: ${runError.message}`],
         hitRules: 0,
         totalRules: 1,
       }

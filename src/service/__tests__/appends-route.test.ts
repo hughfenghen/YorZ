@@ -1,27 +1,20 @@
 import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { start, type ServeHandle } from '../index.js'
-
-const FAKE_CLAUDE = fileURLToPath(new URL('./fixtures/fake-claude.js', import.meta.url))
 
 let handle: ServeHandle | null = null
 
 afterEach(async () => {
   await handle?.close()
   handle = null
-  delete process.env.YORZ_AGENT_CMD
 })
 
-async function startInTmp(opts?: { fakeAgent?: boolean }) {
+async function startInTmp() {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-appends-route-'))
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-appends-cfg-'))
   await mkdir(join(cwd, '.yorz'), { recursive: true })
-  if (opts?.fakeAgent) {
-    process.env.YORZ_AGENT_CMD = `${process.execPath} ${FAKE_CLAUDE}`
-  }
   handle = await start({ cwd, port: 0, disableAuth: true, globalConfigPath: join(cfgDir, 'config.json') })
   const list = await handle.registry.list()
   const projectId = list[0]!.id
@@ -40,7 +33,7 @@ async function createSpec(apiPrefix: string): Promise<string> {
 
 describe('POST /api/specs/:id/appends', () => {
   it('200 writes `## 追加任务` entry and returns runId', async () => {
-    const { cwd, apiPrefix } = await startInTmp({ fakeAgent: true })
+    const { cwd, apiPrefix } = await startInTmp()
     const id = await createSpec(apiPrefix)
     const res = await fetch(`${apiPrefix}/specs/${id}/appends`, {
       method: 'POST',
@@ -61,7 +54,7 @@ describe('POST /api/specs/:id/appends', () => {
   // The Debug checkbox is gone (fix implies it), but a cached GUI bundle may
   // still post the old field. Ignoring beats 400-ing every append it sends.
   it('200 ignoring a stale `debug` field from an old GUI bundle', async () => {
-    const { apiPrefix } = await startInTmp({ fakeAgent: true })
+    const { apiPrefix } = await startInTmp()
     const id = await createSpec(apiPrefix)
     const res = await fetch(`${apiPrefix}/specs/${id}/appends`, {
       method: 'POST',

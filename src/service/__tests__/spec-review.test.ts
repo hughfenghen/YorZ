@@ -1,22 +1,17 @@
 import { mkdtemp, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { start, type ServeHandle } from '../index.js'
-
-const FAKE_CLAUDE = fileURLToPath(new URL('./fixtures/fake-claude.js', import.meta.url))
 
 let handle: ServeHandle | null = null
 
 afterEach(async () => {
   await handle?.close()
   handle = null
-  delete process.env.YORZ_AGENT_CMD
 })
 
 async function startInTmp() {
-  process.env.YORZ_AGENT_CMD = `${process.execPath} ${FAKE_CLAUDE}`
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-review-'))
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-review-cfg-'))
   await mkdir(join(cwd, '.yorz'), { recursive: true })

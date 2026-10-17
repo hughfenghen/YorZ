@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { AdapterRegistry } from './agent-sdk/registry.js'
 import type {
+  AgentDescriptor,
   AgentEvent,
   AgentKind,
   AgentSession,
@@ -60,6 +61,11 @@ export interface SessionStatusEvent {
 export interface SessionManagerOptions {
   onSessionEnd?: (sessionId: string) => Promise<void> | void
   onSessionStatusChange?: (event: SessionStatusEvent) => Promise<void> | void
+  /**
+   * Override the global config path (external agent `customAgents` live there
+   * now). Mainly a test injection point; production passes the registry's path.
+   */
+  globalConfigPath?: string
 }
 
 interface LiveSession {
@@ -122,7 +128,7 @@ export class SessionManager {
     private readonly store: SessionStore,
     private readonly opts: SessionManagerOptions = {},
   ) {
-    this.adapters = new AdapterRegistry(cwd)
+    this.adapters = new AdapterRegistry(cwd, opts.globalConfigPath)
     this.statusEmitter.setMaxListeners(0)
   }
 
@@ -142,7 +148,7 @@ export class SessionManager {
     specId?: string,
   ): Promise<{ sessionId: string; kind: AgentKind }> {
     const k = kind ?? this.defaultKind
-    const adapter = this.adapters.get(k)
+    const adapter = await this.adapters.get(k)
     const session = await adapter.createSession(title ? { title } : undefined)
     // Codex has no id until the first turn: assign a provisional id and
     // reconcile once `session-started` surfaces the real thread id.
@@ -213,14 +219,22 @@ export class SessionManager {
     return true
   }
 
+  /** Builtin + external agent descriptors (for the GUI dropdown / route). */
+  async listAgentDescriptors(): Promise<AgentDescriptor[]> {
+    return this.adapters.listDescriptors()
+  }
+
   async listSessions(): Promise<SessionInfo[]> {
     const indexed = await this.store.list()
     const byId = new Map<string, SessionInfo>(indexed.map((s) => [s.id, s]))
     const nativeIds = new Set<string>()
-    // Merge SDK-native session listing (kinds that support it) for discovery.
-    for (const kind of ['claude', 'codex', 'opencode', 'pi'] as AgentKind[]) {
-      const adapter = this.adapters.get(kind)
-      if (!adapter.capabilities().listSessions) continue
+    // Merge SDK-native session listing for discovery. Iterate the registry's
+    // descriptors (builtin + external) and consult each adapter that declares
+    // the `listSessions` capability — no fixed builtin roster.
+    for (const descriptor of await this.adapters.listDescriptors()) {
+      if (!descriptor.capabilities.listSessions) continue
+      const kind = descriptor.id
+      const adapter = await this.adapters.get(kind)
       try {
         for (const info of await adapter.listSessions()) {
           // First adapter to claim an id wins, matching the `byId` merge below.
@@ -323,7 +337,7 @@ export class SessionManager {
 
   async getMessages(sid: string): Promise<NormalizedMessage[]> {
     const kind = await this.resolveKind(sid)
-    const adapter = this.adapters.get(kind)
+    const adapter = await this.adapters.get(kind)
     if (!adapter.capabilities().getMessages) return []
     return adapter.getMessages(sid)
   }
@@ -351,7 +365,7 @@ export class SessionManager {
   }
 
   async getUsageStatus(): Promise<AgentUsageStatus> {
-    const adapter = this.adapters.get(this.defaultKind)
+    const adapter = await this.adapters.get(this.defaultKind)
     if (!adapter.capabilities().usageStatus || !adapter.getUsageStatus) {
       return {
         kind: this.defaultKind,
@@ -376,7 +390,7 @@ export class SessionManager {
     const existing = this.live.get(sid)
     if (existing) return existing
     const kind = (await this.store.get(sid))?.kind ?? this.defaultKind
-    const adapter = this.adapters.get(kind)
+    const adapter = await this.adapters.get(kind)
     const session = await adapter.resumeSession(sid)
     const ls: LiveSession = { kind, session }
     this.live.set(sid, ls)

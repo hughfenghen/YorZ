@@ -7,7 +7,7 @@ import {
   onCleanup,
   type Component,
 } from 'solid-js'
-import { api, type GlobalConfig } from '../lib/api.js'
+import { api, type AgentDescriptor, type GlobalConfig } from '../lib/api.js'
 import { DEFAULT_GLOBAL_CONFIG, globalConfig, saveGlobalConfig } from '../lib/global-config.js'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog.jsx'
 import { Button } from './ui/button.jsx'
@@ -36,11 +36,18 @@ interface Props {
   onClose: () => void
 }
 
-type GlobalAgentKind = 'claude' | 'opencode' | 'codex' | 'pi'
 type PowerInhibitMode = 'system-default' | 'prevent-display-sleep' | 'keep-system-awake'
 
+const BUILTIN_LABEL_KEY: Record<string, string> = {
+  claude: 'projectConfig.agentClaude',
+  opencode: 'projectConfig.agentOpencode',
+  codex: 'projectConfig.agentCodex',
+  pi: 'projectConfig.agentPi',
+}
+
 export const GlobalConfigDialog: Component<Props> = (props) => {
-  const [agentDefault, setAgentDefault] = createSignal<GlobalAgentKind>('claude')
+  const [agentDefault, setAgentDefault] = createSignal<string>('claude')
+  const [agents, setAgents] = createSignal<AgentDescriptor[]>([])
   const [banner, setBanner] = createSignal(false)
   const [sound, setSound] = createSignal(false)
   const [powerMode, setPowerMode] = createSignal<PowerInhibitMode>('system-default')
@@ -60,7 +67,15 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
     setLoading(true)
     void (async () => {
       try {
-        applyConfig(await api.getGlobalConfig())
+        // Fetch config + the agent roster together: the global-default dropdown
+        // now lists builtin and global external (`customAgents`) agents from the
+        // single `/agents` source rather than a hardcoded array.
+        const [cfg, descriptors] = await Promise.all([
+          api.getGlobalConfig(),
+          api.listGlobalAgents().catch(() => [] as AgentDescriptor[]),
+        ])
+        setAgents(descriptors)
+        applyConfig(cfg)
       } catch (err) {
         setError((err as Error).message)
         applyConfig(DEFAULT_GLOBAL_CONFIG)
@@ -152,11 +167,17 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
 
   onCleanup(clearSaveStatusTimer)
 
-  function agentLabel(kind: GlobalAgentKind): string {
-    if (kind === 'codex') return t('projectConfig.agentCodex')
-    if (kind === 'opencode') return t('projectConfig.agentOpencode')
-    if (kind === 'pi') return t('projectConfig.agentPi')
-    return t('projectConfig.agentClaude')
+  /** Builtin + every external agent id, in roster order (fallback to builtins). */
+  const agentOptions = (): string[] => {
+    const ids = agents().map((a) => a.id)
+    return ids.length > 0 ? ids : ['claude', 'opencode', 'codex', 'pi']
+  }
+
+  function agentLabel(id: string): string {
+    const descriptor = agents().find((a) => a.id === id)
+    if (descriptor && descriptor.source === 'external') return descriptor.displayName
+    const key = BUILTIN_LABEL_KEY[id]
+    return key ? t(key) : (descriptor?.displayName ?? id)
   }
 
   function shortcutLabel(action: ShortcutActionId): string {
@@ -180,7 +201,7 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
     void persistPatch({ shortcuts: next })
   }
 
-  function updateAgentDefault(kind: GlobalAgentKind): void {
+  function updateAgentDefault(kind: string): void {
     setAgentDefault(kind)
     void persistPatch({ agent: { defaultKind: kind } })
   }
@@ -234,20 +255,22 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
             <RadioGroup
               class="m-0 flex flex-wrap gap-2 border-0 p-0"
               value={agentDefault()}
-              onChange={(v) => updateAgentDefault(v as GlobalAgentKind)}
+              onChange={(v) => updateAgentDefault(v)}
             >
               <RadioGroupLabel class="mb-1.5 w-full font-medium">
                 {t('globalConfig.agentDefault')}
               </RadioGroupLabel>
-              {(['claude', 'opencode', 'codex', 'pi'] as const).map((kind) => (
-                <RadioGroupItem value={kind} class="flex items-center gap-1.5">
-                  <RadioGroupItemInput />
-                  <RadioGroupItemControl />
-                  <RadioGroupItemLabel class="cursor-pointer">
-                    {agentLabel(kind)}
-                  </RadioGroupItemLabel>
-                </RadioGroupItem>
-              ))}
+              <For each={agentOptions()}>
+                {(kind) => (
+                  <RadioGroupItem value={kind} class="flex items-center gap-1.5">
+                    <RadioGroupItemInput />
+                    <RadioGroupItemControl />
+                    <RadioGroupItemLabel class="cursor-pointer">
+                      {agentLabel(kind)}
+                    </RadioGroupItemLabel>
+                  </RadioGroupItem>
+                )}
+              </For>
             </RadioGroup>
 
             <fieldset class="m-0 flex flex-col gap-3 border-0 p-0">

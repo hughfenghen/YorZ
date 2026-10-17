@@ -1,6 +1,6 @@
 import { Show, createResource, createSignal, type Component } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
-import { api, type GlobalConfig } from '@shared/api/index.js'
+import { api, type AgentDescriptor, type GlobalConfig } from '@shared/api/index.js'
 import {
   THEME_MODES,
   THEME_NAMES,
@@ -35,12 +35,13 @@ import { t, useTranslation } from '@/i18n/index.js'
  * 不会把桌面端的外观也一起改掉。
  */
 
-const AGENT_KINDS = [
-  { value: 'claude' as const, label: 'Claude' },
-  { value: 'codex' as const, label: 'Codex' },
-  { value: 'opencode' as const, label: 'opencode' },
-  { value: 'pi' as const, label: 'Pi' },
-]
+// Builtin display labels; external agents use their descriptor.displayName.
+const BUILTIN_LABEL: Record<string, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  opencode: 'opencode',
+  pi: 'Pi',
+}
 
 const LANGUAGES = [
   { value: 'zh-CN' as const, label: '中文' },
@@ -51,8 +52,20 @@ export const GlobalSettings: Component = () => {
   const navigate = useNavigate()
   const { lng, changeLanguage } = useTranslation()
   const [config, { refetch, mutate }] = createResource<GlobalConfig>(() => api.getGlobalConfig())
+  // Default-agent roster (builtin + global `customAgents`) from the single
+  // `/agents` source, so the segmented control is no longer a hardcoded list.
+  const [agents] = createResource<AgentDescriptor[]>(() => api.listGlobalAgents())
   const pushSupported = isPushSupported()
   const [pushBusy, setPushBusy] = createSignal(false)
+
+  const kindOptions = (): readonly { value: string; label: string }[] => {
+    const list = agents() ?? []
+    const mapped = list.map((d) => ({
+      value: d.id,
+      label: d.source === 'external' ? d.displayName : (BUILTIN_LABEL[d.id] ?? d.displayName),
+    }))
+    return mapped.length > 0 ? mapped : Object.entries(BUILTIN_LABEL).map(([value, label]) => ({ value, label }))
+  }
 
   /** 读-改-写：拿最近一次 GET 的完整对象做浅合并后整体回写。 */
   const patch = async (next: GlobalConfig) => {
@@ -112,7 +125,7 @@ export const GlobalSettings: Component = () => {
                 <Group title={t('globalSettings.agent')}>
                   <Segmented
                     label={t('globalSettings.defaultKind')}
-                    options={AGENT_KINDS}
+                    options={kindOptions()}
                     value={() => cfg().agent.defaultKind}
                     onChange={(defaultKind) =>
                       void patch({ ...cfg(), agent: { ...cfg().agent, defaultKind } })

@@ -6,6 +6,12 @@
   "bin": {
     "yorz": "./dist/cli/index.js"
   },
+  "exports": {
+    "./agent-sdk": {
+      "types": "./dist/agent-sdk/index.d.ts",
+      "import": "./dist/agent-sdk/index.js"
+    }
+  },
   "engines": {
     "node": ">=22.19.0"
   },
@@ -33,8 +39,9 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pnpm run build:cli && pnpm run build:gui && pnpm run build:gui-mobile",
+    "build": "pnpm run build:cli && pnpm run build:types && pnpm run build:gui && pnpm run build:gui-mobile",
     "build:cli": "vite build",
+    "build:types": "tsc -p tsconfig.agent-sdk.json",
     "build:gui": "vite build --config vite.gui.config.ts",
     "build:gui-mobile": "vite build --config vite.gui-mobile.config.ts",
     "dev:cli": "pnpm run build:cli && node dist/cli/index.js serve --port 7424 --foreground",

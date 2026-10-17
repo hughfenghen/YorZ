@@ -62,11 +62,18 @@ describe('telemetry around a dispatch', () => {
     const mgr = new SessionManager(cwd, 'claude', store)
     const adapter: AgentSdkAdapter = {
       kind: 'claude',
+      descriptor: {
+        id: 'claude',
+        displayName: 'Claude',
+        source: 'builtin',
+        capabilities: { listSessions: false, getMessages: false, usageStatus: false },
+      },
       createSession: async () => makeStubSession('s1'),
       resumeSession: async (id: string) => makeStubSession(id),
       listSessions: async () => [],
       getMessages: async () => [],
       capabilities: () => ({ listSessions: false, getMessages: false, usageStatus: false }),
+      dispose: async () => {},
     }
     ;(mgr as unknown as { adapters: unknown }).adapters = {
       get: () => adapter,

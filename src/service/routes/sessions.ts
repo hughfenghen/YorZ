@@ -1,5 +1,4 @@
 import { Hono } from 'hono'
-import type { AgentKind } from '../agent-sdk/types.js'
 import type { AttachmentMeta } from '../attachment-store.js'
 import type { ProjectInstance } from '../project-registry.js'
 import { cleanupExpiredChatDebugFiles } from '../chat-debug.js'
@@ -31,7 +30,6 @@ async function loadCustomInstructions(projectPath: string): Promise<CustomInstru
   return mergeCustomInstructions(project, global)
 }
 
-const KINDS: AgentKind[] = ['claude', 'codex', 'opencode', 'pi']
 const DRAFT_ID_RE = /^[a-zA-Z0-9-]{1,64}$/
 
 /**
@@ -79,6 +77,14 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
     return c.json(await p.sessions.listSessions())
   })
 
+  // Single source of truth for "which agents exist" — builtin + external
+  // (config `customAgents`). Replaces the hardcoded GUI dropdown arrays.
+  app.get('/projects/:projectId/agents', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    return c.json(await p.sessions.listAgentDescriptors())
+  })
+
   app.get('/projects/:projectId/agent-usage', async (c) => {
     const p = await need(c)
     if (p instanceof Response) return p
@@ -94,9 +100,13 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
     } catch {
       // empty body is allowed
     }
-    const kind = KINDS.includes(body.agentKind as AgentKind)
-      ? (body.agentKind as AgentKind)
-      : undefined
+    // Validate against the project's actual agents (builtin + external) rather
+    // than a fixed list; an unknown value degrades to the project default.
+    const descriptors = await p.sessions.listAgentDescriptors()
+    const kind =
+      typeof body.agentKind === 'string' && descriptors.some((d) => d.id === body.agentKind)
+        ? body.agentKind
+        : undefined
     const title = typeof body.title === 'string' ? body.title : undefined
     try {
       const created = await p.sessions.createSession(kind, title)
