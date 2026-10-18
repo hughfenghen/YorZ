@@ -9,6 +9,6 @@ playwright-report
 test-results
 .tmp-e2e
 .tmp-e2e-home
-tmp/agent-test
+tmp/
 src/skill/yorz-spec/__tests__/reports/*.html
 .yorz/tmp
