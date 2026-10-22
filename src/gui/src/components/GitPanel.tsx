@@ -6,6 +6,7 @@ import {
   createResource,
   createSignal,
   onCleanup,
+  startTransition,
   type Component,
 } from 'solid-js'
 import { GitBranch, GitMerge, Loader2 } from 'lucide-solid'
@@ -131,6 +132,13 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
     (pid) => api.getGitBranches(pid),
   )
 
+  // Refetch inside a transition: on the spec Review page GitPanel lives in a
+  // <Suspense>, and a bare resource refetch re-suspends the boundary — the whole
+  // git page flashes its loading fallback for a tick (notably on the auto-fetch
+  // when the branch panel opens). A transition keeps the current DOM mounted
+  // until the new branches resolve, so nothing flickers.
+  const reloadBranches = (): Promise<void> => startTransition(() => refetchBranches())
+
   // Switch-branch targets span local + remote-tracking branches: picking a
   // remote (`origin/x`) materializes a local tracking branch on checkout.
   // Locals first so the common case stays at the top.
@@ -147,9 +155,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
   })
 
   const branchNameTrimmed = createMemo(() => branchQuery().trim())
-  // The create affordance appears only once the name is substantial enough to
-  // be a deliberate branch name (≥3 chars), per the spec.
-  const canCreateBranch = createMemo(() => branchNameTrimmed().length >= 3)
+  const canCreateBranch = createMemo(() => branchNameTrimmed().length >= 1)
   const branchNameExistsLocally = createMemo(() =>
     (branchState()?.branches ?? []).includes(branchNameTrimmed()),
   )
@@ -359,7 +365,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
       setBranchOpen(false)
       const changesResult = await api.getProjectChanges(pid)
       setChanges(changesResult.changes)
-      await refetchBranches()
+      await reloadBranches()
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -384,7 +390,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
       setBranchOpen(false)
       const changesResult = await api.getProjectChanges(pid)
       setChanges(changesResult.changes)
-      await refetchBranches()
+      await reloadBranches()
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -403,7 +409,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
     setFetchStatus('fetching')
     try {
       await api.gitFetch(pid)
-      await refetchBranches()
+      await reloadBranches()
       setFetchStatus('done')
     } catch {
       setFetchStatus('failed')
@@ -431,7 +437,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
       setMergeQuery('')
       const changesResult = await api.getProjectChanges(pid)
       setChanges(changesResult.changes)
-      await refetchBranches()
+      await reloadBranches()
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -531,7 +537,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
                 {branchState()?.current ?? t('git.branchPlaceholder')}
               </span>
             </PopoverTrigger>
-            <PopoverContent class="w-72 p-0" hideCloseButton>
+            <PopoverContent class="relative w-72 p-0" hideCloseButton>
               <div class="flex items-center gap-1 border-b p-1">
                 <Input
                   value={branchQuery()}
@@ -557,16 +563,12 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
                   </Button>
                 </Show>
               </div>
-              <Show when={fetchStatus() === 'fetching' || fetchStatus() === 'failed'}>
-                <div class="flex items-center gap-1 border-b px-2 py-1 text-xs text-muted-foreground">
-                  <Show when={fetchStatus() === 'fetching'}>
-                    <Loader2 class="h-3 w-3 animate-spin" />
-                    {t('git.fetching')}
-                  </Show>
-                  <Show when={fetchStatus() === 'failed'}>{t('git.fetchFailed')}</Show>
-                </div>
-              </Show>
-              <div class="max-h-64 overflow-auto p-1">
+              <div
+                class="max-h-64 overflow-auto p-1"
+                classList={{
+                  'pb-8': fetchStatus() === 'fetching' || fetchStatus() === 'failed',
+                }}
+              >
                 <For each={filteredCheckoutCandidates()}>
                   {(branch) => (
                     <button
@@ -586,6 +588,18 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
                   <div class="px-2 py-2 text-sm text-muted-foreground">{t('git.noBranches')}</div>
                 </Show>
               </div>
+              {/* Float the fetch status at the panel bottom (absolute, out of flow)
+                  so the branch list never shifts when it appears/disappears —
+                  prevents mis-clicking an unintended branch (追加 refct). */}
+              <Show when={fetchStatus() === 'fetching' || fetchStatus() === 'failed'}>
+                <div class="absolute inset-x-0 bottom-0 flex items-center gap-1 rounded-b-md border-t bg-popover px-2 py-1 text-xs text-muted-foreground">
+                  <Show when={fetchStatus() === 'fetching'}>
+                    <Loader2 class="h-3 w-3 animate-spin" />
+                    {t('git.fetching')}
+                  </Show>
+                  <Show when={fetchStatus() === 'failed'}>{t('git.fetchFailed')}</Show>
+                </div>
+              </Show>
             </PopoverContent>
           </Popover>
           <Button

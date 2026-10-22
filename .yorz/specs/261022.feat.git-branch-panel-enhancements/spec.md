@@ -1,8 +1,8 @@
 ---
-stage: plan
-last_action: 追加任务（fix）
-updated_at: '2026-10-22 17:53:28'
-summary: GitPanel 分支面板增强：无匹配时保持空态面板、输入≥3字符显示“创建”按钮建分支、展开分支面板自动 git fetch 并显示状态以暴露远端分支。
+stage: done
+last_action: 用户手动置为 done
+updated_at: '2026-10-22 21:02:33'
+summary: GitPanel 分支面板增强：无匹配保空态面板、输入≥1字符建分支、展开自动 fetch 显示远端；追加移除过滤框 close icon、拉取状态悬浮面板底部防误点
 ---
 
 # GitPanel 分支面板增强
@@ -14,7 +14,7 @@ summary: GitPanel 分支面板增强：无匹配时保持空态面板、输入�
 ## 2. 需求
 
 1. **无匹配仍保持面板（空数据态）**：在分支下拉中输入过滤词、无任何匹配分支时，面板（含过滤输入框 + 空态提示）必须保持展示，解决「匹配无结果时整个面板消失、无法继续输入」的问题。
-2. **输入≥3 字符显示「创建」按钮**：分支名称输入框中存在 3 个及以上字符时，在其右侧显示「创建」按钮，点击即以该名称创建分支（并切换过去）。
+2. **输入≥1 字符显示「创建」按钮**：分支名称输入框中存在 1 个及以上字符时，在其右侧显示「创建」按钮，点击即以该名称创建分支（并切换过去）。
 3. **展开分支面板自动 fetch**：展开分支面板时自动执行 `git fetch`，并在 UI 中显示 fetch 状态（进行中/完成），拉取后刷新分支列表，解决「看不见远端分支」的问题。
 
 > 范围限定：本次仅改动 `src/gui`（及其共享的 `src/gui-shared/api`）与 service 端 git 能力；`src/gui-mobile` 的同名面板不在本次范围内。
@@ -73,6 +73,13 @@ flowchart TD
     R3[需求3 自动 fetch] --> G3["listBranches 不做网络拉取<br/>无 fetch 能力/路由/触发点/状态 UI"]
 ```
 
+### 3.3 追加任务现状（close icon 遮挡 / fetching 布局）
+
+两项追加任务均落在「切换分支 Popover」内（`src/gui/src/components/GitPanel.tsx`）：
+
+- **close icon（追加 [fix]）**：Kobalte `PopoverContent` 默认在右上角渲染一个关闭 `CloseButton`（`src/gui/src/components/ui/popover.tsx:43-57`，受 `hideCloseButton` 控制）。该关闭 icon 绝对定位于 `right-4 top-4`，会压在输入框右侧「创建」按钮之上造成遮挡。现状：切换分支 Popover 的 `PopoverContent` 已传入 `hideCloseButton`（`GitPanel.tsx:534`，随主需求提交 749e398 一并落地），故该 icon 实际已不渲染——此 [fix] 条目在代码层面已满足，仅待校验后翻转状态。
+- **fetching 状态布局（追加 [refct]）**：拉取状态块 `GitPanel.tsx:560-568` 以 `<Show when={fetchStatus()==='fetching'||'failed'}>` 渲染，位置夹在「输入框行」（`:535-559`）与「分支列表滚动容器」（`:569-588`，`max-h-64 overflow-auto`）**之间**，且占据正常文档流高度。fetching 结束（状态由 `fetching` → `done`/`idle`）时该块整体消失，下方分支列表随之**上移一行**；若此刻用户正要点击某分支，目标项位置突变 → 误点非期望分支（本 refct 要解决的问题）。
+
 ## 4. 技术实现方案
 
 三项需求围绕「分支切换下拉」收敛，故总体改造落在：**切换分支下拉由 Kobalte Select 重构为 Popover 范式（与合并选择器一致）** + **新增 service 端 `fetch` 与 `createBranch` 能力及对应 API**。
@@ -93,14 +100,14 @@ flowchart TD
 - 列表项点击即触发 `triggerBranchCheckout(branch)`，当前分支项禁用/高亮（对齐合并选择器的 self 处理）。
 - 触发器按钮沿用现有 `GitBranch` 图标 + 当前分支名 + loading（checkout/fetch 时转圈）展示。
 
-### 4.2 需求 2：输入≥3 字符显示「创建」按钮
+### 4.2 需求 2：输入≥2 字符显示「创建」按钮
 
-**决策：** 在分支输入框右侧，当 `branchQuery().trim().length >= 3` 时显示「创建」按钮；点击调用新增的 `createGitBranch(pid, name)`，后端以当前 HEAD 为基、`git checkout -b <name>` 创建并切换，成功后刷新分支状态并关闭 Popover。
+**决策：** 在分支输入框右侧，当 `branchQuery().trim().length >= 1`（超过一个字符）时显示「创建」按钮；点击调用新增的 `createGitBranch(pid, name)`，后端以当前 HEAD 为基、`git checkout -b <name>` 创建并切换，成功后刷新分支状态并关闭 Popover。
 
 **决策说明（可自行判定、不打断用户）：**
 
 - **基点与切换行为**：`git checkout -b` 语义天然「从当前 HEAD 建分支并切换」，与用户「创建分支」心智一致；故创建即切换，复用 checkout 后的收尾逻辑（清空选择、刷新 changes、refetch branches）。
-- **按钮显隐**：仅按「trim 后 ≥3 字符」显示（需求明确）；若输入与某本地分支精确同名，则按钮禁用并提示「分支已存在」（创建必失败，前移为禁用更友好）。
+- **按钮显隐**：仅按「trim 后 ≥2 字符（超过一个字符）」显示（需求明确，追加任务由 ≥3 下调）；若输入与某本地分支精确同名，则按钮禁用并提示「分支已存在」（创建必失败，前移为禁用更友好）。
 - **名称合法性**：非法分支名由 git 负责校验，后端把 `git` stderr 经既有 `gitFail` 透传为 400，前端 inline 展示；后端仅做基础非空/长度与 `check-ref-format` 兜底。
 - 被否决备选：「创建后不切换」——与 `checkout -b` 直觉不符，且用户建新分支多为立即在其上工作。
 
@@ -226,6 +233,52 @@ flowchart TB
 - 🔴 breaking（行为重构）：切换分支块由 Select 改 Popover——交互 DOM 结构变化，`review-controls-pane` 内可能影响依赖该 Select 的测试/选择器（需复核 e2e/组件测试）。
 - 🟡 affected：新增 API/路由/git 函数为纯新增，向后兼容；`gui-mobile` 共享同一 api 文件但不调用新方法，不受影响。
 
+### 4.7 追加任务方案（close icon 校验 + fetching 悬浮底部）
+
+**追加 [fix]：移除过滤框 close icon**
+
+- 决策：保持切换分支 `PopoverContent` 的 `hideCloseButton`（已存在于 `:534`），从根上不渲染右上角关闭 icon，使其不再遮挡「创建」按钮。
+- 决策说明（可自行判定）：`hideCloseButton` 是 `popover.tsx` 既有、受支持的 prop；创建按钮仅存在于切换分支 Popover（合并 Popover 无该按钮），故仅此一处需确认。代码在主提交 749e398 中已落地，execute 阶段仅做静态校验（确认 `hideCloseButton` 在位、无回归），随即把 [fix] 翻转为 [fixed]，不额外改码。
+
+**追加 [refct]：fetching 状态悬浮面板底部**
+
+- 决策：将 fetching 状态块从「输入框与列表之间的文档流位置」移出，改为**绝对定位悬浮在 `PopoverContent` 底部**（`absolute inset-x-0 bottom-0`），不占据文档流高度；并给 `PopoverContent` 加 `relative` 作为定位锚点。
+- 决策说明（可自行判定）：
+  - **为何悬浮而非仅移到列表下方（普通 footer）**：普通 footer 虽也能让列表不再上移（列表锚定在顶部、footer 增删只改变底部），但仍会改变面板整体高度、底部有抖动；用户诉求是「悬浮在面板底部」。绝对定位彻底不占流、出现/消失均零布局位移，最契合诉求且一次根治误点。
+  - **视觉**：悬浮条用 `border-t bg-popover rounded-b-md px-2 py-1 text-xs text-muted-foreground`，与面板圆角/背景一致，读作底部状态栏；内容沿用现有 `Loader2 + t('git.fetching')` 与 `t('git.fetchFailed')`。
+  - **避免遮挡末项分支**：悬浮条仅在 `fetching|failed` 时出现，会覆盖列表底部边缘；给滚动列表容器在该状态下补 `pb-8`（`classList`），使被覆盖的末项可经滚动触达。该 padding 仅加在列表底部、顶部可见项位置不变，增删 padding 不造成顶部项位移，故不引入新的误点。
+  - 被否决备选：保留原「夹在中间」布局仅加动画——仍有高度占用与消失位移，不解决误点根因。
+
+```mermaid
+flowchart LR
+    subgraph BEFORE[改造前：状态夹在中间]
+      B1[输入框行]
+      B2["fetching 状态块<br/>（占文档流高度）"]
+      B3[分支列表]
+      B1 --> B2 --> B3
+    end
+    subgraph AFTER[改造后：状态悬浮底部]
+      A1[输入框行]
+      A2["分支列表<br/>（fetching 时补 pb-8）"]
+      A3>"fetching 悬浮条<br/>absolute bottom-0 不占流"]
+      A1 --> A2
+      A2 -. 覆盖底部边缘 .- A3
+    end
+    BEFORE -->|"状态消失→列表上移→误点"| AFTER
+    classDef fix fill:#fff3bf,stroke:#f08c00,color:#e67700
+    class A3 fix
+```
+
+<details>
+<summary>关键落点（精确层）</summary>
+
+- `PopoverContent`（`GitPanel.tsx:534`）：`class` 由 `w-72 p-0` 改为 `relative w-72 p-0`（新增 `relative`）。
+- 列表滚动容器（`:569`）：`class` 追加状态相关的底部内边距，fetching/failed 时补 `pb-8`（用 `classList` 或条件拼接），其余状态不变。
+- fetching 状态块（`:560-568`）：从输入框与列表之间**移动到 `PopoverContent` 的最后一个子节点**，容器 `class` 改为 `absolute inset-x-0 bottom-0 flex items-center gap-1 border-t bg-popover rounded-b-md px-2 py-1 text-xs text-muted-foreground`；内部 `Show`（fetching/failed 文案）不变。
+- 不改动 i18n、API、service、合并 Popover。
+
+</details>
+
 ## 5. 待确认项
 
 _暂无_
@@ -239,14 +292,24 @@ _暂无_
 - [x] `gui-shared/api/index.ts` 新增 `gitFetch(pid)` 与 `createGitBranch(pid, name)` 两个方法，签名对齐现有 git API（验收：`tsc --noEmit` 通过）
 - [x] i18n（`en.ts`/`zh-CN.ts` 的 `git`）新增 `createBranch`/`creatingBranch`/`branchCreated`/`branchExists`/`fetching`/`fetchFailed`/`fetched` 七个键（验收：两文件键集一致、`tsc --noEmit` 通过）
 - [x] `GitPanel.tsx` 将「切换分支」由 `Select` 重构为 `Popover`+自控过滤列表，列表数据源为本地+远端（新增 `checkoutCandidates`/`filteredCheckoutCandidates` memo），空态保留输入框与 `t('git.noBranches')`（验收：无匹配时面板不消失）
-- [x] `GitPanel.tsx` 输入框 `branchQuery().trim().length >= 3` 时右侧显示「创建」按钮；同名本地分支时禁用并提示 `branchExists`；点击调用 `createGitBranch`，成功后刷新 changes/branches、清空 query、关闭 Popover（验收：输入 3+ 字符出现按钮并可建分支）
+- [x] `GitPanel.tsx` 输入框 `branchQuery().trim().length >= 1` 时右侧显示「创建」按钮；同名本地分支时禁用并提示 `branchExists`；点击调用 `createGitBranch`，成功后刷新 changes/branches、清空 query、关闭 Popover（验收：输入 2+ 字符出现按钮并可建分支）
 - [x] `GitPanel.tsx` 扩展 `triggerBranchCheckout` 支持远端分支目标（直接透传给后端），并在 Popover `onOpenChange(open=true)` 且 `branchFetchedOnce()` 为假时触发 `gitFetch`，设置 `fetchStatus` 信号与守卫，完成后 `refetchBranches()`（验收：展开面板自动 fetch 并刷新出远端分支）
 - [x] 运行 `pnpm run typecheck` 与 `pnpm run build:gui`，修正类型/编译错误（验收：构建通过）
+- [x] 校验切换分支 `PopoverContent` 的 `hideCloseButton` 在位、右上角关闭 icon 不渲染、不遮挡「创建」按钮（验收：`GitPanel.tsx:534` 保留 `hideCloseButton`，追加 [fix] 翻转为 [fixed]）
+- [x] `GitPanel.tsx` 将切换分支 fetching 状态块移动到 `PopoverContent` 末尾并绝对定位悬浮底部：`PopoverContent` 加 `relative`、状态块改 `absolute inset-x-0 bottom-0 border-t bg-popover rounded-b-md`、列表容器 fetching/failed 时补 `pb-8`（验收：fetching 出现/消失时分支列表顶部项不位移）
+- [x] 运行 `pnpm run typecheck` 与 `pnpm run build:gui` 验证追加改动（验收：构建通过）
+- [x] `GitPanel.tsx` 将 `canCreateBranch` 阈值由 `>= 3` 下调为 `>= 1`（超过一个字符即显示「创建」按钮），同步更新注释（验收：`pnpm run typecheck` 通过、输入 2 字符出现按钮）
 
 ## 7. 追加任务
 
-- [open] [fix] 2026-10-22 17:53:28 | 移除分支过滤输入框中的 close icon，它会遮挡“创建”按钮
+- [fixed] [fix] 2026-10-22 17:53:28 | 移除分支过滤输入框中的 close icon，它会遮挡“创建”按钮
   - 描述：移除分支过滤输入框中的 close icon，它会遮挡“创建”按钮
+- [fixed] [refct] 2026-10-22 18:05:42 | “拉取远程分支中...” 元素是否可以悬浮在面板底部，避免元素消失时，用户误点非期望分支
+  - 描述：“拉取远程分支中...” 元素是否可以悬浮在面板底部，避免元素消失时，用户误点非期望分支
+- [fixed] [refct] 2026-10-22 18:16:18 | 分支名称，超过一个字符就显示创建按钮（原来是超过3个字符）
+  - 描述：分支名称，超过一个字符就显示创建按钮（原来是超过3个字符）
+- [fixed] [fix] 2026-10-22 20:15:53 | 展开分支面板 fetch 完成时，整个 git 页面闪烁了一次
+  - 描述：展开分支面板 fetch 完成时，整个 git 页面闪烁了一次
 
 ## 8. 执行记录
 
@@ -256,3 +319,9 @@ _暂无_
 - `src/gui/src/i18n/{en,zh-CN}.ts`：`git` 下新增 7 键；并把 `branchFilterPlaceholder` 文案改为「过滤 / 新建分支」。
 - `src/gui/src/components/GitPanel.tsx`：切换分支块 `Select`→`Popover` 重构；新增 `branchOpen`/`branchFetchedOnce`/`fetchStatus` 信号与 `checkoutCandidates`/`filteredCheckoutCandidates`/`canCreateBranch`/`branchNameExistsLocally` memo；新增 `triggerCreateBranch`/`triggerBranchFetch`，`triggerBranchCheckout` 收尾关闭 Popover；`onOpenChange` 首开自动 fetch（守卫）；输入≥3 字符显示「创建」按钮（同名禁用）；列表含本地+远端、空态保留输入框。移除未使用的 `Select*` 导入。
 - 验证：`pnpm run typecheck` 通过；`pnpm run build:gui` 构建成功。
+- 追加 [fix] close icon：校验切换分支 `PopoverContent`（`GitPanel.tsx:534`）`hideCloseButton` 在位（由 popover.tsx 支持，主提交 749e398 已落地），右上角关闭 icon 不渲染、不遮挡「创建」按钮；无需改码，状态翻转为 [fixed]。
+- 追加 [refct] fetching 悬浮：`GitPanel.tsx` 切换分支 Popover —— `PopoverContent` 加 `relative`；fetching 状态块从「输入框与列表之间」移动至 `PopoverContent` 末尾，改为 `absolute inset-x-0 bottom-0 ... border-t bg-popover rounded-b-md` 悬浮底部、不占文档流；列表滚动容器在 fetching/failed 时 `classList` 补 `pb-8` 使末项可滚动触达。fetching 出现/消失不再位移分支列表顶部项，消除误点。
+- 验证（追加）：`pnpm run typecheck` 通过；`pnpm run build:gui` 构建成功。
+- 追加 [refct] 创建按钮阈值：`GitPanel.tsx` 将 `canCreateBranch` 由 `branchNameTrimmed().length >= 3` 改为 `>= 1`（超过一个字符即显示「创建」按钮），同步更新注释；spec 中需求 2 / 4.2 / 任务清单对应阈值表述由 ≥3 改为 ≥2。
+- 验证（追加 refct）：`pnpm run typecheck` 通过。
+- 收尾：全部任务完成，无待确认项/批注/`[open]`，标记 done。

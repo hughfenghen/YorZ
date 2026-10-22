@@ -1,7 +1,7 @@
 ---
 status: resolved
 active:
-updated_at: '2026-10-22 18:12:00'
+updated_at: '2026-10-22 20:18:30'
 ---
 
 # Debug 活文档 · git-branch-panel-enhancements
@@ -48,3 +48,52 @@ updated_at: '2026-10-22 18:12:00'
 - 修复：共享 `PopoverContent` 新增可选 `hideCloseButton` prop（`<Show when={!local.hideCloseButton}>` 包裹 CloseButton，默认行为不变）；分支 Popover `PopoverContent` 传 `hideCloseButton`，关闭右上角 X。合并 Popover 及其它复用处未动。
 - `git diff 45be4edaad...` 仅剩两文件合法修复（GitPanel.tsx + ui/popover.tsx），无脚手架残留。
 - `pnpm run typecheck` 通过；`pnpm run build:gui` 构建成功。
+
+## Debug 2 · 展开分支面板 fetch 完成时整个 git 页面闪烁一次
+
+- 状态：resolved
+- 快照：55a96287559a3aa68c1089ec0d6120bf15c59391
+- 进入时间：'2026-10-22 20:16:16'
+
+### 2.1 Bug 现象与复现
+
+- 现象：在 spec Review（git）页展开「切换分支」Popover，自动触发 `git fetch`；fetch 完成的一瞬间，整个 git 页面（header + GitPanel）闪烁了一次。
+- 复现路径：进入 `SpecReview` 页（`/projects/:id/specs/:specId/git` 一类，GitPanel 带 specId 上下文）→ 点击分支下拉触发器展开 Popover → `onOpenChange(open=true)` 首开自动 `triggerBranchFetch()` → fetch 完成回调 `await refetchBranches()` → 整页闪一下。
+- 差异观察：独立 GitStatus 页（`GitStatus.tsx`，GitPanel 不被 `<Suspense>` 包裹）不会闪；仅 SpecReview 页（`SpecReview.tsx:32-56` 用 `<Suspense>` 包住 GitPanel）会闪 → 指向 Suspense 重新挂起。
+
+### 2.2 关联链路分析
+
+- `GitPanel.tsx:129-132`：`branchState = createResource(props.projectId, getGitBranches)`。
+- `GitPanel.tsx:398-409` `triggerBranchFetch`：`gitFetch` 成功后 `await refetchBranches()`（同源 refetch，非换 key）。
+- `SpecReview.tsx:30-57`：`<section><Suspense fallback=loading>…<GitPanel/>…</Suspense></section>` —— GitPanel 整体在 Suspense 内。
+- GitPanel 内对 `branchState()` 的受跟踪读取（`checkoutCandidates`/`mergeCandidates` memo、触发器 `branchState()?.current` 等）都位于该 Suspense 边界内。
+
+### 2.3 Debug 基线
+
+- 快照 SHA：`55a96287559a3aa68c1089ec0d6120bf15c59391`（`git stash create`）；进入时间 `2026-10-22 20:16:16`。
+- 退出闸门基准：`git diff 55a96287559a3aa68c1089ec0d6120bf15c59391`。
+
+### 2.4 假设看板
+
+- [坐实] 根因 = Suspense 内 `createResource` 的 refetch 会重新挂起 Suspense，整页瞬显 fallback 造成闪烁。
+  - 可证伪判据：若成立，则 refetch 期间 Suspense 计数器被 `increment` → 显示 fallback；在 Transition 下执行则不 increment、不闪。
+  - 硬证据（Solid 源码 `node_modules/solid-js/dist/solid.cjs@1.9.13`）：
+    - `load()`（:338-378）refetch 时 `pr = p`（pending promise），`setState(resolved ? 'refreshing' : 'pending')` 后 `trigger()` 重算受跟踪读取。
+    - `read()`（:320-337）受 Suspense `c` 跟踪的读取：`if (pr) { if (c.resolved && Transition && loadedUnderTransition) Transition.promises.add(pr); else if(!contexts.has(c)){ c.increment(); contexts.add(c) } }` —— 非 Transition 情况下走 `c.increment()` → Suspense 显示 fallback → 整页闪；Transition 下改走 `Transition.promises.add(pr)` → 不挂起、不闪。
+  - 旁证：本仓 `SpecDetail.tsx:140-145` 明确注释「Refresh inside a transition so the resource refetch does NOT re-suspend <Suspense>」，用 `startTransition` 规避同一机制。
+- [排除] 「git fetch 触发工作区 changes 的 SSE 推送导致列表重渲染」。
+  - 依据：`events-hub.ts:76-98` changes watcher 轮询 `listChanges`（工作区状态），只在签名变化才推；`git fetch --prune` 只动 remote-tracking refs，不改工作区状态 → 不会推送。且 `watcher.ts` 只监听 spec.md，不监听 .git。
+
+### 2.5 证据
+
+- 见 2.4：Solid 1.9.13 `read()`/`load()` 源码路径 + SpecDetail 旁证。链路唯一收敛：`triggerBranchFetch` 的 `refetchBranches()` 在 SpecReview 的 Suspense 内 refetch → 重新挂起 → 整页闪。
+
+### 2.6 脚手架清单
+
+- 无临时脚手架（纯修复：为 refetch 包裹 `startTransition`）。
+
+### 2.7 收尾核对
+
+- 修复：`GitPanel.tsx` 从 solid-js 引入 `startTransition`；将 `refetchBranches()` 的调用（`triggerBranchFetch` 等）改为 `await startTransition(() => refetchBranches())`，使 refetch 在 Transition 下执行，Suspense 不再重新挂起 → 消除整页闪烁。
+- 退出闸门：`git diff 55a96287559a3aa68c1089ec0d6120bf15c59391` 仅剩 GitPanel.tsx 合法修复，无脚手架残留。
+- 验证：`pnpm run typecheck`、`pnpm run build:gui` 通过。
