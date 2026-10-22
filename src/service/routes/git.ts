@@ -6,6 +6,8 @@ import {
   discard as gitDiscard,
   listBranches,
   checkoutBranch,
+  createBranch,
+  fetchRemotes,
   mergeBranch,
   push as gitPush,
   pull as gitPull,
@@ -116,6 +118,34 @@ export function createGitRoutes(resolveProject: ResolveProject): Hono {
     try {
       const result = await checkoutBranch(p.path, branch)
       return c.json({ ok: true, ...result })
+    } catch (err) {
+      if (err instanceof GitError) return gitFail(c, err)
+      throw err
+    }
+  })
+
+  app.post('/projects/:projectId/git/create-branch', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    const body = await readBody(c)
+    if (!body) return c.json({ error: 'invalid JSON body' }, 400)
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
+    if (!name) return c.json({ error: 'name must not be empty' }, 400)
+    try {
+      const result = await createBranch(p.path, name)
+      return c.json({ ok: true, ...result })
+    } catch (err) {
+      if (err instanceof GitError) return gitFail(c, err)
+      throw err
+    }
+  })
+
+  app.post('/projects/:projectId/git/fetch', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    try {
+      const result = await fetchRemotes(p.path)
+      return c.json(result)
     } catch (err) {
       if (err instanceof GitError) return gitFail(c, err)
       throw err

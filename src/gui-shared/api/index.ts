@@ -471,6 +471,18 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ branch }),
     }),
+  createGitBranch: (pid: string, name: string) =>
+    request<{ ok: true; current: string }>(`${projectBase(pid)}/git/create-branch`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }),
+  gitFetch: (pid: string) =>
+    request<{ ok: true }>(`${projectBase(pid)}/git/fetch`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    }),
   mergeGitBranch: (pid: string, branch: string) =>
     request<{ ok: true; current: string; merged: string; alreadyUpToDate: boolean }>(
       `${projectBase(pid)}/git/merge`,

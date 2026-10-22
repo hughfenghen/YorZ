@@ -17,7 +17,6 @@ import { Button } from './ui/button.jsx'
 import { AutoResizeTextarea } from './ui/textarea.jsx'
 import { Input } from './ui/input.jsx'
 import { Checkbox, CheckboxControl } from './ui/checkbox.jsx'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select.jsx'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.jsx'
 import {
   RadioGroup,
@@ -83,6 +82,13 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
   const [mergeQuery, setMergeQuery] = createSignal('')
   const [mergeTarget, setMergeTarget] = createSignal<string | null>(null)
   const [mergeOpen, setMergeOpen] = createSignal(false)
+  // Switch-branch picker (Popover) state. `branchFetchedOnce` guards the
+  // auto-fetch so re-opening the panel never re-hits the network.
+  const [branchOpen, setBranchOpen] = createSignal(false)
+  const [branchFetchedOnce, setBranchFetchedOnce] = createSignal(false)
+  const [fetchStatus, setFetchStatus] = createSignal<'idle' | 'fetching' | 'done' | 'failed'>(
+    'idle',
+  )
 
   const [busy, setBusy] = createSignal<GitOpsAction | null>(null)
   const [error, setError] = createSignal<string | null>(null)
@@ -125,12 +131,28 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
     (pid) => api.getGitBranches(pid),
   )
 
-  const filteredBranches = createMemo(() => {
-    const query = branchQuery().trim().toLowerCase()
-    const branches = branchState()?.branches ?? []
-    if (!query) return branches
-    return branches.filter((branch) => branch.toLowerCase().includes(query))
+  // Switch-branch targets span local + remote-tracking branches: picking a
+  // remote (`origin/x`) materializes a local tracking branch on checkout.
+  // Locals first so the common case stays at the top.
+  const checkoutCandidates = createMemo(() => {
+    const state = branchState()
+    return [...(state?.branches ?? []), ...(state?.remoteBranches ?? [])]
   })
+
+  const filteredCheckoutCandidates = createMemo(() => {
+    const query = branchQuery().trim().toLowerCase()
+    const candidates = checkoutCandidates()
+    if (!query) return candidates
+    return candidates.filter((branch) => branch.toLowerCase().includes(query))
+  })
+
+  const branchNameTrimmed = createMemo(() => branchQuery().trim())
+  // The create affordance appears only once the name is substantial enough to
+  // be a deliberate branch name (≥3 chars), per the spec.
+  const canCreateBranch = createMemo(() => branchNameTrimmed().length >= 3)
+  const branchNameExistsLocally = createMemo(() =>
+    (branchState()?.branches ?? []).includes(branchNameTrimmed()),
+  )
 
   // Merge sources span local + remote-tracking branches; locals come first so
   // the common case stays at the top of the list.
@@ -334,6 +356,7 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
       setSelectedPaths(new Set<string>())
       setActivePath(null)
       setBranchQuery('')
+      setBranchOpen(false)
       const changesResult = await api.getProjectChanges(pid)
       setChanges(changesResult.changes)
       await refetchBranches()
@@ -341,6 +364,49 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
       setError((err as Error).message)
     } finally {
       setDirectAction(null)
+    }
+  }
+
+  /** Create a branch off the current HEAD and switch to it (checkout -b). */
+  async function triggerCreateBranch(): Promise<void> {
+    const pid = props.projectId()
+    const name = branchQuery().trim()
+    if (!pid || !name || isAnyRunning()) return
+
+    setError(null)
+    setDirectAction('checkout')
+    try {
+      const res = await api.createGitBranch(pid, name)
+      toast.success(t('git.branchCreated', { branch: res.current }))
+      setSelectedPaths(new Set<string>())
+      setActivePath(null)
+      setBranchQuery('')
+      setBranchOpen(false)
+      const changesResult = await api.getProjectChanges(pid)
+      setChanges(changesResult.changes)
+      await refetchBranches()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setDirectAction(null)
+    }
+  }
+
+  /**
+   * Fetch remotes so the switch list surfaces new remote branches. A failure
+   * (offline / no remote) is non-fatal: it shows an inline status, never the
+   * prominent error line, and never blocks the panel.
+   */
+  async function triggerBranchFetch(): Promise<void> {
+    const pid = props.projectId()
+    if (!pid || fetchStatus() === 'fetching') return
+    setFetchStatus('fetching')
+    try {
+      await api.gitFetch(pid)
+      await refetchBranches()
+      setFetchStatus('done')
+    } catch {
+      setFetchStatus('failed')
     }
   }
 
@@ -422,52 +488,106 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
         class="flex min-h-0 min-w-0 flex-1 flex-col gap-3"
       >
         <div class="flex flex-wrap items-center gap-2">
-          <Select<string>
-            options={filteredBranches()}
-            value={branchState()?.current ?? null}
-            onChange={(branch) => void triggerBranchCheckout(branch)}
-            optionValue={(branch) => branch}
-            optionTextValue={(branch) => branch}
-            disabled={isAnyRunning() || branchState.loading || Boolean(branchState.error)}
-            placeholder={t('git.branchPlaceholder')}
-            itemComponent={(itemProps) => (
-              <SelectItem item={itemProps.item}>
-                <span class="truncate font-mono text-sm">{itemProps.item.rawValue}</span>
-              </SelectItem>
-            )}
+          {/* Deliberately a Popover, not a Kobalte Select: a nested filter box
+              closes a Select on the first keystroke, and an empty option list
+              collapses it — both break requirement 1 (keep the panel + empty
+              state visible while typing). */}
+          <Popover
+            open={branchOpen()}
+            onOpenChange={(open) => {
+              setBranchOpen(open)
+              if (open) {
+                // Auto-fetch once per panel lifetime so remote branches surface
+                // without re-hitting the network on every open.
+                if (!branchFetchedOnce()) {
+                  setBranchFetchedOnce(true)
+                  void triggerBranchFetch()
+                }
+              } else {
+                setBranchQuery('')
+              }
+            }}
           >
-            <SelectTrigger
-              class="h-8 w-56 max-w-full gap-2 px-2 text-sm"
+            <PopoverTrigger
+              as={Button}
+              variant="outline"
+              size="sm"
+              class="h-8 w-56 max-w-full justify-start gap-2 px-2 text-sm font-mono"
+              disabled={isAnyRunning() || branchState.loading || Boolean(branchState.error)}
               title={t('git.branchSelect')}
               aria-label={t('git.branchSelect')}
             >
               <Show
-                when={!branchState.loading && directAction() !== 'checkout'}
+                when={
+                  !branchState.loading &&
+                  directAction() !== 'checkout' &&
+                  fetchStatus() !== 'fetching'
+                }
                 fallback={<Loader2 class="h-3.5 w-3.5 shrink-0 animate-spin" />}
               >
                 <GitBranch class="h-3.5 w-3.5 shrink-0" />
               </Show>
-              <span class="min-w-0 flex-1 truncate text-left font-mono">
-                <SelectValue<string>>
-                  {(state) => state.selectedOption() ?? t('git.branchPlaceholder')}
-                </SelectValue>
+              <span class="min-w-0 flex-1 truncate text-left">
+                {branchState()?.current ?? t('git.branchPlaceholder')}
               </span>
-            </SelectTrigger>
-            <SelectContent class="w-64">
-              <div class="border-b p-1">
+            </PopoverTrigger>
+            <PopoverContent class="w-72 p-0" hideCloseButton>
+              <div class="flex items-center gap-1 border-b p-1">
                 <Input
                   value={branchQuery()}
                   onInput={(e) => setBranchQuery(e.currentTarget.value)}
-                  onKeyDown={(e) => e.stopPropagation()}
                   placeholder={t('git.branchFilterPlaceholder')}
-                  class="h-8 text-sm"
+                  class="h-8 flex-1 text-sm"
                 />
+                <Show when={canCreateBranch()}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    class="h-8 shrink-0 px-2 text-xs"
+                    disabled={isAnyRunning() || branchNameExistsLocally()}
+                    title={branchNameExistsLocally() ? t('git.branchExists') : undefined}
+                    onClick={() => void triggerCreateBranch()}
+                  >
+                    <Show when={directAction() === 'checkout'}>
+                      <Loader2 class="mr-1 h-3 w-3 animate-spin" />
+                    </Show>
+                    {directAction() === 'checkout'
+                      ? t('git.creatingBranch')
+                      : t('git.createBranch')}
+                  </Button>
+                </Show>
               </div>
-              <Show when={!branchState.loading && filteredBranches().length === 0}>
-                <div class="px-2 py-2 text-sm text-muted-foreground">{t('git.noBranches')}</div>
+              <Show when={fetchStatus() === 'fetching' || fetchStatus() === 'failed'}>
+                <div class="flex items-center gap-1 border-b px-2 py-1 text-xs text-muted-foreground">
+                  <Show when={fetchStatus() === 'fetching'}>
+                    <Loader2 class="h-3 w-3 animate-spin" />
+                    {t('git.fetching')}
+                  </Show>
+                  <Show when={fetchStatus() === 'failed'}>{t('git.fetchFailed')}</Show>
+                </div>
               </Show>
-            </SelectContent>
-          </Select>
+              <div class="max-h-64 overflow-auto p-1">
+                <For each={filteredCheckoutCandidates()}>
+                  {(branch) => (
+                    <button
+                      type="button"
+                      class={`flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left font-mono text-sm disabled:opacity-50 ${
+                        branch === branchState()?.current ? 'bg-accent' : ''
+                      }`}
+                      disabled={branch === branchState()?.current || isAnyRunning()}
+                      title={branch}
+                      onClick={() => void triggerBranchCheckout(branch)}
+                    >
+                      <span class="min-w-0 flex-1 truncate">{branch}</span>
+                    </button>
+                  )}
+                </For>
+                <Show when={!branchState.loading && filteredCheckoutCandidates().length === 0}>
+                  <div class="px-2 py-2 text-sm text-muted-foreground">{t('git.noBranches')}</div>
+                </Show>
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button
             variant="default"
             size="sm"

@@ -415,16 +415,80 @@ export async function checkoutBranch(cwd: string, branch: string): Promise<{ cur
   const target = branch?.trim() ?? ''
   if (!target) throw new GitError('invalid_branch', 'branch must not be empty')
   const state = await listBranches(cwd)
-  if (!state.branches.includes(target)) {
-    throw new GitError('invalid_branch', `unknown local branch: ${target}`)
+  const isLocal = state.branches.includes(target)
+  const isRemote = state.remoteBranches.includes(target)
+  if (!isLocal && !isRemote) {
+    throw new GitError('invalid_branch', `unknown branch: ${target}`)
   }
   if (state.current === target) return { current: state.current }
 
-  const res = await runGitRaw(cwd, ['checkout', target])
+  // A remote-tracking ref (`origin/x`) is checked out by materializing a local
+  // tracking branch: strip the remote prefix to get the local name; if that
+  // local branch already exists just switch to it, otherwise create it tracking
+  // the remote.
+  let args: string[]
+  if (isLocal) {
+    args = ['checkout', target]
+  } else {
+    const localName = target.replace(/^[^/]+\//, '')
+    if (!localName) {
+      throw new GitError('invalid_branch', `cannot derive local name from: ${target}`)
+    }
+    if (state.current === localName) return { current: state.current }
+    args = state.branches.includes(localName)
+      ? ['checkout', localName]
+      : ['checkout', '-b', localName, '--track', target]
+  }
+
+  const res = await runGitRaw(cwd, args)
   if (res.code !== 0) {
     throw new GitError('checkout_failed', res.stderr.trim() || 'git checkout failed', res.stderr)
   }
   return { current: await currentBranch(cwd) }
+}
+
+/**
+ * Create a new local branch from the current HEAD and switch to it. `checkout -b`
+ * matches the user's "create a branch" mental model (branch off HEAD + switch).
+ */
+export async function createBranch(cwd: string, name: string): Promise<{ current: string }> {
+  const target = name?.trim() ?? ''
+  if (!target) throw new GitError('invalid_branch', 'branch name must not be empty')
+  // Defensive syntax check; git still has the final say on name validity.
+  const fmt = await runGitRaw(cwd, ['check-ref-format', '--branch', target])
+  if (fmt.code !== 0) {
+    throw new GitError(
+      'invalid_branch',
+      fmt.stderr.trim() || `invalid branch name: ${target}`,
+      fmt.stderr,
+    )
+  }
+  const state = await listBranches(cwd)
+  if (state.branches.includes(target)) {
+    throw new GitError('branch_exists', `branch already exists: ${target}`)
+  }
+  const res = await runGitRaw(cwd, ['checkout', '-b', target])
+  if (res.code !== 0) {
+    throw new GitError(
+      'create_branch_failed',
+      res.stderr.trim() || 'git checkout -b failed',
+      res.stderr,
+    )
+  }
+  return { current: await currentBranch(cwd) }
+}
+
+/**
+ * Fetch all remotes with `--prune` so deleted remote branches stop showing up.
+ * A non-zero exit (offline, auth, no remote config) surfaces as a GitError the
+ * route maps to 400; callers treat it as non-fatal and show it inline.
+ */
+export async function fetchRemotes(cwd: string): Promise<{ ok: true }> {
+  const res = await runGitRaw(cwd, ['fetch', '--prune'])
+  if (res.code !== 0) {
+    throw new GitError('fetch_failed', res.stderr.trim() || 'git fetch failed', res.stderr)
+  }
+  return { ok: true }
 }
 
 async function conflictFiles(cwd: string): Promise<string[]> {
