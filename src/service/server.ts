@@ -134,7 +134,12 @@ export function createApp(opts: CreateAppOptions): Hono {
   if (opts.systemNotifications) {
     api.route('/', createSystemNotificationsRoutes(opts.systemNotifications))
   }
-  api.route('/', createGlobalConfigRoutes(opts.registry.configPath()))
+  api.route(
+    '/',
+    createGlobalConfigRoutes(opts.registry.configPath(), undefined, () =>
+      opts.registry.refreshAgentConfigs(),
+    ),
+  )
   api.route('/', createPushRoutes(opts.registry.configPath()))
   api.route('/', createPairingRoutes(authStore))
   api.route('/', createProjectConfigRoutes(opts.registry))

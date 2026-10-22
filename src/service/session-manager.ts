@@ -5,6 +5,8 @@ import type {
   AgentDescriptor,
   AgentEvent,
   AgentKind,
+  AgentModelCatalog,
+  AgentRuntimeConfig,
   AgentSession,
   AgentUsageStatus,
   NormalizedMessage,
@@ -121,15 +123,36 @@ export class SessionManager {
   private readonly inFlight = new Set<Promise<void>>()
   private readonly statusEmitter = new EventEmitter()
   private disposing = false
+  private defaultKind: AgentKind
+  private defaultRuntime: AgentRuntimeConfig
 
   constructor(
     private readonly cwd: string,
-    private readonly defaultKind: AgentKind,
+    defaultAgent: AgentKind | ({ kind: AgentKind } & AgentRuntimeConfig),
     private readonly store: SessionStore,
     private readonly opts: SessionManagerOptions = {},
   ) {
+    this.defaultKind = typeof defaultAgent === 'string' ? defaultAgent : defaultAgent.kind
+    this.defaultRuntime =
+      typeof defaultAgent === 'string'
+        ? {}
+        : {
+            ...(defaultAgent.model ? { model: defaultAgent.model } : {}),
+            ...(defaultAgent.reasoningEffort
+              ? { reasoningEffort: defaultAgent.reasoningEffort }
+              : {}),
+          }
     this.adapters = new AdapterRegistry(cwd, opts.globalConfigPath)
     this.statusEmitter.setMaxListeners(0)
+  }
+
+  /** Apply a freshly saved global/project default without tearing down running turns. */
+  updateDefaultAgent(agent: { kind: AgentKind } & AgentRuntimeConfig): void {
+    this.defaultKind = agent.kind
+    this.defaultRuntime = {
+      ...(agent.model ? { model: agent.model } : {}),
+      ...(agent.reasoningEffort ? { reasoningEffort: agent.reasoningEffort } : {}),
+    }
   }
 
   private emitterFor(sid: string): EventEmitter {
@@ -149,7 +172,8 @@ export class SessionManager {
   ): Promise<{ sessionId: string; kind: AgentKind }> {
     const k = kind ?? this.defaultKind
     const adapter = await this.adapters.get(k)
-    const session = await adapter.createSession(title ? { title } : undefined)
+    const runtime = k === this.defaultKind ? this.defaultRuntime : {}
+    const session = await adapter.createSession({ ...(title ? { title } : {}), ...runtime })
     // Codex has no id until the first turn: assign a provisional id and
     // reconcile once `session-started` surfaces the real thread id.
     const sessionId = session.id || randomUUID()
@@ -222,6 +246,10 @@ export class SessionManager {
   /** Builtin + external agent descriptors (for the GUI dropdown / route). */
   async listAgentDescriptors(): Promise<AgentDescriptor[]> {
     return this.adapters.listDescriptors()
+  }
+
+  async listAgentModels(kind?: AgentKind): Promise<AgentModelCatalog> {
+    return this.adapters.listModels(kind ?? this.defaultKind)
   }
 
   async listSessions(): Promise<SessionInfo[]> {
@@ -391,7 +419,10 @@ export class SessionManager {
     if (existing) return existing
     const kind = (await this.store.get(sid))?.kind ?? this.defaultKind
     const adapter = await this.adapters.get(kind)
-    const session = await adapter.resumeSession(sid)
+    const session = await adapter.resumeSession(
+      sid,
+      kind === this.defaultKind ? this.defaultRuntime : undefined,
+    )
     const ls: LiveSession = { kind, session }
     this.live.set(sid, ls)
     // dispose 可能与 resumeSession 并发；新会话一建立就中止，避免漏掉占用目录的进程。

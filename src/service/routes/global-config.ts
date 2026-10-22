@@ -37,6 +37,7 @@ interface PutBody {
 export function createGlobalConfigRoutes(
   globalConfigPath?: string,
   powerController: PowerInhibitController = getPowerInhibitController(globalConfigPath),
+  onAgentConfigChange?: () => Promise<void>,
 ): Hono {
   const app = new Hono()
 
@@ -47,6 +48,15 @@ export function createGlobalConfigRoutes(
     const registry = new AdapterRegistry(process.cwd(), globalConfigPath)
     try {
       return c.json(await registry.listDescriptors())
+    } finally {
+      await registry.dispose().catch(() => {})
+    }
+  })
+
+  app.get('/agents/:agentId/models', async (c) => {
+    const registry = new AdapterRegistry(process.cwd(), globalConfigPath)
+    try {
+      return c.json(await registry.listModels(c.req.param('agentId')))
     } finally {
       await registry.dispose().catch(() => {})
     }
@@ -75,6 +85,7 @@ export function createGlobalConfigRoutes(
     if ('error' in parsed) return c.json({ error: parsed.error }, 400)
 
     const cfg = await loadGlobalConfig(globalConfigPath)
+    const agentChanged = JSON.stringify(cfg.agent) !== JSON.stringify(parsed.agent)
     cfg.agent = parsed.agent
     cfg.notifications = parsed.notifications
     cfg.shortcuts = parsed.shortcuts
@@ -82,6 +93,7 @@ export function createGlobalConfigRoutes(
     cfg.appearance = parsed.appearance
     cfg.customInstructions = parsed.customInstructions
     await saveGlobalConfig(cfg, globalConfigPath)
+    if (agentChanged) await onAgentConfigChange?.()
     await powerController.refresh()
     return c.json({
       ok: true,
@@ -110,11 +122,13 @@ function parseBody(value: unknown): PutBody | { error: string } {
   // `defaultKind` is an open string now (builtin id or a global customAgents id);
   // unknown ids resolve via the registry's claude fallback. Only require a
   // non-empty string here.
-  const defaultKind =
-    typeof agentObj.defaultKind === 'string' ? agentObj.defaultKind.trim() : ''
+  const defaultKind = typeof agentObj.defaultKind === 'string' ? agentObj.defaultKind.trim() : ''
   if (!defaultKind) {
     return { error: 'agent.defaultKind must be a non-empty string' }
   }
+  const model = typeof agentObj.model === 'string' ? agentObj.model.trim() : ''
+  const reasoningEffort =
+    typeof agentObj.reasoningEffort === 'string' ? agentObj.reasoningEffort.trim() : ''
   const notifications = obj.notifications
   if (!notifications || typeof notifications !== 'object') {
     return { error: 'notifications must be an object' }
@@ -180,7 +194,11 @@ function parseBody(value: unknown): PutBody | { error: string } {
   const customInstructions = parseCustomInstructions(obj.customInstructions)
   if ('error' in customInstructions) return customInstructions
   return {
-    agent: { defaultKind },
+    agent: {
+      defaultKind,
+      ...(model ? { model } : {}),
+      ...(reasoningEffort ? { reasoningEffort } : {}),
+    },
     notifications: {
       sessionEnd: { banner: s.banner, sound: s.sound },
       push: { enabled: pushEnabled },

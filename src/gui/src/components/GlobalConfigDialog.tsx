@@ -7,7 +7,7 @@ import {
   onCleanup,
   type Component,
 } from 'solid-js'
-import { api, type AgentDescriptor, type GlobalConfig } from '../lib/api.js'
+import { api, type AgentDescriptor, type AgentModelCatalog, type GlobalConfig } from '../lib/api.js'
 import { DEFAULT_GLOBAL_CONFIG, globalConfig, saveGlobalConfig } from '../lib/global-config.js'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog.jsx'
 import { Button } from './ui/button.jsx'
@@ -20,6 +20,7 @@ import {
   RadioGroupItemLabel,
   RadioGroupLabel,
 } from './ui/radio-group.jsx'
+import { SettingsSelect } from './SettingsSelect.jsx'
 import {
   DEFAULT_SHORTCUTS,
   SHORTCUT_ACTIONS,
@@ -48,6 +49,13 @@ const BUILTIN_LABEL_KEY: Record<string, string> = {
 export const GlobalConfigDialog: Component<Props> = (props) => {
   const [agentDefault, setAgentDefault] = createSignal<string>('claude')
   const [agents, setAgents] = createSignal<AgentDescriptor[]>([])
+  const [model, setModel] = createSignal('')
+  const [reasoningEffort, setReasoningEffort] = createSignal('')
+  const [catalog, setCatalog] = createSignal<AgentModelCatalog>({
+    models: [],
+    defaultReasoningEfforts: [],
+  })
+  const [catalogLoading, setCatalogLoading] = createSignal(false)
   const [banner, setBanner] = createSignal(false)
   const [sound, setSound] = createSignal(false)
   const [powerMode, setPowerMode] = createSignal<PowerInhibitMode>('system-default')
@@ -56,6 +64,7 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
   const [loading, setLoading] = createSignal(false)
   const [saveStatus, setSaveStatus] = createSignal<'idle' | 'saving' | 'saved'>('idle')
   const [error, setError] = createSignal<string | null>(null)
+  let catalogRequest = 0
   const conflicts = createMemo(() => new Set(findShortcutConflicts(shortcuts())))
   let saveStatusTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -74,8 +83,9 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
           api.getGlobalConfig(),
           api.listGlobalAgents().catch(() => [] as AgentDescriptor[]),
         ])
-        setAgents(descriptors)
         applyConfig(cfg)
+        setAgents(descriptors)
+        await loadCatalog(cfg.agent.defaultKind)
       } catch (err) {
         setError((err as Error).message)
         applyConfig(DEFAULT_GLOBAL_CONFIG)
@@ -87,6 +97,8 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
 
   function applyConfig(cfg: GlobalConfig): void {
     setAgentDefault(cfg.agent.defaultKind)
+    setModel(cfg.agent.model ?? '')
+    setReasoningEffort(cfg.agent.reasoningEffort ?? '')
     setBanner(Boolean(cfg.notifications.sessionEnd.banner))
     setSound(Boolean(cfg.notifications.sessionEnd.sound))
     setPowerMode(cfg.power?.inhibitWhenRunning ?? 'system-default')
@@ -132,9 +144,15 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
     clearSaveStatusTimer()
     setSaveStatus('saving')
     try {
+      const nextModel = patch.agent ? patch.agent.model : model() || undefined
+      const nextReasoning = patch.agent
+        ? patch.agent.reasoningEffort
+        : reasoningEffort() || undefined
       await saveGlobalConfig({
         agent: {
           defaultKind: patch.agent?.defaultKind ?? agentDefault(),
+          ...(nextModel ? { model: nextModel } : {}),
+          ...(nextReasoning ? { reasoningEffort: nextReasoning } : {}),
         },
         notifications: {
           sessionEnd: {
@@ -203,7 +221,67 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
 
   function updateAgentDefault(kind: string): void {
     setAgentDefault(kind)
+    setModel('')
+    setReasoningEffort('')
+    void loadCatalog(kind)
     void persistPatch({ agent: { defaultKind: kind } })
+  }
+
+  function updateModel(value: string): void {
+    setModel(value)
+    setReasoningEffort('')
+    void persistPatch({
+      agent: { defaultKind: agentDefault(), ...(value ? { model: value } : {}) },
+    })
+  }
+
+  function updateReasoningEffort(value: string): void {
+    setReasoningEffort(value)
+    void persistPatch({
+      agent: {
+        defaultKind: agentDefault(),
+        ...(model() ? { model: model() } : {}),
+        ...(value ? { reasoningEffort: value } : {}),
+      },
+    })
+  }
+
+  async function loadCatalog(kind: string): Promise<void> {
+    const request = ++catalogRequest
+    setCatalogLoading(true)
+    try {
+      const next = await api.listGlobalAgentModels(kind)
+      if (request === catalogRequest) setCatalog(next)
+    } catch {
+      if (request === catalogRequest) setCatalog({ models: [], defaultReasoningEfforts: [] })
+    } finally {
+      if (request === catalogRequest) setCatalogLoading(false)
+    }
+  }
+
+  const modelOptions = () => {
+    const options = [
+      { value: '', label: t('globalConfig.agentDefaultOption') },
+      ...catalog().models.map((item) => ({ value: item.id, label: item.displayName })),
+    ]
+    if (model() && !options.some((item) => item.value === model())) {
+      options.push({ value: model(), label: model() })
+    }
+    return options
+  }
+
+  const reasoningOptions = () => {
+    const choices = model()
+      ? (catalog().models.find((item) => item.id === model())?.reasoningEfforts ?? [])
+      : catalog().defaultReasoningEfforts
+    const options = [
+      { value: '', label: t('globalConfig.agentDefaultOption') },
+      ...choices.map((item) => ({ value: item.id, label: item.displayName })),
+    ]
+    if (reasoningEffort() && !options.some((item) => item.value === reasoningEffort())) {
+      options.push({ value: reasoningEffort(), label: reasoningEffort() })
+    }
+    return options
   }
 
   function updateBanner(value: boolean): void {
@@ -252,26 +330,28 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
           fallback={<p class="text-muted-foreground">{t('common.loading')}</p>}
         >
           <div class="flex flex-col gap-4">
-            <RadioGroup
-              class="m-0 flex flex-wrap gap-2 border-0 p-0"
-              value={agentDefault()}
-              onChange={(v) => updateAgentDefault(v)}
-            >
-              <RadioGroupLabel class="mb-1.5 w-full font-medium">
-                {t('globalConfig.agentDefault')}
-              </RadioGroupLabel>
-              <For each={agentOptions()}>
-                {(kind) => (
-                  <RadioGroupItem value={kind} class="flex items-center gap-1.5">
-                    <RadioGroupItemInput />
-                    <RadioGroupItemControl />
-                    <RadioGroupItemLabel class="cursor-pointer">
-                      {agentLabel(kind)}
-                    </RadioGroupItemLabel>
-                  </RadioGroupItem>
-                )}
-              </For>
-            </RadioGroup>
+            <fieldset class="m-0 grid gap-3 border-0 p-0 sm:grid-cols-3">
+              <SettingsSelect
+                label={t('globalConfig.agentDefault')}
+                value={agentDefault()}
+                options={agentOptions().map((kind) => ({ value: kind, label: agentLabel(kind) }))}
+                onChange={updateAgentDefault}
+              />
+              <SettingsSelect
+                label={t('globalConfig.model')}
+                value={model()}
+                options={modelOptions()}
+                disabled={catalogLoading() || modelOptions().length <= 1}
+                onChange={updateModel}
+              />
+              <SettingsSelect
+                label={t('globalConfig.reasoningEffort')}
+                value={reasoningEffort()}
+                options={reasoningOptions()}
+                disabled={catalogLoading() || reasoningOptions().length <= 1}
+                onChange={updateReasoningEffort}
+              />
+            </fieldset>
 
             <fieldset class="m-0 flex flex-col gap-3 border-0 p-0">
               <legend class="font-medium">{t('globalConfig.sessionEnd')}</legend>

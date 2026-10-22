@@ -6,6 +6,7 @@ import {
   SessionManager as PiSessionManager,
   type AgentSession as PiAgentSession,
   type AgentSessionEvent,
+  type CreateAgentSessionOptions,
   type SessionEntry,
   type SessionInfo as PiSessionInfo,
 } from '@earendil-works/pi-coding-agent'
@@ -16,6 +17,8 @@ import { PhaseAccumulator, isSpecWrite } from './phase-usage.js'
 import type {
   AgentDescriptor,
   AgentEvent,
+  AgentModelCatalog,
+  AgentRuntimeConfig,
   AgentSdkAdapter,
   AgentSession,
   Capabilities,
@@ -53,6 +56,14 @@ interface PiAdapterOptions {
   agentDir?: string
   /** Session JSONL dir. Defaults to `<agentDir>/sessions/<encoded-cwd>/`. */
   sessionDir?: string
+}
+
+const PI_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+
+function isPiThinkingLevel(
+  value: string | undefined,
+): value is NonNullable<CreateAgentSessionOptions['thinkingLevel']> {
+  return PI_THINKING_LEVELS.some((item) => item === value)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -173,6 +184,7 @@ class PiSession implements AgentSession {
     private readonly cwd: string,
     private readonly isNew: boolean,
     private readonly adapter: PiAdapter,
+    private readonly runtime: AgentRuntimeConfig = {},
   ) {}
 
   /**
@@ -352,11 +364,19 @@ class PiSession implements AgentSession {
         manager = PiSessionManager.create(this.cwd, this.adapter.sessionDirOption)
       }
     }
+    const modelRuntime = await this.adapter.ensureRuntime()
+    const model = this.runtime.model
+      ? this.adapter.resolveModel(modelRuntime, this.runtime.model)
+      : undefined
     const { session } = await createAgentSession({
       cwd: this.cwd,
       agentDir: this.adapter.agentDirOption,
-      modelRuntime: await this.adapter.ensureRuntime(),
+      modelRuntime,
       sessionManager: manager,
+      ...(model ? { model } : {}),
+      ...(isPiThinkingLevel(this.runtime.reasoningEffort)
+        ? { thinkingLevel: this.runtime.reasoningEffort }
+        : {}),
     })
     return { session, resumeError }
   }
@@ -409,12 +429,33 @@ export class PiAdapter implements AgentSdkAdapter {
     return this.runtime
   }
 
-  async createSession(): Promise<AgentSession> {
-    return new PiSession(randomUUID(), this.cwd, true, this)
+  resolveModel(runtime: ModelRuntime, id: string): ReturnType<ModelRuntime['getModel']> {
+    const slash = id.indexOf('/')
+    if (slash <= 0 || slash === id.length - 1) return undefined
+    return runtime.getModel(id.slice(0, slash), id.slice(slash + 1))
   }
 
-  async resumeSession(id: string): Promise<AgentSession> {
-    return new PiSession(id, this.cwd, false, this)
+  async createSession(opts?: { title?: string } & AgentRuntimeConfig): Promise<AgentSession> {
+    return new PiSession(randomUUID(), this.cwd, true, this, opts)
+  }
+
+  async resumeSession(id: string, runtime?: AgentRuntimeConfig): Promise<AgentSession> {
+    return new PiSession(id, this.cwd, false, this, runtime)
+  }
+
+  async listModels(): Promise<AgentModelCatalog> {
+    const runtime = await this.ensureRuntime()
+    const models = await runtime.getAvailable()
+    return {
+      models: models.map((model) => ({
+        id: `${model.provider}/${model.id}`,
+        displayName: `${model.provider} · ${model.name || model.id}`,
+        reasoningEfforts: model.reasoning
+          ? PI_THINKING_LEVELS.map((id) => ({ id, displayName: id }))
+          : [],
+      })),
+      defaultReasoningEfforts: PI_THINKING_LEVELS.map((id) => ({ id, displayName: id })),
+    }
   }
 
   async listSessions(): Promise<SessionInfo[]> {

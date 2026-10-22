@@ -282,4 +282,48 @@ describe('ClaudeAdapter', () => {
       { role: 'assistant', parts: [{ type: 'text', text: 'hi' }] },
     ])
   })
+
+  it('passes explicit model/effort and leaves both absent by default', async () => {
+    const adapter = new ClaudeAdapter('/tmp')
+    const configured = await adapter.createSession({ model: 'opus', reasoningEffort: 'high' })
+    for await (const _ of configured.send('hello')) void _
+    expect(sdk.query.mock.calls[0]?.[0].options).toMatchObject({ model: 'opus', effort: 'high' })
+
+    const implicit = await adapter.createSession()
+    for await (const _ of implicit.send('hello')) void _
+    expect(sdk.query.mock.calls[1]?.[0].options).not.toHaveProperty('model')
+    expect(sdk.query.mock.calls[1]?.[0].options).not.toHaveProperty('effort')
+  })
+
+  it('maps supported models and per-model effort levels', async () => {
+    const close = vi.fn()
+    sdk.query.mockReturnValueOnce({
+      supportedModels: vi.fn(async () => [
+        {
+          value: 'default',
+          displayName: 'Default',
+          description: '',
+          supportedEffortLevels: ['low', 'high'],
+        },
+      ]),
+      close,
+    })
+    await expect(new ClaudeAdapter('/tmp').listModels()).resolves.toEqual({
+      models: [
+        {
+          id: 'default',
+          displayName: 'Default',
+          reasoningEfforts: [
+            { id: 'low', displayName: 'low' },
+            { id: 'high', displayName: 'high' },
+          ],
+        },
+      ],
+      defaultReasoningEfforts: [
+        { id: 'low', displayName: 'low' },
+        { id: 'high', displayName: 'high' },
+      ],
+    })
+    expect(close).toHaveBeenCalledOnce()
+  })
 })

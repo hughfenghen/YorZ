@@ -9,7 +9,13 @@ import { type CustomInstruction, normalizeCustomInstructions } from './custom-in
  * `customAgents[].id`. Resolution/validation happens downstream
  * (`resolveProjectAgentKind` + the adapter registry's fallback).
  */
-export type AgentConfig = { kind: 'inherit' } | { kind: string }
+export interface AgentConfig {
+  kind: string
+  /** Omitted means the local Agent chooses its own default. */
+  model?: string
+  /** Agent-specific effort/variant id; omitted delegates to the local Agent. */
+  reasoningEffort?: string
+}
 
 export interface ProjectConfig {
   version: 1
@@ -143,7 +149,13 @@ function normalizeAgent(value: unknown): AgentConfig {
   // Unknown ids are preserved verbatim: the adapter registry validates them at
   // resolve time (against customAgents) and falls back to claude on a miss, so
   // normalize must not pre-emptively flatten a valid external id to claude.
-  return kind ? { kind } : { kind: 'claude' }
+  const model = typeof obj.model === 'string' ? obj.model.trim() : ''
+  const reasoningEffort = typeof obj.reasoningEffort === 'string' ? obj.reasoningEffort.trim() : ''
+  return {
+    kind: kind || 'claude',
+    ...(model ? { model } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
+  }
 }
 
 function normalizeSpecsDir(value: unknown): string {

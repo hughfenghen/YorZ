@@ -389,6 +389,9 @@ export const zhCN = {
     agentCodex: 'Codex',
     agentPi: 'Pi',
     agent: 'Agent',
+    model: '模型',
+    reasoningEffort: '推理强度',
+    agentDefaultOption: '由 Agent 决定',
     specsDir: 'spec 文档目录',
     specsDirHint: '相对项目根路径，不存在时会自动创建',
     invalidPath: 'spec 目录不能包含 ".." 段',
@@ -399,6 +402,9 @@ export const zhCN = {
   globalConfig: {
     title: '全局配置',
     agentDefault: '默认 Agent',
+    model: '模型',
+    reasoningEffort: '推理强度',
+    agentDefaultOption: '由 Agent 决定',
     sessionEnd: '任务结束提示',
     banner: '横幅提示',
     sound: '声音提示',
@@ -469,6 +475,7 @@ export const zhCN = {
     retry: '重试',
     refresh: '刷新配对码',
     unauthorizedTitle: '未授权',
-    unauthorized: '当前页面缺少有效令牌，请使用 `yorz serve` 启动日志中打印的带 token 链接打开本页面。',
+    unauthorized:
+      '当前页面缺少有效令牌，请使用 `yorz serve` 启动日志中打印的带 token 链接打开本页面。',
   },
 }

@@ -6,8 +6,9 @@
  * `~/.config/yorz/config.json`'s `customAgents`, independent of any project).
  * Their module must default- or named-export a `createAgentAdapter` factory of
  * type {@link CreateAgentAdapter}
- * that returns an {@link AgentSdkAdapter}. Everything on that contract is
- * mandatory except `getUsageStatus`.
+ * that returns an {@link AgentSdkAdapter}. The discovery helpers
+ * `getUsageStatus` and `listModels` are optional; core conversation methods
+ * remain mandatory.
  *
  * ```ts
  * import type { CreateAgentAdapter } from '@yorz/cli/agent-sdk'
@@ -35,6 +36,10 @@ export type {
   BuiltinAgentId,
   AgentKind,
   AgentDescriptor,
+  AgentRuntimeConfig,
+  AgentOption,
+  AgentModelOption,
+  AgentModelCatalog,
   AgentAdapterContext,
   CreateAgentAdapter,
   AgentSdkAdapter,

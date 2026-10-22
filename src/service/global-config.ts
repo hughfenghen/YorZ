@@ -58,6 +58,10 @@ export interface GlobalAgentConfig {
    * to claude on a miss).
    */
   defaultKind: GlobalAgentKind
+  /** Omitted means the local Agent chooses its own default. */
+  model?: string
+  /** Agent-specific effort/variant id; omitted delegates to the local Agent. */
+  reasoningEffort?: string
 }
 
 /** Open agent id for the global default (builtin or a `customAgents[].id`). */
@@ -299,7 +303,13 @@ function normalizeAgent(value: unknown): GlobalAgentConfig {
   // time and falls back to claude on a miss, so normalize must not pre-emptively
   // flatten a valid external id to claude.
   const defaultKind = typeof obj.defaultKind === 'string' ? obj.defaultKind.trim() : ''
-  return defaultKind ? { defaultKind } : { defaultKind: 'claude' }
+  const model = typeof obj.model === 'string' ? obj.model.trim() : ''
+  const reasoningEffort = typeof obj.reasoningEffort === 'string' ? obj.reasoningEffort.trim() : ''
+  return {
+    defaultKind: defaultKind || 'claude',
+    ...(model ? { model } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
+  }
 }
 
 function normalizeNotifications(value: unknown): GlobalNotificationsConfig {
@@ -311,8 +321,7 @@ function normalizeNotifications(value: unknown): GlobalNotificationsConfig {
       ? (sessionEndRaw as Record<string, unknown>)
       : {}
   const pushRaw = obj.push
-  const pushObj =
-    pushRaw && typeof pushRaw === 'object' ? (pushRaw as Record<string, unknown>) : {}
+  const pushObj = pushRaw && typeof pushRaw === 'object' ? (pushRaw as Record<string, unknown>) : {}
   return {
     sessionEnd: {
       banner:
@@ -326,9 +335,7 @@ function normalizeNotifications(value: unknown): GlobalNotificationsConfig {
     },
     push: {
       enabled:
-        typeof pushObj.enabled === 'boolean'
-          ? pushObj.enabled
-          : DEFAULT_NOTIFICATIONS.push.enabled,
+        typeof pushObj.enabled === 'boolean' ? pushObj.enabled : DEFAULT_NOTIFICATIONS.push.enabled,
     },
   }
 }

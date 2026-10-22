@@ -85,6 +85,12 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
     return c.json(await p.sessions.listAgentDescriptors())
   })
 
+  app.get('/projects/:projectId/agents/:agentId/models', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    return c.json(await p.sessions.listAgentModels(c.req.param('agentId')))
+  })
+
   app.get('/projects/:projectId/agent-usage', async (c) => {
     const p = await need(c)
     if (p instanceof Response) return p

@@ -21,6 +21,8 @@ function fakeAdapter(opts: {
   onAbort?: () => void
   usageStatus?: AgentSdkAdapter['getUsageStatus']
   usageStatusCapable?: boolean
+  onCreate?: (value: Parameters<AgentSdkAdapter['createSession']>[0]) => void
+  onResume?: (id: string, runtime: Parameters<AgentSdkAdapter['resumeSession']>[1]) => void
 }): AgentSdkAdapter {
   const makeSession = (id: string): AgentSession => ({
     id,
@@ -43,8 +45,14 @@ function fakeAdapter(opts: {
   return {
     kind: 'claude',
     descriptor: { id: 'claude', displayName: 'Claude', source: 'builtin', capabilities },
-    createSession: async () => makeSession(`created-${++created}`),
-    resumeSession: async (id: string) => makeSession(id),
+    createSession: async (options) => {
+      opts.onCreate?.(options)
+      return makeSession(`created-${++created}`)
+    },
+    resumeSession: async (id: string, runtime) => {
+      opts.onResume?.(id, runtime)
+      return makeSession(id)
+    },
     listSessions: async () => opts.native ?? [],
     getMessages: async (id: string) => opts.messages?.[id] ?? [],
     getUsageStatus: opts.usageStatus,
@@ -89,6 +97,33 @@ const info = (over: Partial<SessionInfo> & { id: string }): SessionInfo => ({
 const textMessage = (text = 'hello'): NormalizedMessage => ({
   role: 'assistant',
   parts: [{ type: 'text', text }],
+})
+
+describe('SessionManager Agent runtime settings', () => {
+  it('passes configured model settings only to the effective default Agent', async () => {
+    const created: unknown[] = []
+    const adapter = fakeAdapter({ onCreate: (value) => created.push(value) })
+    const cwd = await mkdtemp(join(tmpdir(), 'yorz-sm-runtime-'))
+    const mgr = new SessionManager(
+      cwd,
+      { kind: 'claude', model: 'opus', reasoningEffort: 'high' },
+      new SessionStore(cwd),
+    )
+    ;(mgr as unknown as { adapters: { get: () => AgentSdkAdapter } }).adapters = {
+      get: () => adapter,
+    }
+
+    await mgr.createSession()
+    await mgr.createSession('codex')
+    mgr.updateDefaultAgent({ kind: 'claude', model: 'sonnet', reasoningEffort: 'low' })
+    await mgr.createSession()
+
+    expect(created).toEqual([
+      { model: 'opus', reasoningEffort: 'high' },
+      {},
+      { model: 'sonnet', reasoningEffort: 'low' },
+    ])
+  })
 })
 
 describe('SessionManager.listSessions', () => {

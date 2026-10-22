@@ -30,6 +30,30 @@ export interface AgentDescriptor {
   capabilities: Capabilities
 }
 
+/** Optional per-session overrides. Omitted fields deliberately defer to the local Agent. */
+export interface AgentRuntimeConfig {
+  model?: string
+  reasoningEffort?: string
+}
+
+/** One selectable value exposed by an adapter to settings UIs. */
+export interface AgentOption {
+  id: string
+  displayName: string
+}
+
+/** A model plus the reasoning-strength values valid for that model. */
+export interface AgentModelOption extends AgentOption {
+  reasoningEfforts: AgentOption[]
+}
+
+/** Runtime-discovered model choices for one Agent. */
+export interface AgentModelCatalog {
+  models: AgentModelOption[]
+  /** Choices that remain valid when no explicit model is selected. */
+  defaultReasoningEfforts: AgentOption[]
+}
+
 /** Injected by the host into an external agent's {@link CreateAgentAdapter}. */
 export interface AgentAdapterContext {
   cwd: string
@@ -137,9 +161,9 @@ export interface AgentSdkAdapter {
   /** GUI/route-facing descriptor. `descriptor.id` equals `kind`. */
   readonly descriptor: AgentDescriptor
   /** Create a brand-new session. */
-  createSession(opts?: { title?: string }): Promise<AgentSession>
+  createSession(opts?: { title?: string } & AgentRuntimeConfig): Promise<AgentSession>
   /** Bind to an existing session id for continued conversation. */
-  resumeSession(id: string): Promise<AgentSession>
+  resumeSession(id: string, runtime?: AgentRuntimeConfig): Promise<AgentSession>
   /** Enumerate sessions this adapter knows about (native or JSONL-derived). */
   listSessions(): Promise<SessionInfo[]>
   /** Read full normalized history for a session. */
@@ -148,7 +172,13 @@ export interface AgentSdkAdapter {
   /** Release any long-lived resources (e.g. opencode server). No-op when none. */
   dispose(): Promise<void>
   /**
-   * OPTIONAL — the only optional member. Query remaining quota / usage status
+   * OPTIONAL — enumerate model/reasoning choices available on this machine.
+   * Older external adapters may omit it; the host then exposes only the
+   * implicit "Agent default" choice.
+   */
+  listModels?(): Promise<AgentModelCatalog>
+  /**
+   * OPTIONAL — query remaining quota / usage status
    * without mutating a chat transcript. Omit when the agent has no quota API.
    */
   getUsageStatus?(): Promise<AgentUsageStatus>

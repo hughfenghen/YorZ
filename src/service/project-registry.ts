@@ -22,12 +22,13 @@ import {
   prepareProjectDir,
   removeProject,
   resolveGlobalConfigPath,
+  type GlobalAgentConfig,
   type GlobalAgentKind,
   type GlobalProjectEntry,
   type WorktreeMeta,
 } from './global-config.js'
 import { addProjectWithGit, type AddProjectWithGitResult } from './project-add.js'
-import type { AgentKind } from './agent-sdk/types.js'
+import type { AgentKind, AgentRuntimeConfig } from './agent-sdk/types.js'
 
 export interface ProjectInstance {
   id: string
@@ -203,6 +204,19 @@ export class ProjectRegistry {
     })
   }
 
+  /** Refresh effective Agent defaults for materialized projects after a global save. */
+  async refreshAgentConfigs(): Promise<void> {
+    const globalCfg = await loadGlobalConfig(this.globalConfigPath)
+    await Promise.all(
+      [...this.cache.values()].map(async ({ instance }) => {
+        const projectCfg = await loadProjectConfig(instance.path)
+        instance.sessions.updateDefaultAgent(
+          resolveProjectAgentConfig(projectCfg.agent, globalCfg.agent),
+        )
+      }),
+    )
+  }
+
   async closeAll(): Promise<void> {
     const tasks: Array<Promise<void>> = []
     for (const c of this.cache.values()) {
@@ -242,12 +256,10 @@ export class ProjectRegistry {
       projectName: basename(input.path),
     })
     const powerInhibit = getPowerInhibitController(this.globalConfigPath)
-    const defaultKind = resolveProjectAgentKind(cfg.agent, globalCfg.agent.defaultKind)
-    const sessions = new SessionManager(input.path, defaultKind, sessionStore, {
+    const defaultAgent = resolveProjectAgentConfig(cfg.agent, globalCfg.agent)
+    const sessions = new SessionManager(input.path, defaultAgent, sessionStore, {
       onSessionEnd: notifySessionEnded,
-      ...(this.globalConfigPath !== undefined
-        ? { globalConfigPath: this.globalConfigPath }
-        : {}),
+      ...(this.globalConfigPath !== undefined ? { globalConfigPath: this.globalConfigPath } : {}),
       onSessionStatusChange: (ev) => {
         powerInhibit.setSessionRunning(`${input.id}:${ev.sessionId}`, ev.running)
         // 会话 running 翻转「升维」为项目列表变更信号，驱动侧栏呼吸点刷新。
@@ -301,6 +313,24 @@ export function resolveProjectAgentKind(
   // resolved by the adapter registry (which falls back to claude on a miss).
   if (!projectAgent.kind || projectAgent.kind === 'inherit') return globalDefault
   return projectAgent.kind
+}
+
+export function resolveProjectAgentConfig(
+  projectAgent: AgentConfig,
+  globalAgent: GlobalAgentConfig,
+): { kind: AgentKind } & AgentRuntimeConfig {
+  if (!projectAgent.kind || projectAgent.kind === 'inherit') {
+    return {
+      kind: globalAgent.defaultKind,
+      ...(globalAgent.model ? { model: globalAgent.model } : {}),
+      ...(globalAgent.reasoningEffort ? { reasoningEffort: globalAgent.reasoningEffort } : {}),
+    }
+  }
+  return {
+    kind: projectAgent.kind,
+    ...(projectAgent.model ? { model: projectAgent.model } : {}),
+    ...(projectAgent.reasoningEffort ? { reasoningEffort: projectAgent.reasoningEffort } : {}),
+  }
 }
 
 function basename(p: string): string {

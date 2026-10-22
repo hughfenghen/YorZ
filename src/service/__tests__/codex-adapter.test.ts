@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   CodexAdapter,
+  codexThreadOptions,
+  parseCodexModelCatalog,
   parseCodexTokenCountSnapshot,
   parseCodexUsageResponse,
   summarizeCodexPromptForTitle,
@@ -107,6 +109,51 @@ describe('CodexAdapter.listSessions', () => {
 
     expect(list).toHaveLength(1)
     expect(list[0].title).toBe('Use Codex resume title')
+  })
+})
+
+describe('CodexAdapter model settings', () => {
+  it('maps explicit runtime settings and omits them by default', () => {
+    expect(codexThreadOptions('/tmp', { model: 'gpt-5', reasoningEffort: 'high' })).toMatchObject({
+      model: 'gpt-5',
+      modelReasoningEffort: 'high',
+    })
+    expect(codexThreadOptions('/tmp')).not.toHaveProperty('model')
+    expect(codexThreadOptions('/tmp')).not.toHaveProperty('modelReasoningEffort')
+  })
+
+  it('maps cached models and filters reasoning levels unsupported by this SDK', () => {
+    expect(
+      parseCodexModelCatalog({
+        models: [
+          {
+            slug: 'gpt-test',
+            display_name: 'GPT Test',
+            supported_reasoning_levels: [
+              { effort: 'low' },
+              { effort: 'xhigh' },
+              { effort: 'ultra' },
+            ],
+          },
+          { slug: 'hidden', visibility: 'hidden' },
+        ],
+      }),
+    ).toEqual({
+      models: [
+        {
+          id: 'gpt-test',
+          displayName: 'GPT Test',
+          reasoningEfforts: [
+            { id: 'low', displayName: 'low' },
+            { id: 'xhigh', displayName: 'xhigh' },
+          ],
+        },
+      ],
+      defaultReasoningEfforts: [
+        { id: 'low', displayName: 'low' },
+        { id: 'xhigh', displayName: 'xhigh' },
+      ],
+    })
   })
 })
 

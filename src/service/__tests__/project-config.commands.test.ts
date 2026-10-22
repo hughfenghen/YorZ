@@ -52,3 +52,23 @@ describe('project config — commands normalization', () => {
     ])
   })
 })
+
+describe('project config — Agent runtime settings', () => {
+  it('roundtrips optional model settings and removes blank values', async () => {
+    const cwd = await projectWithConfig({
+      version: 1,
+      agent: { kind: ' codex ', model: ' gpt-test ', reasoningEffort: ' high ' },
+    })
+    expect((await loadProjectConfig(cwd)).agent).toEqual({
+      kind: 'codex',
+      model: 'gpt-test',
+      reasoningEffort: 'high',
+    })
+
+    const blank = await projectWithConfig({
+      version: 1,
+      agent: { kind: 'inherit', model: ' ', reasoningEffort: '' },
+    })
+    expect((await loadProjectConfig(blank)).agent).toEqual({ kind: 'inherit' })
+  })
+})

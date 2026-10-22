@@ -128,7 +128,15 @@ function parseAgent(value: unknown): { value: AgentConfig } | { error: string } 
   // `kind` is open now: 'inherit', a builtin id, or any customAgents[].id. The
   // registry validates/falls back at resolve time, so accept any non-empty id.
   if (!kind) return { error: 'agent.kind must be a non-empty string' }
-  return { value: { kind } }
+  const model = typeof obj.model === 'string' ? obj.model.trim() : ''
+  const reasoningEffort = typeof obj.reasoningEffort === 'string' ? obj.reasoningEffort.trim() : ''
+  return {
+    value: {
+      kind,
+      ...(model ? { model } : {}),
+      ...(reasoningEffort ? { reasoningEffort } : {}),
+    },
+  }
 }
 
 function parseSpecsDir(value: unknown): { value: string } | { error: string } {

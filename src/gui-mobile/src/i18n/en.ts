@@ -158,6 +158,9 @@ export const en: Translation = {
     title: 'Global settings',
     agent: 'Agent',
     defaultKind: 'Default agent',
+    model: 'Model',
+    reasoningEffort: 'Reasoning effort',
+    agentDefaultOption: 'Agent default',
     notifications: 'Notifications',
     pushNotification: 'Task completion push',
     pushUnavailable: 'Unavailable',
@@ -180,6 +183,9 @@ export const en: Translation = {
     agent: 'Agent',
     kind: 'Agent kind',
     inherit: 'Inherit global',
+    model: 'Model',
+    reasoningEffort: 'Reasoning effort',
+    agentDefaultOption: 'Agent default',
   },
   chat: {
     untitled: 'Untitled session',
@@ -323,7 +329,8 @@ export const en: Translation = {
   },
   pair: {
     title: 'Pair',
-    intro: 'On your PC, click the QR icon next to the “YorZ” title, then scan the QR code or type the pairing code below.',
+    intro:
+      'On your PC, click the QR icon next to the “YorZ” title, then scan the QR code or type the pairing code below.',
     scan: 'Scan',
     manual: 'Enter code',
     scanHint: 'Point the camera at the QR code',

@@ -1,9 +1,11 @@
-import { createOpencode } from '@opencode-ai/sdk'
-import type { OpencodeClient, Message, Part } from '@opencode-ai/sdk'
+import { createOpencode } from '@opencode-ai/sdk/v2'
+import type { OpencodeClient, Message, Part, Provider } from '@opencode-ai/sdk/v2'
 import { normalizeUsage } from '../telemetry/index.js'
 import type {
   AgentDescriptor,
   AgentEvent,
+  AgentModelCatalog,
+  AgentRuntimeConfig,
   AgentSdkAdapter,
   AgentSession,
   Capabilities,
@@ -14,6 +16,35 @@ import type {
 } from './types.js'
 
 type Server = { url: string; close(): void }
+
+export function parseQualifiedModel(
+  value: string | undefined,
+): { providerID: string; modelID: string } | undefined {
+  if (!value) return undefined
+  const slash = value.indexOf('/')
+  if (slash <= 0 || slash === value.length - 1) return undefined
+  return { providerID: value.slice(0, slash), modelID: value.slice(slash + 1) }
+}
+
+export function parseOpenCodeModelCatalog(
+  data: { all: Provider[]; connected: string[] } | undefined,
+): AgentModelCatalog {
+  if (!data) return { models: [], defaultReasoningEfforts: [] }
+  const connected = new Set(data.connected)
+  const models = data.all
+    .filter((provider) => connected.has(provider.id))
+    .flatMap((provider) =>
+      Object.values(provider.models).map((model) => ({
+        id: `${provider.id}/${model.id}`,
+        displayName: `${provider.name} · ${model.name || model.id}`,
+        reasoningEfforts: Object.keys(model.variants ?? {}).map((id) => ({
+          id,
+          displayName: id,
+        })),
+      })),
+    )
+  return { models, defaultReasoningEfforts: [] }
+}
 
 function textParts(parts: Part[]): MessagePart[] {
   const out: MessagePart[] = []
@@ -31,6 +62,7 @@ class OpenCodeSession implements AgentSession {
     public readonly id: string,
     private readonly client: OpencodeClient,
     private readonly directory: string,
+    private readonly runtime: AgentRuntimeConfig = {},
   ) {}
 
   async *send(prompt: string, opts?: SendOptions): AsyncIterable<AgentEvent> {
@@ -38,10 +70,13 @@ class OpenCodeSession implements AgentSession {
     if (opts?.signal?.aborted) return
     opts?.signal?.addEventListener('abort', () => void this.abortInternal(), { once: true })
     try {
+      const model = parseQualifiedModel(this.runtime.model)
       const res = await this.client.session.prompt({
-        path: { id: this.id },
-        query: { directory: this.directory },
-        body: { parts: [{ type: 'text', text: prompt }] },
+        sessionID: this.id,
+        directory: this.directory,
+        parts: [{ type: 'text', text: prompt }],
+        ...(model ? { model } : {}),
+        ...(this.runtime.reasoningEffort ? { variant: this.runtime.reasoningEffort } : {}),
       })
       if (this.aborted) return
       const data = res.data
@@ -75,7 +110,7 @@ class OpenCodeSession implements AgentSession {
   private async abortInternal(): Promise<void> {
     this.aborted = true
     try {
-      await this.client.session.abort({ path: { id: this.id } })
+      await this.client.session.abort({ sessionID: this.id, directory: this.directory })
     } catch {
       // best-effort
     }
@@ -123,25 +158,25 @@ export class OpenCodeAdapter implements AgentSdkAdapter {
     return this.booting
   }
 
-  async createSession(opts?: { title?: string }): Promise<AgentSession> {
+  async createSession(opts?: { title?: string } & AgentRuntimeConfig): Promise<AgentSession> {
     const { client } = await this.ensure()
     const res = await client.session.create({
-      query: { directory: this.cwd },
-      body: opts?.title ? { title: opts.title } : {},
+      directory: this.cwd,
+      ...(opts?.title ? { title: opts.title } : {}),
     })
     const data = res.data
     if (!data) throw new Error('opencode session.create failed')
-    return new OpenCodeSession(data.id, client, this.cwd)
+    return new OpenCodeSession(data.id, client, this.cwd, opts)
   }
 
-  async resumeSession(id: string): Promise<AgentSession> {
+  async resumeSession(id: string, runtime?: AgentRuntimeConfig): Promise<AgentSession> {
     const { client } = await this.ensure()
-    return new OpenCodeSession(id, client, this.cwd)
+    return new OpenCodeSession(id, client, this.cwd, runtime)
   }
 
   async listSessions(): Promise<SessionInfo[]> {
     const { client } = await this.ensure()
-    const res = await client.session.list({ query: { directory: this.cwd } })
+    const res = await client.session.list({ directory: this.cwd })
     const list = res.data ?? []
     return list.map((s) => ({
       id: s.id,
@@ -154,10 +189,7 @@ export class OpenCodeAdapter implements AgentSdkAdapter {
 
   async getMessages(id: string): Promise<NormalizedMessage[]> {
     const { client } = await this.ensure()
-    const res = await client.session.messages({
-      path: { id },
-      query: { directory: this.cwd },
-    })
+    const res = await client.session.messages({ sessionID: id, directory: this.cwd })
     const rows = res.data ?? []
     const out: NormalizedMessage[] = []
     for (const row of rows) {
@@ -177,6 +209,12 @@ export class OpenCodeAdapter implements AgentSdkAdapter {
    */
   capabilities(): Capabilities {
     return this.descriptor.capabilities
+  }
+
+  async listModels(): Promise<AgentModelCatalog> {
+    const { client } = await this.ensure()
+    const res = await client.provider.list({ directory: this.cwd })
+    return parseOpenCodeModelCatalog(res.data)
   }
 
   async dispose(): Promise<void> {

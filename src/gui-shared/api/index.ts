@@ -143,7 +143,11 @@ export type MergeWorktreeResponse =
     }
 
 // `kind` is open: 'inherit', a builtin id, or any `customAgents[].id`.
-export type AgentConfig = { kind: 'inherit' } | { kind: string }
+export interface AgentConfig {
+  kind: string
+  model?: string
+  reasoningEffort?: string
+}
 
 export interface CommandDef {
   id: string
@@ -196,6 +200,8 @@ export interface GlobalConfig {
   agent: {
     // Open string: a builtin id or any global `customAgents[].id`.
     defaultKind: string
+    model?: string
+    reasoningEffort?: string
   }
   notifications: {
     sessionEnd: {
@@ -257,6 +263,20 @@ export interface AgentDescriptor {
   displayName: string
   source: 'builtin' | 'external'
   capabilities: AgentCapabilities
+}
+
+export interface AgentOption {
+  id: string
+  displayName: string
+}
+
+export interface AgentModelOption extends AgentOption {
+  reasoningEfforts: AgentOption[]
+}
+
+export interface AgentModelCatalog {
+  models: AgentModelOption[]
+  defaultReasoningEfforts: AgentOption[]
 }
 
 export type SystemNotificationKind = 'version-update'
@@ -434,14 +454,11 @@ export const api = {
       commandLine?: string
       /** The round session's agent kind, for the optimistic divider. */
       kind?: AgentKind
-    }>(
-      `${projectBase(pid)}/specs/${encodeURIComponent(id)}/appends`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      },
-    ),
+    }>(`${projectBase(pid)}/specs/${encodeURIComponent(id)}/appends`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
   explain: (pid: string, id: string, text: string) =>
     request<{ runId: string; sessionId: string }>(
       `${projectBase(pid)}/specs/${encodeURIComponent(id)}/explain`,
@@ -654,6 +671,8 @@ export const api = {
   getGlobalConfig: () => request<GlobalConfig>('/api/global-config'),
   /** Project-independent roster (builtin + global `customAgents`) for the global default. */
   listGlobalAgents: () => request<AgentDescriptor[]>('/api/agents'),
+  listGlobalAgentModels: (kind: AgentKind) =>
+    request<AgentModelCatalog>(`/api/agents/${encodeURIComponent(kind)}/models`),
   updateGlobalConfig: (body: GlobalConfig) =>
     request<{ ok: true; config: GlobalConfig }>('/api/global-config', {
       method: 'PUT',
@@ -706,6 +725,8 @@ export const api = {
     ),
   listSessions: (pid: string) => request<SessionInfo[]>(`${projectBase(pid)}/sessions`),
   listAgents: (pid: string) => request<AgentDescriptor[]>(`${projectBase(pid)}/agents`),
+  listAgentModels: (pid: string, kind: AgentKind) =>
+    request<AgentModelCatalog>(`${projectBase(pid)}/agents/${encodeURIComponent(kind)}/models`),
   getAgentUsageStatus: (pid: string) =>
     request<AgentUsageStatus>(`${projectBase(pid)}/agent-usage`),
   createSession: (pid: string, body: { title?: string; agentKind?: AgentKind } = {}) =>

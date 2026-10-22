@@ -157,6 +157,37 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
     expect(cfg.agent).toEqual({ defaultKind: 'codex' })
   })
 
+  it('roundtrips optional model settings and removes blank values', async () => {
+    const fp = await tmpConfigPath()
+    await writeFile(
+      fp,
+      JSON.stringify({
+        version: 1,
+        agent: {
+          defaultKind: ' codex ',
+          model: ' gpt-test ',
+          reasoningEffort: ' high ',
+        },
+      }),
+      'utf8',
+    )
+    expect((await loadGlobalConfig(fp)).agent).toEqual({
+      defaultKind: 'codex',
+      model: 'gpt-test',
+      reasoningEffort: 'high',
+    })
+
+    await writeFile(
+      fp,
+      JSON.stringify({
+        version: 1,
+        agent: { defaultKind: 'codex', model: ' ', reasoningEffort: '' },
+      }),
+      'utf8',
+    )
+    expect((await loadGlobalConfig(fp)).agent).toEqual({ defaultKind: 'codex' })
+  })
+
   it('normalizes legacy config without notifications', async () => {
     const fp = await tmpConfigPath()
     await writeFile(

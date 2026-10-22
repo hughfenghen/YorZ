@@ -73,8 +73,13 @@ describe('AdapterRegistry', () => {
     )
     const reg = new AdapterRegistry(cwd, globalConfigPath)
     const ext = await reg.get('ext')
-    expect(ext.descriptor).toMatchObject({ id: 'ext', displayName: 'Ext Agent', source: 'external' })
+    expect(ext.descriptor).toMatchObject({
+      id: 'ext',
+      displayName: 'Ext Agent',
+      source: 'external',
+    })
     expect(typeof ext.dispose).toBe('function')
+    expect(await reg.listModels('ext')).toEqual({ models: [], defaultReasoningEfforts: [] })
   })
 
   it('loads a valid external agent by absolute module path (no project-root guard)', async () => {
@@ -94,9 +99,12 @@ describe('AdapterRegistry', () => {
   })
 
   it('falls back to claude when the module exports no factory', async () => {
-    const { cwd, globalConfigPath } = await globalWith([{ id: 'bad', module: './agents/bad.mjs' }], {
-      'agents/bad.mjs': NO_FACTORY_MODULE,
-    })
+    const { cwd, globalConfigPath } = await globalWith(
+      [{ id: 'bad', module: './agents/bad.mjs' }],
+      {
+        'agents/bad.mjs': NO_FACTORY_MODULE,
+      },
+    )
     const reg = new AdapterRegistry(cwd, globalConfigPath)
     expect(await reg.get('bad')).toBeInstanceOf(ClaudeAdapter)
   })

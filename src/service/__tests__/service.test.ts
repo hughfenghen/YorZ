@@ -45,7 +45,12 @@ async function startInTmp() {
   const cwd = await mkdtemp(join(tmpdir(), 'yorz-service-'))
   const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-service-cfg-'))
   await mkdir(join(cwd, '.yorz'), { recursive: true })
-  handle = await start({ cwd, port: 0, disableAuth: true, globalConfigPath: join(cfgDir, 'config.json') })
+  handle = await start({
+    cwd,
+    port: 0,
+    disableAuth: true,
+    globalConfigPath: join(cfgDir, 'config.json'),
+  })
   const list = await handle.registry.list()
   const projectId = list[0]!.id
   return {
@@ -296,7 +301,12 @@ describe('YorZ Service HTTP', () => {
     const cfgDir = await mkdtemp(join(tmpdir(), 'yorz-service-cfg-'))
     await mkdir(join(cwd, '.yorz'), { recursive: true })
     await initGitRepoIn(cwd)
-    handle = await start({ cwd, port: 0, disableAuth: true, globalConfigPath: join(cfgDir, 'config.json') })
+    handle = await start({
+      cwd,
+      port: 0,
+      disableAuth: true,
+      globalConfigPath: join(cfgDir, 'config.json'),
+    })
     const list = await handle.registry.list()
     const projectId = list[0]!.id
     const apiRoot = `${handle.url}api`
@@ -340,7 +350,7 @@ describe('YorZ Service HTTP', () => {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        agent: { defaultKind: 'codex' },
+        agent: { defaultKind: 'codex', model: 'gpt-test', reasoningEffort: 'high' },
         notifications: { sessionEnd: { banner: true, sound: true } },
         shortcuts: { newSpec: 'Ctrl+Shift+K' },
         power: { inhibitWhenRunning: 'prevent-display-sleep' },
@@ -361,7 +371,7 @@ describe('YorZ Service HTTP', () => {
 
     const saved = await fetch(`${apiRoot}/global-config`)
     expect(await saved.json()).toEqual({
-      agent: { defaultKind: 'codex' },
+      agent: { defaultKind: 'codex', model: 'gpt-test', reasoningEffort: 'high' },
       notifications: { sessionEnd: { banner: true, sound: true }, push: { enabled: false } },
       shortcuts: { newSpec: 'Ctrl+Shift+K' },
       power: { inhibitWhenRunning: 'prevent-display-sleep' },

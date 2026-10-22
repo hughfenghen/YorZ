@@ -1,7 +1,9 @@
 {
   "version": 1,
   "agent": {
-    "kind": "claude"
+    "kind": "codex",
+    "model": "gpt-5.6-sol",
+    "reasoningEffort": "medium"
   },
   "specsDir": ".yorz/specs",
   "commands": [

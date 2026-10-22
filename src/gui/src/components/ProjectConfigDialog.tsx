@@ -1,16 +1,15 @@
-import { createEffect, createSignal, For, Show, type Component } from 'solid-js'
-import { api, type AgentConfig, type AgentDescriptor, type ProjectConfig } from '../lib/api.js'
+import { createEffect, createSignal, Show, type Component } from 'solid-js'
+import {
+  api,
+  type AgentConfig,
+  type AgentDescriptor,
+  type AgentModelCatalog,
+  type ProjectConfig,
+} from '../lib/api.js'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog.jsx'
 import { Button } from './ui/button.jsx'
 import { Input } from './ui/input.jsx'
-import {
-  RadioGroup,
-  RadioGroupItem,
-  RadioGroupItemControl,
-  RadioGroupItemInput,
-  RadioGroupItemLabel,
-  RadioGroupLabel,
-} from './ui/radio-group.jsx'
+import { SettingsSelect } from './SettingsSelect.jsx'
 import { t } from '../i18n/index.js'
 
 interface Props {
@@ -34,11 +33,19 @@ const BUILTIN_LABEL_KEY: Record<string, string> = {
 export const ProjectConfigDialog: Component<Props> = (props) => {
   const [kind, setKind] = createSignal<string>('inherit')
   const [agents, setAgents] = createSignal<AgentDescriptor[]>([])
+  const [model, setModel] = createSignal('')
+  const [reasoningEffort, setReasoningEffort] = createSignal('')
+  const [catalog, setCatalog] = createSignal<AgentModelCatalog>({
+    models: [],
+    defaultReasoningEfforts: [],
+  })
+  const [catalogLoading, setCatalogLoading] = createSignal(false)
   const [specsDir, setSpecsDir] = createSignal(DEFAULT_SPECS_DIR)
   const [initialSpecsDir, setInitialSpecsDir] = createSignal(DEFAULT_SPECS_DIR)
   const [loading, setLoading] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
+  let catalogRequest = 0
 
   createEffect(() => {
     if (!props.open) return
@@ -55,6 +62,7 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
         ])
         setAgents(descriptors)
         applyConfig(cfg)
+        if (cfg.agent.kind !== 'inherit') await loadCatalog(cfg.agent.kind)
       } catch (err) {
         setError((err as Error).message)
       } finally {
@@ -65,13 +73,20 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
 
   function applyConfig(cfg: ProjectConfig) {
     setKind(cfg.agent.kind)
+    setModel(cfg.agent.model ?? '')
+    setReasoningEffort(cfg.agent.reasoningEffort ?? '')
     const dir = cfg.specsDir || DEFAULT_SPECS_DIR
     setSpecsDir(dir)
     setInitialSpecsDir(dir)
   }
 
   function buildAgent(): AgentConfig {
-    return { kind: kind() }
+    if (kind() === 'inherit') return { kind: 'inherit' }
+    return {
+      kind: kind(),
+      ...(model() ? { model: model() } : {}),
+      ...(reasoningEffort() ? { reasoningEffort: reasoningEffort() } : {}),
+    }
   }
 
   /** 'inherit' + every known agent id, in roster order. */
@@ -83,6 +98,57 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
     if (descriptor && descriptor.source === 'external') return descriptor.displayName
     const key = BUILTIN_LABEL_KEY[id]
     return key ? t(key) : (descriptor?.displayName ?? id)
+  }
+
+  function updateKind(value: string): void {
+    setKind(value)
+    setModel('')
+    setReasoningEffort('')
+    setCatalog({ models: [], defaultReasoningEfforts: [] })
+    if (value !== 'inherit') void loadCatalog(value)
+  }
+
+  function updateModel(value: string): void {
+    setModel(value)
+    setReasoningEffort('')
+  }
+
+  async function loadCatalog(agentKind: string): Promise<void> {
+    const request = ++catalogRequest
+    setCatalogLoading(true)
+    try {
+      const next = await api.listAgentModels(props.projectId, agentKind)
+      if (request === catalogRequest) setCatalog(next)
+    } catch {
+      if (request === catalogRequest) setCatalog({ models: [], defaultReasoningEfforts: [] })
+    } finally {
+      if (request === catalogRequest) setCatalogLoading(false)
+    }
+  }
+
+  const modelOptions = () => {
+    const options = [
+      { value: '', label: t('projectConfig.agentDefaultOption') },
+      ...catalog().models.map((item) => ({ value: item.id, label: item.displayName })),
+    ]
+    if (model() && !options.some((item) => item.value === model())) {
+      options.push({ value: model(), label: model() })
+    }
+    return options
+  }
+
+  const reasoningOptions = () => {
+    const choices = model()
+      ? (catalog().models.find((item) => item.id === model())?.reasoningEfforts ?? [])
+      : catalog().defaultReasoningEfforts
+    const options = [
+      { value: '', label: t('projectConfig.agentDefaultOption') },
+      ...choices.map((item) => ({ value: item.id, label: item.displayName })),
+    ]
+    if (reasoningEffort() && !options.some((item) => item.value === reasoningEffort())) {
+      options.push({ value: reasoningEffort(), label: reasoningEffort() })
+    }
+    return options
   }
 
   async function submit(e: Event) {
@@ -124,27 +190,36 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
           fallback={<p class=" text-muted-foreground">{t('common.loading')}</p>}
         >
           <form onSubmit={submit} class="flex flex-col gap-4">
-            <RadioGroup
-              class="m-0 flex flex-wrap gap-2 border-0 p-0"
-              value={kind()}
-              onChange={(v) => setKind(v)}
-              disabled={busy()}
-            >
-              <RadioGroupLabel class="mb-1.5 w-full font-medium">
-                {t('projectConfig.agent')}
-              </RadioGroupLabel>
-              <For each={options()}>
-                {(k) => (
-                  <RadioGroupItem value={k} class="flex items-center gap-1.5">
-                    <RadioGroupItemInput />
-                    <RadioGroupItemControl />
-                    <RadioGroupItemLabel class="cursor-pointer">
-                      {agentLabel(k)}
-                    </RadioGroupItemLabel>
-                  </RadioGroupItem>
-                )}
-              </For>
-            </RadioGroup>
+            <fieldset class="m-0 grid gap-3 border-0 p-0 sm:grid-cols-3">
+              <SettingsSelect
+                label={t('projectConfig.agent')}
+                value={kind()}
+                options={options().map((value) => ({ value, label: agentLabel(value) }))}
+                disabled={busy()}
+                onChange={updateKind}
+              />
+              <SettingsSelect
+                label={t('projectConfig.model')}
+                value={model()}
+                options={modelOptions()}
+                disabled={
+                  busy() || kind() === 'inherit' || catalogLoading() || modelOptions().length <= 1
+                }
+                onChange={updateModel}
+              />
+              <SettingsSelect
+                label={t('projectConfig.reasoningEffort')}
+                value={reasoningEffort()}
+                options={reasoningOptions()}
+                disabled={
+                  busy() ||
+                  kind() === 'inherit' ||
+                  catalogLoading() ||
+                  reasoningOptions().length <= 1
+                }
+                onChange={setReasoningEffort}
+              />
+            </fieldset>
 
             <label class="flex flex-col gap-1 font-medium">
               <span>{t('projectConfig.specsDir')}</span>

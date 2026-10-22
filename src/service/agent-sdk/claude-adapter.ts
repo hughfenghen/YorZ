@@ -13,6 +13,8 @@ import { PhaseAccumulator, isSpecWrite } from './phase-usage.js'
 import type {
   AgentDescriptor,
   AgentEvent,
+  AgentModelCatalog,
+  AgentRuntimeConfig,
   AgentSdkAdapter,
   AgentSession,
   AgentUsageStatus,
@@ -23,6 +25,16 @@ import type {
   SendOptions,
   SessionInfo,
 } from './types.js'
+
+const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+
+function isClaudeEffort(value: string | undefined): value is (typeof CLAUDE_EFFORTS)[number] {
+  return CLAUDE_EFFORTS.some((item) => item === value)
+}
+
+function toOption(id: string) {
+  return { id, displayName: id }
+}
 
 interface ContentBlock {
   type?: string
@@ -135,6 +147,7 @@ class ClaudeSession implements AgentSession {
     public id: string,
     private readonly cwd: string,
     private readonly isNew: boolean,
+    private readonly runtime: AgentRuntimeConfig = {},
   ) {}
 
   async *send(prompt: string, opts?: SendOptions): AsyncIterable<AgentEvent> {
@@ -150,6 +163,8 @@ class ClaudeSession implements AgentSession {
       allowDangerouslySkipPermissions: true,
       abortController: ctrl,
     }
+    if (this.runtime.model) options.model = this.runtime.model
+    if (isClaudeEffort(this.runtime.reasoningEffort)) options.effort = this.runtime.reasoningEffort
     if (this.isNew && !this.started) options.sessionId = this.id
     else options.resume = this.id
 
@@ -275,12 +290,33 @@ export class ClaudeAdapter implements AgentSdkAdapter {
   }
   constructor(private readonly cwd: string) {}
 
-  async createSession(): Promise<AgentSession> {
-    return new ClaudeSession(randomUUID(), this.cwd, true)
+  async createSession(opts?: { title?: string } & AgentRuntimeConfig): Promise<AgentSession> {
+    return new ClaudeSession(randomUUID(), this.cwd, true, opts)
   }
 
-  async resumeSession(id: string): Promise<AgentSession> {
-    return new ClaudeSession(id, this.cwd, false)
+  async resumeSession(id: string, runtime?: AgentRuntimeConfig): Promise<AgentSession> {
+    return new ClaudeSession(id, this.cwd, false, runtime)
+  }
+
+  async listModels(): Promise<AgentModelCatalog> {
+    const options: Options = {
+      cwd: this.cwd,
+      permissionMode: 'bypassPermissions',
+      allowDangerouslySkipPermissions: true,
+    }
+    const q = query({ prompt: '', options })
+    try {
+      const models = await q.supportedModels()
+      const mapped = models.map((model) => ({
+        id: model.value,
+        displayName: model.displayName || model.value,
+        reasoningEfforts: (model.supportedEffortLevels ?? []).map(toOption),
+      }))
+      const defaults = mapped.find((model) => model.id === 'default')?.reasoningEfforts ?? []
+      return { models: mapped, defaultReasoningEfforts: defaults }
+    } finally {
+      q.close()
+    }
   }
 
   async listSessions(): Promise<SessionInfo[]> {

@@ -4,12 +4,20 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { createReadStream } from 'node:fs'
-import { Codex, type Thread, type ThreadEvent, type ThreadOptions } from '@openai/codex-sdk'
+import {
+  Codex,
+  type ModelReasoningEffort,
+  type Thread,
+  type ThreadEvent,
+  type ThreadOptions,
+} from '@openai/codex-sdk'
 import { normalizeUsage } from '../telemetry/index.js'
 import type {
   AgentContextKind,
   AgentDescriptor,
   AgentEvent,
+  AgentModelCatalog,
+  AgentRuntimeConfig,
   AgentSdkAdapter,
   AgentSession,
   Capabilities,
@@ -24,14 +32,58 @@ import type {
 const DEFAULT_CODEX_STORAGE_ROOT = join(homedir(), '.codex')
 const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/codex/usage'
 const TITLE_MAX_LENGTH = 64
+const CODEX_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const
 
-function codexThreadOptions(cwd: string): ThreadOptions {
-  return {
+function isCodexReasoningEffort(value: string | undefined): value is ModelReasoningEffort {
+  return CODEX_REASONING_EFFORTS.some((item) => item === value)
+}
+
+export function codexThreadOptions(cwd: string, runtime: AgentRuntimeConfig = {}): ThreadOptions {
+  const options: ThreadOptions = {
     workingDirectory: cwd,
     skipGitRepoCheck: true,
     sandboxMode: 'danger-full-access',
     approvalPolicy: 'never',
   }
+  if (runtime.model) options.model = runtime.model
+  if (isCodexReasoningEffort(runtime.reasoningEffort)) {
+    options.modelReasoningEffort = runtime.reasoningEffort
+  }
+  return options
+}
+
+export function parseCodexModelCatalog(raw: unknown): AgentModelCatalog {
+  const root = asRecord(raw)
+  const rows = Array.isArray(root?.models) ? root.models : []
+  const models = rows.flatMap((value) => {
+    const model = asRecord(value)
+    if (!model) return []
+    const id = typeof model.slug === 'string' ? model.slug.trim() : ''
+    if (!id || model.visibility === 'hidden') return []
+    const levels = Array.isArray(model.supported_reasoning_levels)
+      ? model.supported_reasoning_levels
+      : []
+    const reasoningEfforts = levels.flatMap((entry) => {
+      const level = asRecord(entry)
+      const effort = typeof level?.effort === 'string' ? level.effort : ''
+      return isCodexReasoningEffort(effort) ? [{ id: effort, displayName: effort }] : []
+    })
+    return [
+      {
+        id,
+        displayName:
+          typeof model.display_name === 'string' && model.display_name.trim()
+            ? model.display_name
+            : id,
+        reasoningEfforts,
+      },
+    ]
+  })
+  const byId = new Map<string, { id: string; displayName: string }>()
+  for (const model of models) {
+    for (const effort of model.reasoningEfforts) byId.set(effort.id, effort)
+  }
+  return { models, defaultReasoningEfforts: [...byId.values()] }
 }
 
 function detectAgentContextKind(text: string): AgentContextKind | undefined {
@@ -292,12 +344,22 @@ export class CodexAdapter implements AgentSdkAdapter {
     this.codex = new Codex()
   }
 
-  async createSession(): Promise<AgentSession> {
-    return new CodexSession(this.codex.startThread(codexThreadOptions(this.cwd)))
+  async createSession(opts?: { title?: string } & AgentRuntimeConfig): Promise<AgentSession> {
+    return new CodexSession(this.codex.startThread(codexThreadOptions(this.cwd, opts)))
   }
 
-  async resumeSession(id: string): Promise<AgentSession> {
-    return new CodexSession(this.codex.resumeThread(id, codexThreadOptions(this.cwd)))
+  async resumeSession(id: string, runtime?: AgentRuntimeConfig): Promise<AgentSession> {
+    return new CodexSession(this.codex.resumeThread(id, codexThreadOptions(this.cwd, runtime)))
+  }
+
+  async listModels(): Promise<AgentModelCatalog> {
+    try {
+      return parseCodexModelCatalog(
+        JSON.parse(await readFile(join(this.storageRoot, 'models_cache.json'), 'utf8')),
+      )
+    } catch {
+      return { models: [], defaultReasoningEfforts: [] }
+    }
   }
 
   /** Walk ~/.codex/sessions, keep rollouts whose session_meta.cwd matches this project. */

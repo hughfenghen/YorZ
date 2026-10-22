@@ -1,6 +1,11 @@
 import { Show, createResource, createSignal, type Component } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
-import { api, type AgentDescriptor, type GlobalConfig } from '@shared/api/index.js'
+import {
+  api,
+  type AgentDescriptor,
+  type AgentModelCatalog,
+  type GlobalConfig,
+} from '@shared/api/index.js'
 import {
   THEME_MODES,
   THEME_NAMES,
@@ -11,7 +16,7 @@ import {
 } from '@shared/lib/theme.js'
 import { Page } from '@/components/Page.jsx'
 import { ErrorNotice, LoadingNotice } from '@/components/ListStates.jsx'
-import { Group, Segmented, Toggle } from '@/components/SettingsControls.jsx'
+import { Group, Segmented, SettingsSelect, Toggle } from '@/components/SettingsControls.jsx'
 import { showToast } from '@/components/Toast.jsx'
 import { disablePush, enablePush, isPushSupported, isStandalone } from '@/lib/pwa.js'
 import { t, useTranslation } from '@/i18n/index.js'
@@ -55,6 +60,10 @@ export const GlobalSettings: Component = () => {
   // Default-agent roster (builtin + global `customAgents`) from the single
   // `/agents` source, so the segmented control is no longer a hardcoded list.
   const [agents] = createResource<AgentDescriptor[]>(() => api.listGlobalAgents())
+  const [catalog] = createResource<AgentModelCatalog, string>(
+    () => config()?.agent.defaultKind,
+    (kind) => api.listGlobalAgentModels(kind),
+  )
   const pushSupported = isPushSupported()
   const [pushBusy, setPushBusy] = createSignal(false)
 
@@ -64,7 +73,37 @@ export const GlobalSettings: Component = () => {
       value: d.id,
       label: d.source === 'external' ? d.displayName : (BUILTIN_LABEL[d.id] ?? d.displayName),
     }))
-    return mapped.length > 0 ? mapped : Object.entries(BUILTIN_LABEL).map(([value, label]) => ({ value, label }))
+    return mapped.length > 0
+      ? mapped
+      : Object.entries(BUILTIN_LABEL).map(([value, label]) => ({ value, label }))
+  }
+
+  const modelOptions = (cfg: GlobalConfig) => {
+    const options = [
+      { value: '', label: t('globalSettings.agentDefaultOption') },
+      ...(catalog()?.models ?? []).map((item) => ({ value: item.id, label: item.displayName })),
+    ]
+    const selected = cfg.agent.model ?? ''
+    if (selected && !options.some((item) => item.value === selected)) {
+      options.push({ value: selected, label: selected })
+    }
+    return options
+  }
+
+  const reasoningOptions = (cfg: GlobalConfig) => {
+    const selectedModel = cfg.agent.model ?? ''
+    const choices = selectedModel
+      ? (catalog()?.models.find((item) => item.id === selectedModel)?.reasoningEfforts ?? [])
+      : (catalog()?.defaultReasoningEfforts ?? [])
+    const options = [
+      { value: '', label: t('globalSettings.agentDefaultOption') },
+      ...choices.map((item) => ({ value: item.id, label: item.displayName })),
+    ]
+    const selected = cfg.agent.reasoningEffort ?? ''
+    if (selected && !options.some((item) => item.value === selected)) {
+      options.push({ value: selected, label: selected })
+    }
+    return options
   }
 
   /** 读-改-写：拿最近一次 GET 的完整对象做浅合并后整体回写。 */
@@ -123,12 +162,41 @@ export const GlobalSettings: Component = () => {
             {(cfg) => (
               <>
                 <Group title={t('globalSettings.agent')}>
-                  <Segmented
+                  <SettingsSelect
                     label={t('globalSettings.defaultKind')}
                     options={kindOptions()}
                     value={() => cfg().agent.defaultKind}
-                    onChange={(defaultKind) =>
-                      void patch({ ...cfg(), agent: { ...cfg().agent, defaultKind } })
+                    onChange={(defaultKind) => void patch({ ...cfg(), agent: { defaultKind } })}
+                  />
+                  <SettingsSelect
+                    label={t('globalSettings.model')}
+                    options={modelOptions(cfg())}
+                    value={() => cfg().agent.model ?? ''}
+                    disabled={() => catalog.loading || modelOptions(cfg()).length <= 1}
+                    onChange={(model) =>
+                      void patch({
+                        ...cfg(),
+                        agent: {
+                          defaultKind: cfg().agent.defaultKind,
+                          ...(model ? { model } : {}),
+                        },
+                      })
+                    }
+                  />
+                  <SettingsSelect
+                    label={t('globalSettings.reasoningEffort')}
+                    options={reasoningOptions(cfg())}
+                    value={() => cfg().agent.reasoningEffort ?? ''}
+                    disabled={() => catalog.loading || reasoningOptions(cfg()).length <= 1}
+                    onChange={(reasoningEffort) =>
+                      void patch({
+                        ...cfg(),
+                        agent: {
+                          defaultKind: cfg().agent.defaultKind,
+                          ...(cfg().agent.model ? { model: cfg().agent.model } : {}),
+                          ...(reasoningEffort ? { reasoningEffort } : {}),
+                        },
+                      })
                     }
                   />
                 </Group>

@@ -455,6 +455,41 @@ describe('PiAdapter', () => {
     expect(pi.runtimeCreate).toHaveBeenCalledTimes(1)
   })
 
+  it('passes explicit model/thinking settings and maps the available catalog', async () => {
+    const model = {
+      provider: 'openai',
+      id: 'gpt-test',
+      name: 'GPT Test',
+      reasoning: true,
+    }
+    const getModel = vi.fn(() => model)
+    pi.runtimeCreate.mockResolvedValue({
+      getModel,
+      getAvailable: vi.fn(async () => [model]),
+    })
+    const adapter = new PiAdapter('/repo')
+
+    await collect(
+      (await adapter.createSession({ model: 'openai/gpt-test', reasoningEffort: 'high' })).send(
+        'a',
+      ),
+    )
+    expect(getModel).toHaveBeenCalledWith('openai', 'gpt-test')
+    expect(pi.createAgentSession.mock.calls[0]?.[0]).toMatchObject({
+      model,
+      thinkingLevel: 'high',
+    })
+    await expect(adapter.listModels()).resolves.toMatchObject({
+      models: [
+        {
+          id: 'openai/gpt-test',
+          displayName: 'openai · GPT Test',
+          reasoningEfforts: expect.arrayContaining([{ id: 'high', displayName: 'high' }]),
+        },
+      ],
+    })
+  })
+
   it('retries runtime creation after a failure instead of caching the rejection', async () => {
     pi.runtimeCreate.mockRejectedValueOnce(new Error('auth.json unreadable'))
     const adapter = new PiAdapter('/repo')

@@ -17,6 +17,7 @@ import {
   type AgentAdapterContext,
   type AgentDescriptor,
   type AgentId,
+  type AgentModelCatalog,
   type AgentSdkAdapter,
   type BuiltinAgentId,
   type CreateAgentAdapter,
@@ -127,6 +128,18 @@ export class AdapterRegistry {
       )
     }
     return out
+  }
+
+  /** Query one adapter lazily; unsupported/failed catalogs degrade to empty. */
+  async listModels(id: AgentId): Promise<AgentModelCatalog> {
+    const adapter = await this.get(id)
+    if (!adapter.listModels) return { models: [], defaultReasoningEfforts: [] }
+    try {
+      return await adapter.listModels()
+    } catch (err) {
+      log().warn('agent model catalog failed', { id, message: errMessage(err) })
+      return { models: [], defaultReasoningEfforts: [] }
+    }
   }
 
   private async buildExternal(def: ExternalAgentDef): Promise<AgentSdkAdapter> {

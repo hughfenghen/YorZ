@@ -2,7 +2,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, afterEach } from 'vitest'
-import { ProjectRegistry } from '../project-registry.js'
+import { ProjectRegistry, resolveProjectAgentConfig } from '../project-registry.js'
 import { saveGlobalConfig } from '../global-config.js'
 
 const registries: ProjectRegistry[] = []
@@ -34,6 +34,21 @@ afterEach(async () => {
 })
 
 describe('ProjectRegistry', () => {
+  it('resolves inherited Agent runtime settings as one global group', () => {
+    expect(
+      resolveProjectAgentConfig(
+        { kind: 'inherit', model: 'ignored-project-model' },
+        { defaultKind: 'codex', model: 'gpt-test', reasoningEffort: 'high' },
+      ),
+    ).toEqual({ kind: 'codex', model: 'gpt-test', reasoningEffort: 'high' })
+    expect(
+      resolveProjectAgentConfig(
+        { kind: 'pi', model: 'deepseek/test', reasoningEffort: 'low' },
+        { defaultKind: 'codex', model: 'gpt-test', reasoningEffort: 'high' },
+      ),
+    ).toEqual({ kind: 'pi', model: 'deepseek/test', reasoningEffort: 'low' })
+  })
+
   it('add() creates .yorz/specs and persists into global config', async () => {
     const reg = await newRegistry()
     const projDir = await newProjectDir()

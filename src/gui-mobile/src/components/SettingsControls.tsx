@@ -59,6 +59,31 @@ export function Segmented<T extends string>(props: {
   )
 }
 
+/** 原生下拉选择；44px 触控高度，适合候选很多且存在级联关系的设置。 */
+export function SettingsSelect<T extends string>(props: {
+  label: string
+  options: readonly { value: T; label: string }[]
+  value: () => T
+  onChange: (value: T) => void
+  disabled?: () => boolean
+}): JSX.Element {
+  return (
+    <label class="flex items-center justify-between gap-3 px-4 py-3">
+      <span class="min-w-0 flex-1 text-sm">{props.label}</span>
+      <select
+        class="min-h-11 min-w-0 max-w-[65%] rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring disabled:opacity-60"
+        value={props.value()}
+        disabled={props.disabled?.()}
+        onChange={(event) => props.onChange(event.currentTarget.value as T)}
+      >
+        <For each={props.options}>
+          {(option) => <option value={option.value}>{option.label}</option>}
+        </For>
+      </select>
+    </label>
+  )
+}
+
 /**
  * 布尔开关。用原生 checkbox 的语义 + 自绘轨道，省掉一个组件依赖。
  *
