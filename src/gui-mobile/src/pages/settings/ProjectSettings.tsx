@@ -14,6 +14,7 @@ import { Group, SettingsSelect } from '@/components/SettingsControls.jsx'
 import { showToast } from '@/components/Toast.jsx'
 import { activeProject, activeProjectId } from '@/lib/active-project.js'
 import { t } from '@/i18n/index.js'
+import { createLatestMutationQueue } from '@shared/lib/latest-mutation-queue.js'
 
 /**
  * 项目设置（二级页），作用于当前活动项目。
@@ -57,6 +58,7 @@ export const ProjectSettings: Component = () => {
     catalogSource,
     ({ pid, kind }) => api.listAgentModels(pid, kind),
   )
+  const configSaveQueue = createLatestMutationQueue()
 
   // 写成函数而不是模块级常量：t() 在模块求值时 i18n 还没 init 完，
   // 且切语言后常量不会重算，标签会卡在初始语言上。
@@ -108,14 +110,15 @@ export const ProjectSettings: Component = () => {
     const prev = config()
     if (!pid || !prev) return
     mutate({ ...prev, agent })
-    try {
+    await configSaveQueue.enqueue({
       // specsDir 原样回传：接口是整体覆写，漏传等于把用户设的目录抹掉
-      const saved = await api.updateProjectConfig(pid, { agent, specsDir: prev.specsDir })
-      mutate(saved.config)
-    } catch (e) {
-      mutate(prev)
-      showToast(e instanceof Error ? e.message : String(e), 'error')
-    }
+      task: () => api.updateProjectConfig(pid, { agent, specsDir: prev.specsDir }),
+      onLatestSuccess: (saved) => mutate(saved.config),
+      onLatestError: (e) => {
+        mutate(prev)
+        showToast(e instanceof Error ? e.message : String(e), 'error')
+      },
+    })
   }
 
   const onKindChange = (kind: string) => void save({ kind })

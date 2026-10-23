@@ -1,8 +1,8 @@
 ---
 stage: done
-last_action: '完成全量测试、类型检查和双端生产构建，任务全部完成'
-updated_at: '2026-10-22 21:41:20'
-summary: '扩展 Agent 适配协议，在全局与项目设置中以级联选择支持模型和推理强度，并允许沿用本机 Agent 默认值'
+last_action: 用户手动置为 done
+updated_at: '2026-10-23 13:21:52'
+summary: 扩展 Agent 适配协议，在全局与项目设置中以级联选择支持模型和推理强度，并允许沿用本机 Agent 默认值
 ---
 
 # Agent 模型与推理强度设置
@@ -199,7 +199,22 @@ _暂无_
 - [x] 重构移动端全局与项目设置为同语义三级联 Select，补充移动设置 Select 控件与移动 i18n（验收：乐观读改写保留其它字段、级联/禁用行为正确、移动 build 通过）
 - [x] 运行相关单测、`pnpm typecheck` 与桌面/移动构建，修复回归并记录验证结果（验收：命令全部退出码 0，或记录不可执行的客观原因）
 
-## 7. 执行记录
+## 7. 追加任务
+
+- [open] [fix] 2026-10-22 22:06:09 | 1. 在 select 中切换模型、推理强度，经常失败，二次选择基本能成功；检查是否可复用@src/gui/src/components/ui/select.t
+  - 描述：1. 在 select 中切换模型、推理强度，经常失败，二次选择基本能成功；检查是否可复用@src/gui/src/components/ui/select.tsx 组件
+2. “由 Agent 决定”中英文文案都改成 “--”，表示空状态
+3. 打开全局配置，长时间处于“加载中”状态，模型、推理强度应该异步加载，不要阻止UI渲染
+- [open] [fix] 2026-10-22 22:33:53 | 1. 选择模型后，再次点击模型无反应；期望弹出模型选项
+  - 描述：1. 选择模型后，再次点击模型无反应；期望弹出模型选项
+2. 选择推理强度后，关闭弹窗再打开，未能选中所选值；期望重新打开设置弹窗 UI 能渲染选中值
+3. 模型 select 组件，选中的模型名字较长时不应该折行；期望超过长度显示为省略号 ...
+- [open] [fix] 2026-10-23 12:34:11 | 打开设置面板，点击切换 Agent、模型，页面会卡死崩溃
+  - 描述：打开设置面板，点击切换 Agent、模型，页面会卡死崩溃
+- [open] [fix] 2026-10-23 12:34:51 | 打开设置面板，点击切换 Agent、模型，页面会卡死崩溃
+  - 描述：打开设置面板，点击切换 Agent、模型，页面会卡死崩溃
+
+## 8. 执行记录
 
 - 2026-10-22 扩展公共协议：新增可选 `AgentRuntimeConfig`、模型/推理候选与目录类型，扩展 create/resume options，并以可选 `listModels?()` 保持旧外部 adapter 兼容；注册表新增失败降级为空目录的惰性查询，公共包同步导出。`pnpm vitest run src/service/agent-sdk/__tests__/registry.test.ts` 通过（8/8）。
 - 2026-10-22 四个内置 adapter 接入：Claude 映射 `model/effort` 并用 `supportedModels()`；Codex 映射 Thread options 并解析本地模型缓存、过滤 SDK 不支持等级；OpenCode 切换同包 v2 API，使用 `provider/model + variant`；Pi 解析 runtime 模型并传 `thinkingLevel`。四组 adapter 单测通过（33/33），随后 `pnpm typecheck` 通过。

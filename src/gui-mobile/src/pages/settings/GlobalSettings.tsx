@@ -20,6 +20,7 @@ import { Group, Segmented, SettingsSelect, Toggle } from '@/components/SettingsC
 import { showToast } from '@/components/Toast.jsx'
 import { disablePush, enablePush, isPushSupported, isStandalone } from '@/lib/pwa.js'
 import { t, useTranslation } from '@/i18n/index.js'
+import { createLatestMutationQueue } from '@shared/lib/latest-mutation-queue.js'
 
 /**
  * 全局设置（二级页）。
@@ -66,6 +67,7 @@ export const GlobalSettings: Component = () => {
   )
   const pushSupported = isPushSupported()
   const [pushBusy, setPushBusy] = createSignal(false)
+  const configSaveQueue = createLatestMutationQueue()
 
   const kindOptions = (): readonly { value: string; label: string }[] => {
     const list = agents() ?? []
@@ -110,13 +112,14 @@ export const GlobalSettings: Component = () => {
   const patch = async (next: GlobalConfig) => {
     const prev = config()
     mutate(next) // 乐观更新：移动端点一下要立刻有反馈
-    try {
-      const saved = await api.updateGlobalConfig(next)
-      mutate(saved.config)
-    } catch (e) {
-      mutate(prev)
-      showToast(e instanceof Error ? e.message : String(e), 'error')
-    }
+    await configSaveQueue.enqueue({
+      task: () => api.updateGlobalConfig(next),
+      onLatestSuccess: (saved) => mutate(saved.config),
+      onLatestError: (e) => {
+        mutate(prev)
+        showToast(e instanceof Error ? e.message : String(e), 'error')
+      },
+    })
   }
 
   /**

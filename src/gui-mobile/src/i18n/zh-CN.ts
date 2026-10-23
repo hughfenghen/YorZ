@@ -163,7 +163,7 @@ export const zhCN = {
     defaultKind: '默认 Agent',
     model: '模型',
     reasoningEffort: '推理强度',
-    agentDefaultOption: '由 Agent 决定',
+    agentDefaultOption: '--',
     notifications: '通知',
     pushNotification: '任务完成推送',
     pushUnavailable: '不可用',
@@ -188,7 +188,7 @@ export const zhCN = {
     inherit: '跟随全局',
     model: '模型',
     reasoningEffort: '推理强度',
-    agentDefaultOption: '由 Agent 决定',
+    agentDefaultOption: '--',
   },
   chat: {
     untitled: '未命名会话',

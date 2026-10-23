@@ -62,7 +62,7 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
         ])
         setAgents(descriptors)
         applyConfig(cfg)
-        if (cfg.agent.kind !== 'inherit') await loadCatalog(cfg.agent.kind)
+        if (cfg.agent.kind !== 'inherit') void loadCatalog(cfg.agent.kind)
       } catch (err) {
         setError((err as Error).message)
       } finally {

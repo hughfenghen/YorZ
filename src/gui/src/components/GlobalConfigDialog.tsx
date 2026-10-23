@@ -31,6 +31,7 @@ import {
   type ShortcutConfig,
 } from '../lib/shortcuts.js'
 import { t } from '../i18n/index.js'
+import { createLatestMutationQueue } from '@shared/lib/latest-mutation-queue.js'
 
 interface Props {
   open: boolean
@@ -65,10 +66,13 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
   const [saveStatus, setSaveStatus] = createSignal<'idle' | 'saving' | 'saved'>('idle')
   const [error, setError] = createSignal<string | null>(null)
   let catalogRequest = 0
+  let configRequest = 0
+  const configSaveQueue = createLatestMutationQueue()
   const conflicts = createMemo(() => new Set(findShortcutConflicts(shortcuts())))
   let saveStatusTimer: ReturnType<typeof setTimeout> | undefined
 
   createEffect(() => {
+    const request = ++configRequest
     if (!props.open) return
     setError(null)
     clearSaveStatusTimer()
@@ -76,6 +80,11 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
     setLoading(true)
     void (async () => {
       try {
+        // A close/reopen can race the previous selection's queued PUT. Reading
+        // only after those writes finish prevents stale config from clearing
+        // the latest model/reasoning selection.
+        await configSaveQueue.whenIdle()
+        if (request !== configRequest || !props.open) return
         // Fetch config + the agent roster together: the global-default dropdown
         // now lists builtin and global external (`customAgents`) agents from the
         // single `/agents` source rather than a hardcoded array.
@@ -83,14 +92,16 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
           api.getGlobalConfig(),
           api.listGlobalAgents().catch(() => [] as AgentDescriptor[]),
         ])
+        if (request !== configRequest || !props.open) return
         applyConfig(cfg)
         setAgents(descriptors)
-        await loadCatalog(cfg.agent.defaultKind)
+        void loadCatalog(cfg.agent.defaultKind)
       } catch (err) {
+        if (request !== configRequest || !props.open) return
         setError((err as Error).message)
         applyConfig(DEFAULT_GLOBAL_CONFIG)
       } finally {
-        setLoading(false)
+        if (request === configRequest) setLoading(false)
       }
     })()
   })
@@ -143,38 +154,40 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
     }
     clearSaveStatusTimer()
     setSaveStatus('saving')
-    try {
-      const nextModel = patch.agent ? patch.agent.model : model() || undefined
-      const nextReasoning = patch.agent
-        ? patch.agent.reasoningEffort
-        : reasoningEffort() || undefined
-      await saveGlobalConfig({
-        agent: {
-          defaultKind: patch.agent?.defaultKind ?? agentDefault(),
-          ...(nextModel ? { model: nextModel } : {}),
-          ...(nextReasoning ? { reasoningEffort: nextReasoning } : {}),
+    const nextModel = patch.agent ? patch.agent.model : model() || undefined
+    const nextReasoning = patch.agent ? patch.agent.reasoningEffort : reasoningEffort() || undefined
+    const nextConfig: GlobalConfig = {
+      agent: {
+        defaultKind: patch.agent?.defaultKind ?? agentDefault(),
+        ...(nextModel ? { model: nextModel } : {}),
+        ...(nextReasoning ? { reasoningEffort: nextReasoning } : {}),
+      },
+      notifications: {
+        sessionEnd: {
+          banner: patch.notifications?.sessionEnd.banner ?? banner(),
+          sound: patch.notifications?.sessionEnd.sound ?? sound(),
         },
-        notifications: {
-          sessionEnd: {
-            banner: patch.notifications?.sessionEnd.banner ?? banner(),
-            sound: patch.notifications?.sessionEnd.sound ?? sound(),
-          },
-          // 推送开关只在移动端设置页管理，桌面端整体回写时原样保留，避免被清掉。
-          push: patch.notifications?.push ?? globalConfig().notifications.push,
-        },
-        shortcuts: nextShortcuts,
-        power: {
-          inhibitWhenRunning: patch.power?.inhibitWhenRunning ?? powerMode(),
-        },
-        appearance: globalConfig().appearance,
-        customInstructions: globalConfig().customInstructions,
-      })
-      setSaveStatus('saved')
-      saveStatusTimer = setTimeout(() => setSaveStatus('idle'), 2000)
-    } catch (err) {
-      setSaveStatus('idle')
-      setError((err as Error).message)
+        // 推送开关只在移动端设置页管理，桌面端整体回写时原样保留，避免被清掉。
+        push: patch.notifications?.push ?? globalConfig().notifications.push,
+      },
+      shortcuts: nextShortcuts,
+      power: {
+        inhibitWhenRunning: patch.power?.inhibitWhenRunning ?? powerMode(),
+      },
+      appearance: globalConfig().appearance,
+      customInstructions: globalConfig().customInstructions,
     }
+    await configSaveQueue.enqueue({
+      task: () => saveGlobalConfig(nextConfig),
+      onLatestSuccess: () => {
+        setSaveStatus('saved')
+        saveStatusTimer = setTimeout(() => setSaveStatus('idle'), 2000)
+      },
+      onLatestError: (err) => {
+        setSaveStatus('idle')
+        setError((err as Error).message)
+      },
+    })
   }
 
   function clearSaveStatusTimer(): void {

@@ -160,7 +160,7 @@ export const en: Translation = {
     defaultKind: 'Default agent',
     model: 'Model',
     reasoningEffort: 'Reasoning effort',
-    agentDefaultOption: 'Agent default',
+    agentDefaultOption: '--',
     notifications: 'Notifications',
     pushNotification: 'Task completion push',
     pushUnavailable: 'Unavailable',
@@ -185,7 +185,7 @@ export const en: Translation = {
     inherit: 'Inherit global',
     model: 'Model',
     reasoningEffort: 'Reasoning effort',
-    agentDefaultOption: 'Agent default',
+    agentDefaultOption: '--',
   },
   chat: {
     untitled: 'Untitled session',

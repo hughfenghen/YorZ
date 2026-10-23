@@ -37,7 +37,7 @@ export const SelectTrigger = <T extends ValidComponent = 'button'>(
         width="1em"
         height="1em"
         viewBox="0 0 24 24"
-        class="flex size-4 items-center justify-center opacity-50"
+        class="flex size-4 shrink-0 items-center justify-center opacity-50"
       >
         <path
           fill="none"
@@ -64,8 +64,9 @@ export const SelectContent = <T extends ValidComponent = 'div'>(
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
+        data-kb-top-layer=""
         class={cn(
-          'relative z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[expanded]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[expanded]:fade-in-0 data-[closed]:zoom-out-95 data-[expanded]:zoom-in-95',
+          'relative z-[60] min-w-[8rem] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[expanded]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[expanded]:fade-in-0 data-[closed]:zoom-out-95 data-[expanded]:zoom-in-95',
           local.class,
         )}
         {...rest}
