@@ -16,7 +16,8 @@ import {
 } from '@shared/lib/theme.js'
 import { Page } from '@/components/Page.jsx'
 import { ErrorNotice, LoadingNotice } from '@/components/ListStates.jsx'
-import { Group, Segmented, SettingsSelect, Toggle } from '@/components/SettingsControls.jsx'
+import { Group, Segmented, Toggle } from '@/components/SettingsControls.jsx'
+import { AgentSettings } from '@/components/AgentSettings.jsx'
 import { showToast } from '@/components/Toast.jsx'
 import { disablePush, enablePush, isPushSupported, isStandalone } from '@/lib/pwa.js'
 import { t, useTranslation } from '@/i18n/index.js'
@@ -171,13 +172,13 @@ export const GlobalSettings: Component = () => {
             {(cfg) => (
               <>
                 <Group title={t('globalSettings.agent')}>
-                  <SettingsSelect
+                  <AgentSettings
                     label={t('globalSettings.defaultKind')}
                     options={kindOptions()}
                     value={() => cfg().agent.defaultKind}
                     onChange={(defaultKind) => void patch({ ...cfg(), agent: { defaultKind } })}
                   />
-                  <SettingsSelect
+                  <AgentSettings
                     label={t('globalSettings.model')}
                     options={modelOptions(cfg())}
                     value={() => cfg().agent.model ?? ''}
@@ -195,7 +196,7 @@ export const GlobalSettings: Component = () => {
                       })
                     }
                   />
-                  <SettingsSelect
+                  <AgentSettings
                     label={t('globalSettings.reasoningEffort')}
                     options={reasoningOptions(cfg())}
                     value={() => cfg().agent.reasoningEffort ?? ''}

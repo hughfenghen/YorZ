@@ -9,7 +9,7 @@ import {
 } from '../lib/api.js'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog.jsx'
 import { Input } from './ui/input.jsx'
-import { SettingsSelect } from './SettingsSelect.jsx'
+import { AgentSettings } from './AgentSettings.jsx'
 import { t } from '../i18n/index.js'
 
 interface Props {
@@ -258,13 +258,13 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
         >
           <div class="flex flex-col gap-4">
             <fieldset class="m-0 grid gap-3 border-0 p-0 sm:grid-cols-3">
-              <SettingsSelect
+              <AgentSettings
                 label={t('projectConfig.agent')}
                 value={kind()}
                 options={options().map((value) => ({ value, label: agentLabel(value) }))}
                 onChange={updateKind}
               />
-              <SettingsSelect
+              <AgentSettings
                 label={t('projectConfig.model')}
                 value={model()}
                 options={modelOptions()}
@@ -274,7 +274,7 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
                 disabled={kind() === 'inherit' || catalogLoading() || modelOptions().length <= 1}
                 onChange={updateModel}
               />
-              <SettingsSelect
+              <AgentSettings
                 label={t('projectConfig.reasoningEffort')}
                 value={reasoningEffort()}
                 options={reasoningOptions()}

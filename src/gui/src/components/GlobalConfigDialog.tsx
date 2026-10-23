@@ -20,7 +20,7 @@ import {
   RadioGroupItemLabel,
   RadioGroupLabel,
 } from './ui/radio-group.jsx'
-import { SettingsSelect } from './SettingsSelect.jsx'
+import { AgentSettings } from './AgentSettings.jsx'
 import {
   DEFAULT_SHORTCUTS,
   SHORTCUT_ACTIONS,
@@ -344,13 +344,13 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
         >
           <div class="flex flex-col gap-4">
             <fieldset class="m-0 grid gap-3 border-0 p-0 sm:grid-cols-3">
-              <SettingsSelect
+              <AgentSettings
                 label={t('globalConfig.agentDefault')}
                 value={agentDefault()}
                 options={agentOptions().map((kind) => ({ value: kind, label: agentLabel(kind) }))}
                 onChange={updateAgentDefault}
               />
-              <SettingsSelect
+              <AgentSettings
                 label={t('globalConfig.model')}
                 value={model()}
                 options={modelOptions()}
@@ -360,7 +360,7 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
                 disabled={catalogLoading() || modelOptions().length <= 1}
                 onChange={updateModel}
               />
-              <SettingsSelect
+              <AgentSettings
                 label={t('globalConfig.reasoningEffort')}
                 value={reasoningEffort()}
                 options={reasoningOptions()}

@@ -10,7 +10,8 @@ import {
 import { displayProjectName } from '@shared/api/project.js'
 import { Page } from '@/components/Page.jsx'
 import { ErrorNotice, LoadingNotice, NoProjectNotice } from '@/components/ListStates.jsx'
-import { Group, SettingsSelect } from '@/components/SettingsControls.jsx'
+import { Group } from '@/components/SettingsControls.jsx'
+import { AgentSettings } from '@/components/AgentSettings.jsx'
 import { showToast } from '@/components/Toast.jsx'
 import { activeProject, activeProjectId } from '@/lib/active-project.js'
 import { t } from '@/i18n/index.js'
@@ -149,13 +150,13 @@ export const ProjectSettings: Component = () => {
             <Show when={config()}>
               {(cfg) => (
                 <Group title={t('projectSettings.agent')}>
-                  <SettingsSelect
+                  <AgentSettings
                     label={t('projectSettings.kind')}
                     options={kindOptions()}
                     value={() => cfg().agent.kind}
                     onChange={onKindChange}
                   />
-                  <SettingsSelect
+                  <AgentSettings
                     label={t('projectSettings.model')}
                     options={modelOptions(cfg())}
                     value={() => cfg().agent.model ?? ''}
@@ -169,7 +170,7 @@ export const ProjectSettings: Component = () => {
                     }
                     onChange={(model) => onModelChange(cfg(), model)}
                   />
-                  <SettingsSelect
+                  <AgentSettings
                     label={t('projectSettings.reasoningEffort')}
                     options={reasoningOptions(cfg())}
                     value={() => cfg().agent.reasoningEffort ?? ''}

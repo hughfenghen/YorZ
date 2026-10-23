@@ -5,15 +5,15 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.jsx'
 import { Button } from './ui/button.jsx'
 import { Input } from './ui/input.jsx'
 
-export interface SettingsSelectOption {
+export interface AgentSettingsOption {
   value: string
   label: string
 }
 
-export const SettingsSelect: Component<{
+export const AgentSettings: Component<{
   label: string
   value: string
-  options: readonly SettingsSelectOption[]
+  options: readonly AgentSettingsOption[]
   onChange: (value: string) => void
   disabled?: boolean
   searchable?: boolean
@@ -48,7 +48,7 @@ export const SettingsSelect: Component<{
       <Show
         when={props.searchable}
         fallback={
-          <Select<SettingsSelectOption>
+          <Select<AgentSettingsOption>
             options={[...props.options]}
             optionValue="value"
             optionTextValue="label"
@@ -71,7 +71,7 @@ export const SettingsSelect: Component<{
             aria-label={props.label}
           >
             <SelectTrigger class="min-w-0">
-              <SelectValue<SettingsSelectOption> class="min-w-0 flex-1 truncate text-left">
+              <SelectValue<AgentSettingsOption> class="min-w-0 flex-1 truncate text-left">
                 {(state) => state.selectedOption().label}
               </SelectValue>
             </SelectTrigger>
