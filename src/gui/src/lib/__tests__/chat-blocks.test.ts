@@ -119,9 +119,27 @@ describe('toPart', () => {
       text: '<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>',
     })
   })
+
+  it('does not expose hidden blocks from assistant history text', () => {
+    expect(
+      toPart('assistant', {
+        type: 'text',
+        text: 'before\n<!-- yorz:hidden -->\ninternal\n<!-- /yorz:hidden -->\nafter',
+      }),
+    ).toEqual({ kind: 'text', role: 'assistant', text: 'before\nafter' })
+  })
 })
 
 describe('groupParts bubble boundaries', () => {
+  it('strips hidden blocks from direct text parts before rendering', () => {
+    const marked = '<!-- yorz:hidden -->\ninternal\n<!-- /yorz:hidden -->\nvisible'
+
+    expect(groupParts([userText(marked), botText(marked)])).toEqual([
+      { kind: 'user', text: 'visible' },
+      { kind: 'assistant', segments: [{ kind: 'text', text: 'visible' }] },
+    ])
+  })
+
   it('starts a new bubble on a user text part', () => {
     const blocks = groupParts([userText('q1'), botText('a1'), userText('q2'), botText('a2')])
     expect(blocks.map((b) => b.kind)).toEqual(['user', 'assistant', 'user', 'assistant'])

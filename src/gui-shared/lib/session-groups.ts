@@ -1,4 +1,17 @@
 import type { SessionInfo } from '../api/index.js'
+import { stripHiddenPrompt } from './chat-blocks.js'
+
+/**
+ * Session titles can come from an Agent-owned index rather than YorZ's store.
+ * Codex may derive that title from the expanded prompt and truncate it before
+ * the closing marker, so handle both a complete block and that unsafe prefix.
+ */
+function withoutHiddenTitle(session: SessionInfo): SessionInfo {
+  const stripped = stripHiddenPrompt(session.title)
+  const title = /^\s*<!--\s*yorz:hidden\b/i.test(stripped) ? '' : stripped
+  const visibleTitle = title || session.id
+  return visibleTitle === session.title ? session : { ...session, title: visibleTitle }
+}
 
 /**
  * A row in the Chat panel's session list.
@@ -42,7 +55,8 @@ export function groupSessions(
   const groups: SessionGroup[] = []
   const bySpec = new Map<string, SessionGroup>()
 
-  for (const s of sessions) {
+  for (const raw of sessions) {
+    const s = withoutHiddenTitle(raw)
     const running = isRunning(s.id)
     if (!s.specId) {
       groups.push({

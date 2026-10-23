@@ -61,6 +61,27 @@ describe('groupSessions', () => {
     expect(groups.every((g) => g.sessions.length === 1)).toBe(true)
   })
 
+  it('never exposes hidden prompt content through a row title', () => {
+    const [complete] = groupSessions(
+      [
+        session({
+          id: 'chat-complete',
+          kind: 'codex',
+          title:
+            '<!-- yorz:hidden -->\ninternal instructions\n<!-- /yorz:hidden -->\nvisible title',
+        }),
+      ],
+      idle,
+    )
+    const [truncated] = groupSessions(
+      [session({ id: 'chat-truncated', kind: 'codex', title: '<!-- yorz:hidden -- internal…' })],
+      idle,
+    )
+
+    expect(complete!.latest.title).toBe('visible title')
+    expect(truncated!.latest.title).toBe('chat-truncated')
+  })
+
   it('preserves the incoming order of rows (the server sorts running first)', () => {
     const groups = groupSessions(
       [

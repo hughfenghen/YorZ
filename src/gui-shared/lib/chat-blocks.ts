@@ -131,7 +131,7 @@ export function stripHiddenPrompt(text: string): string {
 export function toPart(role: ChatRole, part: MessagePart): ChatPart {
   if (part.type === 'text') {
     if (part.contextKind) return { kind: 'context', contextKind: part.contextKind, text: part.text }
-    return { kind: 'text', role, text: role === 'user' ? stripHiddenPrompt(part.text) : part.text }
+    return { kind: 'text', role, text: stripHiddenPrompt(part.text) }
   }
   if (part.type === 'tool-use') return { kind: 'tool', name: part.name, input: part.input }
   return { kind: 'tool', result: part.text }
@@ -326,9 +326,24 @@ export function groupParts(parts: readonly ChatPart[]): ChatBlock[] {
     }
   }
 
+  // `toPart` handles complete persisted message parts, but live/direct parts do
+  // not pass through it and a marker pair can be split across several deltas.
+  // Strip once more after grouping, when consecutive text has been reassembled,
+  // so every rendering path observes the same privacy boundary.
+  const visible = blocks.map((block): ChatBlock => {
+    if (block.kind === 'user') return { ...block, text: stripHiddenPrompt(block.text) }
+    if (block.kind !== 'assistant') return block
+    return {
+      ...block,
+      segments: block.segments.map((segment) =>
+        segment.kind === 'text' ? { ...segment, text: stripHiddenPrompt(segment.text) } : segment,
+      ),
+    }
+  })
+
   // An empty assistant bubble can only come from a turn that produced nothing;
   // rendering it would reintroduce the blank-bubble bug this model exists to fix.
-  return blocks.filter((b) => b.kind !== 'assistant' || b.segments.length > 0)
+  return visible.filter((b) => b.kind !== 'assistant' || b.segments.length > 0)
 }
 
 /**

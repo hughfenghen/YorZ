@@ -6,6 +6,7 @@ import {
   CodexAdapter,
   codexThreadOptions,
   parseCodexModelCatalog,
+  parseCodexSessionIndex,
   parseCodexTokenCountSnapshot,
   parseCodexUsageResponse,
   summarizeCodexPromptForTitle,
@@ -22,6 +23,15 @@ describe('summarizeCodexPromptForTitle', () => {
     `)
 
     expect(title).toBe('请修复 src/gui/src/components/ChatPanel.tsx 的会话列表标题')
+  })
+
+  it('removes injected hidden prompt blocks before deriving a title', () => {
+    const title = summarizeCodexPromptForTitle(`<!-- yorz:hidden -->
+internal instructions that must never become a session title
+<!-- /yorz:hidden -->
+/yorz-debug 修复会话列表`)
+
+    expect(title).toBe('/yorz-debug 修复会话列表')
   })
 })
 
@@ -109,6 +119,20 @@ describe('CodexAdapter.listSessions', () => {
 
     expect(list).toHaveLength(1)
     expect(list[0].title).toBe('Use Codex resume title')
+  })
+})
+
+describe('parseCodexSessionIndex', () => {
+  it('keeps visible titles and rejects hidden-prefix titles truncated by Codex', () => {
+    const index = parseCodexSessionIndex(
+      [
+        JSON.stringify({ id: 'visible', thread_name: 'Visible title' }),
+        JSON.stringify({ id: 'hidden', thread_name: '<!-- yorz:hidden -- internal…' }),
+      ].join('\n'),
+    )
+
+    expect(index.get('visible')).toBe('Visible title')
+    expect(index.has('hidden')).toBe(false)
   })
 })
 

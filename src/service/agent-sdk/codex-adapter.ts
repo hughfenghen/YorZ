@@ -12,6 +12,7 @@ import {
   type ThreadOptions,
 } from '@openai/codex-sdk'
 import { normalizeUsage } from '../telemetry/index.js'
+import { stripHiddenPrompt } from '../custom-instruction.js'
 import type {
   AgentContextKind,
   AgentDescriptor,
@@ -116,7 +117,7 @@ function textFromMessagePayload(payload: Record<string, unknown>): string {
 }
 
 export function summarizeCodexPromptForTitle(text: string): string {
-  const [body] = text.split(/^\s*---\s*$/m)
+  const [body] = stripHiddenPrompt(text).split(/^\s*---\s*$/m)
   const cleaned = body
     .split('\n')
     .map((line) => line.trim())
@@ -145,8 +146,14 @@ export function parseCodexSessionIndex(text: string): Map<string, string> {
     }
     const rec = obj as { id?: unknown; thread_name?: unknown }
     const id = typeof rec.id === 'string' ? rec.id.trim() : ''
-    const title = typeof rec.thread_name === 'string' ? rec.thread_name.trim() : ''
-    if (id && title) out.set(id, title)
+    const rawTitle = typeof rec.thread_name === 'string' ? rec.thread_name : ''
+    const title = stripHiddenPrompt(rawTitle).trim()
+    // Codex may have generated and truncated a title before YorZ sees it. Once
+    // the closing marker is gone, the regular block stripper cannot recover a
+    // visible suffix; discard that unsafe index title and let readMeta derive a
+    // clean one from the complete first user prompt instead.
+    const startsInsideHiddenBlock = /^<!--\s*yorz:hidden\b/i.test(title)
+    if (id && title && !startsInsideHiddenBlock) out.set(id, title)
   }
   return out
 }
