@@ -1,12 +1,4 @@
-import {
-  For,
-  Show,
-  createEffect,
-  createMemo,
-  createSignal,
-  type Component,
-  type JSX,
-} from 'solid-js'
+import { For, Show, createMemo, createSignal, type Component, type JSX } from 'solid-js'
 import { Check, ChevronsUpDown, Loader2 } from 'lucide-solid'
 import { cn } from '@/lib/cn'
 import { Sheet } from '@/components/Sheet.jsx'
@@ -68,20 +60,20 @@ export function Segmented<T extends string>(props: {
   )
 }
 
-/** 原生下拉选择；44px 触控高度，适合候选很多且存在级联关系的设置。 */
+/** 底部抽屉式下拉：按钮行 + Sheet，设置页所有选择项统一用同一交互。 */
 export function SettingsSelect<T extends string>(props: {
   label: string
   options: readonly { value: T; label: string }[]
   value: () => T
   onChange: (value: T) => void
   disabled?: () => boolean
+  /** 抽屉内是否渲染筛选输入框；候选可能超一屏的列表（模型）才值得开。 */
   searchable?: boolean
   filterPlaceholder?: string
   emptyText?: string
 }): JSX.Element {
   const [open, setOpen] = createSignal(false)
   const [query, setQuery] = createSignal('')
-  let selectRef: HTMLSelectElement | undefined
   const selected = createMemo(
     () => props.options.find((option) => option.value === props.value()) ?? null,
   )
@@ -96,15 +88,6 @@ export function SettingsSelect<T extends string>(props: {
     )
   })
 
-  // A native select falls back to its first option when its controlled value
-  // arrives before async options. Re-apply the value whenever either side
-  // changes so a later roster/catalog response repairs the DOM selection.
-  createEffect(() => {
-    const value = props.value()
-    const hasValue = props.options.some((option) => option.value === value)
-    if (selectRef && hasValue) selectRef.value = value
-  })
-
   const close = () => {
     setOpen(false)
     setQuery('')
@@ -117,50 +100,32 @@ export function SettingsSelect<T extends string>(props: {
 
   return (
     <>
-      <Show
-        when={props.searchable}
-        fallback={
-          <label class="flex items-center justify-between gap-3 px-4 py-3">
-            <span class="min-w-0 flex-1 text-sm">{props.label}</span>
-            <select
-              ref={selectRef}
-              class="min-h-11 min-w-0 max-w-[65%] rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring disabled:opacity-60"
-              value={props.value()}
-              disabled={props.disabled?.()}
-              onChange={(event) => props.onChange(event.currentTarget.value as T)}
-            >
-              <For each={props.options}>
-                {(option) => <option value={option.value}>{option.label}</option>}
-              </For>
-            </select>
-          </label>
-        }
-      >
-        <div class="flex items-center justify-between gap-3 px-4 py-3">
-          <span class="min-w-0 flex-1 text-sm">{props.label}</span>
-          <button
-            type="button"
-            class="flex min-h-11 min-w-0 max-w-[65%] items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground disabled:opacity-60"
-            disabled={props.disabled?.()}
-            aria-label={props.label}
-            onClick={() => setOpen(true)}
-          >
-            <span class="min-w-0 flex-1 truncate text-left">
-              {selected()?.label ?? props.value()}
-            </span>
-            <ChevronsUpDown class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-          </button>
-        </div>
-      </Show>
+      <div class="flex items-center justify-between gap-3 px-4 py-3">
+        <span class="min-w-0 flex-1 text-sm">{props.label}</span>
+        <button
+          type="button"
+          class="flex min-h-11 min-w-0 max-w-[65%] items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground disabled:opacity-60"
+          disabled={props.disabled?.()}
+          aria-label={props.label}
+          onClick={() => setOpen(true)}
+        >
+          <span class="min-w-0 flex-1 truncate text-left">
+            {selected()?.label ?? props.value()}
+          </span>
+          <ChevronsUpDown class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </button>
+      </div>
 
-      <Sheet open={Boolean(props.searchable) && open()} title={props.label} onClose={close}>
-        <input
-          type="search"
-          class="mb-3 h-11 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
-          value={query()}
-          placeholder={props.filterPlaceholder}
-          onInput={(event) => setQuery(event.currentTarget.value)}
-        />
+      <Sheet open={open()} title={props.label} onClose={close}>
+        <Show when={props.searchable}>
+          <input
+            type="search"
+            class="mb-3 h-11 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+            value={query()}
+            placeholder={props.filterPlaceholder}
+            onInput={(event) => setQuery(event.currentTarget.value)}
+          />
+        </Show>
         <Show
           when={filteredOptions().length > 0}
           fallback={<p class="py-6 text-center text-sm text-muted-foreground">{props.emptyText}</p>}
