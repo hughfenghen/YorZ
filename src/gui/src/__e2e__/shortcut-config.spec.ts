@@ -68,6 +68,12 @@ test('默认快捷键触发高频操作', async ({ page, request }) => {
   // 放进自己的输入框，关闭这条路径必须不被「可编辑元素吞掉快捷键」的规则拦下。
   await page.keyboard.press('Control+Shift+S')
   await expect(configDialog).toBeHidden()
+
+  await page.keyboard.press('Control+Shift+G')
+  const globalDialog = page.getByRole('dialog').filter({ hasText: /全局配置|Global Settings/ })
+  await expect(globalDialog).toBeVisible()
+  await page.keyboard.press('Control+Shift+G')
+  await expect(globalDialog).toBeHidden()
 })
 
 test('review 页的全屏快捷键与列表/详情页一致', async ({ page, request }) => {

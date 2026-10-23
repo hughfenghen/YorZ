@@ -213,7 +213,10 @@ export interface GlobalConfig {
     }
   }
   shortcuts: Partial<
-    Record<'newSpec' | 'toggleSpecDetailFullscreen' | 'projectSettings', string | null>
+    Record<
+      'newSpec' | 'toggleSpecDetailFullscreen' | 'projectSettings' | 'globalSettings',
+      string | null
+    >
   >
   power: {
     inhibitWhenRunning: 'system-default' | 'prevent-display-sleep' | 'keep-system-awake'

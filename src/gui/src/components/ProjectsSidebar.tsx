@@ -501,7 +501,6 @@ export const ProjectsSidebar: Component = () => {
             projectId={p().id}
             projectName={p().name}
             onClose={() => setEditing(null)}
-            onSaved={(msg) => showToast(msg)}
           />
         )}
       </Show>

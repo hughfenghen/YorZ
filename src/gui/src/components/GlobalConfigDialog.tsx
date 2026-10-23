@@ -354,6 +354,9 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
                 label={t('globalConfig.model')}
                 value={model()}
                 options={modelOptions()}
+                searchable={catalog().models.length > 10}
+                filterPlaceholder={t('common.filterOptions')}
+                emptyText={t('common.noMatchingOptions')}
                 disabled={catalogLoading() || modelOptions().length <= 1}
                 onChange={updateModel}
               />

@@ -10,6 +10,8 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const REPO_ROOT = resolve(__dirname, '..', '..', '..', '..', '..')
 
 export const E2E_CWD = join(REPO_ROOT, '.tmp-e2e')
+export const E2E_HOME = join(REPO_ROOT, '.tmp-e2e-home')
+export const E2E_PAIR_TOKEN = 'yorz-e2e-pair-token'
 // Isolated HOME for the e2e `serve`: the directory picker's default landing point is
 // the service process's `os.homedir()`, and the picker has no path input anymore — so
 // fixtures must live inside HOME to be reachable by clicking. Keeps the real user's
@@ -161,6 +163,12 @@ export function seed() {
   // Only ensure-exists (no rm): the serve process already points HOME here, and
   // add-project specs create/remove their own fixtures underneath it.
   mkdirSync(E2E_FS_HOME, { recursive: true })
+  mkdirSync(E2E_HOME, { recursive: true })
+  writeFileSync(
+    join(E2E_HOME, 'auth.json'),
+    `${JSON.stringify({ token: E2E_PAIR_TOKEN, devices: [] }, null, 2)}\n`,
+    'utf8',
+  )
   const baseDir = join(E2E_CWD, '.yorz', 'specs', SPEC_ID)
   mkdirSync(baseDir, { recursive: true })
   writeFileSync(join(baseDir, 'spec.md'), SEED_SPEC, 'utf8')

@@ -31,6 +31,8 @@ export const zhCN = {
     close: '关闭',
     confirm: '确定',
     pendingAgent: '待 agent 补充',
+    filterOptions: '筛选选项…',
+    noMatchingOptions: '没有匹配的选项',
   },
   sessions: {
     title: '会话',

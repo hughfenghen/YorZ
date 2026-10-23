@@ -136,6 +136,10 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
       requestProjectConfigOpen()
       return true
     }
+    if (binding === shortcuts.globalSettings) {
+      setGlobalConfigOpen((open) => !open)
+      return true
+    }
     if (binding === shortcuts.toggleSpecDetailFullscreen) {
       const handler = focusModeShortcutHandler()
       if (!handler) return false
@@ -155,12 +159,15 @@ export const AppShell: ParentComponent = (props): JSX.Element => {
     // if that swallowed the key, the shortcut could open the dialog but never
     // close it.
     const isToggleBinding =
-      binding === shortcuts.toggleSpecDetailFullscreen || binding === shortcuts.projectSettings
+      binding === shortcuts.toggleSpecDetailFullscreen ||
+      binding === shortcuts.projectSettings ||
+      binding === shortcuts.globalSettings
     if (isEditableShortcutTarget(event.target) && !isToggleBinding) return
     if (
       binding !== DEFAULT_SHORTCUTS.newSpec &&
       binding !== DEFAULT_SHORTCUTS.projectSettings &&
       binding !== DEFAULT_SHORTCUTS.toggleSpecDetailFullscreen &&
+      binding !== DEFAULT_SHORTCUTS.globalSettings &&
       !Object.values(globalConfig().shortcuts).includes(binding)
     ) {
       return

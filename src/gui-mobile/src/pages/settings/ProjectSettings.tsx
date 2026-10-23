@@ -62,13 +62,20 @@ export const ProjectSettings: Component = () => {
 
   // 写成函数而不是模块级常量：t() 在模块求值时 i18n 还没 init 完，
   // 且切语言后常量不会重算，标签会卡在初始语言上。
-  const kindOptions = (): readonly { value: string; label: string }[] => [
-    { value: 'inherit', label: t('projectSettings.inherit') },
-    ...(agents() ?? []).map((d) => ({
-      value: d.id,
-      label: d.source === 'external' ? d.displayName : (BUILTIN_LABEL[d.id] ?? d.displayName),
-    })),
-  ]
+  const kindOptions = (): readonly { value: string; label: string }[] => {
+    const options = [
+      { value: 'inherit', label: t('projectSettings.inherit') },
+      ...(agents() ?? []).map((d) => ({
+        value: d.id,
+        label: d.source === 'external' ? d.displayName : (BUILTIN_LABEL[d.id] ?? d.displayName),
+      })),
+    ]
+    const selected = config()?.agent.kind
+    if (selected && !options.some((option) => option.value === selected)) {
+      options.push({ value: selected, label: BUILTIN_LABEL[selected] ?? selected })
+    }
+    return options
+  }
 
   const modelOptions = (cfg: ProjectConfig) => {
     const options = [
@@ -152,6 +159,9 @@ export const ProjectSettings: Component = () => {
                     label={t('projectSettings.model')}
                     options={modelOptions(cfg())}
                     value={() => cfg().agent.model ?? ''}
+                    searchable={(catalog()?.models.length ?? 0) > 10}
+                    filterPlaceholder={t('common.filterOptions')}
+                    emptyText={t('common.noMatchingOptions')}
                     disabled={() =>
                       cfg().agent.kind === 'inherit' ||
                       catalog.loading ||

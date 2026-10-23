@@ -214,12 +214,20 @@ describe('loadGlobalConfig / saveGlobalConfig', () => {
         projects: [],
         agent: { defaultKind: 'claude' },
         notifications: { sessionEnd: { banner: false, sound: false }, push: { enabled: false } },
-        shortcuts: { newSpec: 'ctrl+shift+k', projectSettings: null },
+        shortcuts: {
+          newSpec: 'ctrl+shift+k',
+          projectSettings: null,
+          globalSettings: 'ctrl+shift+g',
+        },
       },
       fp,
     )
     const cfg = await loadGlobalConfig(fp)
-    expect(cfg.shortcuts).toEqual({ newSpec: 'Ctrl+Shift+K', projectSettings: null })
+    expect(cfg.shortcuts).toEqual({
+      newSpec: 'Ctrl+Shift+K',
+      projectSettings: null,
+      globalSettings: 'Ctrl+Shift+G',
+    })
   })
 
   it('roundtrips power inhibit preference', async () => {

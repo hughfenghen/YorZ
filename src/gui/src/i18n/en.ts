@@ -13,6 +13,8 @@ export const en = {
     close: 'Close',
     remove: 'Remove',
     error: 'Error',
+    filterOptions: 'Filter options…',
+    noMatchingOptions: 'No matching options',
   },
   breadcrumb: {
     specList: 'Spec List',
@@ -403,7 +405,7 @@ export const en = {
     specsDirHint: 'Relative to project root, auto-created if missing',
     invalidPath: 'Spec directory cannot contain ".."',
     saved: 'Configuration saved',
-    oldSpecsHint: '. Old specs remain in original directory, please migrate manually',
+    oldSpecsHint: 'Old specs remain in the original directory; migrate them manually',
     save: 'Save',
   },
   globalConfig: {
@@ -431,6 +433,7 @@ export const en = {
       newSpec: 'New Spec',
       toggleSpecDetailFullscreen: 'Page fullscreen',
       projectSettings: 'Project Settings',
+      globalSettings: 'Global Settings',
     },
   },
   commands: {

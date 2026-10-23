@@ -120,7 +120,11 @@ export interface PushNotificationsConfig {
   enabled: boolean
 }
 
-export type GlobalShortcutActionId = 'newSpec' | 'toggleSpecDetailFullscreen' | 'projectSettings'
+export type GlobalShortcutActionId =
+  | 'newSpec'
+  | 'toggleSpecDetailFullscreen'
+  | 'projectSettings'
+  | 'globalSettings'
 export type GlobalShortcutsConfig = Partial<Record<GlobalShortcutActionId, string | null>>
 
 const CURRENT_VERSION = 1 as const
@@ -141,6 +145,7 @@ export const SHORTCUT_ACTION_IDS: GlobalShortcutActionId[] = [
   'newSpec',
   'toggleSpecDetailFullscreen',
   'projectSettings',
+  'globalSettings',
 ]
 
 export function resolveGlobalConfigDir(env: NodeJS.ProcessEnv = process.env): string {

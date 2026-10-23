@@ -40,6 +40,7 @@ describe('shortcuts', () => {
   it('falls back to default shortcuts when config is empty or null', () => {
     expect(effectiveShortcuts({}).newSpec).toBe(DEFAULT_SHORTCUTS.newSpec)
     expect(effectiveShortcuts({ newSpec: null }).newSpec).toBe(DEFAULT_SHORTCUTS.newSpec)
+    expect(effectiveShortcuts({}).globalSettings).toBe('Ctrl+Shift+G')
   })
 
   it('detects duplicate effective bindings', () => {

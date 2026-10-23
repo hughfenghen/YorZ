@@ -29,6 +29,8 @@ export const en: Translation = {
     close: 'Close',
     confirm: 'Confirm',
     pendingAgent: 'Pending agent',
+    filterOptions: 'Filter options…',
+    noMatchingOptions: 'No matching options',
   },
   sessions: {
     title: 'Sessions',

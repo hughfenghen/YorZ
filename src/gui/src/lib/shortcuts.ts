@@ -1,4 +1,8 @@
-export type ShortcutActionId = 'newSpec' | 'toggleSpecDetailFullscreen' | 'projectSettings'
+export type ShortcutActionId =
+  | 'newSpec'
+  | 'toggleSpecDetailFullscreen'
+  | 'projectSettings'
+  | 'globalSettings'
 
 export interface ShortcutBinding {
   key: string
@@ -14,12 +18,14 @@ export const SHORTCUT_ACTIONS: ShortcutActionId[] = [
   'newSpec',
   'toggleSpecDetailFullscreen',
   'projectSettings',
+  'globalSettings',
 ]
 
 export const DEFAULT_SHORTCUTS: Record<ShortcutActionId, string> = {
   newSpec: 'Ctrl+Shift+N',
   toggleSpecDetailFullscreen: 'Ctrl+Shift+F',
   projectSettings: 'Ctrl+Shift+S',
+  globalSettings: 'Ctrl+Shift+G',
 }
 
 const MODIFIER_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta'])
@@ -68,6 +74,7 @@ export function effectiveShortcuts(
       DEFAULT_SHORTCUTS.toggleSpecDetailFullscreen,
     projectSettings:
       normalizeShortcut(config?.projectSettings) ?? DEFAULT_SHORTCUTS.projectSettings,
+    globalSettings: normalizeShortcut(config?.globalSettings) ?? DEFAULT_SHORTCUTS.globalSettings,
   }
 }
 

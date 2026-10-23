@@ -13,6 +13,8 @@ export const zhCN = {
     close: '关闭',
     remove: '移除',
     error: '错误',
+    filterOptions: '筛选选项…',
+    noMatchingOptions: '没有匹配的选项',
   },
   breadcrumb: {
     specList: 'Spec 列表',
@@ -396,7 +398,7 @@ export const zhCN = {
     specsDirHint: '相对项目根路径，不存在时会自动创建',
     invalidPath: 'spec 目录不能包含 ".." 段',
     saved: '配置已保存',
-    oldSpecsHint: '。旧 spec 仍在原目录，请手工迁移',
+    oldSpecsHint: '旧 spec 仍在原目录，请手工迁移',
     save: '保存',
   },
   globalConfig: {
@@ -424,6 +426,7 @@ export const zhCN = {
       newSpec: '新建 spec',
       toggleSpecDetailFullscreen: '页面最大化',
       projectSettings: '项目设置',
+      globalSettings: '全局配置',
     },
   },
   commands: {

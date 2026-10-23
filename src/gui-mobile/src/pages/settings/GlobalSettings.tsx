@@ -75,9 +75,15 @@ export const GlobalSettings: Component = () => {
       value: d.id,
       label: d.source === 'external' ? d.displayName : (BUILTIN_LABEL[d.id] ?? d.displayName),
     }))
-    return mapped.length > 0
-      ? mapped
-      : Object.entries(BUILTIN_LABEL).map(([value, label]) => ({ value, label }))
+    const options =
+      mapped.length > 0
+        ? mapped
+        : Object.entries(BUILTIN_LABEL).map(([value, label]) => ({ value, label }))
+    const selected = config()?.agent.defaultKind
+    if (selected && !options.some((option) => option.value === selected)) {
+      options.push({ value: selected, label: selected })
+    }
+    return options
   }
 
   const modelOptions = (cfg: GlobalConfig) => {
@@ -175,6 +181,9 @@ export const GlobalSettings: Component = () => {
                     label={t('globalSettings.model')}
                     options={modelOptions(cfg())}
                     value={() => cfg().agent.model ?? ''}
+                    searchable={(catalog()?.models.length ?? 0) > 10}
+                    filterPlaceholder={t('common.filterOptions')}
+                    emptyText={t('common.noMatchingOptions')}
                     disabled={() => catalog.loading || modelOptions(cfg()).length <= 1}
                     onChange={(model) =>
                       void patch({
