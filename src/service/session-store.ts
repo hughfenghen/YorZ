@@ -75,6 +75,14 @@ export class SessionStore {
     return items.filter((s) => s.specId === specId).sort((a, b) => a.createdAt - b.createdAt)
   }
 
+  /** Every plain-chat session in one UI row, oldest first. */
+  async listByGroup(groupId: string): Promise<SessionInfo[]> {
+    const items = await this.load()
+    return items
+      .filter((s) => !s.specId && (s.groupId === groupId || (!s.groupId && s.id === groupId)))
+      .sort((a, b) => a.createdAt - b.createdAt)
+  }
+
   /** The spec's most recently active session — where user-driven turns land. */
   async latestBySpec(specId: string): Promise<SessionInfo | undefined> {
     const items = await this.load()
@@ -97,10 +105,17 @@ export class SessionStore {
     await this.persist()
   }
 
-  async create(kind: AgentKind, id: string, title: string, specId?: string): Promise<SessionInfo> {
+  async create(
+    kind: AgentKind,
+    id: string,
+    title: string,
+    specId?: string,
+    groupId?: string,
+  ): Promise<SessionInfo> {
     const now = this.stamp()
     const info: SessionInfo = { id, title, kind, createdAt: now, updatedAt: now }
     if (specId) info.specId = specId
+    else if (groupId) info.groupId = groupId
     await this.upsert(info)
     return info
   }
@@ -130,6 +145,17 @@ export class SessionStore {
     const entry = items.find((s) => s.id === id)
     if (!entry) return false
     entry.specId = specId
+    delete entry.groupId
+    entry.updatedAt = this.stamp()
+    await this.persist()
+    return true
+  }
+
+  async bindGroup(id: string, groupId: string): Promise<boolean> {
+    const items = await this.load()
+    const entry = items.find((s) => s.id === id)
+    if (!entry || entry.specId) return false
+    entry.groupId = groupId
     entry.updatedAt = this.stamp()
     await this.persist()
     return true

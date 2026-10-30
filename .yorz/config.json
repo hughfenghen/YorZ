@@ -1,9 +1,7 @@
 {
   "version": 1,
   "agent": {
-    "kind": "opencode",
-    "model": "opencode/glm-5.3-flash-free",
-    "reasoningEffort": "high"
+    "kind": "inherit"
   },
   "specsDir": ".yorz/specs",
   "commands": [

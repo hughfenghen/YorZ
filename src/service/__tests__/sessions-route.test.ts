@@ -35,6 +35,64 @@ describe('sessions routes', () => {
   })
 })
 
+describe('sessions routes — same-group creation', () => {
+  function app(found = true) {
+    return createSessionsRoutes(
+      async () =>
+        ({
+          sessions: {
+            listAgentDescriptors: async () => [],
+            createSessionInGroup: async (source: string) =>
+              found && source === 's1' ? { sessionId: 's2', kind: 'claude' } : null,
+            getSessionGroupMessages: async (groupId: string) => [
+              { sessionId: groupId, kind: 'claude', createdAt: 1, messages: [] },
+            ],
+          },
+        }) as never,
+    )
+  }
+
+  it('creates a fresh session from the source session group', async () => {
+    const res = await app().request('/projects/p1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ groupFromSessionId: 's1' }),
+    })
+
+    expect(res.status).toBe(201)
+    await expect(res.json()).resolves.toEqual({ sessionId: 's2', kind: 'claude' })
+  })
+
+  it('rejects a missing source instead of silently creating a new row', async () => {
+    const res = await app(false).request('/projects/p1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ groupFromSessionId: 'missing' }),
+    })
+
+    expect(res.status).toBe(404)
+  })
+
+  it('rejects an invalid group source field instead of creating a new row', async () => {
+    const res = await app().request('/projects/p1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ groupFromSessionId: {} }),
+    })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('returns an ordinary session group transcript', async () => {
+    const res = await app().request('/projects/p1/session-groups/group-a/messages')
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([
+      { sessionId: 'group-a', kind: 'claude', createdAt: 1, messages: [] },
+    ])
+  })
+})
+
 describe('sessions routes — spec transcript aggregation', () => {
   function app(specExists: boolean, stitched: unknown = []) {
     return createSessionsRoutes(async (id) =>

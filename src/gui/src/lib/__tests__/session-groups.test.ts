@@ -61,6 +61,33 @@ describe('groupSessions', () => {
     expect(groups.every((g) => g.sessions.length === 1)).toBe(true)
   })
 
+  it('folds plain-chat sessions with the same groupId into one row', () => {
+    const groups = groupSessions(
+      [
+        session({ id: 'chat-2', groupId: 'chat-1', createdAt: 2, updatedAt: 20 }),
+        session({ id: 'chat-1', groupId: 'chat-1', createdAt: 1, updatedAt: 10 }),
+      ],
+      idle,
+    )
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({ key: 'chat-1', groupId: 'chat-1' })
+    expect(groups[0]!.sessions.map((s) => s.id)).toEqual(['chat-1', 'chat-2'])
+    expect(groups[0]!.latest.id).toBe('chat-2')
+  })
+
+  it('keeps specId as the grouping authority when groupId is also present', () => {
+    const groups = groupSessions(
+      [
+        session({ id: 's1', specId: 'spec-a', groupId: 'chat-a' }),
+        session({ id: 's2', groupId: 'chat-a' }),
+      ],
+      idle,
+    )
+
+    expect(groups.map((group) => group.key)).toEqual(['spec-a', 'chat-a'])
+  })
+
   it('never exposes hidden prompt content through a row title', () => {
     const [complete] = groupSessions(
       [

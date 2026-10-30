@@ -100,7 +100,7 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
   app.post('/projects/:projectId/sessions', async (c) => {
     const p = await need(c)
     if (p instanceof Response) return p
-    let body: { title?: unknown; agentKind?: unknown } = {}
+    let body: { title?: unknown; agentKind?: unknown; groupFromSessionId?: unknown } = {}
     try {
       body = (await c.req.json()) as typeof body
     } catch {
@@ -115,8 +115,26 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
         : undefined
     const title = typeof body.title === 'string' ? body.title : undefined
     try {
+      if (body.groupFromSessionId !== undefined) {
+        if (typeof body.groupFromSessionId !== 'string' || !body.groupFromSessionId.trim()) {
+          return c.json({ error: 'groupFromSessionId must be a non-empty string' }, 400)
+        }
+        const created = await p.sessions.createSessionInGroup(body.groupFromSessionId.trim())
+        if (!created) return c.json({ error: 'source session not found' }, 404)
+        return c.json(created, 201)
+      }
       const created = await p.sessions.createSession(kind, title)
       return c.json(created, 201)
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 500)
+    }
+  })
+
+  app.get('/projects/:projectId/session-groups/:groupId/messages', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    try {
+      return c.json(await p.sessions.getSessionGroupMessages(c.req.param('groupId')))
     } catch (err) {
       return c.json({ error: (err as Error).message }, 500)
     }

@@ -55,6 +55,7 @@ import {
   type UserBlock,
 } from '../lib/chat-blocks.js'
 import { createChatTranscript } from '@shared/lib/chat-transcript.js'
+import { parseNewSessionCommand } from '@shared/lib/new-session-command.js'
 import { findGroupBySession, groupSessions, type SessionGroup } from '../lib/session-groups.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { t, useTranslation } from '../i18n/index.js'
@@ -263,6 +264,10 @@ export const ChatPanel: Component = () => {
     })
     return [
       {
+        value: '/new',
+        description: t('chat.slashCommandNewSession'),
+      },
+      {
         value: '/yorz-debug',
         description: t('chat.slashCommandYorzDebug'),
       },
@@ -294,6 +299,7 @@ export const ChatPanel: Component = () => {
    */
   const [activeSid, setActiveSid] = createSignal<string>('')
   const [input, setInput] = createSignal('')
+  const [newSessionPending, setNewSessionPending] = createSignal(false)
   const [autoScroll, setAutoScroll] = createSignal(true)
   const [timeTick, setTimeTick] = createSignal(Date.now())
   // Live run status per session id, seeded from the list response and kept in
@@ -342,6 +348,7 @@ export const ChatPanel: Component = () => {
       setRunningSids({})
       tx.resetAll()
       attachments.reset()
+      setNewSessionPending(false)
     }),
   )
 
@@ -377,6 +384,11 @@ export const ChatPanel: Component = () => {
   const runningCount = createMemo(() => visibleGroups().filter((g) => g.running).length)
   /** The row the active session belongs to — drives selection highlighting. */
   const activeGroup = createMemo(() => findGroupBySession(visibleGroups(), activeSid()))
+  const activeSessionKind = createMemo(
+    () =>
+      activeGroup()?.sessions.find((session) => session.id === activeSid())?.kind ??
+      activeGroup()?.latest.kind,
+  )
   /**
    * Spec of the active row, or undefined for a plain chat. A memo (not a direct
    * read of the group) so the history effect below only re-runs when the spec
@@ -384,6 +396,7 @@ export const ChatPanel: Component = () => {
    * edge, and each of those must not re-read the transcript.
    */
   const activeSpecId = createMemo(() => activeGroup()?.specId)
+  const activeGroupId = createMemo(() => activeGroup()?.groupId)
   /**
    * Whether the list already knows the active session — i.e. whether
    * `activeSpecId` above can be trusted. `selectSession()` sets `activeSid`
@@ -419,6 +432,7 @@ export const ChatPanel: Component = () => {
     projectId: () => activeProjectId() || '',
     sessionId: activeSid,
     specId: activeSpecId,
+    groupId: activeGroupId,
     running: activeRunning,
     listPending: activeSessionPending,
     known: activeSessionKnown,
@@ -443,6 +457,7 @@ export const ChatPanel: Component = () => {
     // effect see a settled list, conclude the session is a plain chat, and load
     // a single round over the spec row's history.
     void refetchSessions()
+    setNewSessionPending(false)
     setActiveSid(sid)
   }
 
@@ -641,21 +656,42 @@ export const ChatPanel: Component = () => {
   function newSession(): void {
     if (!activeProjectId() || !activeSid()) return
     setActiveSid('')
+    setNewSessionPending(false)
     tx.reset()
     attachments.reset()
   }
 
   async function send() {
-    const prompt = input().trim()
-    if (!activeProjectId() || !prompt || tx.starting() || activeRunning()) return
+    const raw = input().trim()
+    const command = parseNewSessionCommand(raw)
+    const prompt = command?.content ?? raw
+    if (!activeProjectId() || tx.starting() || activeRunning()) return
+    if (command && !prompt) {
+      setInput('')
+      const kind = activeSessionKind()
+      if (activeSid() && kind) {
+        setNewSessionPending(true)
+        tx.beginNewSessionBoundary(kind)
+      }
+      return
+    }
+    if (!prompt) return
     if (attachments.hasPending()) return
     setInput('')
-    const outcome = await tx.send(prompt, attachments.draftId() ?? undefined)
+    const groupedSend = Boolean(activeSid() && (newSessionPending() || command))
+    const outcome = groupedSend
+      ? await tx.sendInNewSession(prompt, attachments.draftId() ?? undefined)
+      : await tx.send(prompt, attachments.draftId() ?? undefined)
     if (outcome === 'sent') attachments.reset()
     // Only a failed create is worth handing the text back: once the session
     // exists the message is on screen as a user bubble, and restoring the input
     // would leave the reader looking at it twice.
-    else if (outcome === 'not-started') setInput(prompt)
+    if (outcome === 'not-started') {
+      setInput(raw)
+      if (groupedSend) setNewSessionPending(true)
+    } else if (groupedSend) {
+      setNewSessionPending(false)
+    }
   }
 
   /**

@@ -33,6 +33,8 @@ export interface HistoryLoadInput {
    * actually IS, as opposed to `specId` below, which is what it should be.
    */
   displayedSpecId?: string
+  /** Plain-chat group whose aggregate transcript is currently on screen. */
+  displayedGroupId?: string
   /**
    * Created locally by this tab, and its first turn has not completed yet.
    * NOT a promise that the transcript is unreadable — the agent appends to it
@@ -52,6 +54,8 @@ export interface HistoryLoadInput {
   known: boolean
   /** Spec of the active session's row; undefined for a plain chat. */
   specId?: string
+  /** Plain-chat group of the active row; undefined for specs and legacy singles. */
+  groupId?: string
   /** A turn is in flight on the active session (tracked for spec rows only). */
   running: boolean
 }
@@ -66,10 +70,21 @@ export type HistoryLoadPlan =
   /** A live turn owns the area and its content is already the right scope. */
   | { action: 'keep' }
   /** Read the transcript — the whole spec row when `specId` is set. */
-  | { action: 'load'; clear: boolean; specId?: string }
+  | { action: 'load'; clear: boolean; specId?: string; groupId?: string }
 
 export function planHistoryLoad(input: HistoryLoadInput): HistoryLoadPlan {
-  const { sid, displayedSid, displayedSpecId, fresh, listPending, known, specId, running } = input
+  const {
+    sid,
+    displayedSid,
+    displayedSpecId,
+    displayedGroupId,
+    fresh,
+    listPending,
+    known,
+    specId,
+    groupId,
+    running,
+  } = input
   if (!sid) return { action: 'idle' }
   const sameSession = displayedSid === sid
   // Invariant 3. `fresh` licenses skipping the read only while the in-memory
@@ -90,12 +105,17 @@ export function planHistoryLoad(input: HistoryLoadInput): HistoryLoadPlan {
   // Invariant 2. A guessed single-session load leaves `displayedSpecId`
   // undefined while `specId` is now known, so the scopes differ and the guard
   // below lets the correction through even mid-turn.
-  const sameScope = displayedSpecId === specId
+  const sameScope = displayedSpecId === specId && displayedGroupId === groupId
   if (running && sameSession && sameScope) return { action: 'keep' }
   // Only blank when switching away from another session: reloading the session
   // already on screen swaps content in on arrival, so it does not flash empty —
   // which is what keeps the mid-turn scope correction invisible to the user.
-  return { action: 'load', clear: !sameSession, specId }
+  return {
+    action: 'load',
+    clear: !sameSession,
+    specId,
+    ...(groupId ? { groupId } : {}),
+  }
 }
 
 /**

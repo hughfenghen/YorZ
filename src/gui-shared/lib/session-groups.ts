@@ -22,14 +22,15 @@ function withoutHiddenTitle(session: SessionInfo): SessionInfo {
  * up: all sessions of a spec render as ONE row, so the panel looks exactly as it
  * did when the spec really had a single session.
  *
- * Grouping is a pure projection over `specId`; there is no group entity on the
- * server, and sessions without a `specId` (plain chats) each form their own
- * single-member group.
+ * Grouping is a pure projection over `specId` for spec rounds and `groupId` for
+ * plain chats. Legacy plain sessions without either field remain single-member
+ * groups until `/new` binds a later session to them.
  */
 export interface SessionGroup {
-  /** Stable identity: the specId, or the session id for ungrouped chats. */
+  /** Stable identity: specId, plain-chat groupId, or a legacy session id. */
   key: string
   specId?: string
+  groupId?: string
   /** Oldest first — the order the rounds happened in. */
   sessions: SessionInfo[]
   /** Most recently active member: the row's title, kind, and send target. */
@@ -53,12 +54,14 @@ export function groupSessions(
   isRunning: (sid: string) => boolean,
 ): SessionGroup[] {
   const groups: SessionGroup[] = []
-  const bySpec = new Map<string, SessionGroup>()
+  const grouped = new Map<string, SessionGroup>()
 
   for (const raw of sessions) {
     const s = withoutHiddenTitle(raw)
     const running = isRunning(s.id)
-    if (!s.specId) {
+    const groupId = s.specId ? undefined : s.groupId
+    const identity = s.specId ?? groupId
+    if (!identity) {
       groups.push({
         key: s.id,
         sessions: [s],
@@ -68,17 +71,19 @@ export function groupSessions(
       })
       continue
     }
-    const existing = bySpec.get(s.specId)
+    const mapKey = `${s.specId ? 'spec' : 'chat'}:${identity}`
+    const existing = grouped.get(mapKey)
     if (!existing) {
       const group: SessionGroup = {
-        key: s.specId,
+        key: identity,
         specId: s.specId,
+        groupId,
         sessions: [s],
         latest: s,
         updatedAt: s.updatedAt,
         running,
       }
-      bySpec.set(s.specId, group)
+      grouped.set(mapKey, group)
       groups.push(group)
       continue
     }
@@ -88,7 +93,7 @@ export function groupSessions(
     existing.running ||= running
   }
 
-  for (const group of bySpec.values()) {
+  for (const group of grouped.values()) {
     group.sessions.sort((a, b) => a.createdAt - b.createdAt)
   }
   return groups

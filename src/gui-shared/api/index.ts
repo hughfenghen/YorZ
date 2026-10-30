@@ -305,6 +305,7 @@ export interface SessionInfo {
   createdAt: number
   updatedAt: number
   specId?: string
+  groupId?: string
   /** A turn is currently in flight for this session (transient list state). */
   running?: boolean
 }
@@ -732,7 +733,10 @@ export const api = {
     request<AgentModelCatalog>(`${projectBase(pid)}/agents/${encodeURIComponent(kind)}/models`),
   getAgentUsageStatus: (pid: string) =>
     request<AgentUsageStatus>(`${projectBase(pid)}/agent-usage`),
-  createSession: (pid: string, body: { title?: string; agentKind?: AgentKind } = {}) =>
+  createSession: (
+    pid: string,
+    body: { title?: string; agentKind?: AgentKind; groupFromSessionId?: string } = {},
+  ) =>
     request<{ sessionId: string; kind: AgentKind }>(`${projectBase(pid)}/sessions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -745,6 +749,10 @@ export const api = {
   getSpecMessages: (pid: string, specId: string) =>
     request<SpecSessionMessages[]>(
       `${projectBase(pid)}/specs/${encodeURIComponent(specId)}/messages`,
+    ),
+  getSessionGroupMessages: (pid: string, groupId: string) =>
+    request<SpecSessionMessages[]>(
+      `${projectBase(pid)}/session-groups/${encodeURIComponent(groupId)}/messages`,
     ),
   sendSessionMessage: (pid: string, sid: string, prompt: string, draftId?: string) =>
     request<{ runId: string; sessionId: string }>(

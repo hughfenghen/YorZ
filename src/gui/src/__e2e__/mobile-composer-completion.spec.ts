@@ -32,6 +32,7 @@ test.describe.serial('移动端输入框补全', () => {
     await input.type('/')
     await expect(bar(page)).toBeVisible({ timeout: 5_000 })
     await expect(items(page).filter({ hasText: '/yorz-debug' })).toHaveCount(1)
+    await expect(items(page).filter({ hasText: '/new' })).toHaveCount(1)
 
     await items(page).filter({ hasText: '/yorz-debug' }).click()
     await expect(bar(page)).toBeHidden()

@@ -207,6 +207,7 @@ export const en: Translation = {
     slashCommandNoMatch: 'No matching command',
     slashCommandYorzDebug: 'Start debug mode to troubleshoot difficult issues',
     slashCommandYorzSpec: 'Start spec-driven development from the current context',
+    slashCommandNewSession: 'Start a new session in the current conversation group',
     customSlashCommandNoDescription: 'Custom command',
     attach: 'Add attachment',
     attachmentLimit: 'Cannot exceed {{max}} attachments',

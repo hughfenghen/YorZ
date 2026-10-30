@@ -72,6 +72,15 @@ describe('planHistoryLoad', () => {
     })
   })
 
+  it('reads the whole plain-chat group when groupId is set', () => {
+    expect(planHistoryLoad(input({ groupId: 'group-1' }))).toEqual({
+      action: 'load',
+      clear: true,
+      specId: undefined,
+      groupId: 'group-1',
+    })
+  })
+
   it('leaves a streaming turn alone rather than re-reading underneath it', () => {
     expect(
       planHistoryLoad(

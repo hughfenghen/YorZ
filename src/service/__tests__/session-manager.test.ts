@@ -333,6 +333,53 @@ describe('SessionManager.getUsageStatus', () => {
 })
 
 describe('SessionManager per-spec sessions', () => {
+  it('assigns every plain chat a stable self group', async () => {
+    const { mgr, store } = await makeManager(fakeAdapter({}))
+
+    const created = await mgr.createSession()
+
+    expect((await store.get(created.sessionId))?.groupId).toBe(created.sessionId)
+  })
+
+  it('creates a fresh plain-chat session in the source row and aggregates both transcripts', async () => {
+    const messages: Record<string, NormalizedMessage[]> = {}
+    const { mgr, store } = await makeManager(fakeAdapter({ messages }))
+    const first = await mgr.createSession(undefined, 'Stable title')
+    messages[first.sessionId] = [{ role: 'user', parts: [{ type: 'text', text: 'first' }] }]
+
+    const second = await mgr.createSessionInGroup(first.sessionId)
+    expect(second).not.toBeNull()
+    messages[second!.sessionId] = [{ role: 'user', parts: [{ type: 'text', text: 'second' }] }]
+
+    expect((await store.get(second!.sessionId))?.groupId).toBe(first.sessionId)
+    expect((await store.get(second!.sessionId))?.title).toBe('Stable title')
+    expect(
+      (await mgr.getSessionGroupMessages(first.sessionId)).map((entry) => entry.sessionId),
+    ).toEqual([first.sessionId, second!.sessionId])
+  })
+
+  it('binds a legacy plain session without groupId when /new is first used', async () => {
+    const { mgr, store } = await makeManager(fakeAdapter({}))
+    await store.upsert(info({ id: 'legacy', title: 'Legacy chat' }))
+
+    const created = await mgr.createSessionInGroup('legacy')
+
+    expect(created).not.toBeNull()
+    expect((await store.get('legacy'))?.groupId).toBe('legacy')
+    expect((await store.get(created!.sessionId))?.groupId).toBe('legacy')
+  })
+
+  it('uses spec grouping when the source session belongs to a spec', async () => {
+    const { mgr, store } = await makeManager(fakeAdapter({}))
+    const first = await mgr.createSessionForSpec('spec-a')
+
+    const second = await mgr.createSessionInGroup(first.sessionId)
+
+    expect(second).not.toBeNull()
+    expect((await store.get(second!.sessionId))?.specId).toBe('spec-a')
+    expect((await store.get(second!.sessionId))?.groupId).toBeUndefined()
+  })
+
   it('findSessionForSpec does not create a session when none is bound', async () => {
     const { mgr, store } = await makeManager(fakeAdapter({}))
 
@@ -443,6 +490,7 @@ describe('SessionManager per-spec sessions', () => {
     expect(ok).toBe(true)
     expect(await mgr.findSessionForSpec('spec-a')).toEqual(created)
     expect((await store.get(created.sessionId))?.title).toBe('spec-a · useful summary')
+    expect((await store.get(created.sessionId))?.groupId).toBeUndefined()
   })
 })
 

@@ -40,6 +40,8 @@ export interface ChatTranscriptOptions {
   sessionId: Accessor<string>
   /** Spec of the active session's row; undefined for a plain chat. */
   specId: Accessor<string | undefined>
+  /** Plain-chat group of the active row; undefined for specs and legacy singles. */
+  groupId?: Accessor<string | undefined>
   /**
    * Whether a turn is in flight on the active session, as the HOST sees it.
    *
@@ -109,6 +111,10 @@ export interface ChatTranscript {
   historyLoading: Accessor<boolean>
   toolExpand: ToolExpandState
   send: (prompt: string, draftId?: string) => Promise<SendOutcome>
+  /** Show the boundary immediately after a bare `/new`, before a session exists. */
+  beginNewSessionBoundary: (kind: AgentKind) => void
+  /** Create a fresh session in the active row, then send its first message. */
+  sendInNewSession: (prompt: string, draftId?: string) => Promise<SendOutcome>
   /**
    * Paint a system-driven round's user turn optimistically. The round (append /
    * run / git-ops) was dispatched server-side, so its user bubble never streams
@@ -208,6 +214,14 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     | { sid: string; userText: string; kind: AgentKind; startedAt: number }
     | undefined
   /**
+   * A bare `/new` has declared the next-session boundary, but deliberately has
+   * not created an empty server session yet. Its divider is memory-only: the
+   * next real send replaces it in place with the created session's identity.
+   */
+  let pendingNewSessionBoundary:
+    | { sourceSid: string; pendingSid: string; kind: AgentKind; startedAt: number }
+    | undefined
+  /**
    * Forces the history effect to re-read, WITHOUT depending on the list's
    * run-state edges. The one automatic fold-in of a spec round's transcript (its
    * divider + the append/run user turn, which never stream over SSE and are never
@@ -233,6 +247,7 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
    * round loaded before the list knew about the spec.
    */
   let displayedSpecId: string | undefined
+  let displayedGroupId: string | undefined
   /**
    * Session whose CACHED transcript is currently standing in on screen, waiting
    * for the authoritative read to confirm or replace it.
@@ -390,18 +405,21 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     const pid = o.projectId()
     const sid = o.sessionId()
     const specId = o.specId()
-    // Tracked for spec rows only: a spec's row spans several sessions, so when
-    // the current round settles the transcript is re-read to fold that round in
-    // (with its divider). Plain chats keep the old load-on-select behaviour.
-    const running = specId ? o.running() : false
+    const groupId = o.groupId?.()
+    // Tracked for grouped rows: when the current session settles, the aggregate
+    // transcript is re-read to fold it in with its divider. Legacy ungrouped
+    // chats keep the old load-on-select behaviour.
+    const running = specId || groupId ? o.running() : false
     const plan = planHistoryLoad({
       sid,
       displayedSid,
       displayedSpecId,
+      displayedGroupId,
       fresh: freshSids.has(sid),
       listPending: o.listPending?.() ?? false,
       known: o.known?.() ?? true,
       specId,
+      groupId,
       running,
     })
     freshRevision()
@@ -456,9 +474,13 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
       // Drop an optimistic round only when we are leaving it; (re)entering the
       // pending session must keep it, since it is painted from this state.
       if (pendingRound && pendingRound.sid !== sid) pendingRound = undefined
+      if (pendingNewSessionBoundary?.sourceSid !== sid) {
+        pendingNewSessionBoundary = undefined
+      }
     }
     displayedSid = sid
     displayedSpecId = plan.specId
+    displayedGroupId = plan.groupId
     const isCurrent = historyGate.begin()
     setHistoryLoading(!paintCached(pid, sid))
     // Flatten message → parts: tool-result keeps its payload instead of being
@@ -472,10 +494,15 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
           // `specMessagesToParts`), so it must not be treated as present.
           folded: new Set(entries.filter((e) => e.messages.length > 0).map((e) => e.sessionId)),
         }))
-      : api.getSessionMessages(pid, sid).then((messages) => ({
-          next: messagesToParts(messages),
-          folded: new Set(messages.length > 0 ? [sid] : []),
-        }))
+      : plan.groupId
+        ? api.getSessionGroupMessages(pid, plan.groupId).then((entries) => ({
+            next: specMessagesToParts(entries),
+            folded: new Set(entries.filter((e) => e.messages.length > 0).map((e) => e.sessionId)),
+          }))
+        : api.getSessionMessages(pid, sid).then((messages) => ({
+            next: messagesToParts(messages),
+            folded: new Set(messages.length > 0 ? [sid] : []),
+          }))
     void load
       .then(({ next, folded }) => {
         // Not `onCleanup`: the effect re-runs for reasons that have nothing to
@@ -520,6 +547,23 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
           optimistic.push({ kind: 'text', role: 'user', text: pendingRound.userText })
           applied = [...next, ...optimistic]
         }
+        // A bare `/new` is a visible boundary even though no server session
+        // exists yet. Re-apply its stable part after an incidental history read
+        // so a list refetch cannot make the user's only feedback disappear.
+        if (pendingNewSessionBoundary?.sourceSid === sid) {
+          const boundary = pendingNewSessionBoundary
+          applied = [
+            ...applied.filter(
+              (part) => part.kind !== 'divider' || part.sessionId !== boundary.pendingSid,
+            ),
+            {
+              kind: 'divider',
+              sessionId: boundary.pendingSid,
+              agentKind: boundary.kind,
+              startedAt: boundary.startedAt,
+            },
+          ]
+        }
         paintedFromCache = ''
         const shown = untrack(parts)
         // Same tail at the same length means this is what is already drawn (the
@@ -547,6 +591,7 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
         if (stored.length > 0) {
           o.transcriptCache?.set(transcriptCacheKey(pid, sid), {
             specId: plan.specId,
+            groupId: plan.groupId,
             parts: stored,
           })
         }
@@ -568,18 +613,20 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
       onEvent: (ev: SessionEvent) => {
         // Content streamed for a spec round that is not yet folded in: mark it so
         // a stale read cannot wipe it, and so the fold-in below knows to run.
-        const noteSpecLive = (): void => {
-          if (o.specId() && sid === o.sessionId() && !foldedSids.has(sid)) liveForActive = true
+        const noteGroupedLive = (): void => {
+          if ((o.specId() || o.groupId?.()) && sid === o.sessionId() && !foldedSids.has(sid)) {
+            liveForActive = true
+          }
         }
         if (ev.type === 'text') {
           appendAssistantDelta(ev.delta)
-          noteSpecLive()
+          noteGroupedLive()
         } else if (ev.type === 'tool-use') {
           pushPart({ kind: 'tool', name: ev.name, input: ev.input })
-          noteSpecLive()
+          noteGroupedLive()
         } else if (ev.type === 'tool-result') {
           pushPart({ kind: 'tool', result: ev.text })
-          noteSpecLive()
+          noteGroupedLive()
         } else if (ev.type === 'turn-completed') {
           // The turn is persisted now — a later re-select should read the
           // transcript rather than trust this tab's in-memory parts. Drain the
@@ -593,7 +640,7 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
           // alone left them missing (until a full reload) whenever that edge was
           // not cleanly observed. Running is `false` by the time this reload lands,
           // so `planHistoryLoad` returns `load`, not `keep`.
-          if (o.specId() && sid === o.sessionId() && !foldedSids.has(sid)) {
+          if ((o.specId() || o.groupId?.()) && sid === o.sessionId() && !foldedSids.has(sid)) {
             liveForActive = true
             scheduleReload()
           }
@@ -656,9 +703,17 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     const pid = o.projectId()
     const current = parts()
     if (pid && displayedSid && current.length > 0) {
+      const cacheable = pendingNewSessionBoundary
+        ? current.filter(
+            (part) =>
+              part.kind !== 'divider' || part.sessionId !== pendingNewSessionBoundary?.pendingSid,
+          )
+        : current
+      if (cacheable.length === 0) return
       o.transcriptCache?.set(transcriptCacheKey(pid, displayedSid), {
         specId: displayedSpecId,
-        parts: current,
+        groupId: displayedGroupId,
+        parts: cacheable,
       })
     }
   })
@@ -676,10 +731,12 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     setHistoryLoading(false)
     displayedSid = ''
     displayedSpecId = undefined
+    displayedGroupId = undefined
     paintedFromCache = ''
     foldedSids = new Set()
     liveForActive = false
     pendingRound = undefined
+    pendingNewSessionBoundary = undefined
     if (reloadTimer != null) {
       clearTimeout(reloadTimer)
       reloadTimer = null
@@ -695,6 +752,35 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     // effect to (re-)read so it is injected even if the load already settled.
     liveForActive = true
     scheduleReload()
+  }
+
+  /** See `ChatTranscript.beginNewSessionBoundary`. */
+  function beginNewSessionBoundary(kind: AgentKind): void {
+    const sourceSid = o.sessionId()
+    if (!sourceSid) return
+    if (pendingNewSessionBoundary?.sourceSid === sourceSid) return
+
+    // A boundary from another subject must never leak into this transcript.
+    if (pendingNewSessionBoundary) {
+      const staleSid = pendingNewSessionBoundary.pendingSid
+      setParts((prev) =>
+        prev.filter((part) => part.kind !== 'divider' || part.sessionId !== staleSid),
+      )
+    }
+    const boundary = {
+      sourceSid,
+      pendingSid: `__pending-new-session__:${sourceSid}`,
+      kind,
+      startedAt: Date.now(),
+    }
+    pendingNewSessionBoundary = boundary
+    pushPart({
+      kind: 'divider',
+      sessionId: boundary.pendingSid,
+      agentKind: kind,
+      startedAt: boundary.startedAt,
+    })
+    setHistoryLoading(false)
   }
 
   function resetAll(): void {
@@ -729,6 +815,79 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     }
   }
 
+  async function sendInNewSession(prompt: string, draftId?: string): Promise<SendOutcome> {
+    const pid = o.projectId()
+    const sourceSid = o.sessionId()
+    if (!pid || !sourceSid || !prompt || starting() || o.running()) return 'failed'
+    o.onSubjectChange?.()
+    setStarting(true)
+    try {
+      let created: { sessionId: string; kind: AgentKind }
+      try {
+        created = await api.createSession(pid, { groupFromSessionId: sourceSid })
+      } catch (err) {
+        appendError((err as Error).message)
+        return 'not-started'
+      }
+      const sid = created.sessionId
+      freshSids.add(sid)
+      const ready = waitForSubscription(sid)
+      const previous = untrack(parts)
+      const pendingBoundary =
+        pendingNewSessionBoundary?.sourceSid === sourceSid ? pendingNewSessionBoundary : undefined
+      let replacedPending = false
+      const optimistic: ChatPart[] = previous.map((part) => {
+        if (
+          pendingBoundary &&
+          part.kind === 'divider' &&
+          part.sessionId === pendingBoundary.pendingSid
+        ) {
+          replacedPending = true
+          return {
+            kind: 'divider',
+            sessionId: sid,
+            agentKind: created.kind,
+            startedAt: pendingBoundary.startedAt,
+          }
+        }
+        return part
+      })
+      if (!replacedPending && previous.length > 0) {
+        optimistic.push({
+          kind: 'divider',
+          sessionId: sid,
+          agentKind: created.kind,
+          startedAt: Date.now(),
+        })
+      }
+      optimistic.push({ kind: 'text', role: 'user', text: prompt })
+      pendingNewSessionBoundary = undefined
+      resetParts(optimistic)
+      historyGate.invalidate()
+      displayedSid = sid
+      displayedSpecId = o.specId()
+      displayedGroupId = o.groupId?.()
+      paintedFromCache = ''
+      liveForActive = false
+      o.onRunningChange(sid, true)
+      o.onSessionIdChange(sid)
+      await Promise.race([ready, delay(SUBSCRIBE_READY_TIMEOUT_MS)])
+      let outcome: SendOutcome
+      try {
+        await api.sendSessionMessage(pid, sid, prompt, draftId)
+        outcome = 'sent'
+      } catch (err) {
+        appendError((err as Error).message)
+        o.onRunningChange(sid, false)
+        outcome = 'failed'
+      }
+      o.onSessionsChanged?.()
+      return outcome
+    } finally {
+      setStarting(false)
+    }
+  }
+
   /**
    * Draft → live session, in one go. Create and POST race the session
    * subscription: the event stream has no replay buffer, so any delta emitted
@@ -758,6 +917,7 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
       historyGate.invalidate()
       displayedSid = sid
       displayedSpecId = undefined
+      displayedGroupId = undefined
       paintedFromCache = ''
       o.onRunningChange(sid, true)
       o.onSessionIdChange(sid)
@@ -793,6 +953,8 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     historyLoading,
     toolExpand,
     send,
+    beginNewSessionBoundary,
+    sendInNewSession,
     beginOptimisticRound,
     abort,
     reset,

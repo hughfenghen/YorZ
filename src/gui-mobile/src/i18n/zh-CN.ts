@@ -212,6 +212,7 @@ export const zhCN = {
     slashCommandNoMatch: '没有匹配的指令',
     slashCommandYorzDebug: '启动 debug 模式，尝试解决疑难问题',
     slashCommandYorzSpec: '基于上下文启动 spec 驱动开发',
+    slashCommandNewSession: '在当前会话组中开始一个新 session',
     customSlashCommandNoDescription: '自定义指令',
     attach: '添加附件',
     attachmentLimit: '附件总数不能超过 {{max}} 个',

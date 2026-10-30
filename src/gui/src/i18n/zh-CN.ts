@@ -141,6 +141,7 @@ export const zhCN = {
     filePathCopyFailed: '复制文件路径失败',
     slashCommandYorzDebug: '启动 debug 模式，尝试解决疑难问题',
     slashCommandYorzSpec: '基于上下文启动 spec 驱动开发',
+    slashCommandNewSession: '在当前会话组中开始一个新 session',
     addSlashCommandOption: '新增指令',
     addSlashCommandOptionDescription: '创建一个自定义斜杠指令',
     addSlashCommandTitle: '新增指令',

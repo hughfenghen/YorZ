@@ -102,6 +102,8 @@ export interface SessionInfo {
   updatedAt: number
   /** When set, this session is the dedicated per-spec session for that spec id. */
   specId?: string
+  /** Stable group for plain-chat sessions; spec sessions continue to group by specId. */
+  groupId?: string
   /** Transient list-response state: a turn is currently in flight. Never persisted. */
   running?: boolean
 }

@@ -169,6 +169,7 @@ export class SessionManager {
     kind?: AgentKind,
     title?: string,
     specId?: string,
+    groupId?: string,
   ): Promise<{ sessionId: string; kind: AgentKind }> {
     const k = kind ?? this.defaultKind
     const adapter = await this.adapters.get(k)
@@ -178,7 +179,13 @@ export class SessionManager {
     // reconcile once `session-started` surfaces the real thread id.
     const sessionId = session.id || randomUUID()
     this.live.set(sessionId, { kind: k, session })
-    await this.store.create(k, sessionId, title ?? '', specId)
+    await this.store.create(
+      k,
+      sessionId,
+      title ?? '',
+      specId,
+      specId ? undefined : (groupId ?? sessionId),
+    )
     return { sessionId, kind: k }
   }
 
@@ -208,6 +215,25 @@ export class SessionManager {
    */
   async createSessionForSpec(specId: string): Promise<{ sessionId: string; kind: AgentKind }> {
     return this.createSession(undefined, specId, specId)
+  }
+
+  /** Mint a fresh session in the same UI row as an existing session. */
+  async createSessionInGroup(
+    sourceSessionId: string,
+  ): Promise<{ sessionId: string; kind: AgentKind } | null> {
+    let source = await this.store.get(sourceSessionId)
+    if (!source) {
+      source = (await this.listSessions()).find((s) => s.id === sourceSessionId)
+      if (!source) return null
+      const { running: _running, ...persisted } = source
+      await this.store.upsert(persisted)
+    }
+    if (source.specId) return this.createSessionForSpec(source.specId)
+
+    const groupId = source.groupId ?? source.id
+    if (!source.groupId) await this.store.bindGroup(source.id, groupId)
+    const title = isOpaqueTitle(source.title, source.id) ? undefined : source.title
+    return this.createSession(undefined, title, undefined, groupId)
   }
 
   /**
@@ -382,6 +408,18 @@ export class SessionManager {
    */
   async getSpecMessages(specId: string): Promise<SpecSessionMessages[]> {
     const sessions = await this.store.listBySpec(specId)
+    return Promise.all(
+      sessions.map(async (s) => ({
+        sessionId: s.id,
+        kind: s.kind,
+        createdAt: s.createdAt,
+        messages: await this.getMessages(s.id).catch(() => [] as NormalizedMessage[]),
+      })),
+    )
+  }
+
+  async getSessionGroupMessages(groupId: string): Promise<SpecSessionMessages[]> {
+    const sessions = await this.store.listByGroup(groupId)
     return Promise.all(
       sessions.map(async (s) => ({
         sessionId: s.id,

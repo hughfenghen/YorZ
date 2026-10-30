@@ -145,6 +145,7 @@ export const en = {
     filePathCopyFailed: 'Failed to copy file path',
     slashCommandYorzDebug: 'Start debug mode to troubleshoot difficult issues',
     slashCommandYorzSpec: 'Start spec-driven development from the current context',
+    slashCommandNewSession: 'Start a new session in the current conversation group',
     addSlashCommandOption: 'Add Command',
     addSlashCommandOptionDescription: 'Create a custom slash command',
     addSlashCommandTitle: 'Add Command',

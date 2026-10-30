@@ -38,6 +38,7 @@ export interface TranscriptCacheEntry {
    * stale copy be painted first and then corrected once the truth arrives.
    */
   specId?: string
+  groupId?: string
   parts: ChatPart[]
 }
 

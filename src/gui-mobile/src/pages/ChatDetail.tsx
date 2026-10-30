@@ -1,9 +1,18 @@
-import { Show, createEffect, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
+import {
+  Show,
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  onCleanup,
+  onMount,
+} from 'solid-js'
 import type { Component } from 'solid-js'
 import { useNavigate, useParams } from '@solidjs/router'
 import { FileText } from 'lucide-solid'
 import { api, type SessionInfo, type SpecListItem } from '@shared/api/index.js'
 import { createChatTranscript } from '@shared/lib/chat-transcript.js'
+import { parseNewSessionCommand } from '@shared/lib/new-session-command.js'
 import { createAttachments } from '@shared/lib/attachments.js'
 import type { SlashCommand } from '@shared/lib/completion.js'
 import { buildSlashReplacement, mergeScopedInstructions } from '@shared/lib/slash-commands.js'
@@ -59,6 +68,7 @@ export const ChatDetail: Component = () => {
   const sid = () => sidOverride() ?? params.id ?? ''
 
   const [input, setInput] = createSignal('')
+  const [newSessionPending, setNewSessionPending] = createSignal(false)
   const [autoScroll, setAutoScroll] = createSignal(true)
   /**
    * 本页只关心当前这一条会话跑没跑。桌面端那份 `runningSids` 是**列表**级投影，
@@ -122,7 +132,8 @@ export const ChatDetail: Component = () => {
     for (const spec of specList() ?? []) map.set(spec.id, spec)
     return map
   })
-  const title = () => specById().get(specId() ?? '')?.title || current()?.title || t('chat.untitled')
+  const title = () =>
+    specById().get(specId() ?? '')?.title || current()?.title || t('chat.untitled')
 
   // 列表是运行态的权威来源（服务端的 running 集合），SSE 只送变化。
   createEffect(() => {
@@ -174,6 +185,7 @@ export const ChatDetail: Component = () => {
     // 移动端不提供「新建指令」入口（那是一个带四个字段的表单，属二期），
     // 因此也不放桌面端的 `/add-command` 项——点了没有去处的入口比没有更糟。
     return [
+      { value: '/new', description: t('chat.slashCommandNewSession') },
       { value: '/yorz-debug', description: t('chat.slashCommandYorzDebug') },
       { value: '/yorz-spec', description: t('chat.slashCommandYorzSpec') },
       ...custom,
@@ -184,6 +196,7 @@ export const ChatDetail: Component = () => {
     projectId: pid,
     sessionId: sid,
     specId,
+    groupId: () => current()?.groupId,
     running,
     listPending: () => sessions.loading,
     known: () => Boolean(current()),
@@ -223,17 +236,35 @@ export const ChatDetail: Component = () => {
   })
 
   async function onSend() {
-    const prompt = input().trim()
+    const raw = input().trim()
+    const command = parseNewSessionCommand(raw)
+    const prompt = command?.content ?? raw
+    if (tx.starting() || running()) return
+    if (command && !prompt) {
+      setInput('')
+      const kind = current()?.kind
+      if (sid() && kind) {
+        setNewSessionPending(true)
+        tx.beginNewSessionBoundary(kind)
+      }
+      return
+    }
     if (!prompt) return
     setInput('')
     setAutoScroll(true)
-    const outcome = await tx.send(prompt, attachments.draftId() ?? undefined)
+    const groupedSend = Boolean(sid() && (newSessionPending() || command))
+    const outcome = groupedSend
+      ? await tx.sendInNewSession(prompt, attachments.draftId() ?? undefined)
+      : await tx.send(prompt, attachments.draftId() ?? undefined)
     if (outcome === 'sent') attachments.reset()
     // 建号就失败时把文本还给用户：那条消息还没有出现在气泡里。
     // 建号成功但 POST 失败则不还——消息已经作为用户气泡在屏幕上了。
-    else if (outcome === 'not-started') {
-      setInput(prompt)
+    if (outcome === 'not-started') {
+      setInput(raw)
+      if (groupedSend) setNewSessionPending(true)
       showToast(t('chat.sendFailed'), 'error')
+    } else if (groupedSend) {
+      setNewSessionPending(false)
     }
   }
 
