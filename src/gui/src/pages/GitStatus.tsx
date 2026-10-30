@@ -4,6 +4,8 @@ import { useFocusModePage } from '../lib/layout-focus.js'
 import { Breadcrumb } from '../components/Breadcrumb.jsx'
 import { FocusModeButton } from '../components/FocusModeButton.jsx'
 import { GitPanel } from '../components/GitPanel.jsx'
+import { GitHistoryPanel } from '../components/GitHistoryPanel.jsx'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.jsx'
 import { t } from '../i18n/index.js'
 
 /**
@@ -28,7 +30,20 @@ export const GitStatus: Component = () => {
         </div>
       </header>
 
-      <GitPanel projectId={projectId} />
+      <Tabs defaultValue="status" class="flex min-h-0 flex-1 flex-col gap-2">
+        {/* Keep the working-tree panel mounted so switching tabs cannot discard
+            selected files or a commit message the user has already typed. */}
+        <TabsContent value="status" forceMount class="hidden min-h-0 flex-1 data-[selected]:flex">
+          <GitPanel projectId={projectId} />
+        </TabsContent>
+        <TabsContent value="history" class="flex min-h-0 flex-1">
+          <GitHistoryPanel projectId={projectId} />
+        </TabsContent>
+        <TabsList class="self-start">
+          <TabsTrigger value="status">{t('git.statusTab')}</TabsTrigger>
+          <TabsTrigger value="history">{t('git.historyTab')}</TabsTrigger>
+        </TabsList>
+      </Tabs>
     </section>
   )
 }

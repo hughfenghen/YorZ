@@ -5,6 +5,9 @@ import {
   commit as gitCommit,
   discard as gitDiscard,
   listBranches,
+  listHistory,
+  listCommitFiles,
+  commitFileDiff,
   checkoutBranch,
   createBranch,
   fetchRemotes,
@@ -91,6 +94,48 @@ export function createGitRoutes(resolveProject: ResolveProject): Hono {
     if (!path) return c.json({ error: 'path required' }, 400)
     try {
       return c.json(await fileDiff(p.path, path))
+    } catch (err) {
+      if (err instanceof GitError) return gitFail(c, err)
+      throw err
+    }
+  })
+
+  app.get('/projects/:projectId/git/history', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    const rawCursor = c.req.query('cursor')
+    const cursor = rawCursor === undefined || rawCursor === '' ? 0 : Number(rawCursor)
+    try {
+      return c.json(
+        await listHistory(p.path, {
+          query: c.req.query('q') ?? '',
+          cursor,
+        }),
+      )
+    } catch (err) {
+      if (err instanceof GitError) return gitFail(c, err)
+      throw err
+    }
+  })
+
+  app.get('/projects/:projectId/git/history/:sha/files', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    try {
+      return c.json({ files: await listCommitFiles(p.path, c.req.param('sha') ?? '') })
+    } catch (err) {
+      if (err instanceof GitError) return gitFail(c, err)
+      throw err
+    }
+  })
+
+  app.get('/projects/:projectId/git/history/:sha/diff', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    const path = c.req.query('path') ?? ''
+    if (!path) return c.json({ error: 'path required' }, 400)
+    try {
+      return c.json(await commitFileDiff(p.path, c.req.param('sha') ?? '', path))
     } catch (err) {
       if (err instanceof GitError) return gitFail(c, err)
       throw err

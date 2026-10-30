@@ -33,7 +33,12 @@ async function startInRepo() {
   await git(cwd, ['add', '.'])
   await git(cwd, ['commit', '-q', '-m', 'init'])
 
-  handle = await start({ cwd, port: 0, disableAuth: true, globalConfigPath: join(cfgDir, 'config.json') })
+  handle = await start({
+    cwd,
+    port: 0,
+    disableAuth: true,
+    globalConfigPath: join(cfgDir, 'config.json'),
+  })
   const list = await handle.registry.list()
   const projectId = list[0]!.id
   return { cwd, apiPrefix: `${handle.url}api/projects/${projectId}` }
@@ -82,6 +87,48 @@ describe('GET /git/diff', () => {
     expect(
       (await fetch(`${apiPrefix}/git/diff?path=${encodeURIComponent('../escape.txt')}`)).status,
     ).toBe(400)
+  })
+})
+
+describe('GET /git/history', () => {
+  it('lists and filters commits, then returns changed files and a commit diff', async () => {
+    const { cwd, apiPrefix } = await startInRepo()
+    await writeFile(join(cwd, 'history.txt'), 'history\n', 'utf8')
+    await git(cwd, ['add', 'history.txt'])
+    await git(cwd, [
+      'commit',
+      '-q',
+      '--author=Alice Example <alice@example.com>',
+      '-m',
+      'history needle',
+    ])
+    const sha = (await git(cwd, ['rev-parse', 'HEAD'])).trim()
+
+    const listed = await fetch(`${apiPrefix}/git/history?q=${encodeURIComponent('alice')}`)
+    expect(listed.status).toBe(200)
+    expect(await listed.json()).toMatchObject({
+      commits: [expect.objectContaining({ sha, subject: 'history needle' })],
+      nextCursor: null,
+    })
+
+    const files = await fetch(`${apiPrefix}/git/history/${sha}/files`)
+    expect(files.status).toBe(200)
+    expect(await files.json()).toMatchObject({
+      files: [expect.objectContaining({ path: 'history.txt', status: 'A' })],
+    })
+
+    const diff = await fetch(
+      `${apiPrefix}/git/history/${sha}/diff?path=${encodeURIComponent('history.txt')}`,
+    )
+    expect(diff.status).toBe(200)
+    expect(await diff.json()).toMatchObject({ path: 'history.txt', binary: false })
+  })
+
+  it('returns 400 for invalid cursors, commits, and paths', async () => {
+    const { apiPrefix } = await startInRepo()
+    expect((await fetch(`${apiPrefix}/git/history?cursor=-1`)).status).toBe(400)
+    expect((await fetch(`${apiPrefix}/git/history/bad/files`)).status).toBe(400)
+    expect((await fetch(`${apiPrefix}/git/history/${'0'.repeat(40)}/diff`)).status).toBe(400)
   })
 })
 

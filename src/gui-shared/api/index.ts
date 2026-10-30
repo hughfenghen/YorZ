@@ -105,6 +105,25 @@ export interface FileDiff {
   truncated: boolean
 }
 
+export interface GitCommit {
+  sha: string
+  subject: string
+  authorName: string
+  authorEmail: string
+  committedAt: string
+}
+
+export interface GitHistoryPage {
+  commits: GitCommit[]
+  nextCursor: number | null
+}
+
+export interface GitCommitFile {
+  path: string
+  status: string
+  renamedFrom?: string
+}
+
 export interface GitBranchState {
   current: string
   /** Local branches only — the only valid checkout targets. */
@@ -485,6 +504,21 @@ export const api = {
     request<{ changes: GitChange[] }>(`${projectBase(pid)}/git/changes`),
   getFileDiff: (pid: string, path: string) =>
     request<FileDiff>(`${projectBase(pid)}/git/diff?path=${encodeURIComponent(path)}`),
+  getGitHistory: (pid: string, query = '', cursor?: number) => {
+    const params = new URLSearchParams()
+    if (query.trim()) params.set('q', query.trim())
+    if (cursor !== undefined) params.set('cursor', String(cursor))
+    const suffix = params.size ? `?${params.toString()}` : ''
+    return request<GitHistoryPage>(`${projectBase(pid)}/git/history${suffix}`)
+  },
+  getGitCommitFiles: (pid: string, sha: string) =>
+    request<{ files: GitCommitFile[] }>(
+      `${projectBase(pid)}/git/history/${encodeURIComponent(sha)}/files`,
+    ),
+  getGitCommitFileDiff: (pid: string, sha: string, path: string) =>
+    request<FileDiff>(
+      `${projectBase(pid)}/git/history/${encodeURIComponent(sha)}/diff?path=${encodeURIComponent(path)}`,
+    ),
   getGitBranches: (pid: string) => request<GitBranchState>(`${projectBase(pid)}/git/branches`),
   checkoutGitBranch: (pid: string, branch: string) =>
     request<{ ok: true; current: string }>(`${projectBase(pid)}/git/checkout`, {

@@ -9,16 +9,17 @@ import {
   type Component,
 } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
-import { Check, GitBranch, MoreHorizontal, X } from 'lucide-solid'
+import { Check, GitBranch, MoreHorizontal } from 'lucide-solid'
 import { api, type GitChange, type GitOpsAction } from '@shared/api/index.js'
 import { subscribeProjectChanges, subscribeSession } from '@shared/api/sse.js'
-import { diffRevision, reconcileSelection, statusTone } from '@shared/lib/git-changes.js'
-import { diffLanguage, highlightLine, parsePatchRows } from '@shared/lib/diff-view.js'
+import { diffRevision, reconcileSelection } from '@shared/lib/git-changes.js'
 import { Page } from '@/components/Page.jsx'
 import { Sheet } from '@/components/Sheet.jsx'
 import { ActionSheet, type ActionSheetItem } from '@/components/ActionSheet.jsx'
 import { NoProjectNotice, Notice } from '@/components/ListStates.jsx'
 import { showToast } from '@/components/Toast.jsx'
+import { GitDiffView } from '@/components/GitDiffView.jsx'
+import { GitFileList } from '@/components/GitFileList.jsx'
 import { activeProjectId } from '@/lib/active-project.js'
 import { autoSizeTextarea } from '@/lib/autosize.js'
 import { cn } from '@/lib/cn'
@@ -42,6 +43,8 @@ export interface GitPanelProps {
   specId?: () => string | undefined
   /** 预填 commit message；用户敲过键盘后就不再覆盖（见下方采纳闸）。 */
   initialMessage?: () => string
+  /** 扩展页传入；spec Git 页不展示历史入口。 */
+  onOpenHistory?: () => void
 }
 
 /**
@@ -353,6 +356,15 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
     // 全选不在这里：它是勾选文件的高频前置动作，已经提到底部操作栏常驻，
     // 浮层里再留一份就是两个入口、两份真相。
     const items: ActionSheetItem[] = []
+    if (props.onOpenHistory) {
+      items.push({
+        label: t('git.history'),
+        onSelect: () => {
+          setMoreOpen(false)
+          props.onOpenHistory?.()
+        },
+      })
+    }
     items.push({
       label: t('git.push'),
       onSelect: () => {
@@ -539,94 +551,27 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
                 activePath() ? 'max-h-[38dvh] shrink-0' : 'flex-1',
               )}
             >
-              <For each={changes()}>
-                {(change) => (
-                  <div class="flex items-center active:bg-accent">
-                    {/* 勾选＝操作范围，点路径＝预览 diff，两者互不影响 */}
-                    <button
-                      type="button"
-                      // 勾选框不是图标按钮：视觉是 20×20 的方框，但整块 44×44 都要
-                      // 可点（列表行里最常见的误触就是勾选框太小），所以显式给尺寸，
-                      // 不套 .tap-target 那套「20×20 + 伪元素扩命中区」的口径。
-                      class="flex size-11 shrink-0 items-center justify-center"
-                      role="checkbox"
-                      aria-checked={selected().has(change.path)}
-                      aria-label={change.path}
-                      disabled={anyRunning()}
-                      onClick={() => togglePath(change.path)}
-                    >
-                      <span
-                        class={cn(
-                          'flex h-5 w-5 items-center justify-center rounded border',
-                          selected().has(change.path)
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : 'border-border',
-                        )}
-                      >
-                        <Show when={selected().has(change.path)}>
-                          <Check size={14} aria-hidden="true" />
-                        </Show>
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      class={cn(
-                        'flex min-w-0 flex-1 items-center gap-2 py-3 pr-4 text-left',
-                        activePath() === change.path && 'bg-accent',
-                      )}
-                      // 再点同一行取消选中，让列表复原到全高
-                      onClick={() =>
-                        setActivePath((prev) => (prev === change.path ? null : change.path))
-                      }
-                    >
-                      <span
-                        class={cn(
-                          'w-6 shrink-0 text-center text-xs font-bold',
-                          statusTone(change.status),
-                        )}
-                      >
-                        {change.status}
-                      </span>
-                      {/*
-                        截断挪到行首（见 app.css 的 .truncate-start）：窄屏上路径尾部的
-                        文件名，信息量远大于头部那一长串目录。
-                      */}
-                      <span class="truncate-start min-w-0 flex-1 font-mono text-xs">
-                        {change.path}
-                      </span>
-                    </button>
-                  </div>
-                )}
-              </For>
+              <GitFileList
+                files={changes()}
+                activePath={activePath()}
+                selectedPaths={selected()}
+                disabled={anyRunning()}
+                onToggle={togglePath}
+                onSelect={(path) => setActivePath((prev) => (prev === path ? null : path))}
+              />
             </div>
 
             <Show when={activePath()}>
               {(path) => (
-                <div class="code-highlight scroll-y min-h-0 flex-1 border-t border-border">
-                  <div class="sticky top-0 flex items-center gap-2 border-b border-border bg-card px-4 py-1.5">
-                    <span class="truncate-start min-w-0 flex-1 font-mono text-xs">{path()}</span>
-                    <Show when={diff()?.truncated}>
-                      <span class="shrink-0 text-xs text-warning">{t('git.diffTruncated')}</span>
-                    </Show>
-                    {/* 关闭预览：与再点同一行取消选中同口径，都是把 activePath 落回 null，
-                        让列表复原到全高。图标按钮显式给命中区，别让指尖找不到。 */}
-                    <button
-                      type="button"
-                      class="tap-target -mr-1 flex shrink-0 items-center justify-center text-muted-foreground active:opacity-60"
-                      aria-label={t('common.close')}
-                      onClick={() => setActivePath(null)}
-                    >
-                      <X size={16} aria-hidden="true" />
-                    </button>
-                  </div>
-                  <DiffBody
-                    path={path()}
-                    patch={diff()?.patch ?? ''}
-                    binary={diff()?.binary ?? false}
-                    loading={diff.loading}
-                    error={diff.error ? (diff.error as Error).message : null}
-                  />
-                </div>
+                <GitDiffView
+                  path={path()}
+                  patch={diff()?.patch ?? ''}
+                  binary={diff()?.binary ?? false}
+                  truncated={diff()?.truncated ?? false}
+                  loading={diff.loading}
+                  error={diff.error ? (diff.error as Error).message : null}
+                  onClose={() => setActivePath(null)}
+                />
               )}
             </Show>
           </Show>
@@ -737,89 +682,3 @@ const BranchFilter: Component<{ value: string; onInput: (v: string) => void }> =
     onInput={(e) => props.onInput(e.currentTarget.value)}
   />
 )
-
-/**
- * 统一 diff 正文：行模型与高亮都来自 `@shared/lib/diff-view`，与桌面端同源。
- * 移动端把行号列压到 w-9、字体 11px，并用 break-all 换行——长 diff 上的单手
- * 横向滚动体验太差，宁可折行。
- */
-const DiffBody: Component<{
-  path: string
-  patch: string
-  binary: boolean
-  loading: boolean
-  error: string | null
-}> = (props) => {
-  const files = createMemo(() => parsePatchRows(props.patch))
-  const hasContent = createMemo(() => files().some((f) => f.chunks.length > 0))
-  const language = createMemo(() => diffLanguage(props.path))
-
-  return (
-    <Show
-      when={!props.loading}
-      fallback={<p class="p-4 text-sm text-muted-foreground">{t('git.diffLoading')}</p>}
-    >
-      <Show
-        when={!props.error}
-        fallback={<p class="p-4 text-sm text-destructive">{props.error}</p>}
-      >
-        <Show
-          when={!props.binary}
-          fallback={<p class="p-4 text-sm text-muted-foreground">{t('git.binaryFile')}</p>}
-        >
-          <Show
-            when={hasContent()}
-            fallback={<p class="p-4 text-sm text-muted-foreground">{t('git.diffEmpty')}</p>}
-          >
-            <For each={files()}>
-              {(file) => (
-                <For each={file.chunks}>
-                  {(chunk) => (
-                    <div>
-                      <div class="bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                        {chunk.header}
-                      </div>
-                      <For each={chunk.rows}>
-                        {(row) => {
-                          const tone =
-                            row.tone === 'add'
-                              ? 'bg-success/10'
-                              : row.tone === 'del'
-                                ? 'bg-destructive/10'
-                                : ''
-                          const markerTone =
-                            row.tone === 'add'
-                              ? 'text-success'
-                              : row.tone === 'del'
-                                ? 'text-destructive'
-                                : 'text-muted-foreground'
-                          const highlighted = highlightLine(row.code, language())
-                          return (
-                            <div class={`flex font-mono text-[11px] leading-snug ${tone}`}>
-                              <span class="w-9 shrink-0 select-none px-1 text-right text-muted-foreground">
-                                {row.oldLn}
-                              </span>
-                              <span class="w-9 shrink-0 select-none px-1 text-right text-muted-foreground">
-                                {row.newLn}
-                              </span>
-                              <pre class="m-0 min-w-0 flex-1 whitespace-pre-wrap break-all px-1">
-                                <span class={`select-none ${markerTone}`}>{row.marker}</span>
-                                <Show when={highlighted} fallback={<span>{row.code}</span>}>
-                                  {(html) => <span class="hljs" innerHTML={html()} />}
-                                </Show>
-                              </pre>
-                            </div>
-                          )
-                        }}
-                      </For>
-                    </div>
-                  )}
-                </For>
-              )}
-            </For>
-          </Show>
-        </Show>
-      </Show>
-    </Show>
-  )
-}

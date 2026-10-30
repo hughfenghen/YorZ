@@ -18,6 +18,7 @@ import { Extensions } from './pages/Extensions.jsx'
 import { Scripts } from './pages/ext/Scripts.jsx'
 import { RunOutput } from './pages/ext/RunOutput.jsx'
 import { GitStatus } from './pages/ext/GitStatus.jsx'
+import { GitHistory } from './pages/ext/GitHistory.jsx'
 import { Projects } from './pages/Projects.jsx'
 import { GlobalSettings } from './pages/settings/GlobalSettings.jsx'
 import { ProjectSettings } from './pages/settings/ProjectSettings.jsx'
@@ -73,6 +74,7 @@ render(
       {/* 同理，两条静态的扩展二级页排在 /ext/runs/:runId 之前。 */}
       <Route path="/ext/scripts" component={Scripts} />
       <Route path="/ext/git" component={GitStatus} />
+      <Route path="/ext/git/history" component={GitHistory} />
       <Route path="/ext/runs/:runId" component={RunOutput} />
       <Route path="/settings/global" component={GlobalSettings} />
       <Route path="/settings/project" component={ProjectSettings} />

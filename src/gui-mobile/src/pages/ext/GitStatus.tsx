@@ -12,5 +12,11 @@ import { t } from '@/i18n/index.js'
  */
 export const GitStatus: Component = () => {
   const navigate = useNavigate()
-  return <GitPanel title={t('git.title')} onBack={() => navigate('/ext')} />
+  return (
+    <GitPanel
+      title={t('git.title')}
+      onBack={() => navigate('/ext')}
+      onOpenHistory={() => navigate('/ext/git/history')}
+    />
+  )
 }

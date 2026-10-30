@@ -32,6 +32,31 @@ export interface FileDiff {
   truncated: boolean
 }
 
+export interface GitCommit {
+  sha: string
+  subject: string
+  authorName: string
+  authorEmail: string
+  committedAt: string
+}
+
+export interface GitHistoryPage {
+  commits: GitCommit[]
+  /** Raw git-log position to resume from; null means the history is exhausted. */
+  nextCursor: number | null
+}
+
+export interface GitCommitFile {
+  path: string
+  status: string
+  renamedFrom?: string
+}
+
+export interface ListHistoryOptions {
+  query?: string
+  cursor?: number
+}
+
 export interface PartitionedPaths {
   tracked: string[]
   untracked: string[]
@@ -297,6 +322,8 @@ export async function discard(cwd: string, opts: DiscardOptions): Promise<void> 
 /** Patches larger than this are cut off — the browser cannot usefully render them. */
 const MAX_PATCH_BYTES = 512 * 1024
 const MAX_PATCH_LINES = 3000
+export const GIT_HISTORY_PAGE_SIZE = 20
+const GIT_HISTORY_SCAN_BATCH = 200
 
 function truncatePatch(patch: string): { patch: string; truncated: boolean } {
   let text = patch
@@ -311,6 +338,14 @@ function truncatePatch(patch: string): { patch: string; truncated: boolean } {
     truncated = true
   }
   return { patch: text, truncated }
+}
+
+function patchResult(path: string, raw: string): FileDiff {
+  if (!raw.includes('@@') && /^Binary files .* differ$/m.test(raw)) {
+    return { path, patch: '', binary: true, truncated: false }
+  }
+  const { patch, truncated } = truncatePatch(raw)
+  return { path, patch, binary: false, truncated }
 }
 
 /**
@@ -351,12 +386,149 @@ export async function fileDiff(cwd: string, path: string): Promise<FileDiff> {
   if (res.code !== 0 && !res.stdout) {
     throw new GitError('git_failed', res.stderr.trim() || 'git diff failed', res.stderr)
   }
-  const raw = res.stdout
-  if (!raw.includes('@@') && /^Binary files .* differ$/m.test(raw)) {
-    return { path, patch: '', binary: true, truncated: false }
+  return patchResult(path, res.stdout)
+}
+
+function parseHistoryBatch(raw: string): GitCommit[] {
+  const fields = raw.split('\0')
+  const commits: GitCommit[] = []
+  for (let i = 0; i + 4 < fields.length; i += 5) {
+    const sha = fields[i]?.trim() ?? ''
+    const committedAt = fields[i + 1]?.trim() ?? ''
+    const authorName = fields[i + 2]?.trim() ?? ''
+    const authorEmail = fields[i + 3]?.trim() ?? ''
+    const subject = fields[i + 4]?.trim() ?? ''
+    if (!/^[0-9a-f]{40}$/i.test(sha)) continue
+    commits.push({ sha, subject, authorName, authorEmail, committedAt })
   }
-  const { patch, truncated } = truncatePatch(raw)
-  return { path, patch, binary: false, truncated }
+  return commits
+}
+
+async function historyBatch(cwd: string, cursor: number, count: number): Promise<GitCommit[]> {
+  const { stdout } = await runGit(cwd, [
+    'log',
+    'HEAD',
+    `--skip=${cursor}`,
+    `--max-count=${count}`,
+    '--format=%H%x00%cI%x00%an%x00%ae%x00%s%x00',
+  ])
+  return parseHistoryBatch(stdout)
+}
+
+/**
+ * List commits reachable from the current HEAD, newest first.
+ *
+ * The cursor counts raw commits rather than matches. A filtered request can
+ * therefore continue scanning where the previous page stopped without
+ * re-reading the whole prefix of a large repository.
+ */
+export async function listHistory(
+  cwd: string,
+  opts: ListHistoryOptions = {},
+): Promise<GitHistoryPage> {
+  const cursor = opts.cursor ?? 0
+  if (!Number.isSafeInteger(cursor) || cursor < 0) {
+    throw new GitError('invalid_cursor', 'cursor must be a non-negative integer')
+  }
+
+  // `git log HEAD` exits 128 in a freshly initialized repository. That is a
+  // legitimate empty state for the history page, not a request failure.
+  const head = await runGitRaw(cwd, ['rev-parse', '--verify', 'HEAD'])
+  if (head.code !== 0) return { commits: [], nextCursor: null }
+
+  const query = opts.query?.trim().toLowerCase() ?? ''
+  const batchSize = query ? GIT_HISTORY_SCAN_BATCH : GIT_HISTORY_PAGE_SIZE + 1
+  const commits: GitCommit[] = []
+  let scanCursor = cursor
+
+  for (;;) {
+    const batch = await historyBatch(cwd, scanCursor, batchSize)
+    if (batch.length === 0) return { commits, nextCursor: null }
+
+    for (const commit of batch) {
+      const matches =
+        !query ||
+        commit.subject.toLowerCase().includes(query) ||
+        commit.authorName.toLowerCase().includes(query) ||
+        commit.authorEmail.toLowerCase().includes(query)
+      if (matches) {
+        // Do not consume the 21st match: nextCursor points at it so the next
+        // request returns it as the first row instead of silently skipping it.
+        if (commits.length === GIT_HISTORY_PAGE_SIZE) {
+          return { commits, nextCursor: scanCursor }
+        }
+        commits.push(commit)
+      }
+      scanCursor += 1
+    }
+
+    if (batch.length < batchSize) return { commits, nextCursor: null }
+  }
+}
+
+async function assertCommit(cwd: string, sha: string): Promise<string> {
+  const commit = sha.trim()
+  if (!/^[0-9a-f]{40}$/i.test(commit)) {
+    throw new GitError('invalid_commit', 'commit must be a full 40-character SHA')
+  }
+  const exists = await runGitRaw(cwd, ['cat-file', '-e', `${commit}^{commit}`])
+  if (exists.code !== 0) throw new GitError('invalid_commit', 'commit does not exist')
+  return commit
+}
+
+async function firstParent(cwd: string, commit: string): Promise<string | null> {
+  const { stdout } = await runGit(cwd, ['rev-list', '--parents', '-n', '1', commit])
+  return stdout.trim().split(/\s+/)[1] ?? null
+}
+
+export async function listCommitFiles(cwd: string, sha: string): Promise<GitCommitFile[]> {
+  const commit = await assertCommit(cwd, sha)
+  const parent = await firstParent(cwd, commit)
+  const args = [
+    'diff-tree',
+    '--no-commit-id',
+    '--name-status',
+    '-r',
+    '-z',
+    '-M',
+    ...(parent ? [parent, commit] : ['--root', commit]),
+  ]
+  const { stdout } = await runGit(cwd, args)
+  const fields = stdout.split('\0')
+  const files: GitCommitFile[] = []
+  for (let i = 0; i < fields.length; ) {
+    const rawStatus = fields[i++] ?? ''
+    if (!rawStatus) continue
+    const status = rawStatus[0] ?? rawStatus
+    if (status === 'R' || status === 'C') {
+      const renamedFrom = fields[i++] ?? ''
+      const path = fields[i++] ?? ''
+      if (path) files.push({ path, status, ...(renamedFrom ? { renamedFrom } : {}) })
+      continue
+    }
+    const path = fields[i++] ?? ''
+    if (path) files.push({ path, status })
+  }
+  return files
+}
+
+export async function commitFileDiff(cwd: string, sha: string, path: string): Promise<FileDiff> {
+  assertSafeRelativePath(cwd, path)
+  const commit = await assertCommit(cwd, sha)
+  const file = (await listCommitFiles(cwd, commit)).find((entry) => entry.path === path)
+  if (!file) throw new GitError('invalid_path', 'path is not changed by this commit')
+  const pathArgs = file.renamedFrom ? [file.renamedFrom, file.path] : [file.path]
+  const parent = await firstParent(cwd, commit)
+  const res = await runGitRaw(
+    cwd,
+    parent
+      ? ['diff', '--find-renames', '--no-ext-diff', parent, commit, '--', ...pathArgs]
+      : ['show', '--format=', '--find-renames', '--no-ext-diff', commit, '--', ...pathArgs],
+  )
+  if (res.code !== 0 && !res.stdout) {
+    throw new GitError('git_failed', res.stderr.trim() || 'git show failed', res.stderr)
+  }
+  return patchResult(path, res.stdout)
 }
 
 export interface GitBranchState {

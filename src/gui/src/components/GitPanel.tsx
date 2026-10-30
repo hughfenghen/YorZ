@@ -11,13 +11,12 @@ import {
 } from 'solid-js'
 import { GitBranch, GitMerge, Loader2 } from 'lucide-solid'
 import { api, type GitOpsAction, type GitChange } from '../lib/api.js'
-import { diffRevision, reconcileSelection, statusTone } from '@shared/lib/git-changes.js'
+import { diffRevision, reconcileSelection } from '@shared/lib/git-changes.js'
 import { requestChatSession } from '../lib/project.js'
 import { subscribeProjectChanges, subscribeSession } from '../lib/sse.js'
 import { Button } from './ui/button.jsx'
 import { AutoResizeTextarea } from './ui/textarea.jsx'
 import { Input } from './ui/input.jsx'
-import { Checkbox, CheckboxControl } from './ui/checkbox.jsx'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.jsx'
 import {
   RadioGroup,
@@ -35,6 +34,7 @@ import {
   DialogTitle,
 } from './ui/dialog.jsx'
 import { DiffView } from './DiffView.jsx'
+import { GitFileList } from './GitFileList.jsx'
 import { toast } from './ui/toast.jsx'
 import { t } from '../i18n/index.js'
 
@@ -790,37 +790,14 @@ export const GitPanel: Component<GitPanelProps> = (props) => {
                 })}
               </span>
             </div>
-            <For each={changes()}>
-              {(change) => (
-                <div
-                  class={`flex items-center gap-2 px-2 py-0.5 ${
-                    activePath() === change.path ? 'bg-accent' : ''
-                  }`}
-                >
-                  {/* 勾选＝操作范围，点击文件名＝预览 diff，两者互不影响 */}
-                  <Checkbox
-                    checked={selectedPaths().has(change.path)}
-                    onChange={() => togglePath(change.path)}
-                    disabled={isAnyRunning()}
-                  >
-                    <CheckboxControl />
-                  </Checkbox>
-                  <button
-                    type="button"
-                    class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left"
-                    onClick={() => setActivePath(change.path)}
-                    title={change.path}
-                  >
-                    <span
-                      class={`inline-block w-6 text-center text-sm font-bold ${statusTone(change.status)}`}
-                    >
-                      {change.status}
-                    </span>
-                    <span class="truncate font-mono text-sm">{change.path}</span>
-                  </button>
-                </div>
-              )}
-            </For>
+            <GitFileList
+              files={changes()}
+              activePath={activePath()}
+              selectedPaths={selectedPaths()}
+              disabled={isAnyRunning()}
+              onToggle={togglePath}
+              onSelect={setActivePath}
+            />
           </div>
         </Show>
         <Show when={fileSelectMode() === 'manual' && changes().length === 0}>

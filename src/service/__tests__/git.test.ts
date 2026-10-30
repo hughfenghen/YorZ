@@ -17,6 +17,9 @@ import {
   mergeBranch,
   push,
   pull,
+  listHistory,
+  listCommitFiles,
+  commitFileDiff,
 } from '../git.js'
 
 const execFileP = promisify(execFile)
@@ -79,6 +82,112 @@ describe('git.listChanges', () => {
 
     await rm(cwd, { recursive: true, force: true })
   })
+})
+
+describe('git history', () => {
+  it('paginates current HEAD in fixed pages and filters message or author', async () => {
+    const cwd = await initRepo()
+    for (let i = 0; i < 25; i += 1) {
+      await writeFile(join(cwd, 'history.txt'), `${i}\n`, 'utf8')
+      await git(cwd, ['add', 'history.txt'])
+      await gitWithDates(
+        cwd,
+        ['commit', '-q', '-m', i === 7 ? 'needle message' : `history ${i}`],
+        `2026-01-${String(i + 1).padStart(2, '0')}T12:00:00Z`,
+      )
+    }
+    await writeFile(join(cwd, 'author.txt'), 'alice\n', 'utf8')
+    await git(cwd, ['add', 'author.txt'])
+    await git(cwd, [
+      'commit',
+      '-q',
+      '--author=Alice Example <alice@example.com>',
+      '-m',
+      'authored row',
+    ])
+
+    const first = await listHistory(cwd)
+    expect(first.commits).toHaveLength(20)
+    expect(first.nextCursor).not.toBeNull()
+    const second = await listHistory(cwd, { cursor: first.nextCursor! })
+    expect(second.commits.length).toBeGreaterThan(0)
+    expect(second.nextCursor).toBeNull()
+    expect(new Set([...first.commits, ...second.commits].map((c) => c.sha)).size).toBe(27)
+
+    const message = await listHistory(cwd, { query: 'NEEDLE' })
+    expect(message.commits.map((c) => c.subject)).toEqual(['needle message'])
+    const author = await listHistory(cwd, { query: 'alice@example.com' })
+    expect(author.commits).toHaveLength(1)
+    expect(author.commits[0]?.authorName).toBe('Alice Example')
+
+    await expect(listHistory(cwd, { cursor: -1 })).rejects.toBeInstanceOf(GitError)
+    await rm(cwd, { recursive: true, force: true })
+  }, 30_000)
+
+  it('lists root and renamed files, then renders commit-scoped diffs', async () => {
+    const cwd = await initRepo()
+    const rootSha = (await git(cwd, ['rev-parse', 'HEAD'])).trim()
+    expect(await listCommitFiles(cwd, rootSha)).toEqual([
+      expect.objectContaining({ path: '.gitkeep', status: 'A' }),
+    ])
+
+    await writeFile(join(cwd, 'old.txt'), 'same one\nsame two\nbefore\n', 'utf8')
+    await git(cwd, ['add', 'old.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'add old'])
+    await git(cwd, ['mv', 'old.txt', 'new.txt'])
+    await writeFile(join(cwd, 'new.txt'), 'same one\nsame two\nafter\n', 'utf8')
+    await git(cwd, ['add', 'new.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'rename old'])
+    const renameSha = (await git(cwd, ['rev-parse', 'HEAD'])).trim()
+    expect(await listCommitFiles(cwd, renameSha)).toEqual([
+      expect.objectContaining({ path: 'new.txt', status: 'R', renamedFrom: 'old.txt' }),
+    ])
+    const renamed = await commitFileDiff(cwd, renameSha, 'new.txt')
+    expect(renamed.patch).toContain('+after')
+    expect(renamed.patch).toContain('-before')
+
+    await git(cwd, ['checkout', '-q', '-b', 'feature/history'])
+    await writeFile(join(cwd, 'feature.txt'), 'feature\n', 'utf8')
+    await git(cwd, ['add', 'feature.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'feature side'])
+    await git(cwd, ['checkout', '-q', 'main'])
+    await writeFile(join(cwd, 'main.txt'), 'main\n', 'utf8')
+    await git(cwd, ['add', 'main.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'main side'])
+    await git(cwd, ['merge', '-q', '--no-ff', '-m', 'merge history', 'feature/history'])
+    const mergeSha = (await git(cwd, ['rev-parse', 'HEAD'])).trim()
+    expect(await listCommitFiles(cwd, mergeSha)).toEqual([
+      expect.objectContaining({ path: 'feature.txt', status: 'A' }),
+    ])
+    expect((await commitFileDiff(cwd, mergeSha, 'feature.txt')).patch).toContain('+feature')
+
+    await expect(commitFileDiff(cwd, renameSha, '../escape')).rejects.toBeInstanceOf(GitError)
+    await expect(commitFileDiff(cwd, 'bad', 'new.txt')).rejects.toBeInstanceOf(GitError)
+    await rm(cwd, { recursive: true, force: true })
+  }, 30_000)
+
+  it('marks binary commit diffs and truncates oversized text patches', async () => {
+    const cwd = await initRepo()
+    await writeFile(join(cwd, 'binary.bin'), Buffer.from([0, 1, 2, 3]))
+    await git(cwd, ['add', 'binary.bin'])
+    await git(cwd, ['commit', '-q', '-m', 'binary'])
+    const binarySha = (await git(cwd, ['rev-parse', 'HEAD'])).trim()
+    expect(await commitFileDiff(cwd, binarySha, 'binary.bin')).toMatchObject({
+      binary: true,
+      patch: '',
+    })
+
+    await writeFile(
+      join(cwd, 'large.txt'),
+      Array.from({ length: 3100 }, (_, i) => `line ${i}`).join('\n'),
+      'utf8',
+    )
+    await git(cwd, ['add', 'large.txt'])
+    await git(cwd, ['commit', '-q', '-m', 'large'])
+    const largeSha = (await git(cwd, ['rev-parse', 'HEAD'])).trim()
+    expect((await commitFileDiff(cwd, largeSha, 'large.txt')).truncated).toBe(true)
+    await rm(cwd, { recursive: true, force: true })
+  }, 30_000)
 })
 
 describe('git.commit', () => {
