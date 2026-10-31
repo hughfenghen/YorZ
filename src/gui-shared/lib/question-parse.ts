@@ -23,6 +23,11 @@ export interface ConfirmQuestion {
   plan?: string
   /** 仅 confirm：影响/代价正文（`**影响**：…` 或 `**代价**：…`）。 */
   impact?: string
+  /**
+   * 仅 choice/freeform：标题与有序候选列表之间的说明文字（如「背景：…」段落）。
+   * 无前导说明时缺省。confirm 型正文由 `plan`/`impact` 承载，不使用本字段。
+   */
+  description?: string
 }
 
 // 章节名兼容新旧：`待确认项`（新）/ `待确认问题`（旧存量 spec）。
@@ -107,16 +112,35 @@ function classify(raw: RawQuestion, index: number): ConfirmQuestion {
     }
   }
 
-  // choice / freeform：沿用有序候选解析。
+  // choice / freeform：沿用有序候选解析，并保留候选前的说明文字。
   const options = parseOrderedOptions(raw.bodyLines, index, text)
   const isFreeform = freeformSuffix || options.length === 0
+  const description = extractDescription(raw.bodyLines)
   return {
     id: questionId(index, text),
     text,
     kind: isFreeform ? 'freeform' : 'choice',
     options,
     isFreeform,
+    ...(description ? { description } : {}),
   }
+}
+
+/**
+ * 提取 choice/freeform 条目的前导说明：标题与首个有序候选行之间的文本。
+ * 无候选（freeform）时取全部正文。去掉首尾空白行后以 `\n` 连接；为空返回 undefined。
+ */
+function extractDescription(bodyLines: string[]): string | undefined {
+  const collected: string[] = []
+  for (const raw of bodyLines) {
+    if (matchOrderedCandidate(raw) !== null) break
+    collected.push(raw)
+  }
+  // 去掉首尾空白行，保留中间空行。
+  while (collected.length && BLANK_LINE_RE.test(collected[0]!)) collected.shift()
+  while (collected.length && BLANK_LINE_RE.test(collected[collected.length - 1]!)) collected.pop()
+  if (collected.length === 0) return undefined
+  return collected.join('\n')
 }
 
 function parseConfirmFields(bodyLines: string[]): { plan?: string; impact?: string } {

@@ -240,6 +240,62 @@ describe('parseConfirmQuestions', () => {
     expect(out[0].impact).toBe('包体积 +20KB。')
   })
 
+  it('captures a choice item leading description above the candidates', () => {
+    const body = [
+      '## 待确认项',
+      '',
+      '### 5.1 [choice] 方案 C 采用哪种策略？',
+      '',
+      '背景：YorZ 不持久化对话 parts，用户附件以文件路径引用传给模型。',
+      '',
+      '1. 读回重写 (推荐)',
+      '2. 作为视觉块发送',
+      '',
+    ].join('\n')
+    const out = parseConfirmQuestions(body)
+    expect(out).toHaveLength(1)
+    expect(out[0].kind).toBe('choice')
+    expect(out[0].text).toBe('方案 C 采用哪种策略？')
+    expect(out[0].description).toBe(
+      '背景：YorZ 不持久化对话 parts，用户附件以文件路径引用传给模型。',
+    )
+    // 说明不污染候选解析。
+    expect(out[0].options.map((o) => o.label)).toEqual(['读回重写', '作为视觉块发送'])
+    expect(out[0].options.map((o) => o.recommended)).toEqual([true, false])
+  })
+
+  it('leaves description undefined when there is no leading text', () => {
+    const body = `## 待确认项\n\n### 5.1 [choice] 用什么数据库？\n1. SQLite (推荐)\n2. Postgres\n`
+    const out = parseConfirmQuestions(body)
+    expect(out[0].description).toBeUndefined()
+  })
+
+  it('joins a multi-line description and trims surrounding blank lines', () => {
+    const body = [
+      '## 待确认项',
+      '',
+      '### 5.1 问题',
+      '',
+      '第一行说明。',
+      '',
+      '第二行说明。',
+      '',
+      '1. 候选 A (推荐)',
+      '',
+    ].join('\n')
+    const out = parseConfirmQuestions(body)
+    expect(out[0].description).toBe('第一行说明。\n\n第二行说明。')
+  })
+
+  it('captures the full body as description for a freeform item without candidates', () => {
+    const body = `## 待确认项\n\n### 5.1 文案该怎么写？\n\n请给出面向用户的 release notes 风格说明。\n`
+    const out = parseConfirmQuestions(body)
+    expect(out).toHaveLength(1)
+    expect(out[0].isFreeform).toBe(true)
+    expect(out[0].options).toEqual([])
+    expect(out[0].description).toBe('请给出面向用户的 release notes 风格说明。')
+  })
+
   it('hard-switches away from the old bullet format (legacy input yields 0 questions)', () => {
     const body = [
       '## 5. 待确认问题',

@@ -178,6 +178,11 @@ export const QuestionSheet: Component<{
             {(q) => (
               <section>
                 <h3 class="mb-2 text-sm font-medium leading-relaxed">{q.text}</h3>
+                <Show when={q.description}>
+                  <p class="mb-2 whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                    {q.description}
+                  </p>
+                </Show>
 
                 <Show when={q.kind === 'confirm'}>
                   <div

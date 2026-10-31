@@ -151,6 +151,11 @@ export const QuestionConfirmPanel: Component<Props> = (props) => {
             return (
               <li class="flex min-w-0 flex-col gap-2 rounded-lg border bg-background p-2.5">
                 <p class="qcp-question m-0 font-medium break-words">{q.text}</p>
+                <Show when={q.description}>
+                  <p class="qcp-question-desc m-0 whitespace-pre-wrap break-words text-muted-foreground">
+                    {q.description}
+                  </p>
+                </Show>
 
                 {/* choice / freeform：沿用有序候选 + 自由项 */}
                 <Show when={q.kind === 'choice'}>
