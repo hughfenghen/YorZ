@@ -283,6 +283,82 @@ describe('ClaudeAdapter', () => {
     ])
   })
 
+  it('emits image events for model and tool_result image blocks in the send stream', async () => {
+    sdk.messages = [
+      sdkMessage({
+        type: 'assistant',
+        session_id: 'sid-1',
+        message: {
+          content: [
+            { type: 'text', text: 'see' },
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: 'image/png', data: 'AAA' },
+            },
+          ],
+        },
+      }),
+      sdkMessage({
+        type: 'user',
+        session_id: 'sid-1',
+        message: {
+          content: [
+            {
+              type: 'tool_result',
+              content: [
+                { type: 'text', text: 'shot taken' },
+                { type: 'image', source: { type: 'url', url: 'https://x/y.png' } },
+              ],
+            },
+          ],
+        },
+      }),
+      sdkMessage({ type: 'result', subtype: 'success', session_id: 'sid-1' }),
+    ]
+
+    const session = await new ClaudeAdapter('/tmp').createSession()
+    const events = []
+    for await (const ev of session.send('hello')) events.push(ev)
+
+    expect(events).toContainEqual({
+      type: 'image',
+      data: 'data:image/png;base64,AAA',
+      mime: 'image/png',
+    })
+    expect(events).toContainEqual({ type: 'image', data: 'https://x/y.png', mime: 'image/*' })
+    // The tool_result text is still surfaced alongside the extracted image.
+    expect(events).toContainEqual({ type: 'tool-result', text: 'shot taken' })
+  })
+
+  it('maps tool_result image blocks to image parts in getMessages', async () => {
+    sdk.getSessionMessages.mockResolvedValueOnce([
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'ZZZ' } }],
+            },
+          ],
+        },
+      },
+    ] as never)
+
+    const messages = await new ClaudeAdapter('/tmp').getMessages('sid-1')
+
+    expect(messages).toEqual([
+      {
+        role: 'user',
+        parts: [
+          { type: 'tool-result', text: '' },
+          { type: 'image', data: 'data:image/jpeg;base64,ZZZ', mime: 'image/jpeg' },
+        ],
+      },
+    ])
+  })
+
   it('passes explicit model/effort and leaves both absent by default', async () => {
     const adapter = new ClaudeAdapter('/tmp')
     const configured = await adapter.createSession({ model: 'opus', reasoningEffort: 'high' })

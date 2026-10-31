@@ -342,6 +342,8 @@ export type SessionEvent =
   | { type: 'text'; delta: string }
   | { type: 'tool-use'; name: string; input: unknown }
   | { type: 'tool-result'; text: string }
+  /** Image produced by the model or a tool; `data` is a `data:` or `http(s)` URL. */
+  | { type: 'image'; data: string; mime: string }
   | { type: 'turn-completed'; usage?: unknown }
   /**
    * Context was compacted mid-turn (auto or manual). The server has always

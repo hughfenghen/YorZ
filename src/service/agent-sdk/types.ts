@@ -73,6 +73,12 @@ export type AgentEvent =
   | { type: 'tool-use'; name: string; input: unknown }
   | { type: 'tool-result'; text: string }
   /**
+   * An image produced by the model or a tool (e.g. a screenshot tool's
+   * `tool_result` image block). `data` is a self-contained `data:` URL or an
+   * `http(s)` URL; `mime` is the image media type.
+   */
+  | { type: 'image'; data: string; mime: string }
+  /**
    * `usage` stays the raw agent-specific payload (the GUI has always received
    * it as such); `metrics` carries the normalized, cross-agent comparable view
    * produced at the adapter boundary.
@@ -86,6 +92,8 @@ export type MessagePart =
   | { type: 'text'; text: string; contextKind?: AgentContextKind }
   | { type: 'tool-use'; name: string; input: unknown }
   | { type: 'tool-result'; text: string }
+  /** Image produced by the model or a tool; `data` is a `data:` or `http(s)` URL. */
+  | { type: 'image'; data: string; mime: string; alt?: string }
 
 /** Normalized, adapter-agnostic conversation message. */
 export interface NormalizedMessage {

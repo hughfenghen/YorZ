@@ -90,6 +90,15 @@ export function mimeForExt(ext: string): string {
 
 export class AttachmentStore {
   private readonly root: string
+  /**
+   * Chat attachments are copied here on send so they survive the draft root's
+   * 24h TTL sweep — the Chat panel re-reads history long after a draft is gone.
+   * Kept under `.yorz/tmp` (gitignored) so chat images never enter git, unlike
+   * spec-referenced attachments which do. Keyed by draftId (stable, already
+   * embedded in the transcript's `![](…)` path) rather than sessionId, which
+   * `session-manager.reconcile` can rewrite mid-run.
+   */
+  private readonly chatRoot: string
   private readonly maxFileSize: number
   private readonly maxCount: number
   private readonly ttlMs: number
@@ -97,6 +106,7 @@ export class AttachmentStore {
 
   constructor(opts: AttachmentStoreOptions) {
     this.root = join(opts.cwd, '.yorz', 'tmp', 'drafts')
+    this.chatRoot = join(opts.cwd, '.yorz', 'tmp', 'chat-attachments')
     this.maxFileSize = opts.maxFileSize ?? DEFAULT_MAX_FILE_SIZE
     this.maxCount = opts.maxCount ?? DEFAULT_MAX_COUNT
     this.ttlMs = opts.ttlMs ?? DEFAULT_TTL_MS
@@ -105,6 +115,43 @@ export class AttachmentStore {
 
   get draftsDir(): string {
     return this.root
+  }
+
+  chatAttachmentsDir(draftId: string): string {
+    return join(this.chatRoot, draftId, 'attachments')
+  }
+
+  /**
+   * Copy a draft's attachments into the persistent chat root so they outlive the
+   * draft TTL. Idempotent: skips when the target already exists, no-ops when the
+   * source draft is gone. Returns true when the chat copy exists afterwards.
+   */
+  async promoteDraftToChat(draftId: string): Promise<boolean> {
+    const from = this.draftAttachmentsDir(draftId)
+    const to = this.chatAttachmentsDir(draftId)
+    if (existsSync(to)) return true
+    if (!existsSync(from)) return false
+    await mkdir(join(this.chatRoot, draftId), { recursive: true })
+    await cp(from, to, { recursive: true })
+    return true
+  }
+
+  async readChatAttachment(
+    draftId: string,
+    storedName: string,
+  ): Promise<{ data: Buffer; mime: string; kind: AttachmentKind }> {
+    if (!isSafeName(storedName)) {
+      throw new AttachmentStoreError('invalid_name', `invalid attachment name: ${storedName}`)
+    }
+    const file = join(this.chatAttachmentsDir(draftId), storedName)
+    if (!existsSync(file)) {
+      throw new AttachmentStoreError('attachment_not_found', `attachment not found: ${storedName}`)
+    }
+    const data = await readFile(file)
+    const ext = extname(storedName).toLowerCase()
+    const mime = mimeForExt(ext)
+    const kind = classifyMime(mime)
+    return { data, mime, kind }
   }
 
   async ensureRoot(): Promise<void> {

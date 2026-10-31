@@ -451,3 +451,67 @@ describe('specMessagesToParts', () => {
     expect(groupParts([userText('')])).toEqual([{ kind: 'user', text: '' }])
   })
 })
+
+describe('image parts', () => {
+  const HIDDEN_OPEN = '<!-- yorz:hidden -->'
+  const HIDDEN_CLOSE = '<!-- /yorz:hidden -->'
+
+  it('maps a wire image part to an assistant-side ImagePart', () => {
+    const part = toPart('user', { type: 'image', data: 'data:image/png;base64,AAA', mime: 'image/png' })
+    // Wire images are always model/tool output → assistant, regardless of role.
+    expect(part).toEqual({ kind: 'image', role: 'assistant', src: 'data:image/png;base64,AAA' })
+  })
+
+  it('folds assistant image parts into an ImageSegment beside text', () => {
+    const blocks = groupParts([
+      botText('here'),
+      { kind: 'image', role: 'assistant', src: 'data:image/png;base64,AAA' },
+      { kind: 'image', role: 'assistant', src: 'data:image/png;base64,BBB' },
+    ])
+    const assistant = assistantAt(blocks, 0)
+    expect(assistant.segments[0]).toEqual({ kind: 'text', text: 'here' })
+    expect(assistant.segments[1]).toEqual({
+      kind: 'image',
+      images: [
+        { kind: 'image', role: 'assistant', src: 'data:image/png;base64,AAA' },
+        { kind: 'image', role: 'assistant', src: 'data:image/png;base64,BBB' },
+      ],
+    })
+  })
+
+  it('attaches user image parts to the user bubble', () => {
+    const blocks = groupParts([
+      userText('look'),
+      { kind: 'image', role: 'user', src: '/api/img', alt: 'shot' },
+    ])
+    expect(blocks[0]).toEqual({
+      kind: 'user',
+      text: 'look',
+      images: [{ kind: 'image', role: 'user', src: '/api/img', alt: 'shot' }],
+    })
+  })
+
+  it('surfaces echoed attachment images from a user turn hidden block on re-read', () => {
+    const hidden = [
+      HIDDEN_OPEN,
+      '本次消息附带 1 个附件',
+      '- ![photo.png](.yorz/tmp/chat-attachments/d1/attachments/photo.png)',
+      HIDDEN_CLOSE,
+    ].join('\n')
+    const parts = messagesToParts([{ role: 'user', parts: [{ type: 'text', text: `hi\n${hidden}` }] }], {
+      imageUrl: (draftId, storedName) => `/api/chat/${draftId}/${storedName}?token=t`,
+    })
+    const blocks = groupParts(parts)
+    expect(blocks[0]).toEqual({
+      kind: 'user',
+      text: 'hi',
+      images: [{ kind: 'image', role: 'user', src: '/api/chat/d1/photo.png?token=t', alt: 'photo.png' }],
+    })
+  })
+
+  it('does not surface attachment images without a url builder', () => {
+    const hidden = `${HIDDEN_OPEN}\n- ![a](.yorz/tmp/chat-attachments/d1/attachments/a.png)\n${HIDDEN_CLOSE}`
+    const parts = messagesToParts([{ role: 'user', parts: [{ type: 'text', text: `q\n${hidden}` }] }])
+    expect(parts.some((p) => p.kind === 'image')).toBe(false)
+  })
+})

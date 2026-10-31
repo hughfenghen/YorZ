@@ -114,6 +114,24 @@ export function createSpecDraftsRoutes(resolveProject: ResolveProject): Hono {
     }
   })
 
+  // Persisted chat attachments (copied out of the draft on send). The Chat panel
+  // reads these back when re-rendering history after the draft TTL sweeps.
+  app.get('/projects/:projectId/chat-attachments/:draftId/:storedName', async (c) => {
+    const p = await need(c)
+    if (p instanceof Response) return p
+    const draftId = c.req.param('draftId')
+    const storedName = c.req.param('storedName')
+    try {
+      const { data, mime } = await p.attachments.readChatAttachment(draftId, storedName)
+      c.header('Content-Type', mime)
+      c.header('Content-Disposition', 'inline')
+      c.header('Cache-Control', 'max-age=300')
+      return c.body(new Uint8Array(data))
+    } catch (err) {
+      return errorResponse(c, err)
+    }
+  })
+
   return app
 }
 

@@ -351,6 +351,8 @@ export type MessagePart =
   | { type: 'text'; text: string; contextKind?: AgentContextKind }
   | { type: 'tool-use'; name: string; input: unknown }
   | { type: 'tool-result'; text: string }
+  /** Image produced by the model or a tool; `data` is a `data:` or `http(s)` URL. */
+  | { type: 'image'; data: string; mime: string; alt?: string }
 
 export interface SessionMessage {
   role: 'user' | 'assistant'
@@ -755,6 +757,8 @@ export const api = {
     ),
   draftAttachmentUrl: (pid: string, draftId: string, storedName: string): string =>
     `${projectBase(pid)}/spec-drafts/${encodeURIComponent(draftId)}/attachments/${encodeURIComponent(storedName)}`,
+  chatAttachmentUrl: (pid: string, draftId: string, storedName: string): string =>
+    `${projectBase(pid)}/chat-attachments/${encodeURIComponent(draftId)}/${encodeURIComponent(storedName)}`,
   specAttachmentUrl: (pid: string, specId: string, name: string): string =>
     `${projectBase(pid)}/specs/${encodeURIComponent(specId)}/attachments/${encodeURIComponent(name)}`,
   listFiles: (pid: string, query: string, limit = 50) =>

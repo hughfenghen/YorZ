@@ -1,7 +1,9 @@
 {
   "version": 1,
   "agent": {
-    "kind": "inherit"
+    "kind": "claude",
+    "model": "opus[1m]",
+    "reasoningEffort": "high"
   },
   "specsDir": ".yorz/specs",
   "commands": [

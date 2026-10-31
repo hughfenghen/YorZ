@@ -34,7 +34,8 @@ const DRAFT_ID_RE = /^[a-zA-Z0-9-]{1,64}$/
 
 /**
  * Append a readable, non-migrating attachment block to a chat prompt. Mirrors the
- * spec-draft flow but for the transient chat case: files stay in `.yorz/tmp` and
+ * spec-draft flow but for the transient chat case: files are persisted under
+ * `.yorz/tmp/chat-attachments/<draftId>` (gitignored, survives the draft TTL) and
  * the Agent reads them in place. Returns the prompt unchanged when there are none.
  */
 export function buildChatPrompt(
@@ -43,7 +44,7 @@ export function buildChatPrompt(
   attachments: AttachmentMeta[],
 ): string {
   if (attachments.length === 0) return prompt
-  const dir = `.yorz/tmp/drafts/${draftId}/attachments`
+  const dir = `.yorz/tmp/chat-attachments/${draftId}/attachments`
   const lines = attachments.map((a) => {
     const rel = `${dir}/${a.storedName}`
     return a.kind === 'image' ? `- ![${a.name}](${rel})` : `- [${a.name}](${rel})`
@@ -224,6 +225,9 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
       const draftId = body.draftId
       if (await p.attachments.draftExists(draftId)) {
         const metas = await p.attachments.listAttachments(draftId)
+        // Persist to the chat root so the Chat panel can re-render these images
+        // on later history reads, after the draft's 24h TTL sweeps the original.
+        await p.attachments.promoteDraftToChat(draftId).catch(() => {})
         finalPrompt = buildChatPrompt(finalPrompt, draftId, metas)
       }
     }

@@ -11,6 +11,7 @@ import type { Component } from 'solid-js'
 import { useNavigate, useParams } from '@solidjs/router'
 import { FileText } from 'lucide-solid'
 import { api, type SessionInfo, type SpecListItem } from '@shared/api/index.js'
+import { appendAuthToken } from '@shared/api/auth.js'
 import { createChatTranscript } from '@shared/lib/chat-transcript.js'
 import { parseNewSessionCommand } from '@shared/lib/new-session-command.js'
 import { createAttachments } from '@shared/lib/attachments.js'
@@ -252,10 +253,24 @@ export const ChatDetail: Component = () => {
     if (!prompt) return
     setInput('')
     setAutoScroll(true)
+    // 乐观回显附件图片用草稿服务 URL（已上传、reset() 不会 revoke）；历史读回后
+    // 换成持久化的 chat-attachment URL。
+    const draftId = attachments.draftId()
+    const projectId = pid()
+    const optimisticImages =
+      draftId && projectId
+        ? attachments
+            .attachments()
+            .filter((a) => a.kind === 'image' && a.storedName)
+            .map((a) => ({
+              src: appendAuthToken(api.draftAttachmentUrl(projectId, draftId, a.storedName!)),
+              alt: a.name,
+            }))
+        : []
     const groupedSend = Boolean(sid() && (newSessionPending() || command))
     const outcome = groupedSend
-      ? await tx.sendInNewSession(prompt, attachments.draftId() ?? undefined)
-      : await tx.send(prompt, attachments.draftId() ?? undefined)
+      ? await tx.sendInNewSession(prompt, attachments.draftId() ?? undefined, optimisticImages)
+      : await tx.send(prompt, attachments.draftId() ?? undefined, optimisticImages)
     if (outcome === 'sent') attachments.reset()
     // 建号就失败时把文本还给用户：那条消息还没有出现在气泡里。
     // 建号成功但 POST 失败则不还——消息已经作为用户气泡在屏幕上了。

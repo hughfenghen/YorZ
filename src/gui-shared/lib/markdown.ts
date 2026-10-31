@@ -2,6 +2,7 @@ import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
 import hljs from 'highlight.js/lib/common'
 import { appendAuthToken } from '../api/auth.js'
+import { isRenderableImageSrc } from './chat-blocks.js'
 
 const md = new MarkdownIt({
   // 开启原始 HTML 解析，但仅放行 details/summary 折叠标签（见下方 sanitizeRawHtml），
@@ -171,11 +172,21 @@ function setAttr(token: { attrs: [string, string][] | null }, name: string, valu
 
 md.renderer.rules.image = function (tokens, idx, options, env, self) {
   const e = env as RenderEnv | undefined
-  const specId = e?.specId
-  if (specId) {
-    const token = tokens[idx]!
-    const srcAttr = token.attrs?.find(([k]) => k === 'src')
-    if (srcAttr) srcAttr[1] = rewriteHrefIfAttachment(srcAttr[1], specId, e?.projectId)
+  const token = tokens[idx]!
+  const srcAttr = token.attrs?.find(([k]) => k === 'src')
+  if (e?.specId) {
+    // Spec-document context: relative `attachments/…` URLs resolve against the
+    // served doc and are rewritten to the authed endpoint (or left as-is when the
+    // projectId is absent). The doc body is authored content, not model output,
+    // so the chat whitelist below does not apply here.
+    if (srcAttr) srcAttr[1] = rewriteHrefIfAttachment(srcAttr[1], e.specId, e?.projectId)
+    return defaultImageRender(tokens, idx, options, env, self)
+  }
+  // Chat context (no specId): enforce the src protocol whitelist shared with the
+  // <img> components, rendering the alt text when refused — so a model's
+  // `![](javascript:…)` / `![](http:…)` cannot smuggle a hostile src.
+  if (!srcAttr || !isRenderableImageSrc(srcAttr[1])) {
+    return md.utils.escapeHtml(token.content ?? '')
   }
   return defaultImageRender(tokens, idx, options, env, self)
 }

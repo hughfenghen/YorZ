@@ -89,7 +89,13 @@ function mountMobileHost() {
         if (b.kind === 'user') return `user:${b.text}`
         if (b.kind === 'assistant') {
           const text = b.segments
-            .map((s) => (s.kind === 'text' ? s.text : `<${s.tools.length} tools>`))
+            .map((s) =>
+              s.kind === 'text'
+                ? s.text
+                : s.kind === 'image'
+                  ? `<${s.images.length} images>`
+                  : `<${s.tools.length} tools>`,
+            )
             .join('')
           return `assistant:${text}`
         }

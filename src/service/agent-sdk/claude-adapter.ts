@@ -42,6 +42,39 @@ interface ContentBlock {
   name?: unknown
   input?: unknown
   content?: unknown
+  source?: unknown
+}
+
+/**
+ * Normalize a Claude `image` content block's `source` into a renderable URL.
+ * Base64 sources become a self-contained `data:` URL; `url` sources pass through.
+ * Returns null for shapes we don't recognize.
+ */
+function imageFromSource(source: unknown): { data: string; mime: string } | null {
+  if (!source || typeof source !== 'object') return null
+  const s = source as { type?: unknown; media_type?: unknown; data?: unknown; url?: unknown }
+  if (s.type === 'base64' && typeof s.data === 'string') {
+    const mime = typeof s.media_type === 'string' ? s.media_type : 'image/png'
+    return { data: `data:${mime};base64,${s.data}`, mime }
+  }
+  if (s.type === 'url' && typeof s.url === 'string') {
+    const mime = typeof s.media_type === 'string' ? s.media_type : 'image/*'
+    return { data: s.url, mime }
+  }
+  return null
+}
+
+/** Pull image blocks out of a `tool_result` content array (text is handled separately). */
+function imagesFromToolResult(content: unknown): { data: string; mime: string }[] {
+  if (!Array.isArray(content)) return []
+  const out: { data: string; mime: string }[] = []
+  for (const c of content) {
+    if (c && typeof c === 'object' && (c as { type?: unknown }).type === 'image') {
+      const img = imageFromSource((c as { source?: unknown }).source)
+      if (img) out.push(img)
+    }
+  }
+  return out
 }
 
 function blocksFrom(message: unknown): ContentBlock[] {
@@ -58,6 +91,10 @@ function toolResultText(content: unknown): string {
     for (const c of content) {
       if (c && typeof c === 'object' && typeof (c as { text?: unknown }).text === 'string') {
         acc += (c as { text: string }).text
+      } else if (c && typeof c === 'object' && (c as { type?: unknown }).type === 'image') {
+        // Image blocks are surfaced separately as image parts (see
+        // `imagesFromToolResult`); don't JSON-stringify them into the text.
+        continue
       } else {
         acc += JSON.stringify(c)
       }
@@ -218,12 +255,20 @@ class ClaudeSession implements AgentSession {
               // back is the plan phase's own output, not execution's first cost.
               if (!planPhase && isSpecWrite('claude', b.name, b.input)) planPhase = phase.snapshot()
               yield { type: 'tool-use', name: String(b.name ?? '?'), input: b.input ?? {} }
+            } else if (b.type === 'image') {
+              const img = imageFromSource(b.source)
+              if (img) yield { type: 'image', data: img.data, mime: img.mime }
             }
           }
         } else if (m.type === 'user') {
           for (const b of blocksFrom(m.message)) {
             if (b.type === 'tool_result') {
               yield { type: 'tool-result', text: toolResultText(b.content) }
+              // A tool_result may carry image blocks (e.g. screenshot tools);
+              // surface them alongside the text instead of dropping them.
+              for (const img of imagesFromToolResult(b.content)) {
+                yield { type: 'image', data: img.data, mime: img.mime }
+              }
             }
           }
         } else if (m.type === 'result') {
@@ -343,6 +388,12 @@ export class ClaudeAdapter implements AgentSdkAdapter {
           parts.push({ type: 'tool-use', name: String(b.name ?? '?'), input: b.input ?? {} })
         } else if (b.type === 'tool_result') {
           parts.push({ type: 'tool-result', text: toolResultText(b.content) })
+          for (const img of imagesFromToolResult(b.content)) {
+            parts.push({ type: 'image', data: img.data, mime: img.mime })
+          }
+        } else if (b.type === 'image') {
+          const img = imageFromSource(b.source)
+          if (img) parts.push({ type: 'image', data: img.data, mime: img.mime })
         }
       }
       if (parts.length) out.push({ role: entry.type, parts })

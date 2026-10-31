@@ -2,9 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { renderMarkdown } from '../markdown.js'
 
 describe('renderMarkdown attachment rewrite', () => {
-  it('does not rewrite when specId is not provided', () => {
+  it('refuses a non-whitelisted relative src in chat context (no specId)', () => {
+    // Without a specId the renderer is in chat context and enforces the src
+    // protocol whitelist: a bare relative path cannot resolve and is refused,
+    // falling back to the alt text rather than emitting an <img>.
     const html = renderMarkdown('![pic](attachments/a.png)')
-    expect(html).toContain('src="attachments/a.png"')
+    expect(html).not.toContain('<img')
+    expect(html).not.toContain('src="attachments/a.png"')
+    expect(html).toContain('pic')
   })
 
   it('keeps attachments/* in image src when specId is provided but projectId is missing', () => {
@@ -209,5 +214,21 @@ describe('renderMarkdown mermaid mode', () => {
       mermaid: 'code',
     })
     expect(html).toContain('src="/api/projects/p1/specs/260622.feat.demo/attachments/a.png"')
+  })
+})
+
+describe('renderMarkdown image src whitelist (chat context)', () => {
+  it('allows https, data:image and same-origin /api srcs', () => {
+    expect(renderMarkdown('![a](https://x/y.png)')).toContain('<img')
+    expect(renderMarkdown('![a](data:image/png;base64,AAA)')).toContain('<img')
+    expect(renderMarkdown('![a](/api/projects/p/chat-attachments/d/a.png?token=t)')).toContain('<img')
+  })
+
+  it('refuses javascript, http and file srcs, falling back to alt text', () => {
+    for (const bad of ['javascript:alert(1)', 'http://x/y.png', 'file:///etc/passwd']) {
+      const html = renderMarkdown(`![danger](${bad})`)
+      expect(html).not.toContain('<img')
+      expect(html).toContain('danger')
+    }
   })
 })

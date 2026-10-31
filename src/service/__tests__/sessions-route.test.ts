@@ -3,7 +3,25 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { stripHiddenPrompt, type CustomInstruction } from '../custom-instruction.js'
-import { createSessionsRoutes } from '../routes/sessions.js'
+import { buildChatPrompt, createSessionsRoutes } from '../routes/sessions.js'
+
+describe('buildChatPrompt', () => {
+  it('points attachment links at the persistent chat-attachments path', () => {
+    const out = buildChatPrompt('hi', 'd1', [
+      { storedName: 'shot.png', name: 'shot.png', size: 3, mime: 'image/png', kind: 'image' },
+      { storedName: 'notes.txt', name: 'notes.txt', size: 1, mime: 'text/plain', kind: 'text' },
+    ])
+    expect(out).toContain('.yorz/tmp/chat-attachments/d1/attachments/')
+    expect(out).not.toContain('.yorz/tmp/drafts/')
+    // Images use the embeddable `![]()`, other files the plain link form.
+    expect(out).toContain('![shot.png](.yorz/tmp/chat-attachments/d1/attachments/shot.png)')
+    expect(out).toContain('[notes.txt](.yorz/tmp/chat-attachments/d1/attachments/notes.txt)')
+  })
+
+  it('returns the prompt unchanged when there are no attachments', () => {
+    expect(buildChatPrompt('hi', 'd1', [])).toBe('hi')
+  })
+})
 
 describe('sessions routes', () => {
   it('GET /projects/:projectId/agent-usage returns structured usage status', async () => {

@@ -314,4 +314,39 @@ describe('AttachmentStore', () => {
     expect(await target.importDraftFrom(source, 'gone-1234')).toBe(false)
     expect(await target.draftExists('gone-1234')).toBe(false)
   })
+
+  it('promoteDraftToChat copies attachments to the persistent chat root and reads them back', async () => {
+    const cwd = await tmp()
+    const store = new AttachmentStore({ cwd })
+    const draftId = await store.createDraft()
+    await store.addAttachment(draftId, {
+      name: 'shot.png',
+      mime: 'image/png',
+      data: new Uint8Array([1, 2, 3]),
+    })
+    expect(await store.promoteDraftToChat(draftId)).toBe(true)
+    // Idempotent: a second call is a no-op that still reports success.
+    expect(await store.promoteDraftToChat(draftId)).toBe(true)
+    const copied = await readFile(join(store.chatAttachmentsDir(draftId), 'shot.png'))
+    expect([...copied]).toEqual([1, 2, 3])
+    const read = await store.readChatAttachment(draftId, 'shot.png')
+    expect(read.mime).toBe('image/png')
+    expect(read.kind).toBe('image')
+  })
+
+  it('promoteDraftToChat no-ops for a missing draft', async () => {
+    const store = new AttachmentStore({ cwd: await tmp() })
+    expect(await store.promoteDraftToChat('gone-1234')).toBe(false)
+  })
+
+  it('readChatAttachment rejects an unsafe name and a missing file', async () => {
+    const store = new AttachmentStore({ cwd: await tmp() })
+    const draftId = await store.createDraft()
+    await expect(store.readChatAttachment(draftId, '../escape')).rejects.toBeInstanceOf(
+      AttachmentStoreError,
+    )
+    await expect(store.readChatAttachment(draftId, 'nope.png')).rejects.toMatchObject({
+      code: 'attachment_not_found',
+    })
+  })
 })

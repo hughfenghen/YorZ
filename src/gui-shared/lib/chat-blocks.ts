@@ -36,6 +36,34 @@ export interface AgentContextPart {
 }
 
 /**
+ * A renderable image. `role` decides the bubble: `assistant` images (model / tool
+ * output) fold into an {@link ImageSegment}; `user` images (echoed attachments)
+ * attach to the {@link UserBlock}. `src` is a ready-to-render URL (a `data:` URL,
+ * a local `blob:`/object URL for the optimistic echo, or an authed `/api/…` URL).
+ */
+export interface ImagePart {
+  kind: 'image'
+  role: ChatRole
+  src: string
+  alt?: string
+}
+
+/**
+ * Image `src` protocol whitelist shared by the markdown renderer and the `<img>`
+ * components. Only same-origin `/…` (authed `/api/…` endpoints), self-contained
+ * `data:image/…`, local `blob:` object URLs, and `https:` are renderable; every
+ * other scheme (`javascript:`, `http:`, `file:`, bare relative paths) is refused.
+ */
+export function isRenderableImageSrc(src: string): boolean {
+  if (!src) return false
+  if (src.startsWith('/')) return true
+  if (/^data:image\//i.test(src)) return true
+  if (src.startsWith('blob:')) return true
+  if (/^https:\/\//i.test(src)) return true
+  return false
+}
+
+/**
  * Boundary between two sessions of the same spec. A spec's rounds each run in
  * their own session now, and the Chat panel stitches them into one scroll — the
  * divider is what keeps that from reading as a single continuous conversation.
@@ -47,16 +75,24 @@ export interface DividerPart {
   startedAt: number
 }
 
-export type ChatPart = TextPart | ToolPart | AgentContextPart | DividerPart
+export type ChatPart = TextPart | ToolPart | AgentContextPart | DividerPart | ImagePart
 
 export interface UserBlock {
   kind: 'user'
   text: string
+  /** Echoed attachment images, rendered below the text. */
+  images?: ImagePart[]
 }
 
 export interface TextSegment {
   kind: 'text'
   text: string
+}
+
+/** A run of assistant-side images (model / tool output), kept beside text/tools. */
+export interface ImageSegment {
+  kind: 'image'
+  images: ImagePart[]
 }
 
 export interface ToolsSegment {
@@ -78,7 +114,7 @@ export interface ToolsSegment {
   tools: ToolPart[]
 }
 
-export type Segment = TextSegment | ToolsSegment
+export type Segment = TextSegment | ToolsSegment | ImageSegment
 
 export interface AssistantBlock {
   kind: 'assistant'
@@ -134,7 +170,50 @@ export function toPart(role: ChatRole, part: MessagePart): ChatPart {
     return { kind: 'text', role, text: stripHiddenPrompt(part.text) }
   }
   if (part.type === 'tool-use') return { kind: 'tool', name: part.name, input: part.input }
+  // Wire images only ever come from the model / a tool (user attachments travel
+  // as hidden text links, surfaced by `parseAttachmentImages`), so they are
+  // always assistant-side regardless of the transcript role they were stored under.
+  if (part.type === 'image')
+    return { kind: 'image', role: 'assistant', src: part.data, alt: part.alt }
   return { kind: 'tool', result: part.text }
+}
+
+/**
+ * Build the src URL for a persisted chat attachment, keyed by draftId + stored
+ * name parsed out of the hidden `![](…/chat-attachments/<draftId>/attachments/<name>)`
+ * link. Supplied by the caller (which holds the projectId and auth token).
+ */
+export type ChatImageUrl = (draftId: string, storedName: string) => string
+
+const ATTACHMENT_IMAGE_RE = /!\[([^\]]*)\]\(([^)\s]*chat-attachments\/[^)\s]+)\)/g
+
+/**
+ * Extract echoed user-attachment images from a raw user message (before hidden
+ * markers are stripped). Returns role-`user` {@link ImagePart}s, or `[]` when the
+ * message carries none or no url builder was provided.
+ */
+export function parseAttachmentImages(text: string, imageUrl?: ChatImageUrl): ImagePart[] {
+  if (!imageUrl || !text.includes('chat-attachments/')) return []
+  const out: ImagePart[] = []
+  ATTACHMENT_IMAGE_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = ATTACHMENT_IMAGE_RE.exec(text)) !== null) {
+    const alt = m[1] ?? ''
+    const path = m[2] ?? ''
+    const parts = path.match(/chat-attachments\/([^/]+)\/attachments\/([^/?#]+)/)
+    if (!parts) continue
+    const draftId = decodeURIComponent(parts[1]!)
+    const storedName = decodeURIComponent(parts[2]!)
+    const part: ImagePart = { kind: 'image', role: 'user', src: imageUrl(draftId, storedName) }
+    if (alt) part.alt = alt
+    out.push(part)
+  }
+  return out
+}
+
+export interface MessagesToPartsOptions {
+  /** Resolve a persisted chat attachment to a renderable src (see {@link ChatImageUrl}). */
+  imageUrl?: ChatImageUrl
 }
 
 /**
@@ -142,7 +221,10 @@ export function toPart(role: ChatRole, part: MessagePart): ChatPart {
  * preserving one piece of information that plain `flatMap(toPart)` loses: a
  * boundary between two persisted messages with the same role and text type.
  */
-export function messagesToParts(messages: readonly SessionMessage[]): ChatPart[] {
+export function messagesToParts(
+  messages: readonly SessionMessage[],
+  opts: MessagesToPartsOptions = {},
+): ChatPart[] {
   const out: ChatPart[] = []
 
   for (const message of messages) {
@@ -161,6 +243,11 @@ export function messagesToParts(messages: readonly SessionMessage[]): ChatPart[]
             : part,
         )
         emittedTextInMessage = true
+        // Surface echoed attachment images from this user turn's hidden block so
+        // a re-read bubble shows the same pictures the composer did at send time.
+        if (message.role === 'user' && wirePart.type === 'text') {
+          for (const img of parseAttachmentImages(wirePart.text, opts.imageUrl)) out.push(img)
+        }
       } else {
         out.push(part)
       }
@@ -186,10 +273,11 @@ export function specMessagesToParts(
     createdAt: number
     messages: readonly SessionMessage[]
   }[],
+  opts: MessagesToPartsOptions = {},
 ): ChatPart[] {
   const out: ChatPart[] = []
   for (const entry of entries) {
-    const parts = messagesToParts(entry.messages)
+    const parts = messagesToParts(entry.messages, opts)
     if (parts.length === 0) continue
     if (out.length > 0) {
       out.push({
@@ -306,6 +394,15 @@ export function groupParts(parts: readonly ChatPart[]): ChatBlock[] {
       continue
     }
 
+    if (part.kind === 'image' && part.role === 'user') {
+      // Echoed attachment image — belongs under the user bubble its turn opened.
+      current = null
+      const lastBlock = blocks[blocks.length - 1]
+      if (lastBlock?.kind === 'user') (lastBlock.images ??= []).push(part)
+      else blocks.push({ kind: 'user', text: '', images: [part] })
+      continue
+    }
+
     const block = assistant()
     const last = block.segments[block.segments.length - 1]
 
@@ -314,6 +411,14 @@ export function groupParts(parts: readonly ChatPart[]): ChatBlock[] {
       // parsed over a whole paragraph, not over each fragment.
       if (last?.kind === 'text') last.text += part.text
       else block.segments.push({ kind: 'text', text: part.text })
+      continue
+    }
+
+    if (part.kind === 'image') {
+      // Assistant-side image (model / tool output) — its own segment, consecutive
+      // images merged so a burst renders as one row.
+      if (last?.kind === 'image') last.images.push(part)
+      else block.segments.push({ kind: 'image', images: [part] })
       continue
     }
 

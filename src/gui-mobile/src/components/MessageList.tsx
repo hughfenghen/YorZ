@@ -1,17 +1,21 @@
-import { Index, Show, type Component } from 'solid-js'
+import { For, Index, Show, createSignal, type Component } from 'solid-js'
 import { renderMarkdown } from '@shared/lib/markdown.js'
-import type {
-  AgentContextBlock,
-  AssistantBlock,
-  ChatBlock,
-  DividerBlock,
-  Segment,
-  ToolExpandState,
-  ToolsSegment,
-  UserBlock,
+import {
+  isRenderableImageSrc,
+  type AgentContextBlock,
+  type AssistantBlock,
+  type ChatBlock,
+  type DividerBlock,
+  type ImagePart,
+  type ImageSegment,
+  type Segment,
+  type ToolExpandState,
+  type ToolsSegment,
+  type UserBlock,
 } from '@shared/lib/chat-blocks.js'
 import { ChatToolBlock } from './ChatToolBlock.jsx'
 import { ChatContextBlock } from './ChatContextBlock.jsx'
+import { ImagePreview } from './ImagePreview.jsx'
 import { t } from '@/i18n/index.js'
 
 /**
@@ -24,7 +28,44 @@ const asContext = (b: ChatBlock): AgentContextBlock | null => (b.kind === 'conte
 const asAssistant = (b: ChatBlock): AssistantBlock | null => (b.kind === 'assistant' ? b : null)
 const asUser = (b: ChatBlock): UserBlock | null => (b.kind === 'user' ? b : null)
 const asTools = (s: Segment): ToolsSegment | null => (s.kind === 'tools' ? s : null)
+const asImageSeg = (s: Segment): ImageSegment | null => (s.kind === 'image' ? s : null)
 const segmentText = (s: Segment): string => (s.kind === 'text' ? s.text : '')
+
+/**
+ * 带 src 白名单的惰性图片行，用户气泡与 assistant 图片段共用。
+ * 点击缩略图用 {@link ImagePreview} 全屏查看原图，避免 `max-h-64` 缩略把大图藏掉。
+ */
+const ChatImages: Component<{ images: ImagePart[] }> = (props) => {
+  const [previewSrc, setPreviewSrc] = createSignal<string | undefined>()
+  const [previewAlt, setPreviewAlt] = createSignal<string | undefined>()
+  const [previewOpen, setPreviewOpen] = createSignal(false)
+  const openPreview = (img: ImagePart) => {
+    setPreviewSrc(img.src)
+    setPreviewAlt(img.alt)
+    setPreviewOpen(true)
+  }
+  return (
+    <div class="mt-1 flex flex-wrap gap-1.5">
+      <For each={props.images.filter((img) => isRenderableImageSrc(img.src))}>
+        {(img) => (
+          <img
+            src={img.src}
+            alt={img.alt ?? ''}
+            loading="lazy"
+            class="max-h-64 max-w-full cursor-zoom-in rounded border border-border object-contain"
+            onClick={() => openPreview(img)}
+          />
+        )}
+      </For>
+      <ImagePreview
+        src={previewSrc()}
+        alt={previewAlt()}
+        open={previewOpen()}
+        onOpenChange={setPreviewOpen}
+      />
+    </div>
+  )
+}
 
 /**
  * 历史消息与流式内容的渲染，四层 `Show` 分派：divider / context / assistant / user。
@@ -55,7 +96,10 @@ export const MessageList: Component<{
                   // 用户输入不过 markdown：里面常带 `@路径`、缩进和裸
                   // `*`/`_`，交给 md 会被改写成别的东西。
                   <div class="mb-2 whitespace-pre-wrap rounded-lg border border-primary/20 border-l-2 border-l-primary bg-primary/10 p-2 text-[0.95rem] font-medium [overflow-wrap:anywhere]">
-                    {asUser(block())?.text}
+                    <Show when={asUser(block())?.text}>{(text) => <span>{text()}</span>}</Show>
+                    <Show when={asUser(block())?.images?.length}>
+                      <ChatImages images={asUser(block())!.images!} />
+                    </Show>
                   </div>
                 }
               >
@@ -64,22 +108,29 @@ export const MessageList: Component<{
                     <Index each={assistant().segments}>
                       {(seg) => (
                         <Show
-                          when={asTools(seg())}
+                          when={asImageSeg(seg())}
                           fallback={
-                            <div
-                              class="markdown chat-md"
-                              // eslint-disable-next-line solid/no-innerhtml -- renderMarkdown 在 details/summary 白名单之外转义所有原始 HTML
-                              innerHTML={renderMarkdown(segmentText(seg()), {
-                                // 聊天里的 mermaid 走高亮代码块：一段还在流式输出的
-                                // 图源码是语法不完整的，渲染只会闪出一串报错。
-                                mermaid: 'code',
-                                fileLinks: 'copy',
-                                fileLinkTitle: t('chat.copyFilePath'),
-                              })}
-                            />
+                            <Show
+                              when={asTools(seg())}
+                              fallback={
+                                <div
+                                  class="markdown chat-md"
+                                  // eslint-disable-next-line solid/no-innerhtml -- renderMarkdown 在 details/summary 白名单之外转义所有原始 HTML
+                                  innerHTML={renderMarkdown(segmentText(seg()), {
+                                    // 聊天里的 mermaid 走高亮代码块：一段还在流式输出的
+                                    // 图源码是语法不完整的，渲染只会闪出一串报错。
+                                    mermaid: 'code',
+                                    fileLinks: 'copy',
+                                    fileLinkTitle: t('chat.copyFilePath'),
+                                  })}
+                                />
+                              }
+                            >
+                              {(tools) => <ChatToolBlock segment={tools()} expand={props.expand} />}
+                            </Show>
                           }
                         >
-                          {(tools) => <ChatToolBlock segment={tools()} expand={props.expand} />}
+                          {(imageSeg) => <ChatImages images={imageSeg().images} />}
                         </Show>
                       )}
                     </Index>

@@ -25,6 +25,7 @@ import { format as formatTimeago, register as registerTimeago } from 'timeago.js
 import zhCNTimeago from 'timeago.js/lib/lang/zh_CN.js'
 import { enShort } from '../lib/timeago-locale.js'
 import { api, type CustomInstruction, type SessionInfo } from '../lib/api.js'
+import { appendAuthToken } from '@shared/api/auth.js'
 import { formatAgentUsageSummary } from '@shared/lib/agent-usage.js'
 import { globalConfig, saveCustomInstructions } from '../lib/global-config.js'
 import {
@@ -46,10 +47,13 @@ import {
 } from '../lib/chat-session-request.js'
 import { focusMode, exitFocusMode } from '../lib/layout-focus.js'
 import {
+  isRenderableImageSrc,
   type AgentContextBlock,
   type AssistantBlock,
   type ChatBlock,
   type DividerBlock,
+  type ImagePart,
+  type ImageSegment,
   type Segment,
   type ToolsSegment,
   type UserBlock,
@@ -84,6 +88,7 @@ import {
   RadioGroupItemLabel,
 } from './ui/radio-group.jsx'
 import { AttachmentList } from './AttachmentList.jsx'
+import { ImagePreview } from './ImagePreview.jsx'
 import { ACCEPT_MIME, MAX_COUNT, attachmentLabels, createAttachments } from '../lib/attachments.js'
 
 const COLLAPSED_KEY = 'yorz.layout.col2.collapsed'
@@ -118,7 +123,46 @@ const asContext = (b: ChatBlock): AgentContextBlock | null => (b.kind === 'conte
 const asAssistant = (b: ChatBlock): AssistantBlock | null => (b.kind === 'assistant' ? b : null)
 const asUser = (b: ChatBlock): UserBlock | null => (b.kind === 'user' ? b : null)
 const asTools = (s: Segment): ToolsSegment | null => (s.kind === 'tools' ? s : null)
+const asImageSeg = (s: Segment): ImageSegment | null => (s.kind === 'image' ? s : null)
 const segmentText = (s: Segment): string => (s.kind === 'text' ? s.text : '')
+
+/**
+ * Images with a whitelisted src, rendered lazily inside a responsive row.
+ * Clicking a thumbnail opens the shared {@link ImagePreview} lightbox at full
+ * size (same affordance as the composer's attachment thumbnails), so the
+ * `max-h-64` thumbnail cap never hides the original.
+ */
+function ChatImages(props: { images: ImagePart[] }) {
+  const [previewSrc, setPreviewSrc] = createSignal<string | undefined>()
+  const [previewAlt, setPreviewAlt] = createSignal<string | undefined>()
+  const [previewOpen, setPreviewOpen] = createSignal(false)
+  function openPreview(img: ImagePart) {
+    setPreviewSrc(img.src)
+    setPreviewAlt(img.alt)
+    setPreviewOpen(true)
+  }
+  return (
+    <div class="mt-1 flex flex-wrap gap-1.5">
+      <For each={props.images.filter((img) => isRenderableImageSrc(img.src))}>
+        {(img) => (
+          <img
+            src={img.src}
+            alt={img.alt ?? ''}
+            loading="lazy"
+            class="max-h-64 max-w-full cursor-zoom-in rounded border border-border object-contain"
+            onClick={() => openPreview(img)}
+          />
+        )}
+      </For>
+      <ImagePreview
+        src={previewSrc()}
+        alt={previewAlt()}
+        open={previewOpen()}
+        onOpenChange={setPreviewOpen}
+      />
+    </div>
+  )
+}
 
 // Abbreviated English ("5m ago") — the stock en_US pack overflows the list column.
 registerTimeago('en', enShort)
@@ -678,10 +722,25 @@ export const ChatPanel: Component = () => {
     if (!prompt) return
     if (attachments.hasPending()) return
     setInput('')
+    // Echo attachment images optimistically via their draft service URL (already
+    // uploaded, and — unlike the local objectURL — not revoked by `reset()`); the
+    // history re-read later swaps these for the persisted chat-attachment URL.
+    const draftId = attachments.draftId()
+    const pid = activeProjectId() || ''
+    const optimisticImages =
+      draftId && pid
+        ? attachments
+            .attachments()
+            .filter((a) => a.kind === 'image' && a.storedName)
+            .map((a) => ({
+              src: appendAuthToken(api.draftAttachmentUrl(pid, draftId, a.storedName!)),
+              alt: a.name,
+            }))
+        : []
     const groupedSend = Boolean(activeSid() && (newSessionPending() || command))
     const outcome = groupedSend
-      ? await tx.sendInNewSession(prompt, attachments.draftId() ?? undefined)
-      : await tx.send(prompt, attachments.draftId() ?? undefined)
+      ? await tx.sendInNewSession(prompt, attachments.draftId() ?? undefined, optimisticImages)
+      : await tx.send(prompt, attachments.draftId() ?? undefined, optimisticImages)
     if (outcome === 'sent') attachments.reset()
     // Only a failed create is worth handing the text back: once the session
     // exists the message is on screen as a user bubble, and restoring the input
@@ -1035,7 +1094,10 @@ export const ChatPanel: Component = () => {
                               // and read as one blob. What you said now separates at a
                               // glance from what the agent replied.
                               <div class="mb-2 whitespace-pre-wrap rounded border border-primary/20 border-l-2 border-l-primary bg-primary/10 px-2 py-1.5 font-medium text-foreground [overflow-wrap:anywhere]">
-                                {asUser(block())?.text}
+                                <Show when={asUser(block())?.text}>{(text) => <span>{text()}</span>}</Show>
+                                <Show when={asUser(block())?.images?.length}>
+                                  <ChatImages images={asUser(block())!.images!} />
+                                </Show>
                               </div>
                             }
                           >
@@ -1048,22 +1110,29 @@ export const ChatPanel: Component = () => {
                                 <Index each={assistant().segments}>
                                   {(seg) => (
                                     <Show
-                                      when={asTools(seg())}
+                                      when={asImageSeg(seg())}
                                       fallback={
-                                        <div
-                                          class="markdown chat-md"
-                                          // eslint-disable-next-line solid/no-innerhtml -- renderMarkdown escapes all raw HTML outside a details/summary whitelist
-                                          innerHTML={renderMarkdown(segmentText(seg()), {
-                                            mermaid: 'code',
-                                            fileLinks: 'copy',
-                                            fileLinkTitle: t('chat.copyFilePath'),
-                                          })}
-                                        />
+                                        <Show
+                                          when={asTools(seg())}
+                                          fallback={
+                                            <div
+                                              class="markdown chat-md"
+                                              // eslint-disable-next-line solid/no-innerhtml -- renderMarkdown escapes all raw HTML outside a details/summary whitelist
+                                              innerHTML={renderMarkdown(segmentText(seg()), {
+                                                mermaid: 'code',
+                                                fileLinks: 'copy',
+                                                fileLinkTitle: t('chat.copyFilePath'),
+                                              })}
+                                            />
+                                          }
+                                        >
+                                          {(tools) => (
+                                            <ChatToolBlock segment={tools()} expand={tx.toolExpand} />
+                                          )}
+                                        </Show>
                                       }
                                     >
-                                      {(tools) => (
-                                        <ChatToolBlock segment={tools()} expand={tx.toolExpand} />
-                                      )}
+                                      {(imageSeg) => <ChatImages images={imageSeg().images} />}
                                     </Show>
                                   )}
                                 </Index>

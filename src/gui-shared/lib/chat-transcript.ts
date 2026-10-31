@@ -8,13 +8,16 @@ import {
   type Accessor,
 } from 'solid-js'
 import { api, type AgentKind } from '../api/index.js'
+import { appendAuthToken } from '../api/auth.js'
 import { subscribeSession, type SessionEvent } from '../api/sse.js'
 import {
   groupParts,
   messagesToParts,
   specMessagesToParts,
   type ChatBlock,
+  type ChatImageUrl,
   type ChatPart,
+  type ImagePart,
   type ToolExpandState,
 } from './chat-blocks.js'
 import { createHistoryLoadGate, planHistoryLoad } from './chat-history-load.js'
@@ -92,6 +95,12 @@ export type SendOutcome =
   /** Could not even create the session — the host should restore the input. */
   | 'not-started'
 
+/** An attachment image to echo optimistically in the user bubble at send time. */
+export interface OptimisticImage {
+  src: string
+  alt?: string
+}
+
 export interface ChatTranscript {
   blocks: Accessor<ChatBlock[]>
   /** Pass-through of the host's run state, for callers that only hold the hook. */
@@ -110,11 +119,15 @@ export interface ChatTranscript {
    */
   historyLoading: Accessor<boolean>
   toolExpand: ToolExpandState
-  send: (prompt: string, draftId?: string) => Promise<SendOutcome>
+  send: (prompt: string, draftId?: string, images?: OptimisticImage[]) => Promise<SendOutcome>
   /** Show the boundary immediately after a bare `/new`, before a session exists. */
   beginNewSessionBoundary: (kind: AgentKind) => void
   /** Create a fresh session in the active row, then send its first message. */
-  sendInNewSession: (prompt: string, draftId?: string) => Promise<SendOutcome>
+  sendInNewSession: (
+    prompt: string,
+    draftId?: string,
+    images?: OptimisticImage[],
+  ) => Promise<SendOutcome>
   /**
    * Paint a system-driven round's user turn optimistically. The round (append /
    * run / git-ops) was dispatched server-side, so its user bubble never streams
@@ -486,9 +499,15 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     // Flatten message → parts: tool-result keeps its payload instead of being
     // dropped, so the transcript and the live stream agree. A spec row reads
     // every session it owns, dividers included.
+    // Resolve persisted chat attachments to authed, same-origin image URLs so a
+    // re-read user bubble shows the images the composer echoed at send time.
+    const imageOpts = {
+      imageUrl: ((draftId, storedName) =>
+        appendAuthToken(api.chatAttachmentUrl(pid, draftId, storedName))) satisfies ChatImageUrl,
+    }
     const load: Promise<{ next: ChatPart[]; folded: Set<string> }> = plan.specId
       ? api.getSpecMessages(pid, plan.specId).then((entries) => ({
-          next: specMessagesToParts(entries),
+          next: specMessagesToParts(entries, imageOpts),
           // Only rounds that actually have a transcript count as "folded in": an
           // empty entry contributes neither parts nor a divider (see
           // `specMessagesToParts`), so it must not be treated as present.
@@ -496,11 +515,11 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
         }))
       : plan.groupId
         ? api.getSessionGroupMessages(pid, plan.groupId).then((entries) => ({
-            next: specMessagesToParts(entries),
+            next: specMessagesToParts(entries, imageOpts),
             folded: new Set(entries.filter((e) => e.messages.length > 0).map((e) => e.sessionId)),
           }))
         : api.getSessionMessages(pid, sid).then((messages) => ({
-            next: messagesToParts(messages),
+            next: messagesToParts(messages, imageOpts),
             folded: new Set(messages.length > 0 ? [sid] : []),
           }))
     void load
@@ -626,6 +645,10 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
           noteGroupedLive()
         } else if (ev.type === 'tool-result') {
           pushPart({ kind: 'tool', result: ev.text })
+          noteGroupedLive()
+        } else if (ev.type === 'image') {
+          // Model / tool image — assistant-side, same buffer/order as other parts.
+          pushPart({ kind: 'image', role: 'assistant', src: ev.data })
           noteGroupedLive()
         } else if (ev.type === 'turn-completed') {
           // The turn is persisted now — a later re-select should read the
@@ -791,13 +814,26 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     readyWaiters.clear()
   }
 
-  async function send(prompt: string, draftId?: string): Promise<SendOutcome> {
+  function userImageParts(images?: OptimisticImage[]): ImagePart[] {
+    return (images ?? []).map((img) => {
+      const part: ImagePart = { kind: 'image', role: 'user', src: img.src }
+      if (img.alt) part.alt = img.alt
+      return part
+    })
+  }
+
+  async function send(
+    prompt: string,
+    draftId?: string,
+    images?: OptimisticImage[],
+  ): Promise<SendOutcome> {
     const pid = o.projectId()
     const sid = o.sessionId()
     if (!pid || !prompt || starting() || o.running()) return 'failed'
     o.onSubjectChange?.()
-    if (!sid) return sendFromDraft(pid, prompt, draftId)
+    if (!sid) return sendFromDraft(pid, prompt, draftId, images)
     pushPart({ kind: 'text', role: 'user', text: prompt })
+    for (const img of userImageParts(images)) pushPart(img)
     // The area is no longer empty, so by `historyLoading`'s own contract it is
     // no longer "loading" — the user's message must be visible immediately even
     // if they sent it while the transcript read was still in flight. The read
@@ -815,7 +851,11 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     }
   }
 
-  async function sendInNewSession(prompt: string, draftId?: string): Promise<SendOutcome> {
+  async function sendInNewSession(
+    prompt: string,
+    draftId?: string,
+    images?: OptimisticImage[],
+  ): Promise<SendOutcome> {
     const pid = o.projectId()
     const sourceSid = o.sessionId()
     if (!pid || !sourceSid || !prompt || starting() || o.running()) return 'failed'
@@ -861,6 +901,7 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
         })
       }
       optimistic.push({ kind: 'text', role: 'user', text: prompt })
+      optimistic.push(...userImageParts(images))
       pendingNewSessionBoundary = undefined
       resetParts(optimistic)
       historyGate.invalidate()
@@ -898,6 +939,7 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
     pid: string,
     prompt: string,
     draftId?: string,
+    images?: OptimisticImage[],
   ): Promise<SendOutcome> {
     setStarting(true)
     try {
@@ -912,7 +954,7 @@ export function createChatTranscript(o: ChatTranscriptOptions): ChatTranscript {
       // Register the deferred BEFORE the selection effect subscribes, so the
       // `ready` event cannot land between subscribe and await.
       const ready = waitForSubscription(sid)
-      resetParts([{ kind: 'text', role: 'user', text: prompt }])
+      resetParts([{ kind: 'text', role: 'user', text: prompt }, ...userImageParts(images)])
       resetExpanded()
       historyGate.invalidate()
       displayedSid = sid
