@@ -1,6 +1,13 @@
 import { createEffect, createSignal, onCleanup, Show, type Component } from 'solid-js'
 import { createLatestMutationQueue } from '@shared/lib/latest-mutation-queue.js'
 import {
+  isAgentCatalogLoading,
+  loadAgentCatalog,
+  loadAgentRoster,
+  peekAgentCatalogOrEmpty,
+  peekAgentRoster,
+} from '@shared/lib/agent-catalog-cache.js'
+import {
   api,
   type AgentConfig,
   type AgentDescriptor,
@@ -31,21 +38,19 @@ const BUILTIN_LABEL_KEY: Record<string, string> = {
 
 export const ProjectConfigDialog: Component<Props> = (props) => {
   const [kind, setKind] = createSignal<string>('inherit')
-  const [agents, setAgents] = createSignal<AgentDescriptor[]>([])
   const [model, setModel] = createSignal('')
   const [reasoningEffort, setReasoningEffort] = createSignal('')
-  const [catalog, setCatalog] = createSignal<AgentModelCatalog>({
-    models: [],
-    defaultReasoningEfforts: [],
-  })
-  const [catalogLoading, setCatalogLoading] = createSignal(false)
+  // 模型目录与名单来自 gui-shared 的跨项目共享缓存：切项目再打开设置不会再拉一轮
+  // （目录本身是宿主级数据，与项目目录无关）。
+  const catalog = (): AgentModelCatalog => peekAgentCatalogOrEmpty(kind())
+  const catalogLoading = (): boolean => isAgentCatalogLoading(kind())
+  const agents = (): AgentDescriptor[] => peekAgentRoster() ?? []
   const [specsDir, setSpecsDir] = createSignal(DEFAULT_SPECS_DIR)
   const [initialSpecsDir, setInitialSpecsDir] = createSignal(DEFAULT_SPECS_DIR)
   const [loading, setLoading] = createSignal(false)
   const [saveStatus, setSaveStatus] = createSignal<'idle' | 'saving' | 'saved'>('idle')
   const [showOldSpecsHint, setShowOldSpecsHint] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
-  let catalogRequest = 0
   let configRequest = 0
   let saveStatusTimer: ReturnType<typeof setTimeout> | undefined
   let lastRequestedSpecsDir = DEFAULT_SPECS_DIR
@@ -66,12 +71,14 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
         // Fetch config + the agent roster together: the dropdown lists builtin
         // and external (config `customAgents`) agents from the single `/agents`
         // source rather than a hardcoded array.
-        const [cfg, descriptors] = await Promise.all([
+        const [cfg] = await Promise.all([
           api.getProjectConfig(props.projectId),
-          api.listAgents(props.projectId).catch(() => [] as AgentDescriptor[]),
+          // 名单走共享缓存：第二次打开同步命中，不占弹窗首屏。
+          loadAgentRoster(() => api.listAgents(props.projectId)).catch(
+            () => [] as AgentDescriptor[],
+          ),
         ])
         if (request !== configRequest || !props.open) return
-        setAgents(descriptors)
         applyConfig(cfg)
         if (cfg.agent.kind !== 'inherit') void loadCatalog(cfg.agent.kind)
       } catch (err) {
@@ -117,7 +124,6 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
     setKind(value)
     setModel('')
     setReasoningEffort('')
-    setCatalog({ models: [], defaultReasoningEfforts: [] })
     if (value !== 'inherit') void loadCatalog(value)
     void persistConfig({ kind: value }, lastRequestedSpecsDir)
   }
@@ -146,17 +152,11 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
     )
   }
 
-  async function loadCatalog(agentKind: string): Promise<void> {
-    const request = ++catalogRequest
-    setCatalogLoading(true)
-    try {
-      const next = await api.listAgentModels(props.projectId, agentKind)
-      if (request === catalogRequest) setCatalog(next)
-    } catch {
-      if (request === catalogRequest) setCatalog({ models: [], defaultReasoningEfforts: [] })
-    } finally {
-      if (request === catalogRequest) setCatalogLoading(false)
-    }
+  /** 走共享缓存：命中即同步返回（无 loading、无请求），过期才后台刷新。 */
+  function loadCatalog(agentKind: string): void {
+    void loadAgentCatalog(agentKind, () => api.listAgentModels(props.projectId, agentKind)).catch(
+      () => undefined,
+    )
   }
 
   const modelOptions = () => {
@@ -272,6 +272,7 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
                 searchable={catalog().models.length > 10}
                 filterPlaceholder={t('common.filterOptions')}
                 emptyText={t('common.noMatchingOptions')}
+                loading={catalogLoading()}
                 disabled={kind() === 'inherit' || catalogLoading() || modelOptions().length <= 1}
                 onChange={updateModel}
               />
@@ -279,6 +280,7 @@ export const ProjectConfigDialog: Component<Props> = (props) => {
                 label={t('projectConfig.reasoningEffort')}
                 value={reasoningEffort()}
                 options={reasoningOptions()}
+                loading={catalogLoading()}
                 disabled={
                   kind() === 'inherit' || catalogLoading() || reasoningOptions().length <= 1
                 }

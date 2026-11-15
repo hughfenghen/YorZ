@@ -1,9 +1,10 @@
-import { Check, ChevronsUpDown } from 'lucide-solid'
+import { Check, ChevronsUpDown, Loader2 } from 'lucide-solid'
 import { For, Show, createMemo, createSignal, type Component } from 'solid-js'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select.jsx'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.jsx'
 import { Button } from './ui/button.jsx'
 import { Input } from './ui/input.jsx'
+import { t } from '../i18n/index.js'
 
 export interface AgentSettingsOption {
   value: string
@@ -16,6 +17,11 @@ export const AgentSettings: Component<{
   options: readonly AgentSettingsOption[]
   onChange: (value: string) => void
   disabled?: boolean
+  /**
+   * 选项仍在冷加载（无任何缓存）。为 true 时控件呈「加载中」而不是空下拉：
+   * 模型目录要拉起 opencode 服务端才能取到，opencode 模型又多，用户必须看到进度。
+   */
+  loading?: boolean
   searchable?: boolean
   filterPlaceholder?: string
   emptyText?: string
@@ -36,6 +42,22 @@ export const AgentSettings: Component<{
         option.value.toLocaleLowerCase().includes(needle),
     )
   })
+
+  const triggerLabel = () => (
+    <Show
+      when={props.loading}
+      fallback={
+        <span class="min-w-0 flex-1 truncate text-left">
+          {selected()?.label ?? placeholder() ?? props.value}
+        </span>
+      }
+    >
+      <span class="flex min-w-0 flex-1 items-center gap-2 text-left text-muted-foreground">
+        <Loader2 class="size-4 shrink-0 animate-spin" aria-hidden="true" />
+        <span class="truncate">{t('common.loading')}</span>
+      </span>
+    </Show>
+  )
 
   const choose = (value: string) => {
     props.onChange(value)
@@ -70,10 +92,20 @@ export const AgentSettings: Component<{
             )}
             aria-label={props.label}
           >
-            <SelectTrigger class="min-w-0">
-              <SelectValue<AgentSettingsOption> class="min-w-0 flex-1 truncate text-left">
-                {(state) => state.selectedOption().label}
-              </SelectValue>
+            <SelectTrigger class="min-w-0" aria-busy={props.loading}>
+              <Show
+                when={props.loading}
+                fallback={
+                  <SelectValue<AgentSettingsOption> class="min-w-0 flex-1 truncate text-left">
+                    {(state) => state.selectedOption().label}
+                  </SelectValue>
+                }
+              >
+                <span class="flex min-w-0 flex-1 items-center gap-2 text-left text-muted-foreground">
+                  <Loader2 class="size-4 shrink-0 animate-spin" aria-hidden="true" />
+                  <span class="truncate">{t('common.loading')}</span>
+                </span>
+              </Show>
             </SelectTrigger>
             <SelectContent />
           </Select>
@@ -93,11 +125,10 @@ export const AgentSettings: Component<{
             variant="outline"
             class="min-w-0 justify-between gap-2 px-3 font-normal"
             disabled={props.disabled}
+            aria-busy={props.loading}
             aria-label={props.label}
           >
-            <span class="min-w-0 flex-1 truncate text-left">
-              {selected()?.label ?? placeholder() ?? props.value}
-            </span>
+            {triggerLabel()}
             <ChevronsUpDown class="size-4 shrink-0 opacity-50" />
           </PopoverTrigger>
           <PopoverContent class="w-80 max-w-[calc(100vw-2rem)] p-0" hideCloseButton>
@@ -110,26 +141,36 @@ export const AgentSettings: Component<{
               />
             </div>
             <div class="max-h-64 overflow-y-auto p-1">
-              <For each={filteredOptions()}>
-                {(option) => (
-                  <button
-                    type="button"
-                    class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
-                    title={option.label}
-                    aria-pressed={option.value === props.value}
-                    onClick={() => choose(option.value)}
-                  >
-                    <span class="min-w-0 flex-1 truncate">{option.label}</span>
-                    <Check
-                      class={`size-4 shrink-0 ${option.value === props.value ? 'opacity-100' : 'opacity-0'}`}
-                    />
-                  </button>
-                )}
-              </For>
-              <Show when={filteredOptions().length === 0}>
-                <p class="m-0 px-2 py-3 text-center text-sm text-muted-foreground">
-                  {props.emptyText}
-                </p>
+              <Show
+                when={!props.loading}
+                fallback={
+                  <p class="m-0 flex items-center justify-center gap-2 px-2 py-3 text-center text-sm text-muted-foreground">
+                    <Loader2 class="size-4 animate-spin" aria-hidden="true" />
+                    {t('common.loading')}
+                  </p>
+                }
+              >
+                <For each={filteredOptions()}>
+                  {(option) => (
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+                      title={option.label}
+                      aria-pressed={option.value === props.value}
+                      onClick={() => choose(option.value)}
+                    >
+                      <span class="min-w-0 flex-1 truncate">{option.label}</span>
+                      <Check
+                        class={`size-4 shrink-0 ${option.value === props.value ? 'opacity-100' : 'opacity-0'}`}
+                      />
+                    </button>
+                  )}
+                </For>
+                <Show when={filteredOptions().length === 0}>
+                  <p class="m-0 px-2 py-3 text-center text-sm text-muted-foreground">
+                    {props.emptyText}
+                  </p>
+                </Show>
               </Show>
             </div>
           </PopoverContent>

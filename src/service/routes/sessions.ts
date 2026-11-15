@@ -10,6 +10,7 @@ import {
 import { loadGlobalConfig } from '../global-config.js'
 import { loadProjectConfig } from '../project-config.js'
 import { isSlashCommand, resolveChatPrompt } from '../slash-command.js'
+import { agentModelCatalogCache } from '../agent-sdk/model-catalog-cache.js'
 
 export type ResolveProject = (id: string) => Promise<ProjectInstance | null>
 
@@ -86,10 +87,14 @@ export function createSessionsRoutes(resolveProject: ResolveProject): Hono {
     return c.json(await p.sessions.listAgentDescriptors())
   })
 
+  // Same host-global catalog (see the global route): the project instance is only
+  // consulted on a cold / stale refresh, so opening settings in a second project
+  // no longer boots another opencode server.
   app.get('/projects/:projectId/agents/:agentId/models', async (c) => {
     const p = await need(c)
     if (p instanceof Response) return p
-    return c.json(await p.sessions.listAgentModels(c.req.param('agentId')))
+    const kind = c.req.param('agentId')
+    return c.json(await agentModelCatalogCache.get(kind, () => p.sessions.listAgentModels(kind)))
   })
 
   app.get('/projects/:projectId/agent-usage', async (c) => {

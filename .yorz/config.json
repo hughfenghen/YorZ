@@ -1,9 +1,8 @@
 {
   "version": 1,
   "agent": {
-    "kind": "claude",
-    "model": "opus[1m]",
-    "reasoningEffort": "high"
+    "kind": "opencode-v2",
+    "model": "minimax-cn/MiniMax-M3.1-Flash"
   },
   "specsDir": ".yorz/specs",
   "commands": [

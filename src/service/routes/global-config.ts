@@ -21,6 +21,7 @@ import {
 import { parseCustomInstructions } from '../custom-instruction.js'
 import { getPowerInhibitController, type PowerInhibitController } from '../power-inhibit.js'
 import { AdapterRegistry } from '../agent-sdk/registry.js'
+import { agentModelCatalogCache } from '../agent-sdk/model-catalog-cache.js'
 
 interface PutBody {
   agent: GlobalAgentConfig
@@ -53,13 +54,23 @@ export function createGlobalConfigRoutes(
     }
   })
 
+  // Model catalogs are host-global and expensive to produce (an opencode server
+  // is booted just to answer `/api/model`), so every read goes through the shared
+  // stale-while-revalidate cache. The ephemeral registry is still created only on
+  // a cold / stale refresh and disposed right after, keeping the previous
+  // "no long-lived child process" lifecycle.
   app.get('/agents/:agentId/models', async (c) => {
-    const registry = new AdapterRegistry(process.cwd(), globalConfigPath)
-    try {
-      return c.json(await registry.listModels(c.req.param('agentId')))
-    } finally {
-      await registry.dispose().catch(() => {})
-    }
+    const kind = c.req.param('agentId')
+    return c.json(
+      await agentModelCatalogCache.get(kind, async () => {
+        const registry = new AdapterRegistry(process.cwd(), globalConfigPath)
+        try {
+          return await registry.listModels(kind)
+        } finally {
+          await registry.dispose().catch(() => {})
+        }
+      }),
+    )
   })
 
   app.get('/global-config', async (c) => {

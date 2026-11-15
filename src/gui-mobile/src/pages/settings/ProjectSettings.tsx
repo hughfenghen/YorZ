@@ -1,12 +1,13 @@
-import { Show, createMemo, createResource, type Component } from 'solid-js'
+import { Show, createEffect, createMemo, createResource, type Component } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
+import { api, type AgentConfig, type ProjectConfig } from '@shared/api/index.js'
 import {
-  api,
-  type AgentConfig,
-  type AgentDescriptor,
-  type AgentModelCatalog,
-  type ProjectConfig,
-} from '@shared/api/index.js'
+  isAgentCatalogLoading,
+  loadAgentCatalog,
+  loadAgentRoster,
+  peekAgentCatalogOrEmpty,
+  peekAgentRoster,
+} from '@shared/lib/agent-catalog-cache.js'
 import { displayProjectName } from '@shared/api/project.js'
 import { Page } from '@/components/Page.jsx'
 import { ErrorNotice, LoadingNotice, NoProjectNotice } from '@/components/ListStates.jsx'
@@ -45,21 +46,27 @@ export const ProjectSettings: Component = () => {
     () => activeProjectId() ?? undefined,
     (pid) => api.getProjectConfig(pid),
   )
-  // Agent roster (builtin + external) from the single `/agents` source, so the
-  // segmented control is no longer a hardcoded list.
-  const [agents] = createResource<AgentDescriptor[], string>(
-    () => activeProjectId() ?? undefined,
-    (pid) => api.listAgents(pid),
-  )
-  const catalogSource = createMemo(() => {
-    const pid = activeProjectId()
+  // Agent roster + model catalog come from the cross-project shared cache
+  // (gui-shared): reopening this page, or opening settings for another project,
+  // reuses them. Only a cold (uncached) catalog shows the loading state.
+  const agents = () => peekAgentRoster() ?? []
+  const catalogKind = () => {
     const kind = config()?.agent.kind
-    return pid && kind && kind !== 'inherit' ? { pid, kind } : undefined
+    return kind && kind !== 'inherit' ? kind : undefined
+  }
+  const catalog = () => peekAgentCatalogOrEmpty(catalogKind())
+  const catalogLoading = () => isAgentCatalogLoading(catalogKind())
+  createEffect(() => {
+    const pid = activeProjectId()
+    const kind = catalogKind()
+    if (!pid || !kind) return
+    void loadAgentCatalog(kind, () => api.listAgentModels(pid, kind)).catch(() => undefined)
   })
-  const [catalog] = createResource<AgentModelCatalog, { pid: string; kind: string }>(
-    catalogSource,
-    ({ pid, kind }) => api.listAgentModels(pid, kind),
-  )
+  createEffect(() => {
+    const pid = activeProjectId()
+    if (!pid) return
+    void loadAgentRoster(() => api.listAgents(pid)).catch(() => undefined)
+  })
   const configSaveQueue = createLatestMutationQueue()
 
   // 写成函数而不是模块级常量：t() 在模块求值时 i18n 还没 init 完，
@@ -67,7 +74,7 @@ export const ProjectSettings: Component = () => {
   const kindOptions = (): readonly { value: string; label: string }[] => {
     const options = [
       { value: 'inherit', label: t('projectSettings.inherit') },
-      ...(agents() ?? []).map((d) => ({
+      ...agents().map((d) => ({
         value: d.id,
         label: d.source === 'external' ? d.displayName : (BUILTIN_LABEL[d.id] ?? d.displayName),
       })),
@@ -82,7 +89,7 @@ export const ProjectSettings: Component = () => {
   const modelOptions = (cfg: ProjectConfig) => {
     const options = [
       { value: '', label: t('projectSettings.agentDefaultOption') },
-      ...(catalog()?.models ?? []).map((item) => ({ value: item.id, label: item.displayName })),
+      ...catalog().models.map((item) => ({ value: item.id, label: item.displayName })),
     ]
     const selected = cfg.agent.model ?? ''
     if (selected && !options.some((item) => item.value === selected)) {
@@ -94,8 +101,8 @@ export const ProjectSettings: Component = () => {
   const reasoningOptions = (cfg: ProjectConfig) => {
     const selectedModel = cfg.agent.model ?? ''
     const choices = selectedModel
-      ? (catalog()?.models.find((item) => item.id === selectedModel)?.reasoningEfforts ?? [])
-      : (catalog()?.defaultReasoningEfforts ?? [])
+      ? (catalog().models.find((item) => item.id === selectedModel)?.reasoningEfforts ?? [])
+      : catalog().defaultReasoningEfforts
     const options = [
       { value: '', label: t('projectSettings.agentDefaultOption') },
       ...choices.map((item) => ({ value: item.id, label: item.displayName })),
@@ -161,12 +168,13 @@ export const ProjectSettings: Component = () => {
                     label={t('projectSettings.model')}
                     options={modelOptions(cfg())}
                     value={() => cfg().agent.model ?? ''}
-                    searchable={(catalog()?.models.length ?? 0) > 10}
+                    searchable={catalog().models.length > 10}
                     filterPlaceholder={t('common.filterOptions')}
                     emptyText={t('common.noMatchingOptions')}
+                    loading={catalogLoading}
                     disabled={() =>
                       cfg().agent.kind === 'inherit' ||
-                      catalog.loading ||
+                      catalogLoading() ||
                       modelOptions(cfg()).length <= 1
                     }
                     onChange={(model) => onModelChange(cfg(), model)}
@@ -175,9 +183,10 @@ export const ProjectSettings: Component = () => {
                     label={t('projectSettings.reasoningEffort')}
                     options={reasoningOptions(cfg())}
                     value={() => cfg().agent.reasoningEffort ?? ''}
+                    loading={catalogLoading}
                     disabled={() =>
                       cfg().agent.kind === 'inherit' ||
-                      catalog.loading ||
+                      catalogLoading() ||
                       reasoningOptions(cfg()).length <= 1
                     }
                     onChange={(value) => onReasoningChange(cfg(), value)}

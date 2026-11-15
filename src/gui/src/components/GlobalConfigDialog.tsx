@@ -8,6 +8,13 @@ import {
   type Component,
 } from 'solid-js'
 import { api, type AgentDescriptor, type AgentModelCatalog, type GlobalConfig } from '../lib/api.js'
+import {
+  isAgentCatalogLoading,
+  loadAgentCatalog,
+  loadAgentRoster,
+  peekAgentCatalogOrEmpty,
+  peekAgentRoster,
+} from '@shared/lib/agent-catalog-cache.js'
 import { DEFAULT_GLOBAL_CONFIG, globalConfig, saveGlobalConfig } from '../lib/global-config.js'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog.jsx'
 import { Button } from './ui/button.jsx'
@@ -50,14 +57,14 @@ const BUILTIN_LABEL_KEY: Record<string, string> = {
 
 export const GlobalConfigDialog: Component<Props> = (props) => {
   const [agentDefault, setAgentDefault] = createSignal<string>('claude')
-  const [agents, setAgents] = createSignal<AgentDescriptor[]>([])
   const [model, setModel] = createSignal('')
   const [reasoningEffort, setReasoningEffort] = createSignal('')
-  const [catalog, setCatalog] = createSignal<AgentModelCatalog>({
-    models: [],
-    defaultReasoningEfforts: [],
-  })
-  const [catalogLoading, setCatalogLoading] = createSignal(false)
+  // Catalog + roster live in the cross-project shared cache (gui-shared): reopening
+  // the dialog, or opening the project dialog for another project, reuses them and
+  // never waits on the opencode server again.
+  const catalog = (): AgentModelCatalog => peekAgentCatalogOrEmpty(agentDefault())
+  const catalogLoading = (): boolean => isAgentCatalogLoading(agentDefault())
+  const agents = (): AgentDescriptor[] => peekAgentRoster() ?? []
   const [banner, setBanner] = createSignal(false)
   const [sound, setSound] = createSignal(false)
   const [powerMode, setPowerMode] = createSignal<PowerInhibitMode>('system-default')
@@ -66,7 +73,6 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
   const [loading, setLoading] = createSignal(false)
   const [saveStatus, setSaveStatus] = createSignal<'idle' | 'saving' | 'saved'>('idle')
   const [error, setError] = createSignal<string | null>(null)
-  let catalogRequest = 0
   let configRequest = 0
   const configSaveQueue = createLatestMutationQueue()
   const conflicts = createMemo(() => new Set(findShortcutConflicts(shortcuts())))
@@ -89,14 +95,14 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
         // Fetch config + the agent roster together: the global-default dropdown
         // now lists builtin and global external (`customAgents`) agents from the
         // single `/agents` source rather than a hardcoded array.
-        const [cfg, descriptors] = await Promise.all([
+        const [cfg] = await Promise.all([
           api.getGlobalConfig(),
-          api.listGlobalAgents().catch(() => [] as AgentDescriptor[]),
+          // 名单也走共享缓存：第二次打开是同步命中，不会拖慢弹窗首屏。
+          loadAgentRoster(() => api.listGlobalAgents()).catch(() => [] as AgentDescriptor[]),
         ])
         if (request !== configRequest || !props.open) return
         applyConfig(cfg)
-        setAgents(descriptors)
-        void loadCatalog(cfg.agent.defaultKind)
+        loadCatalog(cfg.agent.defaultKind)
       } catch (err) {
         if (request !== configRequest || !props.open) return
         setError((err as Error).message)
@@ -237,7 +243,7 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
     setAgentDefault(kind)
     setModel('')
     setReasoningEffort('')
-    void loadCatalog(kind)
+    loadCatalog(kind)
     void persistPatch({ agent: { defaultKind: kind } })
   }
 
@@ -260,17 +266,13 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
     })
   }
 
-  async function loadCatalog(kind: string): Promise<void> {
-    const request = ++catalogRequest
-    setCatalogLoading(true)
-    try {
-      const next = await api.listGlobalAgentModels(kind)
-      if (request === catalogRequest) setCatalog(next)
-    } catch {
-      if (request === catalogRequest) setCatalog({ models: [], defaultReasoningEfforts: [] })
-    } finally {
-      if (request === catalogRequest) setCatalogLoading(false)
-    }
+  /**
+   * 走共享缓存：命中即同步返回（无 loading、无请求），过期才后台刷新。
+   * 失败静默——与之前「取不到就空目录」的行为一致，不打断设置读写。
+   */
+  function loadCatalog(kind: string): void {
+    if (!kind) return
+    void loadAgentCatalog(kind, () => api.listGlobalAgentModels(kind)).catch(() => undefined)
   }
 
   const modelOptions = () => {
@@ -358,6 +360,7 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
                 searchable={catalog().models.length > 10}
                 filterPlaceholder={t('common.filterOptions')}
                 emptyText={t('common.noMatchingOptions')}
+                loading={catalogLoading()}
                 disabled={catalogLoading() || modelOptions().length <= 1}
                 onChange={updateModel}
               />
@@ -365,6 +368,7 @@ export const GlobalConfigDialog: Component<Props> = (props) => {
                 label={t('globalConfig.reasoningEffort')}
                 value={reasoningEffort()}
                 options={reasoningOptions()}
+                loading={catalogLoading()}
                 disabled={catalogLoading() || reasoningOptions().length <= 1}
                 onChange={updateReasoningEffort}
               />

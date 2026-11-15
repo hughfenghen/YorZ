@@ -1,11 +1,13 @@
-import { Show, createResource, createSignal, type Component } from 'solid-js'
+import { Show, createEffect, createResource, createSignal, type Component } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
+import { api, type GlobalConfig } from '@shared/api/index.js'
 import {
-  api,
-  type AgentDescriptor,
-  type AgentModelCatalog,
-  type GlobalConfig,
-} from '@shared/api/index.js'
+  isAgentCatalogLoading,
+  loadAgentCatalog,
+  loadAgentRoster,
+  peekAgentCatalogOrEmpty,
+  peekAgentRoster,
+} from '@shared/lib/agent-catalog-cache.js'
 import {
   THEME_MODES,
   THEME_NAMES,
@@ -60,19 +62,26 @@ export const GlobalSettings: Component = () => {
   const navigate = useNavigate()
   const { lng, changeLanguage } = useTranslation()
   const [config, { refetch, mutate }] = createResource<GlobalConfig>(() => api.getGlobalConfig())
-  // Default-agent roster (builtin + global `customAgents`) from the single
-  // `/agents` source, so the segmented control is no longer a hardcoded list.
-  const [agents] = createResource<AgentDescriptor[]>(() => api.listGlobalAgents())
-  const [catalog] = createResource<AgentModelCatalog, string>(
-    () => config()?.agent.defaultKind,
-    (kind) => api.listGlobalAgentModels(kind),
-  )
+  // Default-agent roster + model catalog come from the cross-project shared cache
+  // (gui-shared): reopening this page or switching projects no longer re-fetches
+  // them, and only a cold (uncached) load shows the loading state.
+  const agents = () => peekAgentRoster() ?? []
+  const catalog = () => peekAgentCatalogOrEmpty(config()?.agent.defaultKind ?? '')
+  const catalogLoading = () => isAgentCatalogLoading(config()?.agent.defaultKind ?? '')
+  createEffect(() => {
+    const kind = config()?.agent.defaultKind
+    if (!kind) return
+    void loadAgentCatalog(kind, () => api.listGlobalAgentModels(kind)).catch(() => undefined)
+  })
+  createEffect(() => {
+    void loadAgentRoster(() => api.listGlobalAgents()).catch(() => undefined)
+  })
   const pushSupported = isPushSupported()
   const [pushBusy, setPushBusy] = createSignal(false)
   const configSaveQueue = createLatestMutationQueue()
 
   const kindOptions = (): readonly { value: string; label: string }[] => {
-    const list = agents() ?? []
+    const list = agents()
     const mapped = list.map((d) => ({
       value: d.id,
       label: d.source === 'external' ? d.displayName : (BUILTIN_LABEL[d.id] ?? d.displayName),
@@ -91,7 +100,7 @@ export const GlobalSettings: Component = () => {
   const modelOptions = (cfg: GlobalConfig) => {
     const options = [
       { value: '', label: t('globalSettings.agentDefaultOption') },
-      ...(catalog()?.models ?? []).map((item) => ({ value: item.id, label: item.displayName })),
+      ...catalog().models.map((item) => ({ value: item.id, label: item.displayName })),
     ]
     const selected = cfg.agent.model ?? ''
     if (selected && !options.some((item) => item.value === selected)) {
@@ -103,8 +112,8 @@ export const GlobalSettings: Component = () => {
   const reasoningOptions = (cfg: GlobalConfig) => {
     const selectedModel = cfg.agent.model ?? ''
     const choices = selectedModel
-      ? (catalog()?.models.find((item) => item.id === selectedModel)?.reasoningEfforts ?? [])
-      : (catalog()?.defaultReasoningEfforts ?? [])
+      ? (catalog().models.find((item) => item.id === selectedModel)?.reasoningEfforts ?? [])
+      : catalog().defaultReasoningEfforts
     const options = [
       { value: '', label: t('globalSettings.agentDefaultOption') },
       ...choices.map((item) => ({ value: item.id, label: item.displayName })),
@@ -183,10 +192,11 @@ export const GlobalSettings: Component = () => {
                     label={t('globalSettings.model')}
                     options={modelOptions(cfg())}
                     value={() => cfg().agent.model ?? ''}
-                    searchable={(catalog()?.models.length ?? 0) > 10}
+                    searchable={catalog().models.length > 10}
                     filterPlaceholder={t('common.filterOptions')}
                     emptyText={t('common.noMatchingOptions')}
-                    disabled={() => catalog.loading || modelOptions(cfg()).length <= 1}
+                    loading={catalogLoading}
+                    disabled={() => catalogLoading() || modelOptions(cfg()).length <= 1}
                     onChange={(model) =>
                       void patch({
                         ...cfg(),
@@ -201,7 +211,8 @@ export const GlobalSettings: Component = () => {
                     label={t('globalSettings.reasoningEffort')}
                     options={reasoningOptions(cfg())}
                     value={() => cfg().agent.reasoningEffort ?? ''}
-                    disabled={() => catalog.loading || reasoningOptions(cfg()).length <= 1}
+                    loading={catalogLoading}
+                    disabled={() => catalogLoading() || reasoningOptions(cfg()).length <= 1}
                     onChange={(reasoningEffort) =>
                       void patch({
                         ...cfg(),

@@ -99,6 +99,46 @@ test('桌面项目配置自动保存并为长模型列表提供筛选', async ({
   })
 })
 
+test('桌面项目配置在模型目录冷加载期间展示加载中', async ({ page, request }) => {
+  const projectId = await resolveProjectId(request)
+  const original = await getProjectConfig(request, projectId)
+  await putProjectConfig(request, projectId, {
+    agent: { kind: 'codex' },
+    specsDir: original.specsDir,
+  })
+
+  // 慢响应模拟 opencode 冷启动拉模型目录：加载期间模型行必须展示 loading，
+  // 而不是只把控件禁用、让用户看到空下拉。
+  await page.route(/\/agents\/[^/]+\/models$/, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(CATALOG),
+    })
+  })
+
+  await openProjectConfig(page, projectId)
+  const dialog = page.getByRole('dialog').filter({ hasText: /项目配置|Project Config/ })
+  const loadingRow = dialog
+    .getByRole('button')
+    .filter({ hasText: /加载中|Loading/ })
+    .first()
+  await expect(loadingRow).toBeVisible()
+  await expect(loadingRow).toHaveAttribute('aria-busy', 'true')
+
+  // 目录返回后恢复可交互，并能列出候选（筛选态是模型多于 10 个时的 Popover 分支）。
+  const modelTrigger = dialog.getByRole('button', { name: /模型|Model/, exact: true })
+  await expect(modelTrigger).toBeEnabled({ timeout: 10_000 })
+  await modelTrigger.click()
+  await expect(page.getByTitle(MODELS[0]!.displayName)).toBeVisible()
+
+  await putProjectConfig(request, projectId, {
+    agent: original.agent,
+    specsDir: original.specsDir,
+  })
+})
+
 test('移动端异步候选最终回显服务器配置并可筛选模型', async ({ page, request }) => {
   const projectId = await resolveProjectId(request)
   const original = await getProjectConfig(request, projectId)
@@ -132,10 +172,11 @@ test('移动端异步候选最终回显服务器配置并可筛选模型', async
   })
 
   await page.goto('/m/settings/project')
-  await expect(page.getByLabel(/Agent 类型|Agent kind/)).toHaveValue('codex')
+  // 移动端 AgentSettings 渲染的是按钮行（不是原生 select），断言回显文案而非 value。
+  await expect(page.getByLabel(/Agent 类型|Agent kind/)).toContainText('Codex')
   const modelTrigger = page.getByRole('button', { name: /模型|Model/, exact: true })
   await expect(modelTrigger).toContainText('Long Model 11')
-  await expect(page.getByLabel(/推理强度|Reasoning effort/)).toHaveValue('high')
+  await expect(page.getByLabel(/推理强度|Reasoning effort/)).toContainText('high')
 
   await modelTrigger.click()
   const sheet = page.getByRole('dialog', { name: /模型|Model/ })

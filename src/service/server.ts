@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { dirname, join } from 'node:path'
 import { createSpecsRoutes } from './routes/specs.js'
 import { createSessionsRoutes } from './routes/sessions.js'
 import { createSpecReviewRoutes } from './routes/spec-review.js'
@@ -23,6 +24,7 @@ import { WorktreeManager } from './worktree-manager.js'
 import { getLogger } from './logger.js'
 import type { SystemNotificationCenter } from './system-notifications.js'
 import { buildSpecDispatch } from './slash-command.js'
+import { configureAgentModelCatalogCache } from './agent-sdk/model-catalog-cache.js'
 
 export interface CreateAppOptions {
   registry: ProjectRegistry
@@ -95,6 +97,11 @@ export function createApp(opts: CreateAppOptions): Hono {
     })
   }
   const resolveProject = (id: string) => opts.registry.getOrCreate(id)
+  // 模型目录缓存落在全局配置目录旁（与 `config.json` 同源），Service 重启后首次打开设置
+  // 也能先返回上一轮目录、再后台校准。
+  configureAgentModelCatalogCache({
+    filePath: join(dirname(opts.registry.configPath()), 'cache', 'agent-models.json'),
+  })
   const projectsBus = new RegistryEventBus()
   projectsBus.start(opts.registry.configPath())
   // 会话 running 翻转 → 防抖广播 projects-changed，驱动项目侧栏呼吸点刷新。
