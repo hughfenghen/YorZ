@@ -35,6 +35,7 @@ const BUILTIN_LABEL: Record<string, string> = {
   claude: 'Claude',
   codex: 'Codex',
   opencode: 'opencode',
+  'opencode-v2': 'OpenCode V2',
   pi: 'Pi',
 }
 

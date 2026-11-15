@@ -43,6 +43,7 @@ type PowerInhibitMode = 'system-default' | 'prevent-display-sleep' | 'keep-syste
 const BUILTIN_LABEL_KEY: Record<string, string> = {
   claude: 'projectConfig.agentClaude',
   opencode: 'projectConfig.agentOpencode',
+  'opencode-v2': 'projectConfig.agentOpencodeV2',
   codex: 'projectConfig.agentCodex',
   pi: 'projectConfig.agentPi',
 }

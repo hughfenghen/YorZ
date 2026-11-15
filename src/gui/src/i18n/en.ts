@@ -405,6 +405,7 @@ export const en = {
     inheritGlobal: 'Use global default',
     agentClaude: 'ClaudeCode',
     agentOpencode: 'OpenCode',
+    agentOpencodeV2: 'OpenCode V2',
     agentCodex: 'Codex',
     agentPi: 'Pi',
     agent: 'Agent',

@@ -17,6 +17,7 @@ const SPEC_WRITE_TOOLS: Record<AgentKind, ReadonlySet<string>> = {
   claude: new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']),
   codex: new Set<string>(),
   opencode: new Set(['write', 'edit', 'patch']),
+  'opencode-v2': new Set(['write', 'edit', 'patch']),
   pi: new Set(['write', 'edit']),
 }
 

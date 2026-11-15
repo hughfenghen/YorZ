@@ -398,6 +398,7 @@ export const zhCN = {
     inheritGlobal: '继承全局默认',
     agentClaude: 'ClaudeCode',
     agentOpencode: 'OpenCode',
+    agentOpencodeV2: 'OpenCode V2',
     agentCodex: 'Codex',
     agentPi: 'Pi',
     agent: 'Agent',

@@ -8,8 +8,8 @@ import type { CompactMetrics, TurnMetrics } from '../telemetry/types.js'
  */
 export type AgentId = string
 
-/** The four in-process SDK adapters YorZ ships with. */
-export const BUILTIN_AGENT_IDS = ['claude', 'codex', 'opencode', 'pi'] as const
+/** The in-process SDK adapters YorZ ships with. */
+export const BUILTIN_AGENT_IDS = ['claude', 'codex', 'opencode', 'opencode-v2', 'pi'] as const
 export type BuiltinAgentId = (typeof BUILTIN_AGENT_IDS)[number]
 
 export function isBuiltinAgentId(id: string): id is BuiltinAgentId {

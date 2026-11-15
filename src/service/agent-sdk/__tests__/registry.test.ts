@@ -124,7 +124,7 @@ describe('AdapterRegistry', () => {
     expect(await reg.get('missing')).toBeInstanceOf(ClaudeAdapter)
   })
 
-  it('listDescriptors returns the four builtins plus configured externals', async () => {
+  it('listDescriptors returns the builtins plus configured externals', async () => {
     const { cwd, globalConfigPath } = await globalWith(
       [
         { id: 'ext', name: 'Ext Agent', module: './agents/ext.mjs' },
@@ -135,7 +135,7 @@ describe('AdapterRegistry', () => {
     const reg = new AdapterRegistry(cwd, globalConfigPath)
     const descriptors = await reg.listDescriptors()
     const ids = descriptors.map((d) => d.id)
-    expect(ids).toEqual(['claude', 'codex', 'opencode', 'pi', 'ext', 'broken'])
+    expect(ids).toEqual(['claude', 'codex', 'opencode', 'opencode-v2', 'pi', 'ext', 'broken'])
     // A failed external still appears, synthesized as external with caps off.
     const broken = descriptors.find((d) => d.id === 'broken')
     expect(broken).toMatchObject({ source: 'external', displayName: 'broken' })

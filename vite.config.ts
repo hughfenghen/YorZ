@@ -30,6 +30,9 @@ export default defineConfig({
         '@anthropic-ai/claude-agent-sdk',
         '@openai/codex-sdk',
         '@opencode-ai/sdk',
+        // opencode v2 的 CLI 是可选依赖（体积 200MB+），只能运行时解析，
+        // 绝不能进 bundle。
+        '@opencode/cli',
         '@earendil-works/pi-coding-agent',
         /^@earendil-works\//,
         'markdown-it',

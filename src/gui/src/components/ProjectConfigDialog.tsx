@@ -24,6 +24,7 @@ const DEFAULT_SPECS_DIR = '.yorz/specs'
 const BUILTIN_LABEL_KEY: Record<string, string> = {
   claude: 'projectConfig.agentClaude',
   opencode: 'projectConfig.agentOpencode',
+  'opencode-v2': 'projectConfig.agentOpencodeV2',
   codex: 'projectConfig.agentCodex',
   pi: 'projectConfig.agentPi',
 }

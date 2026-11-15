@@ -15,7 +15,7 @@ export function normalizeUsage(kind: AgentKind, raw: unknown): UsageSnapshot | u
   const snapshot =
     kind === 'codex'
       ? fromCodex(obj)
-      : kind === 'opencode'
+      : kind === 'opencode' || kind === 'opencode-v2'
         ? fromOpenCode(obj)
         : kind === 'pi'
           ? fromPi(obj)

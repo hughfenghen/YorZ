@@ -10,6 +10,7 @@ import {
 import { ClaudeAdapter } from './claude-adapter.js'
 import { CodexAdapter } from './codex-adapter.js'
 import { OpenCodeAdapter } from './opencode-adapter.js'
+import { OpenCodeV2Adapter } from './opencode-v2-adapter.js'
 import { PiAdapter } from './pi-adapter.js'
 import {
   BUILTIN_AGENT_IDS,
@@ -30,6 +31,7 @@ const BUILTIN_FACTORIES: Record<BuiltinAgentId, (cwd: string) => AgentSdkAdapter
   claude: (cwd) => new ClaudeAdapter(cwd),
   codex: (cwd) => new CodexAdapter(cwd),
   opencode: (cwd) => new OpenCodeAdapter(cwd),
+  'opencode-v2': (cwd) => new OpenCodeV2Adapter(cwd),
   pi: (cwd) => new PiAdapter(cwd),
 }
 

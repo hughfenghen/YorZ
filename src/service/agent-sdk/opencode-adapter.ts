@@ -1,6 +1,7 @@
 import { createOpencode } from '@opencode-ai/sdk/v2'
 import type { OpencodeClient, Message, Part, Provider } from '@opencode-ai/sdk/v2'
 import { normalizeUsage } from '../telemetry/index.js'
+import { pathWithoutV2Opencode } from './opencode-binary.js'
 import type {
   AgentDescriptor,
   AgentEvent,
@@ -138,22 +139,34 @@ export class OpenCodeAdapter implements AgentSdkAdapter {
       // port 0 lets the OS pick a free port; the SDK resolves the actual URL
       // from the server's "listening on" stdout line. A fixed port would clash
       // with any other running opencode instance (default 4096).
-      this.booting = createOpencode({
-        hostname: '127.0.0.1',
-        port: 0,
-        config: {
-          permission: {
-            edit: 'allow',
-            bash: 'allow',
-            webfetch: 'allow',
-            doom_loop: 'allow',
-            external_directory: 'allow',
+      //
+      // `opencode` 这个命令名在 PATH 上可能指向 v2（`@opencode/cli` 同时声明了
+      // `opencode` 与 `opencode2` 两个 bin，装成全局包时会遮蔽用户原有的 v1）。
+      // v2 只提供 `/api/*`，用 v1 的 SDK 连它必然起不来，所以先把 PATH 上的 v2
+      // 摘掉。SDK 的启动器在调用瞬间就会用 `process.env` 的快照 spawn 子进程
+      // （cross-spawn 用 `which.sync` 同步解析），因此这里临时改 PATH 是安全的。
+      const originalPath = process.env.PATH
+      process.env.PATH = await pathWithoutV2Opencode(originalPath)
+      try {
+        this.booting = createOpencode({
+          hostname: '127.0.0.1',
+          port: 0,
+          config: {
+            permission: {
+              edit: 'allow',
+              bash: 'allow',
+              webfetch: 'allow',
+              doom_loop: 'allow',
+              external_directory: 'allow',
+            },
           },
-        },
-      }).catch((err) => {
-        this.booting = null
-        throw err
-      })
+        }).catch((err) => {
+          this.booting = null
+          throw err
+        })
+      } finally {
+        process.env.PATH = originalPath
+      }
     }
     return this.booting
   }
